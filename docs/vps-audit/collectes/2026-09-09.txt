@@ -1,0 +1,1357 @@
+COLLECTE AUDIT VPS — 2026-09-09 02:21:19 UTC
+hote=srv1201617  noyau=6.8.0-136-generic
+
+
+═════ 1. IDENTITE & CHARGE ═════   [t+0s]
+PRETTY_NAME="Ubuntu 24.04.3 LTS"
+ 02:21:19 up 35 days,  4:48,  1 user,  load average: 0.28, 0.34, 0.30
+
+── CPU ──
+CPU(s):                                  2
+Model name:                              AMD EPYC 9354P 32-Core Processor
+Core(s) per socket:                      2
+Flags:                                   fpu vme de pse tsc msr pae mce cx8 apic sep mtrr pge mca cmov pat pse36 clflush mmx fxsr sse sse2 ht syscall nx mmxext fxsr_opt pdpe1gb rdtscp lm rep_good nopl cpuid extd_apicid tsc_known_freq pni pclmulqdq ssse3 fma cx16 pcid sse4_1 sse4_2 x2apic movbe popcnt tsc_deadline_timer aes xsave avx f16c rdrand hypervisor lahf_lm cmp_legacy cr8_legacy abm sse4a misalignsse 3dnowprefetch osvw perfctr_core ssbd perfmon_v2 ibrs ibpb stibp ibrs_enhanced vmmcall fsgsbase tsc_adjust bmi1 avx2 smep bmi2 erms invpcid avx512f avx512dq rdseed adx smap avx512ifma clflushopt clwb avx512cd sha_ni avx512bw avx512vl xsaveopt xsavec xgetbv1 xsaves avx512_bf16 clzero xsaveerptr wbnoinvd arat avx512vbmi umip pku ospke avx512_vbmi2 gfni vaes vpclmulqdq avx512_vnni avx512_bitalg avx512_vpopcntdq la57 rdpid overflow_recov succor fsrm flush_l1d
+Hypervisor vendor:                       KVM
+
+── Charge instantanee (rapportee au nombre de coeurs) ──
+  1min=0.28  5min=0.34  15min=0.30  (sur 2 coeurs → 14% / 17% / 15%)
+
+── Processus les plus gourmands, HOTE et CONTENEURS distingues (mesure instantanee sur 3 s) ──
+  (vide = aucun processus au-dessus de 2 % : c'est le cas normal)
+  ⚠️ [conteneur ...] = ce n est PAS l hote : docker stats le voit deja, section 4.
+     Seul un [HOTE] gourmand est un angle mort de l outillage Docker (VPS-M14/M19).
+
+── Demons systeme : emballement EN COURS (3 s) contre SEQUELLE (cumul / uptime) ──
+  dockerd          maintenant   1.0 %  |  cumul 241.2 h CPU / 844.8 h uptime =  28.5 %  
+  containerd       maintenant   0.7 %  |  cumul   8.1 h CPU / 844.8 h uptime =   1.0 %  
+  ⚠️ Le cumul ne DIMINUE JAMAIS — il ne s efface qu au redemarrage du demon. Un 🟠 peut
+     donc rester allume des semaines apres la fin de l incident : c est 'maintenant' qui tranche.
+
+
+═════ 2. MEMOIRE ═════   [t+4s]
+               total        used        free      shared  buff/cache   available
+Mem:           7.8Gi       3.3Gi       347Mi       308Mi       4.8Gi       4.4Gi
+Swap:          4.0Gi       1.3Gi       2.7Gi
+
+── Indicateurs clefs ──
+MemTotal:        8131476 kB
+MemAvailable:    4630132 kB
+SwapTotal:       4194300 kB
+SwapFree:        2796684 kB
+Dirty:               712 kB
+Slab:            1544380 kB
+Committed_AS:   10572568 kB
+  vm.swappiness = 10
+
+── Pression (PSI) — 'full' > 0 signifie que TOUT s'est arrete faute de ressource ──
+  memory  full avg10=0.00 avg60=0.00 avg300=0.00 total=2000022158
+  cpu     full avg10=0.00 avg60=0.00 avg300=0.00 total=0
+  io      full avg10=0.00 avg60=0.00 avg300=0.02 total=19984551942
+
+── Swap par processus (> 1 Mo) ──
+     125 Mo  node
+      95 Mo  mariadbd
+      76 Mo  dockerd
+      76 Mo  node
+      51 Mo  node
+      29 Mo  minio
+      24 Mo  npm
+      21 Mo  node
+      19 Mo  node
+      19 Mo  MainThread
+
+── Tues par manque de memoire (30 j) ──
+  occurrences OOM : 0
+
+
+═════ 3. DISQUE ═════   [t+13s]
+Filesystem     Type     Size  Used Avail Use% Mounted on
+/dev/sda1      ext4      96G   54G   43G  56% /
+/dev/sda16     ext4     881M  119M  700M  15% /boot
+/dev/sda15     vfat     105M  6.2M   99M   6% /boot/efi
+
+── Inodes ──
+Filesystem       Inodes   IUsed    IFree IUse% Mounted on
+/dev/sda1      12976128 1794382 11181746   14% /
+/dev/sda16        58496     604    57892    2% /boot
+/dev/sda15            0       0        0     - /boot/efi
+
+── Repartition hors Docker ──
+  385M	/var/log                      26 ms
+  1.7G	/root                        717 ms
+  36K	/home                           7 ms
+  5.9G	/var/backups                  30 ms
+
+── /opt sous-dossier par sous-dossier (le poste le plus lourd — VPS-M26/VPS-018) ──
+       57M  /opt/backups                             16 ms
+       12K  /opt/containerd                           6 ms
+      253M  /opt/dg-epaviste-depannage             2211 ms
+        3M  /opt/dronely-presentation                18 ms
+        3M  /opt/foodsqan-maquettes                   7 ms
+      291M  /opt/foodsqan                           646 ms
+    (>12s)  /opt/maalem                           12004 ms
+       38M  /opt/maestroo                           509 ms
+        5M  /opt/nebula                              17 ms
+        3M  /opt/tracky-centre-alerte                 7 ms
+        4M  /opt/tracky-vps-audit                    12 ms
+       80K  /opt/vizyo-auth-frontend-features        10 ms
+      439M  /opt/vizyo-auth                        4141 ms
+      823M  /opt/vizyo-leads                       4732 ms
+     1004M  /opt/vizyo-manager                     8929 ms
+      395M  /opt/vizyo-texto                       1374 ms
+      1.2G  /opt/vizyo-tracky                      4769 ms
+        2M  /opt/vizyo-verify                        37 ms
+  → /opt = 4.5 Go, mesures sur 17 / 18 sous-dossiers, en 40 s
+  ⚠️ NON MESURE (delai depasse — mesure NON FAITE, PAS un dossier vide) : maalem
+  ⚠️ Le cout suit les INODES, pas les octets — et la part ci-dessous est MESUREE ce passage,
+     pas recopiee : c'est ce que coute chaque nuit un depot dont la pile est SUPPRIMEE.
+     /opt/vizyo-leads (823 Mo, pile SUPPRIMEE le 2026-08-04) : 4.7 s sur 39.4 s
+     = 12.0 % de ce parcours pour du code qui ne tourne plus (VPS-018).
+     ⚠️ NE PAS comparer cette part a celle d un autre passage sans regarder les DUREES :
+        un parcours a froid et un parcours a chaud different d un facteur ~20 (VPS-M18),
+        et la part se deplace quand c est le DENOMINATEUR qui change, pas vizyo-leads.
+  (+ ~4,5 Go d outillage de dev exclus du parcours : /root/.local, .npm, .cache, .claude —
+     mesures le 2026-08-06, ~155 000 inodes. Voir VPS-017 : ils n'ont rien a faire ici.)
+
+── Detail /var/lib/docker (dossiers legers uniquement) ──
+  3.4G	/var/lib/docker/volumes
+  205M	/var/lib/docker/containers
+  (absent : /var/lib/docker/image — normal avec le pilote overlayfs)
+  (/var/lib/docker/rootfs volontairement NON parcouru — voir docker system df)
+  642M	/var/lib/docker/buildkit
+
+── Sauvegardes ──
+5.8G	/var/backups/vizyo-tracky
+  42 fichiers
+58M	/opt/backups
+  12 fichiers
+
+── Doublons de sauvegarde — c'est la DATE du dernier qui compte ──
+  journees concernees : 6 — la plus recente : 20260907 (il y a 2 j)
+  le 20260907 porte 2 copies, a 03h04 11h32 — soit 508 min d ecart
+  ✅ HISTORIQUE — le dernier doublon a 2 jours. Ces fichiers partiront a la retention.
+
+
+═════ 4. DOCKER ═════   [t+55s]
+TYPE            TOTAL     ACTIVE    SIZE      RECLAIMABLE
+Images          30        26        27.11GB   25.86GB (95%)
+Containers      37        37        108.4MB   0B (0%)
+Local Volumes   31        17        3.544GB   421.3MB (11%)
+Build Cache     70        0         10.54GB   10.49GB
+  (capture unique a 02:22:14 UTC, 4 lignes — relue par les sections 10 et 12,
+   donc toutes les sections decrivent le MEME instant)
+
+── Conteneurs par etat ──
+     37 running
+
+── Conteneurs ARRETES — toujours affiche, meme a zero ──
+  total arretes : 0
+  ✅ aucun conteneur arrete
+
+── Conteneurs actifs : sante, redemarrages, limites ──
+  tracky-api | redem=0 | sante=healthy | memlimit=1610612736 | redem_pol=unless-stopped | projet=tracky-prod
+  tracky-web | redem=0 | sante=aucune sonde | memlimit=0 | redem_pol=unless-stopped | projet=tracky-prod
+  tracky-demo-api | redem=0 | sante=healthy | memlimit=536870912 | redem_pol=unless-stopped | projet=tracky-demo
+  tracky-demo-web | redem=0 | sante=aucune sonde | memlimit=67108864 | redem_pol=unless-stopped | projet=tracky-demo
+  tracky-demo-redis | redem=0 | sante=healthy | memlimit=134217728 | redem_pol=unless-stopped | projet=tracky-demo
+  tracky-demo-postgres | redem=0 | sante=healthy | memlimit=536870912 | redem_pol=unless-stopped | projet=tracky-demo
+  vizyo-auth-web | redem=0 | sante=healthy | memlimit=0 | redem_pol=unless-stopped | projet=vizyo-auth
+  vizyo-auth-api | redem=0 | sante=healthy | memlimit=0 | redem_pol=unless-stopped | projet=vizyo-auth
+  vizyo-manager-api | redem=0 | sante=healthy | memlimit=0 | redem_pol=unless-stopped | projet=deploy
+  maestroo-dev-api | redem=0 | sante=healthy | memlimit=0 | redem_pol=unless-stopped | projet=deploy
+  texto-relay | redem=0 | sante=aucune sonde | memlimit=0 | redem_pol=unless-stopped | projet=vizyo-texto-prod
+  maestroo-dev-web | redem=0 | sante=healthy | memlimit=0 | redem_pol=unless-stopped | projet=deploy
+  maestroo-dev-lp | redem=0 | sante=healthy | memlimit=0 | redem_pol=unless-stopped | projet=deploy
+  maalem-dev-api | redem=0 | sante=healthy | memlimit=0 | redem_pol=unless-stopped | projet=maalem-dev
+  maalem-dev-admin | redem=0 | sante=healthy | memlimit=0 | redem_pol=unless-stopped | projet=maalem-dev
+  maalem-dev-web | redem=0 | sante=healthy | memlimit=0 | redem_pol=unless-stopped | projet=maalem-dev
+  maalem-dev-redis | redem=0 | sante=healthy | memlimit=0 | redem_pol=unless-stopped | projet=maalem-dev
+  maalem-dev-postgres | redem=0 | sante=healthy | memlimit=0 | redem_pol=unless-stopped | projet=maalem-dev
+  maalem-dev-minio | redem=0 | sante=healthy | memlimit=0 | redem_pol=unless-stopped | projet=maalem-dev
+  dronely-presentation | redem=0 | sante=aucune sonde | memlimit=0 | redem_pol=unless-stopped | projet=dronely-presentation
+  dronely-devis | redem=0 | sante=aucune sonde | memlimit=0 | redem_pol=unless-stopped | projet=dronely-presentation
+  vizyo-verify-app | redem=0 | sante=healthy | memlimit=0 | redem_pol=unless-stopped | projet=vizyo-verify
+  vizyo-verify-postgres | redem=0 | sante=healthy | memlimit=0 | redem_pol=unless-stopped | projet=vizyo-verify
+  tracky-lp | redem=0 | sante=aucune sonde | memlimit=0 | redem_pol=unless-stopped | projet=tracky-lp
+  tracky-redis | redem=0 | sante=healthy | memlimit=402653184 | redem_pol=unless-stopped | projet=tracky-prod
+  tracky-postgres | redem=0 | sante=healthy | memlimit=1610612736 | redem_pol=unless-stopped | projet=tracky-prod
+  maestroo-dev-postgres | redem=0 | sante=healthy | memlimit=0 | redem_pol=unless-stopped | projet=deploy
+  foodsqan-maquettes | redem=0 | sante=aucune sonde | memlimit=0 | redem_pol=unless-stopped | projet=foodsqan-maquettes
+  vizyo-manager-dashboard | redem=0 | sante=aucune sonde | memlimit=0 | redem_pol=unless-stopped | projet=deploy
+  vizyo-manager-postgres | redem=0 | sante=healthy | memlimit=0 | redem_pol=unless-stopped | projet=deploy
+  texto-postgres | redem=0 | sante=healthy | memlimit=0 | redem_pol=unless-stopped | projet=vizyo-texto-prod
+  capcom6-worker | redem=2 | sante=healthy | memlimit=0 | redem_pol=unless-stopped | projet=vizyo-texto-prod
+  capcom6-server | redem=2 | sante=healthy | memlimit=0 | redem_pol=unless-stopped | projet=vizyo-texto-prod
+  capcom6-mysql | redem=0 | sante=healthy | memlimit=0 | redem_pol=unless-stopped | projet=vizyo-texto-prod
+  vizyo-auth-db | redem=0 | sante=healthy | memlimit=0 | redem_pol=unless-stopped | projet=vizyo-auth
+  dg-epaviste-website | redem=0 | sante=aucune sonde | memlimit=0 | redem_pol=unless-stopped | projet=dg-epaviste-depannage
+  foodsqan-traefik | redem=0 | sante=aucune sonde | memlimit=0 | redem_pol=unless-stopped | projet=docker
+  ✅ 37 / 37 conteneurs decrits
+  limites CPU : 0 conteneur(s) sur 37 en ont une
+
+── Conteneurs qui ont REDEMARRE : la boucle est-elle ACTIVE, ou ETEINTE depuis ? ──
+  capcom6-worker           redem=2    dernier demarrage 2026-08-04T21:32  ✅ ETEINTE — plus aucun redemarrage depuis plus de 24 h
+  capcom6-server           redem=2    dernier demarrage 2026-08-04T21:32  ✅ ETEINTE — plus aucun redemarrage depuis plus de 24 h
+  → 2 conteneur(s) au compteur > 0 : 0 en boucle ACTIVE, 0 stabilise(s) depuis moins de 24 h
+     ⚠️ Un compteur > 0 sans redemarrage recent est un HISTORIQUE, pas un incident.
+  ✅ redemarrage machine : 37 / 37 conteneurs remonteront seuls (unless-stopped/always)
+
+── Nom de projet compose : deux applications partagent-elles le meme ? ──
+  deploy                  7 conteneur(s) : maestroo-dev-api, maestroo-dev-lp, maestroo-dev-postgres, maestroo-dev-web, vizyo-manager-api, vizyo-manager-dashboard, vizyo-manager-postgres
+  dg-epaviste-depannage   1 conteneur(s) : dg-epaviste-website
+  docker                  1 conteneur(s) : foodsqan-traefik
+  dronely-presentation    2 conteneur(s) : dronely-devis, dronely-presentation
+  foodsqan-maquettes      1 conteneur(s) : foodsqan-maquettes
+  maalem-dev              6 conteneur(s) : maalem-dev-admin, maalem-dev-api, maalem-dev-minio, maalem-dev-postgres, maalem-dev-redis, maalem-dev-web
+  tracky-demo             4 conteneur(s) : tracky-demo-api, tracky-demo-postgres, tracky-demo-redis, tracky-demo-web
+  tracky-lp               1 conteneur(s) : tracky-lp
+  tracky-prod             4 conteneur(s) : tracky-api, tracky-postgres, tracky-redis, tracky-web
+  vizyo-auth              3 conteneur(s) : vizyo-auth-api, vizyo-auth-db, vizyo-auth-web
+  vizyo-texto-prod        5 conteneur(s) : capcom6-mysql, capcom6-server, capcom6-worker, texto-postgres, texto-relay
+  vizyo-verify            2 conteneur(s) : vizyo-verify-app, vizyo-verify-postgres
+  → une ligne dont les conteneurs appartiennent a DEUX applications sans rapport est un
+     defaut : voir VPS-020. Le nom vient du dossier, pas du contenu.
+
+── Qui sert quel domaine (etiquettes de routage Traefik) ──
+  admin-dev.maalem-now.com                 maalem-dev-admin           maalem-dev
+  api.auth.vizyoagency.com                 vizyo-auth-api             vizyo-auth
+  api.manager.vizyoagency.com              vizyo-manager-api          deploy
+  app-tracky.vizyoagency.com               tracky-api                 tracky-prod
+  app-tracky.vizyoagency.com               tracky-web                 tracky-prod
+  app-verify.vizyoagency.com               vizyo-verify-app           vizyo-verify
+  auth.vizyoagency.com                     vizyo-auth-web             vizyo-auth
+  demo-tracky.vizyoagency.com              tracky-demo-api            tracky-demo
+  demo-tracky.vizyoagency.com              tracky-demo-web            tracky-demo
+  dev-api.maestroo.app                     maestroo-dev-api           deploy
+  dev-app.maestroo.app                     maestroo-dev-api           deploy
+  dev-app.maestroo.app                     maestroo-dev-web           deploy
+  dev.maalem-now.com                       maalem-dev-api             maalem-dev
+  dev.maalem-now.com                       maalem-dev-web             maalem-dev
+  dev.maestroo.app                         maestroo-dev-lp            deploy
+  dg-epaviste-depanneur.fr                 dg-epaviste-website        dg-epaviste-depannage
+  dronely.vizyoagency.com                  dronely-devis              dronely-presentation
+  dronely.vizyoagency.com                  dronely-presentation       dronely-presentation
+  foodsqan.app                             foodsqan-maquettes         foodsqan-maquettes
+  manager.vizyoagency.com                  vizyo-manager-dashboard    deploy
+  s3-dev.maalem-now.com                    maalem-dev-minio           maalem-dev
+  sms.vizyoagency.com                      capcom6-server             vizyo-texto-prod
+  texto.vizyoagency.com                    texto-relay                vizyo-texto-prod
+  tracky.vizyoagency.com                   tracky-lp                  tracky-lp
+  verify.vizyoagency.com                   vizyo-verify-app           vizyo-verify
+  www.dg-epaviste-depanneur.fr             dg-epaviste-website        dg-epaviste-depannage
+  www.foodsqan.app                         foodsqan-maquettes         foodsqan-maquettes
+  ✅ 27 domaines routes, portes par 23 conteneurs etiquetes
+  ── qui tient les ports 80 et 443 de la machine ──
+foodsqan-traefik  (projet docker)  0.0.0.0:80->80/tcp, [::]:80->80/tcp, 0.0.0.0:443->443/tcp, [::]:443->443/tcp
+  ── volume ACME (foodsqan-letsencrypt) : 37 certificats, dont 16 sans service vivant ──
+    (orphelin) admin-dev.slahni.com
+    (orphelin) admin.maalem-now.com
+    (orphelin) admin.slahni.com
+    (orphelin) api.foodsqan.app
+    (orphelin) api.leads.vizyoagency.com
+    (orphelin) app.foodsqan.app
+    (orphelin) app.maalem-now.com
+    (orphelin) app.slahni.com
+    (orphelin) dev-mockups.maestroo.app
+    (orphelin) dev.slahni.com
+    (orphelin) leads.vizyoagency.com
+    (orphelin) nebula.72.62.26.240.nip.io
+    (orphelin) s3-dev.slahni.com
+    (orphelin) s3.maalem-now.com
+    (orphelin) s3.slahni.com
+    (orphelin) slahni.com
+  acme.json modifie le : 2026-09-07 13:53  (renouvellement = 30 j avant expiration)
+
+── Clients docker BLOQUES — la cause de VPS-016 (orphelins le 08-18, parent VIVANT le 08-20) ──
+  ✅ aucun client docker bloque (aucun ne vit depuis plus de 60 s)
+  (denominateur : 0 processus client `docker` au total, 0 examine(s) hors collecte)
+  ⚠️ PORTEE du comptage ci-dessus, ecrite le 2026-08-20 pour ne pas repayer VPS-M49 : il ne
+     voit que les processus dont le NOM est exactement « docker ». Un client qui parle au
+     socket sans s appeler ainsi — curl sur /run/docker.sock, un SDK dans un conteneur, un
+     outil de supervision — lui est invisible. Les deux occurrences connues etaient des
+     `docker logs`, ce qui ne prouve pas que la troisieme le sera.
+  ✅ 0 connexion ETABLIE sur /run/docker.sock (3 sondages sur 1,1 s) — donc AUCUN client
+     de l API a cet instant, nomme « docker » ou non. Le 0 ci-dessus est desormais MESURE
+     sur les connexions, plus seulement sur les noms de processus.
+  ── conteneurs qui MONTENT la socket (clients permanents par construction) ──
+    foodsqan-traefik  (projet docker)  monte en lecture seule
+    → 1 conteneur(s). Un montage « lecture seule » NE limite RIEN : qui atteint la
+      socket pilote le demon (creer, supprimer, monter /). C est le compromettre qui
+      compromet la machine — a garder en tete pour la surface d attaque, section 6.
+
+── Consommation live ──
+tracky-api	2.67%	260.5MiB / 1.5GiB	14
+tracky-postgres	0.79%	185.1MiB / 1.5GiB	8
+tracky-demo-postgres	0.60%	152.7MiB / 512MiB	7
+maalem-dev-api	0.68%	107.1MiB / 7.755GiB	16
+tracky-demo-api	1.05%	94.93MiB / 512MiB	14
+vizyo-auth-api	0.53%	86.86MiB / 7.755GiB	12
+maalem-dev-minio	0.04%	86.01MiB / 7.755GiB	10
+vizyo-manager-api	0.00%	80.96MiB / 7.755GiB	12
+maestroo-dev-api	0.00%	62.11MiB / 7.755GiB	15
+vizyo-auth-web	0.00%	52.18MiB / 7.755GiB	12
+vizyo-verify-app	0.12%	48.18MiB / 7.755GiB	44
+texto-relay	0.00%	39.72MiB / 7.755GiB	15
+dg-epaviste-website	0.00%	38.88MiB / 7.755GiB	11
+foodsqan-traefik	0.00%	38.41MiB / 7.755GiB	10
+vizyo-auth-db	1.22%	30.21MiB / 7.755GiB	7
+
+── Images (les plus lourdes) ──
+  3.49GB	deploy-api:latest	2 weeks ago
+  2.33GB	maalem-dev-api:latest	3 weeks ago
+  1.92GB	vizyo-auth-api:latest	4 days ago
+  1.84GB	tracky-api:latest	9 hours ago
+  1.84GB	tracky-api:avant-trace-sentinelle	20 hours ago
+  1.84GB	tracky-api:avant-console-demo	25 hours ago
+  1.84GB	tracky-api:avant-a9e27c79	26 hours ago
+  1.11GB	deploy-vizyo-manager-api:latest	3 months ago
+  1GB	vizyo-verify-app:latest	3 weeks ago
+  858MB	vizyo-texto:latest	2 weeks ago
+  627MB	postgis/postgis:16-3.4-alpine	23 months ago
+  474MB	dg-epaviste-depannage-website:latest	5 months ago
+  → 30 images, somme des tailles annoncees = 22.44 Go
+     ⚠️ Cette somme et le poste « Images » de docker system df divergent fortement et le
+        rapport VARIE d un jour a l autre : ni l une ni l autre n est l espace occupe sur
+        le disque. Seul `df` (section 3) l est. Ne reporter aucun des deux comme
+        « espace recuperable » — voir la section 10, qui porte deja cet avertissement.
+
+── Images creees dans les dernieres 24 h — d'ou vient ce que le disque a pris ──
+      1.84GB  2026-09-08 17:11:52  tracky-api:latest
+       105MB  2026-09-08 17:10:58  tracky-web:latest
+      1.84GB  2026-09-08 06:16:52  tracky-api:avant-trace-sentinelle
+  → 3 image(s) sur 30 creee(s) depuis 2026-09-08 02:22:31, 3.79 Go de tailles annoncees
+
+── Volumes orphelins (aucun conteneur ne les monte) ──
+  8.0K	000ff08f25bdb1adaf5b75501292e7ec13184df5f20fccec143044d1908a0278
+  64M	deploy_vizyo-leads-postgres-data
+  3.3M	deploy_vizyo-leads-redis-data
+  71M	foodsqan-postgres-data
+  8.0K	maalem-api-logs
+  4.7M	maalem-minio-data
+  65M	maalem-postgres-data
+  24K	maalem-redis-data
+  47M	vizyo-leads_postgres_data
+  12K	vizyo-leads_redis_data
+  47M	vizyo-manager-api_postgres_data
+  110M	vizyo-tracky-postgres-data
+  24K	vizyo-tracky-redis-data
+  8.0K	vizyo-verify_storage
+
+── Reseaux orphelins ──
+  deploy_vizyo-leads-network
+  foodsqan-internal
+  maalem-internal
+  vizyo-leads_default
+
+── Fraicheur des MECANISMES, pas seulement des valeurs ──
+  image concernee                                : tracky-api:latest
+  dernier build (declencheur du ramasse-miettes) : 2026-09-08 17:11:52
+  cache.db de BuildKit modifie le                : 2026-09-08 17:11:52
+  ✅ les deux coincident (ecart 0s) : le ramasse-miettes a bien tourne au dernier build.
+     Le cache est FIGE parce qu'aucun build n'a eu lieu depuis 9 h — pas parce qu'il est casse.
+  ⚠️ Regle generale : une valeur identique a la decimale pres n'est ni 'stable' ni 'gelee'
+     tant qu'on ne sait pas si son PRODUCTEUR a tourne. Comparer la valeur a la fraicheur
+     du mecanisme, jamais la valeur a elle-meme.
+
+── Rotation des journaux de conteneur ──
+{
+  "log-driver": "json-file",
+  "log-opts": {
+    "max-size": "10m",
+    "max-file": "3"
+  },
+  "builder": {
+    "gc": {
+      "enabled": true,
+      "policy": [
+        {
+          "keepStorage": "8GB",
+          "filter": [
+            "unused-for=48h"
+          ]
+        },
+        {
+          "keepStorage": "10GB",
+          "all": true
+        }
+      ]
+    }
+  },
+  "live-restore": true
+}
+  total journaux : 19.5 Mo
+
+
+═════ 5. DONNEES (PostgreSQL) ═════   [t+76s]
+  🟠 1 conteneur(s) de base reconnu(s) par leur IMAGE et NON par leur nom (VPS-M80) :
+       vizyo-auth-db (postgres:17-alpine)
+     Avant le 2026-09-05, ces conteneurs etaient absents de TOUTE cette section, du
+     levier 4 et de la couverture des sauvegardes — et leur absence se lisait comme
+     « rien a signaler ». Le denominateur « N / N bases examinees » les ignorait aussi.
+
+── maalem-dev-postgres (base maalem_dev) ──
+   taille = 10 MB
+
+   cache = 100.00 %
+
+   connexions = 6 / 100
+
+     table      | total  | vivantes~estime | mortes~estime |  recale le  
+----------------+--------+-----------------+---------------+-------------
+ RefreshToken   | 232 kB |             250 |            34 | 08-12 12:17
+ ArtisanProfile | 168 kB |              21 |            32 | 07-30 14:34
+ Request        | 136 kB |              30 |            30 | 08-11 11:30
+ User           | 128 kB |              33 |            29 | 08-12 12:01
+ Quote          | 128 kB |              28 |            47 | 05-19 11:56
+ Payment        | 112 kB |              11 |            18 | jamais
+ OtpChallenge   | 104 kB |             108 |            26 | 08-11 14:10
+ Notification   | 104 kB |             134 |            38 | 08-12 17:17
+(8 rows)
+
+     ⚠️ '~estime' = valeur approchee (n_live_tup), PAS un count(*). Un delta inferieur
+        a ~2 % d'un passage a l'autre est du bruit de recalage, pas une tendance.
+     (fenetre de retention non mesuree : base de 10 Mo, sous le seuil de 100 Mo)
+   reglage effective_cache_size = 5242888kB
+   reglage random_page_cost = 4
+   reglage shared_buffers = 163848kB
+   reglage work_mem = 4096kB
+
+── maestroo-dev-postgres (base maestroo_dev) ──
+   taille = 17 MB
+
+   cache = 99.99 %
+
+   connexions = 11 / 100
+
+       table       |  total  | vivantes~estime | mortes~estime |  recale le  
+-------------------+---------+-----------------+---------------+-------------
+ usage_events      | 2736 kB |            2812 |             6 | 08-24 14:53
+ bank_transactions | 568 kB  |               0 |             0 | 08-04 23:07
+ auth_audit_logs   | 544 kB  |             696 |             6 | 08-04 23:07
+ error_logs        | 408 kB  |             174 |            20 | 08-30 01:50
+ invoices          | 192 kB  |               0 |             0 | 08-04 23:07
+ organizations     | 144 kB  |               2 |            35 | 07-26 17:33
+ invoice_payments  | 136 kB  |               0 |             0 | 08-04 23:07
+ invoice_items     | 136 kB  |               0 |             0 | 08-04 23:07
+(8 rows)
+
+     ⚠️ '~estime' = valeur approchee (n_live_tup), PAS un count(*). Un delta inferieur
+        a ~2 % d'un passage a l'autre est du bruit de recalage, pas une tendance.
+     (fenetre de retention non mesuree : base de 16 Mo, sous le seuil de 100 Mo)
+   reglage effective_cache_size = 5242888kB
+   reglage random_page_cost = 4
+   reglage shared_buffers = 163848kB
+   reglage work_mem = 4096kB
+
+── texto-postgres (base vizyo_texto) ──
+   taille = 9116 kB
+
+   cache = 99.99 %
+
+   connexions = 9 / 100
+
+        table         | total  | vivantes~estime | mortes~estime |  recale le  
+----------------------+--------+-----------------+---------------+-------------
+ messages             | 544 kB |             701 |           174 | 09-04 05:02
+ allowlist_audit_logs | 376 kB |             767 |             0 | 09-05 22:25
+ webhook_deliveries   | 128 kB |              92 |            58 | 06-26 06:17
+ allowlist_entries    | 112 kB |              47 |            27 | 08-18 21:26
+ auth_failure_logs    | 64 kB  |              23 |             0 | jamais
+ tenants              | 48 kB  |               1 |             3 | jamais
+ _prisma_migrations   | 32 kB  |               6 |            12 | jamais
+(7 rows)
+
+     ⚠️ '~estime' = valeur approchee (n_live_tup), PAS un count(*). Un delta inferieur
+        a ~2 % d'un passage a l'autre est du bruit de recalage, pas une tendance.
+     (fenetre de retention non mesuree : base de 8 Mo, sous le seuil de 100 Mo)
+   reglage effective_cache_size = 5242888kB
+   reglage random_page_cost = 4
+   reglage shared_buffers = 163848kB
+   reglage work_mem = 4096kB
+
+── tracky-demo-postgres (base tracky_demo) ──
+   taille = 459 MB
+
+   cache = 98.90 %
+
+   connexions = 8 / 100
+
+            table            |  total  | vivantes~estime | mortes~estime |  recale le  
+-----------------------------+---------+-----------------+---------------+-------------
+ positions                   | 266 MB  |          591822 |             0 | 09-08 16:15
+ trip_analyses               | 54 MB   |           11014 |             0 | 09-08 16:15
+ trips                       | 48 MB   |           13642 |            16 | 09-08 16:15
+ demo_replay_frames          | 40 MB   |          112349 |             0 | 09-08 16:15
+ alerts                      | 12 MB   |           10097 |             1 | 09-08 16:14
+ position_sampling_decisions | 10 MB   |           11639 |             0 | 09-09 01:29
+ spatial_ref_sys             | 7144 kB |            8500 |             0 | 09-07 13:54
+ fuel_station_prices         | 608 kB  |            1139 |             0 | 09-07 14:08
+(8 rows)
+
+     ⚠️ '~estime' = valeur approchee (n_live_tup), PAS un count(*). Un delta inferieur
+        a ~2 % d'un passage a l'autre est du bruit de recalage, pas une tendance.
+     ── fenetre de retention des 3 plus grosses tables (accumulation ou regime permanent ?) ──
+       positions                     2026-08-08 -> 2026-09-09  = 33 jours, 266.1 Mo  (colonne timestamp)
+         debit : 4167 arrivees sur 24 h  contre  13889 les 24 h precedentes  = x0.30
+         meme jour de semaine (J-7) : 17968 arrivees  = x0.23   [fenetre J = Tue, fenetre J-1 = Mon]
+         ⚠️ les DEUX comparaisons sortent de la bande (x0.30 veille, x0.23 J-7) :
+            lexcursion nest PAS un effet de calendrier.
+         emetteurs DISTINCTS : 37 sur 24 h  contre  28 les 24 h precedentes  (colonne trackerId)
+         par emetteur : 4.7 trames/h  contre  20.7  = x0.23
+         🟠 la flotte a GRANDI (x1.32) : une hausse de debit est attendue, la juger par emetteur.
+         ⚠️ Ce taux est une moyenne sur 24 h, et cest VOLONTAIRE (VPS-M69) : lu a une
+            SEULE heure, il confond le creux de la nuit avec une derive du regime.
+         ✅ FRAICHEUR : aucun emetteur muet depuis plus de 6 h. Cest un etat COURANT,
+            pas une fenetre — la comparaison ci-dessus, elle, retarde jusqua 24 h.
+         ⚠️ PLANCHER : ne compte que les emetteurs encore PRESENTS dans la fenetre de
+            retention (31.18 j). Un boitier muet depuis plus longtemps a disparu de la table
+            et nest PAS compte ici — mesure NON FAITE sur lui, pas « il va bien ».
+         ⚠️ AUCUN REGISTRE trouve dans cette base (table petite portant « trackerId » et un
+            horodatage de derniere vue). Le compte ci-dessus reste donc un PLANCHER QUI
+            DECROIT avec la duree de la panne : NE PAS comparer sa valeur a celle dun autre
+            passage (VPS-M76).
+         projection a fenetre PLEINE (31.18 j x le debit du jour) : 58 Mo
+           ⚠️ PLAFOND (le debit BAISSE) : la moyenne des 24 h ecoulees inclut encore le
+              HAUT de la rampe. Le regime reel est SOUS cette valeur — ne pas la
+              presenter comme le gain acquis, elle le SOUS-estime.
+              Dans tous les cas : suppose le debit des 24 h ECOULEES constant.
+         🟠 le debit BAISSE (x0.30) : a fenetre pleine, le volume decroitra.
+       trip_analyses                 2026-07-08 -> 2026-09-07  = 58 jours, 54.2 Mo  (colonne computedAt)
+         debit : 0 arrivees sur 24 h  contre  130 les 24 h precedentes  = x0.00
+         meme jour de semaine (J-7) : 186 arrivees  = x0.00   [fenetre J = Tue, fenetre J-1 = Mon]
+         ⚠️ les DEUX comparaisons sortent de la bande (x0.00 veille, x0.00 J-7) :
+            lexcursion nest PAS un effet de calendrier.
+         (emetteurs : 0 sur 24 h, 130 les 24 h precedentes — taux par emetteur non calculable)
+         projection a fenetre PLEINE (61.55 j x le debit du jour) : 0 Mo
+           ⚠️ PLAFOND (le debit BAISSE) : la moyenne des 24 h ecoulees inclut encore le
+              HAUT de la rampe. Le regime reel est SOUS cette valeur — ne pas la
+              presenter comme le gain acquis, elle le SOUS-estime.
+              Dans tous les cas : suppose le debit des 24 h ECOULEES constant.
+         🟠 le debit BAISSE (x0.00) : a fenetre pleine, le volume decroitra.
+       trips                         2026-05-13 -> 2026-09-08  = 94 jours, 47.7 Mo  (colonne createdAt)
+         debit : 8 arrivees sur 24 h  contre  130 les 24 h precedentes  = x0.06
+         meme jour de semaine (J-7) : 186 arrivees  = x0.04   [fenetre J = Tue, fenetre J-1 = Mon]
+         ⚠️ les DEUX comparaisons sortent de la bande (x0.06 veille, x0.04 J-7) :
+            lexcursion nest PAS un effet de calendrier.
+         emetteurs DISTINCTS : 3 sur 24 h  contre  21 les 24 h precedentes  (colonne trackerId)
+         par emetteur : 0.1 trames/h  contre  0.3  = x0.43
+         🔴 18 EMETTEUR(S) ONT DISPARU (x0.14) — la baisse du debit vient de la FLOTTE,
+            pas de la cadence. Une panne dingestion se lit comme une amelioration.
+         ⚠️ Ce taux est une moyenne sur 24 h, et cest VOLONTAIRE (VPS-M69) : lu a une
+            SEULE heure, il confond le creux de la nuit avec une derive du regime.
+         🔴 SILENCE : 38 emetteur(s) nont plus emis depuis plus de 6 h (dernier arret : 09-08 19:30 UTC).
+            Cette ligne na PAS le retard de 24 h de la comparaison ci-dessus : un arret y
+            apparait des la 7e heure, la ou la fenetre de 24 h peut le cacher un jour entier
+            et publier « flotte STABLE » (VPS-M75, mesure du 2026-09-02).
+         ⚠️ PLANCHER : ne compte que les emetteurs encore PRESENTS dans la fenetre de
+            retention (118.54 j). Un boitier muet depuis plus longtemps a disparu de la table
+            et nest PAS compte ici — mesure NON FAITE sur lui, pas « il va bien ».
+         ⚠️ AUCUN REGISTRE trouve dans cette base (table petite portant « trackerId » et un
+            horodatage de derniere vue). Le compte ci-dessus reste donc un PLANCHER QUI
+            DECROIT avec la duree de la panne : NE PAS comparer sa valeur a celle dun autre
+            passage (VPS-M76).
+         projection a fenetre PLEINE (118.54 j x le debit du jour) : 3 Mo
+           ⚠️ PLAFOND (le debit BAISSE) : la moyenne des 24 h ecoulees inclut encore le
+              HAUT de la rampe. Le regime reel est SOUS cette valeur — ne pas la
+              presenter comme le gain acquis, elle le SOUS-estime.
+              Dans tous les cas : suppose le debit des 24 h ECOULEES constant.
+         🟠 le debit BAISSE (x0.06) : a fenetre pleine, le volume decroitra.
+       ⚠️ Une fenetre COURTE et STABLE d'un passage a l'autre = retention active.
+          Elle ne dit RIEN du volume : a duree constante, le volume suit le DEBIT.
+          C'est la ligne « debit » ci-dessus qui tranche, pas les bornes (VPS-M64).
+          Une date de debut qui NE BOUGE PAS pendant que la fin avance = accumulation sans borne.
+     ── LES 2 COMPTES D EMETTEURS, CONFRONTES ENTRE EUX (VPS-M89) ──
+        positions                       37 emetteurs sur 24 h  (colonne trackerId)
+        trips                            3 emetteurs sur 24 h  (colonne trackerId)
+        🔴 LES COMPTES DIVERGENT : 3 au minimum, 37 au maximum, soit 34 emetteur(s) decart.
+           Ces tables voient la MEME flotte au MEME instant : lecart ne peut PAS venir
+           de la flotte, il vient dun ETAGE de la chaine qui perd des emetteurs.
+           ⚠️ Chacune de ces lignes peut etre verte dans son propre bloc ci-dessus, et
+              celle qui diverge peut meme y afficher « ✅ flotte STABLE » : une serie
+              comparee a elle-meme ne voit jamais un desaccord entre pairs (mesure du
+              2026-09-07 : 31 / 30 / 30 sur tracky_prod, TROIS blocs verts).
+           ⚠️ AVANT douvrir un constat : verifier que les fenetres de RETENTION de ces
+              tables sont comparables. Une table qui ne garde que 4 j et une qui en
+              garde 60 ne voient pas le meme ensemble demetteurs sur 24 h — mais elles
+              DOIVENT saccorder sur une fenetre de 24 h, qui tient dans les deux.
+   reglage effective_cache_size = 5242888kB
+   reglage random_page_cost = 4
+   reglage shared_buffers = 163848kB
+   reglage work_mem = 4096kB
+
+── tracky-postgres (base tracky_prod) ──
+   taille = 1128 MB
+
+   cache = 98.24 %
+
+   connexions = 9 / 100
+
+            table            | total  | vivantes~estime | mortes~estime |  recale le  
+-----------------------------+--------+-----------------+---------------+-------------
+ positions                   | 462 MB |         1476008 |        118530 | 09-08 11:34
+ wire_logs                   | 190 MB |          309755 |             0 | 09-09 01:40
+ position_sampling_decisions | 154 MB |          243415 |             0 | 09-09 01:23
+ trips                       | 54 MB  |           16907 |          2123 | 09-08 22:54
+ speed_limit_cache           | 52 MB  |          295464 |           154 | 09-08 06:31
+ trip_analyses               | 45 MB  |           12931 |           375 | 09-08 06:56
+ alerts                      | 37 MB  |           10122 |           111 | 08-19 01:39
+ user_activities             | 30 MB  |          138126 |             0 | 09-01 12:15
+(8 rows)
+
+     ⚠️ '~estime' = valeur approchee (n_live_tup), PAS un count(*). Un delta inferieur
+        a ~2 % d'un passage a l'autre est du bruit de recalage, pas une tendance.
+     ── fenetre de retention des 3 plus grosses tables (accumulation ou regime permanent ?) ──
+       positions                     2026-07-10 -> 2026-09-09  = 62 jours, 461.5 Mo  (colonne timestamp)
+         debit : 22011 arrivees sur 24 h  contre  18707 les 24 h precedentes  = x1.18
+         meme jour de semaine (J-7) : 23316 arrivees  = x0.94   [fenetre J = Tue, fenetre J-1 = Mon]
+         emetteurs DISTINCTS : 30 sur 24 h  contre  30 les 24 h precedentes  (colonne trackerId)
+         par emetteur : 30.6 trames/h  contre  26.0  = x1.18
+         ✅ flotte STABLE (30 contre 30) : toute la variation est portee par la CADENCE,
+            pas par le nombre demetteurs. Cest ce qui distingue un correctif dune panne.
+         ⚠️ Ce taux est une moyenne sur 24 h, et cest VOLONTAIRE (VPS-M69) : lu a une
+            SEULE heure, il confond le creux de la nuit avec une derive du regime.
+         🔴 SILENCE : 12 emetteur(s) nont plus emis depuis plus de 6 h (dernier arret : 09-03 18:38 UTC).
+            Cette ligne na PAS le retard de 24 h de la comparaison ci-dessus : un arret y
+            apparait des la 7e heure, la ou la fenetre de 24 h peut le cacher un jour entier
+            et publier « flotte STABLE » (VPS-M75, mesure du 2026-09-02).
+         ⚠️ PLANCHER : ne compte que les emetteurs encore PRESENTS dans la fenetre de
+            retention (60.95 j). Un boitier muet depuis plus longtemps a disparu de la table
+            et nest PAS compte ici — mesure NON FAITE sur lui, pas « il va bien ».
+         ⚠️ AUCUN REGISTRE trouve dans cette base (table petite portant « trackerId » et un
+            horodatage de derniere vue). Le compte ci-dessus reste donc un PLANCHER QUI
+            DECROIT avec la duree de la panne : NE PAS comparer sa valeur a celle dun autre
+            passage (VPS-M76).
+         projection a fenetre PLEINE (60.95 j x le debit du jour) : 419 Mo
+           ⚠️ PLANCHER (le debit MONTE) : la moyenne des 24 h ecoulees inclut le BAS
+              de la rampe. Si le debit monte encore, la projection monte avec lui.
+              Dans tous les cas : suppose le debit des 24 h ECOULEES constant.
+         ✅ debit stable (x1.18, dans la bande 0,67-1,50) : le volume l est aussi.
+       wire_logs                     2026-09-05 -> 2026-09-09  = 5 jours, 190.2 Mo  (colonne createdAt)
+         debit : 82409 arrivees sur 24 h  contre  79484 les 24 h precedentes  = x1.04
+         (J-7 : 0 arrivee — la fenetre de retention de cette table (3.97 j) ne remonte
+          PAS a 7 jours. Comparaison a meme jour de semaine IMPOSSIBLE : mesure NON
+          FAITE, PAS un debit nul (VPS-M02). Le rapport a la veille reste seul juge ici.)
+         emetteurs DISTINCTS : 30 sur 24 h  contre  30 les 24 h precedentes  (colonne imei)
+         par emetteur : 114.5 trames/h  contre  110.4  = x1.04
+         ✅ flotte STABLE (30 contre 30) : toute la variation est portee par la CADENCE,
+            pas par le nombre demetteurs. Cest ce qui distingue un correctif dune panne.
+         ⚠️ Ce taux est une moyenne sur 24 h, et cest VOLONTAIRE (VPS-M69) : lu a une
+            SEULE heure, il confond le creux de la nuit avec une derive du regime.
+         🔴 SILENCE : 1 emetteur(s) nont plus emis depuis plus de 6 h (dernier arret : 09-06 14:18 UTC).
+            Cette ligne na PAS le retard de 24 h de la comparaison ci-dessus : un arret y
+            apparait des la 7e heure, la ou la fenetre de 24 h peut le cacher un jour entier
+            et publier « flotte STABLE » (VPS-M75, mesure du 2026-09-02).
+         ⚠️ PLANCHER : ne compte que les emetteurs encore PRESENTS dans la fenetre de
+            retention (3.97 j). Un boitier muet depuis plus longtemps a disparu de la table
+            et nest PAS compte ici — mesure NON FAITE sur lui, pas « il va bien ».
+         📋 REGISTRE trackers (AUCUNE retention) : 14 silencieux sur 44 enregistres.
+            ventilation par DUREE du silence (cest elle qui discrimine, pas le total) :
+              6-24 h : 0    ← un vehicule GARE LA NUIT entre ici. Ne PAS le compter
+                             comme une panne sans une autre preuve.
+              1-3 j  : 1  
+              3-7 j  : 1    ← au-dela de 3 j, un arret nest plus un usage normal.
+              > 7 j  : 12   ← materiel probablement DEPOSE : a sortir du parc, sinon
+                             il gonfle le total a chaque passage, pour toujours.
+            ── CUMULS (VPS-M90) : c est CECI qui se compare, pas les bandes ──
+              > 1 j : 14     > 3 j : 13     > 7 j : 12 
+            🔑 UNE BANDE SE VIDE TOUTE SEULE — elle est bornee par un AGE. Le 2026-09-08
+               le vecteur est passe de 1/0/7/6 a 0/1/1/12 : lu bande a bande, « six
+               boitiers deposes de plus » ; lu en cumul > 3 j, 13 contre 13, donc RIEN
+               n avait bouge — les six avaient juste franchi leur 7e jour.
+            ⚠️ ET LE CUMUL NON PLUS N EST PAS NEUTRE — il ne l est que dans UN SENS :
+               le vieillissement ne peut que le faire MONTER (ce jour-la, > 7 j 6 → 12
+               et > 1 j 13 → 14). Il ne peut JAMAIS le faire baisser. Donc une BAISSE
+               de cumul est toujours reelle (un boitier a re-emis) ; une hausse peut
+               n etre que du temps qui passe, et se lit en regardant le seuil franchi.
+            ⚠️ NE PAS comparer les TOTAUX de deux passages (VPS-M78) : ce total monte
+               quand un vehicule se gare et quand un boitier est depose, pas seulement
+               quand une panne setend. Comparer les CUMULS ci-dessus, pas les bandes.
+            🔴 LE REGISTRE EN COMPTE 13 DE PLUS que la ligne ci-dessus. Lecart nest PAS
+               une contradiction : cest exactement le nombre de boitiers muets depuis si
+               longtemps quils ont quitte la fenetre de retention. ⚠️ CONSEQUENCE A LIRE
+               AVANT DE COMPARER DEUX PASSAGES : le compteur du journal DECROIT a mesure que
+               la panne DURE — sa serie se lit comme un retablissement pendant que la flotte
+               steint. Cest CE chiffre-ci, et lui seul, qui se compare dun jour a lautre
+               (VPS-M76, mesure du 2026-09-03 : 7 → 6 cote journal, 12 → 12 cote registre).
+         projection a fenetre PLEINE (3.97 j x le debit du jour) : 201 Mo
+           ⚠️ Estimation a debit CONSTANT : la moyenne des 24 h ecoulees est plate,
+              la borne na donc pas de sens privilegie.
+              Dans tous les cas : suppose le debit des 24 h ECOULEES constant.
+         ✅ debit stable (x1.04, dans la bande 0,67-1,50) : le volume l est aussi.
+       position_sampling_decisions   2026-09-05 -> 2026-09-09  = 5 jours, 153.8 Mo  (colonne receivedAt)
+         debit : 66365 arrivees sur 24 h  contre  62643 les 24 h precedentes  = x1.06
+         (J-7 : 0 arrivee — la fenetre de retention de cette table (3.95 j) ne remonte
+          PAS a 7 jours. Comparaison a meme jour de semaine IMPOSSIBLE : mesure NON
+          FAITE, PAS un debit nul (VPS-M02). Le rapport a la veille reste seul juge ici.)
+         emetteurs DISTINCTS : 30 sur 24 h  contre  30 les 24 h precedentes  (colonne trackerId)
+         par emetteur : 92.2 trames/h  contre  87.0  = x1.06
+         ✅ flotte STABLE (30 contre 30) : toute la variation est portee par la CADENCE,
+            pas par le nombre demetteurs. Cest ce qui distingue un correctif dune panne.
+         ⚠️ Ce taux est une moyenne sur 24 h, et cest VOLONTAIRE (VPS-M69) : lu a une
+            SEULE heure, il confond le creux de la nuit avec une derive du regime.
+         ✅ FRAICHEUR : aucun emetteur muet depuis plus de 6 h. Cest un etat COURANT,
+            pas une fenetre — la comparaison ci-dessus, elle, retarde jusqua 24 h.
+         ⚠️ PLANCHER : ne compte que les emetteurs encore PRESENTS dans la fenetre de
+            retention (3.95 j). Un boitier muet depuis plus longtemps a disparu de la table
+            et nest PAS compte ici — mesure NON FAITE sur lui, pas « il va bien ».
+         ⚠️ AUCUN REGISTRE trouve dans cette base (table petite portant « trackerId » et un
+            horodatage de derniere vue). Le compte ci-dessus reste donc un PLANCHER QUI
+            DECROIT avec la duree de la panne : NE PAS comparer sa valeur a celle dun autre
+            passage (VPS-M76).
+         projection a fenetre PLEINE (3.95 j x le debit du jour) : 166 Mo
+           ⚠️ PLANCHER (le debit MONTE) : la moyenne des 24 h ecoulees inclut le BAS
+              de la rampe. Si le debit monte encore, la projection monte avec lui.
+              Dans tous les cas : suppose le debit des 24 h ECOULEES constant.
+         ✅ debit stable (x1.06, dans la bande 0,67-1,50) : le volume l est aussi.
+       ⚠️ Une fenetre COURTE et STABLE d'un passage a l'autre = retention active.
+          Elle ne dit RIEN du volume : a duree constante, le volume suit le DEBIT.
+          C'est la ligne « debit » ci-dessus qui tranche, pas les bornes (VPS-M64).
+          Une date de debut qui NE BOUGE PAS pendant que la fin avance = accumulation sans borne.
+     ── LES 3 COMPTES D EMETTEURS, CONFRONTES ENTRE EUX (VPS-M89) ──
+        positions                       30 emetteurs sur 24 h  (colonne trackerId)
+        wire_logs                       30 emetteurs sur 24 h  (colonne imei)
+        position_sampling_decisions     30 emetteurs sur 24 h  (colonne trackerId)
+        ✅ LES 3 COMPTES SACCORDENT (30 partout). Cest un controle CROISE : ces tables
+           sont alimentees par la MEME flotte au MEME instant, a des etages differents
+           de la chaine. Leur egalite ne prouve pas que la flotte va bien — elle prouve
+           quaucun ETAGE ne perd demetteurs, ce quaucune serie table-par-table ne dit.
+   reglage effective_cache_size = 5242888kB
+   reglage random_page_cost = 1.1
+   reglage shared_buffers = 163848kB
+   reglage work_mem = 4096kB
+
+── vizyo-auth-db (base vizyo_auth) ──
+   taille = 29 MB
+
+   cache = 100.00 %
+
+   connexions = 7 / 100
+
+        table         | total  | vivantes~estime | mortes~estime |  recale le  
+----------------------+--------+-----------------+---------------+-------------
+ AuditLog             | 20 MB  |           52571 |             0 | 09-02 16:45
+ Session              | 624 kB |             172 |             3 | 09-08 23:05
+ webhook_deliveries   | 208 kB |             156 |             1 | 08-08 20:36
+ UserApp              | 136 kB |              69 |            15 | 06-30 19:20
+ service_keys         | 128 kB |               2 |            14 | 04-23 11:15
+ EmailOtpVerification | 112 kB |               0 |            31 | 09-04 07:17
+ Credential           | 104 kB |              42 |            33 | 06-23 10:12
+ OtpVerification      | 96 kB  |               1 |             8 | 05-19 08:52
+(8 rows)
+
+     ⚠️ '~estime' = valeur approchee (n_live_tup), PAS un count(*). Un delta inferieur
+        a ~2 % d'un passage a l'autre est du bruit de recalage, pas une tendance.
+     (fenetre de retention non mesuree : base de 29 Mo, sous le seuil de 100 Mo)
+   reglage effective_cache_size = 5242888kB
+   reglage random_page_cost = 4
+   reglage shared_buffers = 163848kB
+   reglage work_mem = 4096kB
+
+── vizyo-manager-postgres (base vizyo_manager) ──
+   taille = 8396 kB
+
+   cache = 100.00 %
+
+   connexions = 6 / 100
+
+          table           | total  | vivantes~estime | mortes~estime |  recale le  
+--------------------------+--------+-----------------+---------------+-------------
+ stripe_webhook_events    | 216 kB |               1 |             6 | 06-23 07:41
+ subscriptions            | 112 kB |               6 |             9 | jamais
+ plans                    | 80 kB  |               6 |            17 | jamais
+ clients                  | 80 kB  |               6 |            27 | 06-13 22:03
+ users                    | 64 kB  |               7 |            30 | 04-29 07:35
+ subscription_adjustments | 64 kB  |               6 |             7 | jamais
+ invoices                 | 40 kB  |               0 |             0 | jamais
+ _prisma_migrations       | 32 kB  |               4 |             6 | jamais
+(8 rows)
+
+     ⚠️ '~estime' = valeur approchee (n_live_tup), PAS un count(*). Un delta inferieur
+        a ~2 % d'un passage a l'autre est du bruit de recalage, pas une tendance.
+     (fenetre de retention non mesuree : base de 8 Mo, sous le seuil de 100 Mo)
+   reglage effective_cache_size = 5242888kB
+   reglage random_page_cost = 4
+   reglage shared_buffers = 163848kB
+   reglage work_mem = 4096kB
+
+── vizyo-verify-postgres (base vizyo_verify) ──
+   taille = 8732 kB
+
+   cache = 99.99 %
+
+   connexions = 11 / 100
+
+    table    | total  | vivantes~estime | mortes~estime |  recale le  
+-------------+--------+-----------------+---------------+-------------
+ Request     | 112 kB |               9 |             2 | 08-04 14:01
+ SelfieAsset | 96 kB  |               2 |             0 | jamais
+ ImageAsset  | 80 kB  |               5 |             6 | jamais
+ AccessLog   | 80 kB  |              23 |             0 | jamais
+ Submission  | 64 kB  |              10 |            10 | jamais
+ SelfieFrame | 64 kB  |               6 |             0 | jamais
+ Person      | 48 kB  |               7 |            10 | jamais
+ User        | 48 kB  |               1 |             0 | jamais
+(8 rows)
+
+     ⚠️ '~estime' = valeur approchee (n_live_tup), PAS un count(*). Un delta inferieur
+        a ~2 % d'un passage a l'autre est du bruit de recalage, pas une tendance.
+     (fenetre de retention non mesuree : base de 8 Mo, sous le seuil de 100 Mo)
+   reglage effective_cache_size = 5242888kB
+   reglage random_page_cost = 4
+   reglage shared_buffers = 163848kB
+   reglage work_mem = 4096kB
+
+── Redis ──
+  tracky-demo-redis : used_memory_human:1.16M maxmemory_human:64.00M
+    politique=allkeys-lru  cles=0
+  maalem-dev-redis : used_memory_human:1.79M maxmemory_human:0B
+    politique=noeviction  cles=7
+  tracky-redis : used_memory_human:1.17M maxmemory_human:256.00M
+    politique=allkeys-lru  cles=0
+
+
+═════ 6. SECURITE ═════   [t+112s]
+
+── Ports en ecoute ──
+  tcp 0.0.0.0:22 "sshd",pid=47976,fd=3),("systemd",pid=1,fd=274))
+  tcp 0.0.0.0:443 "docker-proxy",pid=3813,fd=7))
+  tcp 0.0.0.0:5023 "docker-proxy",pid=3066484,fd=7))
+  tcp 0.0.0.0:80 "docker-proxy",pid=3720,fd=7))
+  tcp 127.0.0.53%lo:53 "systemd-resolve",pid=1824559,fd=15))
+  tcp 127.0.0.54:53 "systemd-resolve",pid=1824559,fd=17))
+  tcp [::]:22 "sshd",pid=47976,fd=4),("systemd",pid=1,fd=277))
+  tcp [::]:443 "docker-proxy",pid=3822,fd=7))
+  tcp [::]:5023 "docker-proxy",pid=3066491,fd=7))
+  tcp [::]:80 "docker-proxy",pid=3736,fd=7))
+  udp 127.0.0.53%lo:53 "systemd-resolve",pid=1824559,fd=14))
+  udp 127.0.0.54:53 "systemd-resolve",pid=1824559,fd=16))
+
+── Pare-feu ──
+Status: active
+Logging: on (low)
+Default: deny (incoming), allow (outgoing), deny (routed)
+New profiles: skip
+
+To                         Action      From
+--                         ------      ----
+22/tcp                     ALLOW IN    Anywhere                   # SSH
+80/tcp                     ALLOW IN    Anywhere                   # HTTP
+443/tcp                    ALLOW IN    Anywhere                   # HTTPS
+5023/tcp                   ALLOW IN    Anywhere                   # Tracky GPS TCP Coban
+22/tcp (v6)                ALLOW IN    Anywhere (v6)              # SSH
+80/tcp (v6)                ALLOW IN    Anywhere (v6)              # HTTP
+443/tcp (v6)               ALLOW IN    Anywhere (v6)              # HTTPS
+
+── SSH — durcissement ──
+port 22
+maxauthtries 6
+permitrootlogin yes
+pubkeyauthentication yes
+passwordauthentication no
+permitemptypasswords no
+
+── Comptes protegés par mot de passe (donc utilisables en SSH si l'auth mot de passe est ouverte) ──
+  root
+
+── Tentatives d'intrusion ──
+  fenetre analysee : 2026-09-02T02:23 → 2026-09-09T02:23  (7 jours glissants ; fichiers lus : auth.log.1 auth.log)
+  echecs sur 7 jours : 21  (soit ~3/jour)
+  dont sur le compte root : 0
+  top IP en ECHEC :
+          5 46.101.77.230
+          5 171.231.176.227
+          5 116.99.169.151
+          3 144.126.225.169
+          1 35.241.150.194
+  comptes vises :
+          5 Invalid user admin
+          2 Invalid user test
+          2 Invalid user system
+          2 Invalid user guest
+          1 Invalid user venus
+  IP dont des connexions ont REUSSI (a reconnaitre : ce sont vos acces) :
+      10662 82.67.153.51
+         20 37.167.61.43
+          4 37.167.83.95
+          1 57.151.137.179
+          1 52.230.165.17
+  ── Cles SSH : ce qui est DECLARE contre ce qui a SERVI (VPS-012 / VPS-M77) ──
+    declarees et ACTIVES : 3
+      vizyo-vps-hostinger          SHA256:cdd9XFoVHi/rx5ky34+9jvlTHm9QkH3HtFYbi1JBInY  connexions=10686 🟠 AUCUNE option de restriction
+      github-actions-deploy-maalem SHA256:Y/gE+zS4qRpzLyB/9JPL17duDsgJfQW4LoaahTG9nHs  connexions=0     ✅ restreinte (no-port-forwarding,no-agent-forwarding,no-X11-forwarding,no-user-rc)
+      github-actions-vizyo-auth    SHA256:OTSnEmsWxDw0fTHGWfqD6I7lVQdoonQwPXCS87SsB+A  connexions=16    🟠 AUCUNE option de restriction
+    empreintes VUES sur la fenetre : 2  |  non declarees : 0
+    ✅ toute empreinte ayant servi est declaree dans authorized_keys.
+       ⚠️ PORTEE : ceci ne dit PAS « aucun acces inconnu ». Le canal guest-exec de
+          l hyperviseur (VPS-027/VPS-036) execute du root SANS passer par SSH — il ne
+          laisse aucune ligne ici. Cette conclusion vaut sur les acces SSH, et sur eux seuls.
+       ⚠️ Une empreinte ABSENTE de la fenetre de 7 j n est pas une cle inutilisee :
+          c est une cle qui n a pas servi CES 7 JOURS. connexions=0 n autorise donc
+          aucun retrait sans une autre verification (VPS-M02).
+  dernier echec : 2026-09-07T14:42:37.01328
+  ── repartition par jour (une attaque EN COURS se voit ici, jamais dans un total) ──
+          2 2026-09-03   ⚠️ BORD — jour AMPUTE de son debut (fenetre ouverte a 2026-09-02T02:23)
+          5 2026-09-05
+          9 2026-09-06
+          5 2026-09-07   ⚠️ BORD — jour EN COURS, arrete a 2026-09-09T02:23
+    → 2 jour(s) COMPLET(s) au milieu — seuls ceux-la se comparent d un passage a l autre.
+  ── Sessions SSH REUSSIES : la charge de fond que personne ne compte (VPS-032) ──
+    total sur la fenetre de 7 j : 10702
+    par jour :
+          430 2026-09-02   ⚠️ BORD — jour AMPUTE de son debut (fenetre ouverte a 2026-09-02T02:23)
+         4528 2026-09-03
+         2271 2026-09-04
+          471 2026-09-05
+          397 2026-09-06
+         1931 2026-09-07
+          641 2026-09-08
+           33 2026-09-09   ⚠️ BORD — jour EN COURS, arrete a 2026-09-09T02:23
+      → 6 jour(s) COMPLET(s) au milieu — seuls ceux-la se comparent d un passage a l autre.
+    pendant MA collecte (2026-09-09T02:21:04 → maintenant, ouverture de session comprise) : 1 session(s)
+      dont la mienne : 1  (identifiee par son port source 57770)  |  reste : 0
+      ✅ ma collecte etait SEULE : aucune autre session pendant la fenetre.
+    cout : ~54 processus par session (mesure du 2026-08-22 contre temoin — PLANCHER,
+           temoin unique). A comparer aux ~93 600 invocations/j de healthchecks.
+  Status
+  |- Number of jail:	1
+  `- Jail list:	sshd
+  prison sshd : | |- Currently failed: 0 | |- Total failed: 21| |- Currently banned: 0  |- Total banned: 3
+  fail2ban demarre le : Wed 2026-09-02 06:17:59 UTC  (les compteurs ci-dessus partent de la)
+
+── Mises a jour ──
+  cache apt rafraichi le : 2026-09-09 01:29:35  (il y a 0 h)
+  paquets en retard : 75
+  dont estampilles securite : 0   ✅ cache de 0 h — MESURE VALIDE
+  ── position de CETTE mesure dans le cycle rafraichir → installer (VPS-M74) ──
+     derniere INSTALLATION declenchee : Tue 2026-09-08 06:18:20 UTC
+     prochaine INSTALLATION prevue    : Wed 2026-09-09 06:40:04 UTC
+     🟠 CE COMPTE N EST PAS (ENCORE) UN RETARD : le cache a ete rafraichi 19 h APRES le
+        dernier passage de l installateur. Ces paquets ont ete DECOUVERTS depuis, et
+        l installateur ne les a pas encore vus. NE PAS conclure que le canal est en panne.
+        ⚠️ Et l inverse est le vrai test : si au passage suivant l installation a eu lieu
+           ET que le compte n a pas baisse, alors la panne est etablie. C est ce test-la
+           qui tranche, jamais le compte seul.
+     (et meme sur cache frais, un 0 n'est PAS une garantie : Ubuntu publie beaucoup de
+      correctifs par 'noble-updates', qui ne porte pas le mot 'security'.)
+  ── 2e source, INDEPENDANTE du cache apt (update-notifier) ──
+     ecrite le : 2026-09-09 01:29:49  (il y a 0 h)
+     69 paquets en retard   ✅ 0 h — MESURE VALIDE
+     dont 1 de securite (ligne presente dans le fichier)
+     → cache apt 0 h vs update-notifier 0 h : la plus FRAICHE des deux est le cache apt.
+     ⚠️ Les deux sources ne comptent pas la meme chose et n ont pas la meme fraicheur.
+        Un ECART entre elles n est PAS une erreur : c est ce qui date le moment ou
+        l une des deux a cesse de voir. Ne JAMAIS substituer l une a l autre.
+  services tournant sur une bibliotheque REMPLACEE : 6
+  !! REDEMARRAGE REQUIS :
+    linux-image-6.8.0-137-generic
+    linux-base
+    linux-image-6.8.0-138-generic
+    linux-base
+    linux-image-6.8.0-139-generic
+    linux-base
+
+── Latence des dependances sortantes (mediane de 3 — reseau, pas service) ──
+  https://auth.vizyoagency.com               http=307  connexion=2 ms  total=37 ms  (mediane de 3)
+  https://api.github.com                     http=200  connexion=11 ms  total=45 ms  (mediane de 3)
+  https://registry-1.docker.io/v2/           http=401  connexion=83 ms  total=256 ms  (mediane de 3)
+
+── Certificats TLS des domaines publics ──
+  tracky.vizyoagency.com                   Nov 10 20:34:29 2026 GMT
+     emis il y a 27 j  (expire dans 62 j)
+     ✅ le certificat SERVI est celui du volume (empreintes identiques)
+  app-tracky.vizyoagency.com               Nov 10 20:34:37 2026 GMT
+     emis il y a 27 j  (expire dans 62 j)
+     ✅ le certificat SERVI est celui du volume (empreintes identiques)
+
+── Bout-en-bout : la production REPOND-elle ? (traverse proxy + certificat + routage + appli) ──
+  ✅ https://app-tracky.vizyoagency.com/                  http=200  32 ms
+  ✅ https://app-tracky.vizyoagency.com/api/health        http=200  30 ms
+  ✅ https://tracky.vizyoagency.com/                      http=200  39 ms
+  ✅ https://app-verify.vizyoagency.com/                  http=302  212 ms
+     (3xx attendu sur app-verify : il redirige vers sa page de connexion. Un 5xx, un 000
+      ou une absence de reponse sont les seuls cas a traiter — voir le plan d action.)
+
+
+═════ 7. PLANIFICATION ═════   [t+122s]
+
+── crontab root ──
+  (vide)
+
+── cron.d ──
+  /etc/cron.d/docker-builder-prune :
+    57 4 * * 4 root docker builder prune -f --filter "unused-for=168h" > /dev/null 2>&1
+  /etc/cron.d/docker-image-prune :
+    40 0 * * * root docker image prune -af --filter "until=24h" > /dev/null 2>&1
+  /etc/cron.d/e2scrub_all :
+    30 3 * * 0 root test -e /run/systemd/system || SERVICE_MODE=1 /usr/lib/x86_64-linux-gnu/e2fsprogs/e2scrub_all_cron
+    10 3 * * * root test -e /run/systemd/system || SERVICE_MODE=1 /sbin/e2scrub_all -A -r
+  /etc/cron.d/sysstat :
+    PATH=/usr/lib/sysstat:/usr/sbin:/usr/sbin:/usr/bin:/sbin:/bin
+    5-55/10 * * * * root command -v debian-sa1 > /dev/null && debian-sa1 1 1
+    59 23 * * * root command -v debian-sa1 > /dev/null && debian-sa1 60 2
+
+── Fraicheur du catalogue : qu est-ce qui a CHANGE depuis le passage precedent ? ──
+  🆕 2026-09-06 06:35  (modifie il y a 2 j) /etc/systemd/system/capcom6-backup.timer
+  🆕 2026-09-07 14:08  (modifie il y a 1 j) /etc/systemd/system/tracky-demo-refresh-demande.timer
+  🆕 2026-09-07 14:08  (modifie il y a 1 j) /etc/systemd/system/tracky-demo-refresh.timer
+  🆕 2026-09-06 06:35  (modifie il y a 2 j) /etc/systemd/system/vizyo-manager-backup.timer
+  🆕 2026-09-06 06:35  (modifie il y a 2 j) /etc/systemd/system/vizyo-texto-backup.timer
+  🆕 2026-09-06 06:35  (modifie il y a 2 j) /etc/systemd/system/capcom6-backup.service
+  🆕 2026-09-07 14:08  (modifie il y a 1 j) /etc/systemd/system/tracky-demo-refresh-demande.service
+  🆕 2026-09-07 14:08  (modifie il y a 1 j) /etc/systemd/system/tracky-demo-refresh.service
+  🆕 2026-09-06 06:35  (modifie il y a 2 j) /etc/systemd/system/vizyo-manager-backup.service
+  🆕 2026-09-06 06:35  (modifie il y a 2 j) /etc/systemd/system/vizyo-texto-backup.service
+  🟠 10 fichier(s) de planification modifie(s) dans les 2 derniers jours.
+     Comparer leur CONTENU au catalogue `ordonnancement` du manifeste AVANT de conclure
+     que « rien n a bouge » : c est le seul endroit ou les collisions d horaires se voient.
+
+── Timers systemd ──
+  (22 timers actifs)
+  NEXT                            LEFT LAST                               PASSED UNIT                              ACTIVATES
+  Wed 2026-09-09 02:30:00 UTC     6min Wed 2026-09-09 02:20:30 UTC  2min 52s ago sysstat-collect.timer             sysstat-collect.service
+  Wed 2026-09-09 02:30:00 UTC     6min Wed 2026-09-09 02:15:30 UTC      7min ago tracky-demo-refresh-demande.timer tracky-demo-refresh-demande.service
+  Wed 2026-09-09 02:45:38 UTC    22min Tue 2026-09-08 03:07:20 UTC       23h ago man-db.timer                      man-db.service
+  Wed 2026-09-09 02:51:33 UTC    28min Wed 2026-09-09 01:13:09 UTC  1h 10min ago fwupd-refresh.timer               fwupd-refresh.service
+  Wed 2026-09-09 03:02:23 UTC    39min Tue 2026-09-08 03:01:30 UTC       23h ago tracky-backup.timer               tracky-backup.service
+  Wed 2026-09-09 03:30:43 UTC  1h 7min Tue 2026-09-08 03:31:50 UTC       22h ago vizyo-verify-backup.timer         vizyo-verify-backup.service
+  Wed 2026-09-09 04:02:30 UTC 1h 39min Tue 2026-09-08 04:02:10 UTC       22h ago vizyo-auth-backup.timer           vizyo-auth-backup.service
+  Wed 2026-09-09 04:31:53 UTC  2h 8min Tue 2026-09-08 04:33:10 UTC       21h ago vizyo-manager-backup.timer        vizyo-manager-backup.service
+  Wed 2026-09-09 04:40:21 UTC 2h 16min Tue 2026-09-08 04:44:30 UTC       21h ago vizyo-texto-backup.timer          vizyo-texto-backup.service
+  Wed 2026-09-09 04:54:01 UTC 2h 30min Tue 2026-09-08 04:51:56 UTC       21h ago capcom6-backup.timer              capcom6-backup.service
+  Wed 2026-09-09 06:40:04 UTC 4h 16min Tue 2026-09-08 06:18:20 UTC       20h ago apt-daily-upgrade.timer           apt-daily-upgrade.service
+  Wed 2026-09-09 07:41:36 UTC 5h 18min Tue 2026-09-08 21:28:07 UTC  4h 55min ago motd-news.timer                   motd-news.service
+  Wed 2026-09-09 07:47:24 UTC 5h 24min Wed 2026-09-09 01:29:30 UTC     53min ago apt-daily.timer                   apt-daily.service
+  Wed 2026-09-09 21:49:30 UTC      19h Tue 2026-09-08 21:49:30 UTC  4h 33min ago update-notifier-download.timer    update-notifier-download.service
+  Wed 2026-09-09 21:57:50 UTC      19h Tue 2026-09-08 21:57:50 UTC  4h 25min ago systemd-tmpfiles-clean.timer      systemd-tmpfiles-clean.service
+  Thu 2026-09-10 00:00:00 UTC      21h Wed 2026-09-09 00:00:02 UTC  2h 23min ago dpkg-db-backup.timer              dpkg-db-backup.service
+  Thu 2026-09-10 00:00:00 UTC      21h Wed 2026-09-09 00:00:02 UTC  2h 23min ago logrotate.timer                   logrotate.service
+  Thu 2026-09-10 00:07:00 UTC      21h Wed 2026-09-09 00:07:03 UTC  2h 16min ago sysstat-summary.timer             sysstat-summary.service
+  Sun 2026-09-13 03:10:52 UTC   4 days Sun 2026-09-06 03:10:30 UTC    2 days ago e2scrub_all.timer                 e2scrub_all.service
+  Sun 2026-09-13 04:00:00 UTC   4 days -                                       - tracky-demo-refresh.timer         tracky-demo-refresh.service
+  Sun 2026-09-13 07:38:16 UTC   4 days Mon 2026-09-07 02:48:36 UTC 1 day 23h ago update-notifier-motd.timer        update-notifier-motd.service
+  Mon 2026-09-14 00:24:08 UTC   4 days Mon 2026-09-07 00:43:13 UTC    2 days ago fstrim.timer                      fstrim.service
+  
+  22 timers listed.
+  Pass --all to see loaded but inactive timers, too.
+
+── Chaque timer pointe-t-il un script REELLEMENT executable ? (verifie avant l echeance) ──
+  ✅ apport-autoreport.service          /usr/share/apport/whoopsie-upload-all
+  ✅ dpkg-db-backup.service             /usr/libexec/dpkg/dpkg-db-backup
+  ✅ motd-news.service                  /etc/update-motd.d/50-motd-news
+  ✅ tracky-backup.service              /opt/vizyo-tracky/deploy/vps/backup-db.sh
+  ✅ tracky-demo-refresh-demande.service /opt/vizyo-tracky/deploy/vps/demo-refresh.sh
+  ✅ tracky-demo-refresh.service        /opt/vizyo-tracky/deploy/vps/demo-refresh.sh
+  ✅ vizyo-auth-backup.service          /usr/local/bin/vizyo-auth-backup.sh
+  ✅ vizyo-verify-backup.service        /opt/vizyo-verify/deploy/vps/backup.sh
+
+── Doublons cron/timer (meme script des deux cotes) ──
+
+── Services en echec ──
+    UNIT LOAD ACTIVE SUB DESCRIPTION
+  
+  0 loaded units listed.
+
+── Hyperviseur : ordres executes en root dans la machine, hors SSH (VPS-027) ──
+  🟠 325 EXECUTIONS en root, fenetre 2026-09-02T20:18:12 → 2026-09-09T02:19:03
+     denominateur honnete : 1943 sondages `guest-exec-status` pour ces 325 executions.
+     ⚠️ NE JAMAIS compter les sondages comme des executions : le ratio depasse 17 pour 1.
+  ── executions par jour (une hausse se voit ici, jamais dans un total) ──
+           8 2026-09-02   ⚠️ BORD — jour AMPUTE de son debut (fenetre ouverte a 2026-09-02T20:18:12)
+          52 2026-09-03
+          52 2026-09-04
+          52 2026-09-05
+          52 2026-09-06
+          52 2026-09-07
+          52 2026-09-08
+           5 2026-09-09   ⚠️ BORD — jour EN COURS, arrete a 2026-09-09T02:19:03
+     → 6 jour(s) COMPLET(s) au milieu — seuls ceux-la se comparent d un passage a l autre.
+  ── les 3 dernieres lignes de commande RECUES (c est du root, il faut les lire) ──
+     2026-09-09 01:17:53  "timeout -s TERM -k 3660 3600 /bin/sh -c trap 'rm /.hstgr-1788916673.usage-telemetry.py' 0; /usr/bin/env python3 /.hstgr-178
+     2026-09-09 01:35:59  "timeout -s TERM -k 3660 3600 sh -c ps -eo vsz,rss,%cpu,time,etimes,pid,command --sort=-%cpu --no-header"
+     2026-09-09 02:17:21  "timeout -s TERM -k 3660 3600 /bin/sh -c trap 'rm /.hstgr-1788920241.usage-telemetry.py' 0; /usr/bin/env python3 /.hstgr-178
+     ⚠️ Une commande qui ECRIT (systemctl, echo > /sys, fstrim) n est plus de la lecture :
+        elle change l etat d une machine dont ce catalogue pretend tenir la liste.
+  ── inventaire des sondes horaires deposees par l hyperviseur (VPS-M70) ──
+           302 usage-telemetry.py
+     ✅ un seul nom de sonde sur la fenetre : pas de remplacement observe.
+  ── commandes hors sonde horaire (le script hstgr-*.py, le ps et /proc/meminfo ecartes) ──
+     hors sonde : 24  |  dont lot TRIM quotidien (connu, VPS-027) : 24  |  INATTENDUES : 0
+     ✅ aucune commande inattendue : l hyperviseur n a envoye que son lot TRIM connu.
+
+── Healthchecks : la charge de fond non planifiee ──
+    5 conteneurs toutes les 10s
+    3 conteneurs toutes les 1m0s
+   19 conteneurs toutes les 30s
+  → 71 invocations/min, soit ~102240/jour (chacune ~5 processus via runc)
+     27 conteneurs sondes sur 37 ; 10 SANS AUCUNE SONDE (leur panne est invisible a Docker)
+
+── Creations de processus par minute (fenetre de 10 s, DECOUPEE en 3 sous-fenetres) ──
+  258 processus en 10 s = 1548/min = ~2.2 millions/jour   <- LA VALEUR DE LA SERIE
+  sous-fenetres 3 s / 3 s / 4 s : 1880, 1280, 1500 /min
+  etendue intra-fenetre : 600/min, soit 39 % de la valeur publiee
+  ✅ Etendue sous la moitie de la valeur publiee : la rafale courte n EXPLIQUE PAS le
+     facteur 1,8 observe entre passages. Chercher la cause du cote de ce qui tourne CE
+     jour-la (build, sauvegarde, session SSH) — pas du cote de l instrument.
+
+── Crons INTERNES aux conteneurs (verifier que crond ne tourne pas) ──
+  tracky-api               crond_actif/scripts = 0/0
+  tracky-web               crond_actif/scripts = 0/0
+  tracky-demo-api          crond_actif/scripts = 0/0
+  tracky-demo-web          crond_actif/scripts = 0/0
+  tracky-demo-redis        crond_actif/scripts = 0/0
+  tracky-demo-postgres     crond_actif/scripts = 0/0
+  (0/0 attendu partout : le crontab Alpine existe mais rien ne le lit)
+
+
+═════ 8. JOURNAUX ═════   [t+135s]
+  Archived and active journals take up 259.8M in the file system.
+268M	/var/log/journal
+31M	/var/log/sysstat
+24M	/var/log/syslog.1
+12M	/var/log/syslog
+9.1M	/var/log/auth.log.1
+8.9M	/var/log/kern.log.1
+8.0M	/var/log/ufw.log.1
+4.5M	/var/log/kern.log
+
+
+═════ 9. HISTORIQUE (sysstat — TOUTES les journees conservees, jour en cours compris) ═════   [t+135s]
+  jour        user%     sys%  iowait%   steal%    idle% pic_charge   pic_ram% note
+  09-01        4.72     3.61     0.37     2.10    89.19       3.41       41.0 
+  09-02        4.58     3.47     0.30     2.04    89.58       2.29       28.4 
+  09-03        6.06     5.29     1.54     2.67    84.42       4.94       43.5 
+  09-04        6.22     4.93     0.89     2.35    85.60      10.04       54.1 
+  09-05        4.63     3.66     0.38     1.72    89.59       4.81       34.1 
+  09-06        7.09     4.93     1.12     1.56    85.28       5.70       66.6 
+  09-07        9.99     6.62     1.59     2.09    79.70       7.26       61.8 
+  09-08        6.97     4.77     0.65     2.06    85.54      10.11       65.9 
+  09-09        4.91     3.58     0.50     1.47    89.52       1.79       30.6 
+  → 9 journee(s) conservee(s) par sysstat, la derniere etant le jour EN COURS (partielle).
+     ⚠️ Un incident plus long que cette fenetre efface sa propre reference : comparer la
+        colonne idle% a la journee la PLUS ANCIENNE avant de parler d etat « normal ».
+
+  ── CAPACITE : reste-t-il de la MARGE ? (et non « est-ce que ca repond ? ») ──
+     jour en cours (09-09) EXCLU : partiel (VPS-M61).
+     inactivite de la veille           (09-08) :  85.54 %
+     journee la PLUS ANCIENNE conservee (09-01) :  89.19 %
+     etendue des 8 journees COMPLETES        :  79.70 % (09-07) a  89.59 %
+     ecart veille - plus ancienne            :  -3.65 pt
+     ✅ MARGE CONFORTABLE — la veille garde plus de 50 % d inactivite.
+     seuils de reescalade : 🟠 < 50 % un jour entier  |  🔴 < 25 %, ou 🟠 trois jours de suite.
+     ⚠️ PORTEE : `idle%` est une moyenne sur 24 h. Elle ne voit PAS une saturation
+        de 20 min a 14 h — pour cela, c est la colonne pic_charge du tableau.
+
+── Ecriture disque moyenne par jour (revele les journees de build) ──
+  09-01 : 32 tps, ecriture 467 blocs/s
+  09-02 : 25 tps, ecriture 229 blocs/s
+  09-03 : 143 tps, ecriture 4343 blocs/s
+  09-04 : 104 tps, ecriture 1455 blocs/s
+  09-05 : 41 tps, ecriture 667 blocs/s
+  09-06 : 141 tps, ecriture 2486 blocs/s
+  09-07 : 223 tps, ecriture 4054 blocs/s
+  09-08 : 84 tps, ecriture 1388 blocs/s
+  09-09 : 16 tps, ecriture 130 blocs/s
+
+
+═════ 10. PREVISIONS — ce que chaque nettoyage rendrait ═════   [t+135s]
+  disque : 54 Go utilises / 96 Go (56%), 42 Go libres
+  ── la valeur a reporter dans le manifeste (VPS-M60) ──
+     disqueUtilisePct = 56   (identique au Use% de `df` en section 3 : 55.92% arrondi AU SUPERIEUR)
+     ⚠️ 56% ci-dessus = le meme 55.92% arrondi au PLUS PROCHE. Meme disque, meme
+        formule, deux arrondis — et un point d ecart dans la serie de tendance.
+     Copier TOUJOURS la valeur nommee ici : c est celle que `df` affiche, donc celle
+     qu un humain relit. Melanger les deux fabrique une pente qui ne mesure que ca.
+  ── recuperable, par poste ──
+  images                       25.86GB (95%)  (⚠️ CHIFFRE NON FIABLE : 26 images sur 30 sont ACTIVES —
+                                 docker compte des couches partagees, pas de l espace liberable)
+  conteneurs arretes           0B (0%)
+  volumes non montes           421.3MB (11%)  (⚠️ contient des BASES : ne pas purger a l aveugle)
+  cache de build               10.49GB
+  sauvegardes en double        1.4 Go  (10 fichiers en trop)
+  journaux systemd             259.8M
+
+
+═════ 11. SAUVEGARDES — chaque application a-t-elle une copie RECENTE ? ═════   [t+135s]
+
+── L'unite qui PRODUIT chaque sauvegarde a-t-elle reussi ? (la trace peut mentir, pas elle) ──
+  capcom6-backup.service             inactive       ✅ dernier resultat : succes
+    derniere fin : Tue 2026-09-08 04:51:57 UTC
+  dpkg-db-backup.service             inactive       ✅ dernier resultat : succes
+    derniere fin : Wed 2026-09-09 00:00:22 UTC
+  tracky-backup.service              inactive       ✅ dernier resultat : succes
+    derniere fin : Tue 2026-09-08 03:01:50 UTC
+  vizyo-auth-backup.service          inactive       ✅ dernier resultat : succes
+    derniere fin : Tue 2026-09-08 04:02:11 UTC
+  vizyo-manager-backup.service       inactive       ✅ dernier resultat : succes
+    derniere fin : Tue 2026-09-08 04:33:11 UTC
+  vizyo-texto-backup.service         inactive       ✅ dernier resultat : succes
+    derniere fin : Tue 2026-09-08 04:44:31 UTC
+  vizyo-verify-backup.service        inactive       ✅ dernier resultat : succes
+    derniere fin : Tue 2026-09-08 03:31:54 UTC
+
+── Couverture : chaque base EN SERVICE a-t-elle une sauvegarde ? ──
+  capcom6-mysql              🟠 en retard (4 j)                       capcom6                      
+     ⚠️ UNE SEULE SALVE DE COPIES (1 fichier(s), tous a la meme heure) — aucune
+        cadence mesurable. Une copie recente n est pas une sauvegarde : rien dans
+        les FICHIERS ne prouve qu un mecanisme la refera (VPS-M81). Croiser avec le
+        bloc « L unite qui PRODUIT chaque sauvegarde » ci-dessus, qui, lui, le dit.
+  maalem-dev-postgres        🔴 AUCUNE SAUVEGARDE                     —                          (developpement — sans enjeu)
+  maestroo-dev-postgres      🔴 AUCUNE SAUVEGARDE                     —                          (developpement — sans enjeu)
+  texto-postgres             ✅ a jour (21 h)                          vizyo-texto, vizyo_texto     
+     cadence mesuree : 24 h depuis la salve precedente (4 copies au total)
+  tracky-demo-postgres       🔴 AUCUNE SAUVEGARDE                     —                          
+    → la sauvegarder couterait 459MB par jour (avant compression)
+  tracky-postgres            ✅ a jour (23 h)                          tracky-pre-deploy-20260427, vizyo-tracky 
+     cadence mesuree : 15 h depuis la salve precedente (43 copies au total)
+  vizyo-auth-db              ✅ a jour (22 h)                          vizyo-auth                   
+     cadence mesuree : 23 h depuis la salve precedente (5 copies au total)
+  vizyo-manager-postgres     🟠 en retard (4 j)                       vizyo-manager                
+     ⚠️ COPIE ISOLEE — la salve precedente date de 142 j (3409 h). Une cadence laisse
+        une trace reguliere ; cet ecart designe un GESTE, pas un mecanisme (VPS-M81).
+  vizyo-verify-postgres      ✅ a jour (22 h)                          vizyo-verify                 
+     cadence mesuree : 23 h depuis la salve precedente (30 copies au total)
+  (une base absente de cette liste n'existe pas ; une base sans sauvegarde y figure BIEN)
+
+── Age de la derniere sauvegarde, par dossier de /var/backups ──
+  capcom6                    117 h  ⚠️ PERIMEE (> 30 h)                     1 copies, 20K  capcom6_sms_20260904-045204.sql.gz
+  sms                         21 h  a jour                                      3 copies, 52K  sms_20260908-045156.sql.gz
+  tracky-pre-deploy-20260427 3236 h  instantane ponctuel (garde volontairement)  1 copies, 6.7M  db-pre-deploy.sql.gz
+  vizyo-auth                  22 h  a jour                                      5 copies, 7.0M  vizyo_auth_20260908-040210.sql.gz
+  vizyo-manager              117 h  ⚠️ PERIMEE (> 30 h)                    26 copies, 112K  vizyo_manager_20260904-045204.sql.gz
+  vizyo-texto                117 h  ⚠️ PERIMEE (> 30 h)                     1 copies, 76K  texto_20260904-045204.sql.gz
+  vizyo-tracky                23 h  a jour                                     42 copies, 5.8G  tracky_prod_20260908-030130.sql.gz
+  vizyo-verify                22 h  a jour                                     30 copies, 79M  verify-files_20260908-033150.tar.gz.gpg
+  vizyo_manager               21 h  a jour                                      3 copies, 28K  vizyo_manager_20260908-043310.sql.gz
+  vizyo_texto                 21 h  a jour                                      3 copies, 216K  vizyo_texto_20260908-044430.sql.gz
+
+  ── Dossiers de /var/backups qu AUCUN conteneur n a reclames (VPS-M88) ──
+    🟠 sms                       3 copie(s), la plus recente il y a 21 h — reclame par AUCUN conteneur
+    🟠 vizyo_manager             3 copie(s), la plus recente il y a 21 h — reclame par AUCUN conteneur
+    ⚠️ Deux lectures, et elles sont OPPOSEES — il faut trancher, pas choisir la rassurante :
+       • soit la base a disparu et ces octets sont a retirer ;
+       • soit la base est BIEN sauvegardee ici, et la table de couverture ci-dessus
+         la declare « en retard » a tort parce que le dossier ne porte pas son nom.
+       Le journal de l unite tranche : il imprime sa destination (journalctl -u <unite>).
+
+── Sauvegardes HORS de /var/backups — balayage par CONTENU (angle mort n° 4, 5e report) ──
+  couvert par les controles ci-dessus : /var/backups/*
+  elague du balayage (non pertinent)  : /var/backups, /var/lib/docker, /proc, /sys, /snap, /run
+  critere : fichier > 50 Mo, extension .sql .sql.gz .sql.bz2 .dump .tar .tar.gz .tgz .gpg .bak
+     144.7 Mo  2026-08-19 02:50  /root/backups/tracky-avant-graphiques-20260819-025003.sql.gz
+     144.2 Mo  2026-08-19 01:50  /root/backups/tracky-avant-graphiques-20260819-014953.sql.gz
+     144.1 Mo  2026-08-18 21:58  /root/backups/tracky-avant-graphiques-20260818-215740.sql.gz
+     144.0 Mo  2026-08-18 21:50  /root/backups/tracky-avant-graphiques-20260818-215033.sql.gz
+     143.8 Mo  2026-08-18 21:32  /root/backups/tracky-avant-graphiques-20260818-213224.sql.gz
+     143.6 Mo  2026-08-18 21:14  /root/backups/tracky-avant-graphiques-20260818-211349.sql.gz
+     139.2 Mo  2026-08-18 13:51  /root/backups/tracky-avant-graphiques-20260818-135111.sql.gz
+     139.2 Mo  2026-08-17 15:38  /root/backups/tracky-avant-trk028-20260817-153808.sql.gz
+     137.9 Mo  2026-08-19 03:01  /root/backups/tracky-avant-graphiques-20260819-030105.sql.gz
+     133.3 Mo  2026-08-18 05:46  /root/backups/tracky-avant-graphiques-20260818-054620.sql.gz
+     133.1 Mo  2026-08-18 05:32  /root/backups/tracky-avant-graphiques-20260818-053125.sql.gz
+     132.4 Mo  2026-08-18 04:00  /root/backups/tracky-avant-graphiques-20260818-035940.sql.gz
+      57.0 Mo  2026-07-21 16:30  /opt/backups/tracky/positions-avant-purge60j-20260721-163020.sql.gz
+  ── 13 fichiers, 1.70 Go au total, sous AUCUNE retention connue ──
+     /root/backups                        1679.3 Mo en 12 fichiers
+     /opt/backups/tracky                    57.0 Mo en 1 fichiers
+  ⚠️ Ces octets ne seront enleves par RIEN : aucune des retentions de la machine ne
+     couvre ces chemins. Lire VPS-030 avant tout geste — certains sont les SEULES
+     copies connues d un etat de base (le dossier n est pas jetable en bloc).
+
+── Integrite : la derniere archive se relit-elle, ET le dump va-t-il jusqu'au bout ? ──
+  ✅ capcom6                    capcom6_sms_20260904-045204.sql.gz se relit ET le dump est COMPLET (marqueur mysqldump)
+  ✅ sms                        sms_20260908-045156.sql.gz se relit ET le dump est COMPLET (marqueur mysqldump)
+  ✅ tracky-pre-deploy-20260427 db-pre-deploy.sql.gz se relit ET le dump est COMPLET (marqueur pg_dump)
+  ✅ vizyo-auth                 vizyo_auth_20260908-040210.sql.gz se relit ET le dump est COMPLET (marqueur pg_dump)
+  ✅ vizyo-manager              vizyo_manager_20260904-045204.sql.gz se relit ET le dump est COMPLET (marqueur pg_dump)
+  ✅ vizyo-texto                texto_20260904-045204.sql.gz se relit ET le dump est COMPLET (marqueur pg_dump)
+  ✅ vizyo-tracky               tracky_prod_20260908-030130.sql.gz se relit ET le dump est COMPLET (marqueur pg_dump)
+  ✅ vizyo_manager              vizyo_manager_20260908-043310.sql.gz se relit ET le dump est COMPLET (marqueur pg_dump)
+  ✅ vizyo_texto                vizyo_texto_20260908-044430.sql.gz se relit ET le dump est COMPLET (marqueur pg_dump)
+
+── Etat declare par les scripts (ceux qui relisent leur archive) ──
+  vizyo-verify           OK       2026-09-08T03:31:54Z  (base 12K + 13 fichiers 5.3M, vérifiées)
+
+── Donnees sensibles : les archives sont-elles chiffrees ? ──
+  vizyo-verify : 30 chiffrees, 0 EN CLAIR
+  droits du dossier : 700 (700 attendu)
+
+── VPS-026 — alpine:latest sera-t-il retelecharge a la prochaine sauvegarde ? ──
+  🔴 ABSENT : la sauvegarde de cette nuit TIRERA l image depuis Docker Hub.
+     Le seul dispositif de sauvegarde des pieces d identite depend donc, a 03 h 31,
+     que registry-1.docker.io reponde. Voir la sonde de dependances (section 6).
+
+── Copie hors-site ──
+  vizyo-verify           OK              21 h  a jour  (14 copies locales)
+    destination : PC local (D:)
+    contenu copie : 22 h (la copie ne peut pas etre plus fraiche que sa source)
+
+
+═════ 12. LEVIERS D'OPTIMISATION — etat de chacun, verdict automatique ═════   [t+145s]
+
+── Levier 1 — cache de build Docker (le poste qui REVIENT) ──
+     decomposition reelle : Private 10.49GB (gouverne par keepStorage) + Shared 47.25MB (partage avec des images VIVANTES, hors de portee du ramasse-miettes)
+  ✅ cache de build (Private)       10.49GB          sous son seuil d alerte de 15 Go (= plafond 10 Go du ramasse-miettes + 50 % de marge, VPS-M10) ; total docker system df = 10.54GB
+     borne permanente : ✅ ramasse-miettes actif —  Reserved Space: 8GiB  Reserved Space: 10GiB
+
+── Levier 2 — reglages memoire du noyau ──
+  ✅ vm.swappiness                  10               serveur
+  ⚠️  swap utilise                   1359 Mo (uptime 844.9 h) → viser < 200 Mo : revient apres chaque build — juger a la pression PSI, pas au volume
+
+── Levier 3 — limites des conteneurs (confinement des pannes) ──
+  ⚠️  conteneurs sans limite         30 / 37          → viser 0 : une fuite peut emporter un voisin (VPS-005)
+
+── Levier 4 — reglages PostgreSQL ──
+  ⚠️  maalem-dev-postgres random_page_cost 4                → viser 1.1 : valeur pour disque a plateaux
+  ⚠️  maestroo-dev-postgres random_page_cost 4                → viser 1.1 : valeur pour disque a plateaux
+  ⚠️  texto-postgres random_page_cost 4                → viser 1.1 : valeur pour disque a plateaux
+  ⚠️  tracky-demo-postgres random_page_cost 4                → viser 1.1 : valeur pour disque a plateaux
+  ✅ tracky-postgres random_page_cost 1.1              adapte au SSD
+  ⚠️  vizyo-auth-db random_page_cost 4                → viser 1.1 : valeur pour disque a plateaux
+  ⚠️  vizyo-manager-postgres random_page_cost 4                → viser 1.1 : valeur pour disque a plateaux
+  ⚠️  vizyo-verify-postgres random_page_cost 4                → viser 1.1 : valeur pour disque a plateaux
+  ✅ 8 / 8 bases PostgreSQL examinees
+
+── Levier 5 — Redis borne ? ──
+  ✅ tracky-demo-redis maxmemory    67108864 (allkeys-lru) 
+  ⚠️  maalem-dev-redis maxmemory     aucune (noeviction) → viser 256mb + allkeys-lru : grandit sans borne
+  ✅ tracky-redis maxmemory         268435456 (allkeys-lru) 
+
+── Levier 6 — journaux systeme ──
+  ✅ journald                       259.8M           plafond SystemMaxUse=1G
+
+── Levier 7 — noyau a jour ? ──
+  ⚠️  noyau actif                    6.8.0-136-generic → viser 6.8.0-139-generic : REDEMARRAGE requis — rend aussi la RAM de dockerd
+  ⚠️  memoire de dockerd             1395 Mo (uptime 844.9 h) → viser < 400 Mo : suit les BUILDS, pas l'uptime — un redemarrage ne regle rien de durable
+
+
+═════ BUDGET DE LA COLLECTE ═════
+  duree totale : 147 s   (budget impose : 90 s)
+  charge 1 min : 0.28 au DEBUT  →  1.21 a la FIN   (limite imposee : 2.0 sur 2 coeurs)
+  ✅ charge maitrisee : 0.28 → 1.21 (+0.93).
+  ── DISCRIMINANT (VPS-M35) : ce que loadavg ne dit pas ──
+  machine sur la MEME fenetre : idle 39.4 %  |  nice 1.26 %  |  user 14.2 %  |  sys 33.5 %  |  iowait 7.4 %  |  steal 3.5 %
+  cout REEL de l audit : 60.9 s de CPU sur 147 s x 2 coeurs = 20.7 % de la machine
+  part de dockerd      : 13.2 s de CPU sur la MEME fenetre = 4.5 % de la machine
+  → repartition : audit 20.7 %  |  dockerd 4.5 %  |  reste 35.4 %  |  inactif 39.4 %
+     dont ATTENTE (personne ne brule de cycle) : iowait 7.4 % + steal 3.5 % = 10.9 %
+     reste INEXPLIQUE apres ventilation : 24.5 % (soit 69 % du « reste »)
+     ⚠️ BORNE, pas partition : iowait peut deja etre compte dans idle, et le cout de
+        l audit recouvre une part de user+sys. A lire comme un ordre de grandeur.
+  ✅ COUT CONFIRME FAIBLE : 20.7 % de la machine, 39.4 % d inactivite restante.
+  ⚠️ PORTEE : « cout REEL » ne compte que les enfants DEJA attendus, et pas sshd cote
+     serveur. C est un PLANCHER — il ne peut pas disculper l audit a tort.
+  🔴 DEPASSEMENT : +57 s, soit 1.6× le budget.
+     Avant d accuser le script : relire la charge ci-dessus et les [t+Ns] des sections.
+     Un script en priorite idle attend d autant plus que la machine est occupee
+     (VPS-M16). Le depassement est un SYMPTOME tant que la cause n est pas nommee.
+
+
+═════ ERREURS PENDANT LA COLLECTE (stderr) ═════
+  ✅ aucun message d erreur : les programmes awk, les gabarits Go et les filtres jq ont
+     tous compile et tourne. Aucun bloc n a rendu du vide pour cause de panne interne.
+  ⚠️ PORTEE : ce compteur ne voit QUE ce qui n est pas deja tu par un `2>/dev/null` local,
+     et le script en pose une centaine, volontairement, pour des erreurs ATTENDUES.
+     Un zero ne dit donc pas « aucune erreur », il dit « aucune erreur INATTENDUE ».
+
+
+FIN DE COLLECTE — 2026-09-09 02:23:46 UTC

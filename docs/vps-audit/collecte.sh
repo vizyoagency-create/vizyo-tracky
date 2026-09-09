@@ -681,8 +681,37 @@ for d in /opt/*/; do
 done
 # Le denominateur est affiche a cote du numerateur (lecon VPS-M08/VPS-M22) : une somme partielle
 # qui n'annonce pas combien d'elements elle couvre ne peut pas signaler qu'il en manque.
-awk -v k="$OPT_KO" -v n="$OPT_N" -v t="$OPT_TOT" -v s="$(( $(date +%s) - T_OPT ))" 'BEGIN{
-  printf "  → /opt = %.1f Go, mesures sur %d / %d sous-dossiers, en %d s\n", k/1048576, n, t, s }'
+#
+# ⚠️⚠️ VPS-M95 — CORRIGE LE 2026-09-09. LE DENOMINATEUR ETAIT HONNETE, LA SOMME NE L ETAIT PAS.
+#
+# Le 2026-09-09, ce bloc a publie « → /opt = 4.5 Go, mesures sur 17 / 18 sous-dossiers » apres
+# que `/opt/maalem` (1,5 Go) eut depasse le `timeout 12`. La veille : « 6.0 Go, 18 / 18 ».
+# Un lecteur qui compare deux passages voit **-1,5 Go sur /opt en une nuit** — un evenement
+# ENTIEREMENT FABRIQUE par l absence d un terme. Et le seul dossier manquant vaut exactement
+# l ecart, a 100 Mo pres.
+#
+# 🔑 La moitie du garde etait deja la : le « 17 / 18 » et la ligne « NON MESURE » etaient
+# imprimes, tous les deux, correctement. Mais **la grandeur que l on compare d un passage a
+# l autre est la SOMME**, pas son denominateur — et la somme, elle, ne portait aucune marque.
+# C est VPS-M08/VPS-M22 a un cran de plus : annoncer le denominateur ne suffit pas s il faut
+# le lire pour savoir que le NUMERATEUR est faux.
+#
+# ⚠️ Et le tirage est ALEATOIRE d un jour a l autre : le cout d un `du` varie d un facteur ~20
+# entre froid et chaud (VPS-M18), donc ce n est pas toujours le meme dossier qui tombe. Une
+# serie de totaux /opt melange donc des perimetres differents sans jamais le dire.
+# COUT : ZERO commande de plus — `OPT_N` et `OPT_TOT` sont deja comptes.
+awk -v k="$OPT_KO" -v n="$OPT_N" -v t="$OPT_TOT" -v s="$(( $(date +%s) - T_OPT ))" -v r="$OPT_RESTE" 'BEGIN{
+  if (n == t) {
+    printf "  → /opt = %.1f Go, mesures sur %d / %d sous-dossiers, en %d s\n", k/1048576, n, t, s;
+    printf "     ✅ SOMME COMPLETE : elle se compare telle quelle au passage precedent.\n";
+  } else {
+    printf "  → /opt ≥ %.1f Go  ⚠️ SOMME PARTIELLE (%d / %d sous-dossiers), en %d s\n", k/1048576, n, t, s;
+    printf "     🔴 CE TOTAL NE SE COMPARE PAS a celui d un autre passage (VPS-M95) : %d sous-dossier(s)\n", t-n;
+    printf "        manquent, et leur poids est ABSENT de la somme — pas nul. Une BAISSE du total\n";
+    printf "        est alors fabriquee par l absence, pas produite par le disque.\n";
+    printf "        Mesure du 2026-09-09 : 4,5 Go sur 17/18 contre 6,0 Go sur 18/18 la veille — et\n";
+    printf "        le seul dossier manquant (maalem) valait 1,5 Go. L ecart entier etait factice.\n";
+  } }'
 [ -n "$OPT_RESTE" ] && echo "  ⚠️ NON MESURE (delai depasse — mesure NON FAITE, PAS un dossier vide) :$OPT_RESTE"
 echo "  ⚠️ Le cout suit les INODES, pas les octets — et la part ci-dessous est MESUREE ce passage,"
 echo "     pas recopiee : c'est ce que coute chaque nuit un depot dont la pile est SUPPRIMEE."
@@ -1804,7 +1833,9 @@ for pg in $(db_conteneurs "$MOTEURS_PG"); do
               # VPS-M89 : on RETIENT la valeur pour la confronter aux autres tables de la MEME
               # base, apres la boucle. Append (>>) et non troncature (>) : chaque table est un
               # processus awk distinct, un « > » n en garderait qu une seule — la derniere.
-              if (emcmp != "") printf "%s|%d|%d|%s\n", t, e0, e1, em >> emcmp;
+              # 5e champ : le DEBIT PAR EMETTEUR — c est lui qui dit si deux tables ont le
+              # meme GRAIN (une ligne par trame) ou non (une ligne par trajet). VPS-M96.
+              if (emcmp != "") printf "%s|%d|%d|%s|%.4f\n", t, e0, e1, em, pb0 >> emcmp;
               printf "         emetteurs DISTINCTS : %d sur 24 h  contre  %d les 24 h precedentes  (colonne %s)\n", e0, e1, em;
               printf "         par emetteur : %.1f trames/h  contre  %.1f  = x%.2f\n", pb0, pb1, (pb1>0 ? pb0/pb1 : 0);
               if (re < 0.90)
@@ -1935,7 +1966,9 @@ for pg in $(db_conteneurs "$MOTEURS_PG"); do
     # (meme discipline que les leviers de la section 12, cf. §6bis de la procedure).
     if [ -s "$EMCMP" ]; then
       awk -F'|' '
-        { n++; tab[n]=$1; v[n]=$2+0; col[n]=$4; if (n==1 || v[n]<mn) mn=v[n]; if (n==1 || v[n]>mx) mx=v[n] }
+        { n++; tab[n]=$1; v[n]=$2+0; col[n]=$4; pb[n]=$5+0
+          if (n==1 || v[n]<mn) mn=v[n]; if (n==1 || v[n]>mx) mx=v[n]
+          if (n==1 || pb[n]<pmn) pmn=pb[n]; if (n==1 || pb[n]>pmx) pmx=pb[n] }
         END {
           if (n < 2) {
             printf "     ── EMETTEURS, TABLE PAR TABLE (VPS-M89) : une seule table mesuree — rien a confronter.\n";
@@ -1943,16 +1976,46 @@ for pg in $(db_conteneurs "$MOTEURS_PG"); do
             exit
           }
           printf "     ── LES %d COMPTES D EMETTEURS, CONFRONTES ENTRE EUX (VPS-M89) ──\n", n;
-          for (i=1; i<=n; i++) printf "        %-30s %3d emetteurs sur 24 h  (colonne %s)\n", tab[i], v[i], col[i];
+          for (i=1; i<=n; i++) printf "        %-30s %3d emetteurs sur 24 h  (colonne %s, %.1f ligne(s)/emetteur/h)\n", tab[i], v[i], col[i], pb[i];
+          # ── VPS-M96 (2026-09-09) : LES DEUX TABLES ONT-ELLES LE MEME GRAIN ? ──
+          # Le controle croise de VPS-M89 suppose que les tables confrontees comptent la MEME
+          # CHOSE a des etages differents (une ligne par trame). Il prend les 3 plus GROSSES
+          # tables de la base — et rien ne garantit qu elles soient toutes de ce grain-la.
+          # Mesure du 2026-09-09 sur `tracky_demo` : `positions` (4,7 lignes/emetteur/h) et
+          # `trips` (0,1) — une table de trames et une table de TRAJETS. Le bloc a publie
+          # « 🔴 LES COMPTES DIVERGENT : 34 emetteur(s) decart » : c est un ecart ATTENDU, un
+          # boitier qui roule sans cloturer de trajet apparait legitimement dans lune et pas
+          # dans lautre. Le facteur entre les deux debits par emetteur etait de 42.
+          # 🔑 On ne DEVINE pas mieux, on IMPRIME les deux lectures — discipline VPS-M88.
+          diffgrain = (pmn > 0 && pmx/pmn > 10);
           if (mx == mn) {
             printf "        ✅ LES %d COMPTES SACCORDENT (%d partout). Cest un controle CROISE : ces tables\n", n, mn;
             printf "           sont alimentees par la MEME flotte au MEME instant, a des etages differents\n";
             printf "           de la chaine. Leur egalite ne prouve pas que la flotte va bien — elle prouve\n";
             printf "           quaucun ETAGE ne perd demetteurs, ce quaucune serie table-par-table ne dit.\n";
+          } else if (diffgrain) {
+            printf "        🟠 LES COMPTES DIVERGENT (%d a %d, soit %d decart) — MAIS LES TABLES NAPPARTIENNENT\n", mn, mx, mx-mn;
+            printf "           PAS AU MEME GRAIN : %.1f contre %.1f ligne(s)/emetteur/h, soit un facteur %.0f.\n", pmx, pmn, pmx/pmn;
+            printf "           Les DEUX lectures tiennent debout, et il faut trancher, pas choisir (VPS-M96) :\n";
+            printf "           • soit un ETAGE de la chaine perd des emetteurs — le cas que VPS-M89 vise ;\n";
+            printf "           • soit lune de ces tables compte des AGREGATS (un trajet, une analyse) et non\n";
+            printf "             des trames : un boitier qui roule sans rien cloturer y est LEGITIMEMENT absent.\n";
+            printf "           ⚠️ Le verdict reste ORANGE et non VERT : on refuse le 🔴 qui na pas ete prouve,\n";
+            printf "              on ne declare pas pour autant que tout va bien (VPS-M02).\n";
+            printf "           Pour trancher : comparer deux tables de MEME grain, ou lire la colonne\n";
+            printf "           « ligne(s)/emetteur/h » ci-dessus — deux etages dune meme ingestion sont du\n";
+            printf "           meme ordre de grandeur (30,6 / 114,5 / 92,2 sur tracky_prod le 2026-09-09).\n";
           } else {
             printf "        🔴 LES COMPTES DIVERGENT : %d au minimum, %d au maximum, soit %d emetteur(s) decart.\n", mn, mx, mx-mn;
-            printf "           Ces tables voient la MEME flotte au MEME instant : lecart ne peut PAS venir\n";
-            printf "           de la flotte, il vient dun ETAGE de la chaine qui perd des emetteurs.\n";
+            # ⚠️ ATTRAPE AU BANC LE 2026-09-09, CAS F et G : quand le debit par emetteur est
+            # absent ou nul, `pmx/pmn` ne vaut rien — et la premiere redaction imprimait
+            # quand meme « au MEME grain (facteur 0.0) ». C est-a-dire une AFFIRMATION
+            # rassurante tiree d une mesure NON FAITE : VPS-M02, dans le paragraphe meme qui
+            # vient d etre ecrit pour distinguer les grains. Les deux cas se disent autrement.
+            if (pmn > 0)
+              printf "           Ces tables voient la MEME flotte au MEME instant, au MEME grain (facteur %.1f\n           entre leurs debits par emetteur) : lecart ne peut PAS venir de la flotte, il\n           vient dun ETAGE de la chaine qui perd des emetteurs.\n", pmx/pmn;
+            else
+              printf "           ⚠️ GRAIN NON MESURE (debit par emetteur absent ou nul) : on ne peut donc PAS\n           affirmer que ces tables comptent la meme chose. Lecart est reel ; son\n           interpretation reste ouverte entre « un etage perd des emetteurs » et\n           « les deux tables nont pas le meme grain » (VPS-M96).\n";
             printf "           ⚠️ Chacune de ces lignes peut etre verte dans son propre bloc ci-dessus, et\n";
             printf "              celle qui diverge peut meme y afficher « ✅ flotte STABLE » : une serie\n";
             printf "              comparee a elle-meme ne voit jamais un desaccord entre pairs (mesure du\n";
@@ -2327,7 +2390,20 @@ if [ -r "$UPD_FILE" ]; then
   # part de securite. `grep -o '[0-9]\+'` puis `head -1` : aucun positionnel, aucune hypothese
   # sur la ponctuation de la phrase, qui est traduite selon la locale du systeme.
   UPD_TOT=$(grep -m1 -oE '[0-9]+' "$UPD_FILE" 2>/dev/null | head -1)
-  UPD_SEC=$(grep -iE 'securit|security' "$UPD_FILE" 2>/dev/null | grep -oE '[0-9]+' | head -1)
+  # ⚠️⚠️ VPS-M97 — CORRIGE LE 2026-09-09. LE FILTRE ATTRAPAIT L ARGUMENTAIRE COMMERCIAL D ESM.
+  # L ancien filtre etait `grep -iE 'securit|security'`, sur un fichier qui contient DEUX
+  # lignes portant ce mot, et une seule est un correctif applicable ici :
+  #   « 69 updates can be applied immediately. »                          ← rien de securite
+  #   « M of these updates are standard security updates. »               ← APPLICABLE
+  #   « 1 additional security update can be applied with ESM Apps. »      ← DERRIERE UN ABONNEMENT
+  # Le 2026-09-09, seule la troisieme etait presente : le collecteur a publie « dont 1 de
+  # securite » pendant que le cache apt, FRAIS de 0 h, rendait 0 — et que la machine affiche
+  # « Expanded Security Maintenance for Applications is not enabled ». Ce « 1 » ne designe
+  # AUCUN correctif installable sur cette machine : c est une offre, pas un retard.
+  # 🔑 C est la grandeur qui declenche le plus surement une action humaine, et elle etait la
+  # seule du bloc a pouvoir etre fausse dans le sens ALARMANT sans que rien ne le dise.
+  UPD_SEC=$(grep -iE 'standard security update' "$UPD_FILE" 2>/dev/null | grep -oE '[0-9]+' | head -1)
+  UPD_ESM=$(grep -iE 'can be applied with ESM' "$UPD_FILE" 2>/dev/null | grep -oE '[0-9]+' | head -1)
   if [ -n "$UPD_TOT" ]; then
     printf '  ── 2e source, INDEPENDANTE du cache apt (update-notifier) ──\n'
     printf '     ecrite le : %s  (il y a %s h)\n' \
@@ -2342,10 +2418,16 @@ if [ -r "$UPD_FILE" ]; then
     #    afficher « ? » crie au loup sur le cas normal, afficher « 0 » AFFIRME a partir d une
     #    absence (VPS-M02/M28). On dit donc exactement ce qu on sait, et rien de plus.
     if [ -n "$UPD_SEC" ]; then
-      printf '     dont %s de securite (ligne presente dans le fichier)\n' "$UPD_SEC"
+      printf '     dont %s de securite STANDARD, applicables ici (ligne presente dans le fichier)\n' "$UPD_SEC"
     else
-      echo  "     part securite : LIGNE ABSENTE du fichier. Ubuntu ne l ecrit pas quand elle vaut 0,"
-      echo  "     donc « absente » et « zero » sont indiscernables ICI : c est le cache apt qui tranche."
+      echo  "     part securite STANDARD : LIGNE ABSENTE du fichier. Ubuntu ne l ecrit pas quand elle"
+      echo  "     vaut 0, donc « absente » et « zero » sont indiscernables ICI : le cache apt tranche."
+    fi
+    # ⚠️ VPS-M97 : la ligne ESM est comptee A PART et n est JAMAIS additionnee a la precedente.
+    if [ -n "$UPD_ESM" ]; then
+      printf '     + %s derriere l abonnement ESM Apps — ⚠️ PAS un correctif en attente sur cette\n' "$UPD_ESM"
+      echo  "       machine : ESM n y est pas souscrit, donc il n est PAS installable. Ne pas le"
+      echo  "       compter dans la part de securite (c est une offre, pas un retard)."
     fi
     printf '     → cache apt %s h vs update-notifier %s h : la plus FRAICHE des deux est %s.\n' \
       "$APT_AGE_H" "$UPD_AGE_H" \
@@ -2557,9 +2639,56 @@ systemctl list-timers --no-pager 2>/dev/null | sed 's/^/  /'
 # (`scp -r` ne preserve les droits qu'avec `-p`). Rien dans `list-timers` ne le laisse voir :
 # systemd ne verifie l'executabilite qu'AU MOMENT de lancer, donc l'erreur n'existe qu'apres
 # coup. Ce controle la rend visible AVANT le prochain declenchement.
+# ⚠️⚠️ AJOUTE LE 2026-09-09 (VPS-M91 a, angle mort n° 1 du rapport du 09-08, 1er report traite).
+#
+# Le verdict « ⬜ JAMAIS EXECUTEE » pose par VPS-M87 le 09-07 est JUSTE, et il ne regarde que
+# les unites `*-backup.service` (section 11). Des le lendemain, `tracky-demo-refresh.service` —
+# nee le 09-07 a 14 h 08 — affichait `Result=success` avec `ExecMainExitTimestamp=` VIDE et
+# `LastTriggerUSec=` VIDE : elle n avait jamais tourne, et AUCUN bloc ne l examinait.
+# `systemctl show -p Result` rend `success` PAR DEFAUT sur une unite jamais demarree : ce n est
+# pas un resultat, c est une valeur d initialisation (VPS-M87).
+#
+# 🔑 Le danger n est pas l unite du jour — une hebdomadaire posee un lundi n a evidemment pas
+# tourne le mardi. C est que le MEME affichage rendra la MEME chose le jour ou une unite qui
+# DEVAIT tourner ne tournera pas : VPS-015 dans sa forme pure. On applique donc le verdict aux
+# 22 unites de `list-timers`, pas aux seules 7 qui portent « backup » dans leur nom — c est la
+# liste blanche de VPS-M88, sous une autre forme.
+#
+# ⚠️ COUT : NEGATIF. L ancienne boucle faisait UN `systemctl show` PAR unite (~22 chaines de
+# processus) ; on en fait desormais DEUX au total, en passant toutes les unites au meme appel.
+# Banc du 2026-09-09 sur la machine : `systemctl show a.service b.service -p Id -p Result -p
+# ExecMainExitTimestamp` rend bien deux blocs separes par une ligne VIDE, chacun portant son
+# `Id=`. ⚠️ L ordre des proprietes rendu par systemd N EST PAS celui demande — l analyse se fait
+# donc sur le NOM de la propriete, jamais sur sa position.
 sub "Chaque timer pointe-t-il un script REELLEMENT executable ? (verifie avant l echeance)"
-for t in $(systemctl list-timers --all --no-legend --no-pager 2>/dev/null | awk '{print $NF}' | grep '\.service$' | sort -u); do
-  bin=$(systemctl show "$t" -p ExecStart --value 2>/dev/null | grep -oE 'path=[^ ;]+' | head -1 | cut -d= -f2)
+TMR_LISTE=$(systemctl list-timers --all --no-legend --no-pager 2>/dev/null)
+TMR_SVC=$(printf '%s\n' "$TMR_LISTE" | awk '{print $NF}' | grep '\.service$' | sort -u)
+TMR_TMR=$(printf '%s\n' "$TMR_LISTE" | awk 'NF>1 {print $(NF-1)}' | grep '\.timer$' | sort -u)
+# service → timer, tel que list-timers le DECLARE (et non « X.service ⇒ X.timer » suppose).
+TMR_MAP=$(printf '%s\n' "$TMR_LISTE" | awk 'NF>1 && $NF ~ /\.service$/ {print $NF"\t"$(NF-1)}' | sort -u)
+_sysshow() {  # $1 = liste d unites, $2… = proprietes ; rend « Id<TAB>p1<TAB>p2… » par unite
+  _u="$1"; shift; [ -z "$_u" ] && return 0
+  _args=""; for _p in "$@"; do _args="$_args -p $_p"; done
+  # shellcheck disable=SC2086
+  systemctl show $_u -p Id $_args --no-pager 2>/dev/null | awk -v want="$*" '
+    BEGIN { RS=""; FS="\n"; nw=split(want, w, " ") }
+    {
+      delete v; id="";
+      for (i=1; i<=NF; i++) {
+        e=index($i,"="); if (e<2) continue;
+        k=substr($i,1,e-1); val=substr($i,e+1);
+        if (k=="Id") { id=val } else if (!(k in v)) { v[k]=val }
+      }
+      if (id=="") next;
+      line=id; for (j=1; j<=nw; j++) line=line "\t" (w[j] in v ? v[w[j]] : "");
+      print line;
+    }'
+}
+TMR_ETAT=$(_sysshow "$TMR_SVC" ExecStart ExecMainExitTimestamp Result ActiveState)
+TMR_ECH=$(_sysshow "$TMR_TMR" LastTriggerUSec NextElapseUSecRealtime ActiveState)
+_champ() { printf '%s\n' "$2" | awk -F'\t' -v id="$1" -v c="$3" '$1==id {print $c; exit}'; }
+for t in $TMR_SVC; do
+  bin=$(_champ "$t" "$TMR_ETAT" 2 | grep -oE 'path=[^ ;]+' | head -1 | cut -d= -f2)
   [ -z "$bin" ] && continue
   case "$bin" in /usr/bin/*|/usr/lib/*|/usr/sbin/*|/bin/*|/sbin/*) continue ;; esac  # binaires systeme
   # ⚠️ FAUX POSITIF CORRIGE A LA POSE (2026-08-06) : un `ExecStart` peut etre un nom NU
@@ -2579,6 +2708,56 @@ for t in $(systemctl list-timers --all --no-legend --no-pager 2>/dev/null | awk 
     printf '  ✅ %-34s %s\n' "$t" "$bin"
   fi
 done
+
+# ── VPS-M91 (a) — LE VERDICT DE VPS-M87 ETENDU AUX 22 UNITES, ET PLUS AUX SEULES `*-backup` ──
+# Voir le commentaire d en-tete du bloc precedent. Aucune commande de plus : `$TMR_ETAT` et
+# `$TMR_ECH` sont deja lus. Le verdict est celui de VPS-M87, mot pour mot, avec sa garde :
+# « jamais executee » n est un defaut QUE si rien ne doit la declencher — donc l echeance
+# voyage TOUJOURS avec le verdict, sur la meme ligne.
+sub "Chaque unite a-t-elle REELLEMENT tourne ? (le « success » de systemd est sa valeur par defaut)"
+# ⚠️⚠️ ATTRAPE AU BANC LE 2026-09-09, AVANT PUBLICATION — LA PREMIERE VERSION CRIAIT 3 FOIS
+# PAR JOUR SUR DES UNITES SYSTEME PARFAITEMENT SAINES.
+# `list-timers --all` inclut les minuteries CHARGEES MAIS NON DEMARREES. Trois d entre elles
+# (`apport-autoreport`, `snapd.snap-repair`, `ua-timer`) sont `UnitFileState=enabled` et
+# `ActiveState=inactive` : elles n ont donc AUCUNE echeance, et c est normal. La premiere
+# redaction les declarait « 🔴 rien ne la declenchera : VPS-015 » — trois fausses alertes
+# quotidiennes sur le bloc meme qui existe pour attraper VPS-015. *Un controle de sauvegarde
+# qui crie au loup se fait desactiver en trois jours* (VPS-M13), et c est ainsi qu on perd la
+# vraie alerte. Le discriminant est l `ActiveState` de la MINUTERIE, et il ne coute rien : la
+# propriete part dans le meme `systemctl show` groupe.
+_nb_jam=0; _nb_ko=0; _nb_ok=0; _nb_orph=0; _nb_dorm=0
+for t in $TMR_SVC; do
+  fin=$(_champ "$t" "$TMR_ETAT" 3)
+  res=$(_champ "$t" "$TMR_ETAT" 4)
+  tmr=$(printf '%s\n' "$TMR_MAP" | awk -F'\t' -v s="$t" '$1==s {print $2; exit}')
+  ech=$(_champ "$tmr" "$TMR_ECH" 3)
+  act=$(_champ "$tmr" "$TMR_ECH" 4)
+  if [ -z "$fin" ]; then
+    if [ -n "$ech" ] && [ "$ech" != "n/a" ]; then
+      _nb_jam=$((_nb_jam+1))
+      printf '  ⬜ %-34s JAMAIS EXECUTEE — aucun resultat a lire ; prochaine echeance : %s\n' "$t" "$ech"
+    elif [ -n "$act" ] && [ "$act" != "active" ]; then
+      _nb_dorm=$((_nb_dorm+1))
+      printf '  ⬜ %-34s minuterie %s NON DEMARREE (%s) — sans echeance, et cest normal\n' "$t" "$tmr" "$act"
+    else
+      _nb_orph=$((_nb_orph+1))
+      printf '  🔴 %-34s JAMAIS EXECUTEE, minuterie ACTIVE et SANS echeance (%s) — rien ne la declenchera : VPS-015\n' "$t" "${tmr:-timer inconnu}"
+    fi
+  else
+    case "$res" in
+      success|"") _nb_ok=$((_nb_ok+1));  printf '  ✅ %-34s dernier resultat : succes   (fin %s)\n' "$t" "$fin" ;;
+      *)          _nb_ko=$((_nb_ko+1));  printf '  🔴 %-34s DERNIER RESULTAT : %s   (fin %s)\n' "$t" "$res" "$fin" ;;
+    esac
+  fi
+done
+printf '  → %d unite(s) examinee(s) : %d ont reussi, %d ont ECHOUE, %d jamais executees mais ARMEES,\n     %d minuterie(s) non demarree(s) (normal), %d ACTIVE(S) SANS AUCUNE ECHEANCE (VPS-015).\n' \
+  "$(printf '%s\n' "$TMR_SVC" | grep -c '^..*$')" "$_nb_ok" "$_nb_ko" "$_nb_jam" "$_nb_dorm" "$_nb_orph"
+echo  "     ⚠️ Un ⬜ ARME n est PAS un defaut : une hebdomadaire posee un lundi ne peut pas avoir"
+echo  "        tourne le mardi. C est l absence d echeance SUR UNE MINUTERIE ACTIVE qui qualifie."
+echo  "     ⚠️ Et une minuterie NON DEMARREE n est pas non plus une garantie : elle ne se"
+echo  "        declenchera pas. Si elle DEVAIT le faire, le defaut est en amont (VPS-M02)."
+echo  "     ⚠️ Ce bloc porte sur les unites declenchees par un TIMER. Une unite lancee a la main"
+echo  "        ou par une autre unite n y figure pas — mesure NON FAITE sur elle (VPS-M02)."
 
 # Un meme script lance par cron ET par un timer s'execute DEUX FOIS (cf. VPS-006).
 sub "Doublons cron/timer (meme script des deux cotes)"

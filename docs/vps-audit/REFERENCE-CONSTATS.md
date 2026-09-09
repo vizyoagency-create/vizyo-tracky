@@ -4394,6 +4394,37 @@ mesurant le phénomène (VPS-M12, nouvelle forme).
 ## VPS-033 — La mesure des correctifs de sécurité est perdue 4 passages sur 5, parce que sa source est aléatoire par conception
 
 - **Domaine** : sécurité · **Gravité** : 2 · **Statut** : `A_TRAITER`
+- ✅ **Vu : 2026-09-09 — LA MESURE EST VALIDE, ET ELLE A IMMÉDIATEMENT SERVI À RÉFUTER DEUX
+  ALARMES.** Le cache `apt` est daté du **2026-09-09 à 01 h 29 min 35**, soit **0 h** pour un seuil
+  de 6 : **75 paquets, dont 0 estampillés sécurité — MESURE VALIDE.** C'est le **3ᵉ succès sur 15**
+  passages, et le premier depuis le 09-06.
+  🔑 **Et la réussite de ce contrôle a servi le jour même, sur un autre contrôle** : la seconde
+  source annonçait *« dont 1 de sécurité »*, et c'est la **contradiction** avec le `0` d'`apt`
+  — enfin lisible parce qu'enfin frais — qui a fait ouvrir **VPS-M97**. Ce « 1 » est une ligne
+  **ESM**, c'est-à-dire un correctif derrière un abonnement **non souscrit** : il n'est pas
+  installable ici. *Un défaut peut n'être détectable que le jour où un AUTRE contrôle se remet à
+  fonctionner.*
+  ⚠️ **ET LE TEST DE VPS-M74, ARRIVÉ À ÉCHÉANCE, AURAIT CONCLU FAUX.** Il disait : *« si
+  l'installation a eu lieu ET que le compte n'a pas baissé, la panne est établie. »* L'installateur
+  **a tourné** les 09-07 et 09-08 ; le compte fait **75 le 09-06 → 75 aujourd'hui**, deux mesures
+  **valides**. Mécaniquement : panne établie. **C'est faux, et la vérification tient en trois
+  lignes** :
+
+  ```
+  /etc/apt/apt.conf.d/50unattended-upgrades → Allowed-Origins :
+      Ubuntu:noble | Ubuntu:noble-security | ESMApps | ESM        (noble-updates ABSENT)
+  journal : 09-02 « 34 paquets » · 09-05 « 20 paquets » · sinon « No packages found
+            that can be upgraded unattended »
+  ```
+
+  Les 75 en attente viennent **tous de `noble-updates`** (et du dépôt Docker CE), **hors du champ
+  que la machine installe automatiquement — par configuration, et c'est le réglage standard
+  d'Ubuntu.** L'installateur n'est pas en panne : il fait exactement ce qu'on lui demande, et il l'a
+  prouvé en installant 34 paquets le 09-02 et 20 le 09-05 (dont `openssh-server`).
+  🔑 **Le défaut du test est le même que celui de VPS-M78 : un TOTAL qui ne bouge pas ne prouve
+  rien.** Il ne distingue pas « rien n'est installé » de « ce qui est installable l'a été, et ce qui
+  reste est hors périmètre ». **Le discriminant n'est pas le compte, c'est le JOURNAL de
+  l'installateur** — et il était disponible depuis le début.
 - 🟠 **Vu : 2026-09-07 — LA VALIDITÉ DE LA MESURE S'EST JOUÉE À 37 MINUTES, ET ELLE EST TOMBÉE DU
   MAUVAIS CÔTÉ.** Le cache est daté du **2026-09-06 à 02 h 59 min 53** : c'est **exactement celui
   d'hier**. Le rapport du 09-06 (collecte à 04 h 05) l'a lu à **1 h** d'âge et l'a déclaré ✅ valide ;
@@ -4901,6 +4932,19 @@ confondre les deux ferait accuser le mauvais coupable.
 
 - **Domaine** : données · **Gravité** : **1** (montée le 2026-09-05, sur le seuil écrit le 09-03) ·
   **Statut** : `A_TRAITER`
+- 🟠 **Vu : 2026-09-09 — DEUXIÈME PASSAGE SANS AUCUN MOUVEMENT, ET C'EST LE CUMUL QUI LE DIT.**
+  Le vecteur de bandes est **`0/1/1/12`**, identique à la veille ; et surtout les **cumuls de
+  VPS-M90** sont identiques eux aussi : **`> 1 j : 14 · > 3 j : 13 · > 7 j : 12`** contre
+  `14 · 13 · 12`. *C'est la première fois que le correctif de VPS-M90 sert à son usage prévu — dire
+  qu'il ne s'est rien passé, sans avoir à le déduire d'un tableau de bandes.*
+  ✅ **Et les trois compteurs d'émetteurs s'accordent pour le 2ᵉ jour** : `positions` **30**,
+  `wire_logs` **30**, `position_sampling_decisions` **30**.
+  **Le seuil de réescalade n'est PAS atteint** : il exige `positions` à **32 sur une journée
+  complète**. Il est à **30**. Le constat reste en **gravité 1**.
+  ⚠️ **Le boîtier `864035053277662` reste le cas distinct** : `wire_logs` compte **1** émetteur muet
+  depuis plus de 6 h, dernier arrêt **09-06 14 h 18** — soit les 5 trames sans position du 09-06.
+  Il n'a rien émis depuis. *Son mode de panne — le matériel répond, la chaîne ne rend rien — reste
+  à porter séparément de la cohorte `2ad69ac1…` (V1/V2).*
 - 🟠 **Vu : 2026-09-07 — UN BOÎTIER EST REVENU CINQ SECONDES, N'A PRODUIT AUCUNE POSITION, ET S'EST
   RETU. LE CONSTAT RESTE EN GRAVITÉ 1.**
   **Treize des quatorze ont exactement vieilli de 22,3 h**, l'écart entre les deux collectes. Le
@@ -5091,6 +5135,23 @@ confondre les deux ferait accuser le mauvais coupable.
 ## VPS-040 — Un parc de production de quatre conteneurs est apparu sans annonce, et il est le premier poste de croissance du disque
 
 - **Domaine** : docker / planification · **Gravité** : 3 · **Statut** : `A_TRAITER`
+- 🟠 **Vu : 2026-09-09 — LE PARC N'A PAS BOUGÉ, MAIS IL A ÉTÉ RAFRAÎCHI HORS DE TOUT HORAIRE, ET
+  IL COÛTE MAINTENANT DEUX FAUX 🔴 À LA SECTION 5.**
+  **Périmètre stable** : 37 conteneurs, 12 projets compose, 27 domaines, 31 volumes — aucun objet
+  neuf depuis hier. La base est passée de **433 à 459 Mo** (+26 Mo/j).
+  🔑 **Un rafraîchissement complet a eu lieu le 09-08 à 16 h 14 min 37**, établi par le bloc étendu
+  de **VPS-M91 (a)** : `tracky-demo-refresh.service` porte cette fin d'exécution pendant que **sa
+  minuterie n'a jamais déclenché** (échéance : dimanche 09-13). Les huit tables de la base portent
+  d'ailleurs `recale le 09-08 16:15`. *Un import complet depuis la production, un mardi
+  après-midi, hors de tout horaire déclaré — et aucun catalogue ne l'enregistre. C'est exactement
+  le « défaut de catalogue » que cette fiche décrit, sous une seconde forme.*
+  🔴 **ET LA BASE FRANCHIT LE SEUIL DE 100 Mo, DONC LE BLOC COÛTEUX DE LA SECTION 5 TOURNE SUR
+  ELLE** — pour y produire trois lignes rouges qui sont toutes des artefacts de démonstration :
+  `18 EMETTEURS ONT DISPARU`, `SILENCE : 38 emetteur(s)`, et surtout
+  **`🔴 LES COMPTES DIVERGENT : 34 emetteur(s) decart`** entre `positions` et `trips`.
+  **Ce dernier est un faux, et il a fait ouvrir 🆕 VPS-M96** (corrigé ce passage) : les deux tables
+  n'ont pas le même **grain** — 4,7 lignes/émetteur/h contre 0,1, soit un facteur **42**.
+  ⚠️ **Coût mesuré de cette base sur la collecte** : la section 5 passe de **28 s à 36 s** (+8 s).
 - **Vu** : 2026-09-08 (1ᵉʳ passage) · **Mesure** : le projet compose **`tracky-demo`** — `api`, `web`,
   `redis`, `postgres` — a été déployé le **09-07 à 14 h 08** et n'existait pas au passage précédent.
   Les quatre conteneurs sont `running`, trois sur quatre `healthy`.
@@ -5143,7 +5204,28 @@ confondre les deux ferait accuser le mauvais coupable.
 ## VPS-039 — ~~Le taux de rétention de l'échantillonnage perd 11 points en trois jours~~ → **RÉFUTÉ : la flotte roulait de moins en moins**
 
 - **Domaine** : données · **Gravité** : 4 · **Statut** : `ACCEPTE` — **réfuté le 2026-09-06, le jour
-  même de son ouverture**
+  même de son ouverture ; son TEST DATÉ est retiré le 2026-09-09 comme indécidable**
+- ⚖️ **Vu : 2026-09-09 — LE TEST ÉCRIT D'AVANCE ARRIVE À ÉCHÉANCE, ET IL EST INDÉCIDABLE PAR
+  CONSTRUCTION. Il est RETIRÉ, pas déclaré satisfait.** Il exigeait, *« au passage du 2026-09-09 »*,
+  un taux **≥ 38 %** (cycle confirmé) ou **≤ 32 %** (dérive établie) sur le mardi 09-08.
+  **La mesure rend 31,5 % d'`INSERTED` et 24,3 % de `MOVING`.** Mécaniquement : ≤ 32, donc dérive.
+  **Et ce serait faux, pour deux raisons, toutes deux écrites dans cette fiche même** :
+  1. **Le seuil de 38 % porte sur une AUTRE grandeur.** La « réserve de mesure » ci-dessous le dit :
+     les 40,8 % de la découverte viennent d'un rapport `positions` / `decisions` **entre deux
+     tables**, quand la table des décisions rendait **36,4 %** le même jour. *Comparer 31,5 % à un
+     seuil écrit sur l'autre grandeur, c'est VPS-M85 — réfuter avec la mauvaise mesure.*
+  2. **Le point de référence n'existe plus.** La rétention vaut **3,95 j** ; au 09-09 la table
+     commence au **09-05 03 h 30**. Le jeudi 09-03 (28,0 %), contre lequel le test était écrit,
+     **a été effacé avant l'échéance**. Voir 🆕 **VPS-M94**.
+- ✅ **ET LA QUESTION DE FOND, ELLE, EST TRANCHÉE — sur la table où elle est décidable.**
+  `positions` garde **62 jours** et le collecteur publie déjà la comparaison **au même jour de
+  semaine** : le **mardi 09-09 rend ×0,94 contre le mardi 09-02**, à effectif identique
+  (**30 émetteurs contre 30**), **dans la bande 0,67–1,50**. *Le cycle hebdomadaire tient ; il n'y a
+  pas de dérive.* Et la série `MOVING` des trois journées entières disponibles monte
+  **monotonement** : **13,9 % (dim) → 18,8 % (lun) → 24,3 % (mar)**.
+  🔑 **La leçon vaut mieux que le constat** : *la question « y a-t-il un cycle hebdomadaire ? » a été
+  rouverte quatre passages de suite sur une table qui garde quatre jours. Elle se tranche en une
+  ligne sur la table qui en garde soixante-deux — et cette ligne était déjà imprimée.*
 - ✅ **RÉFUTÉ : 2026-09-06 (quelques heures après l'ouverture du constat).** La table
   `position_sampling_decisions` porte deux colonnes que je n'avais pas ouvertes — `decision` (le
   motif de chaque rejet) et `state` (l'état du véhicule). Elles répondent, sans attendre le
@@ -5230,9 +5312,202 @@ confondre les deux ferait accuser le mauvais coupable.
 
 ## Constats de méthode (sur l'audit lui-même)
 
+### VPS-M97 — Le compteur de correctifs de sécurité attrapait l'argumentaire commercial d'ESM, et il l'a publié comme un retard
+
+- **Domaine** : méthode · **Gravité** : 2 · **Statut** : ✅ `APPLIQUE` le 2026-09-09 (banc sur
+  4 formes de fichier, coût zéro commande)
+- **Vu** : 2026-09-09 · **Mesure à la découverte** : la seconde source (`update-notifier`) a publié
+  **« dont 1 de sécurité »** le jour même où le cache `apt`, **frais de 0 h**, rendait **0**. Le
+  fichier lu contient **deux** lignes portant le mot *security*, et une seule désigne un correctif
+  installable :
+
+  ```
+  Expanded Security Maintenance for Applications is not enabled.   ← ESM n est PAS souscrit
+  69 updates can be applied immediately.
+  1 additional security update can be applied with ESM Apps.       ← DERRIERE UN ABONNEMENT
+  ```
+
+  Le filtre était `grep -iE 'securit|security' | grep -oE '[0-9]+' | head -1` : il a pris le `1` de
+  la ligne ESM. **Ce « 1 » ne désigne aucun correctif applicable sur cette machine** — c'est une
+  offre commerciale, pas un retard.
+- **QUOI — la cause** : un filtre par **mot** sur un fichier dont le mot apparaît dans deux
+  registres différents (un état, une offre). *C'est VPS-M88 et VPS-M91 une troisième fois — un
+  contrôle dont le champ est décidé par une correspondance de chaîne que rien ne garantit.*
+- **`pourquoiInvisible`** : **le « 1 » est plausible**, et il l'est même particulièrement : un
+  correctif de sécurité en attente est exactement ce que ce bloc existe pour trouver. Il n'a
+  dénoté que parce que l'**autre** source, valide le même jour pour la première fois depuis
+  onze passages (VPS-033), rendait **0** — et que la contradiction a forcé la vérification.
+  🔑 **Sans la réussite de VPS-033 ce jour-là, ce défaut n'avait aucune chance d'être vu :** les
+  quatorze passages précédents affichaient `apt` « NON MESURABLE », donc rien à confronter.
+  *Un défaut peut n'être détectable que le jour où un autre contrôle se remet à fonctionner.*
+- ⚠️ **Et c'est la grandeur la plus dangereuse du bloc** : de toutes les valeurs de cette section,
+  « nombre de correctifs de sécurité en attente » est **celle qui déclenche le plus sûrement une
+  action humaine**. C'était aussi la seule à pouvoir être fausse **dans le sens alarmant** sans que
+  rien ne le signale.
+- **Le correctif** : deux extractions **distinctes** et jamais additionnées — `standard security
+  update` (applicable) d'un côté, `can be applied with ESM` de l'autre, la seconde affichée avec la
+  mention explicite qu'elle **n'est pas installable ici**.
+  **Contre-épreuve sur 4 formes de fichier** : **(A)** ESM seul → l'ancien filtre rend `1`, le
+  nouveau rend `standard=absent, ESM=1` ; **(B)** standard seul → **`7` des deux côtés, aucune
+  régression** ; **(C)** les deux lignes → `standard=7, ESM=2`, l'ancien rendait `7` par chance de
+  position ; **(D)** fichier vide → silence des deux côtés. **COÛT : ZÉRO commande de plus.**
+- **`aNePasFaire`** : ❌ **ne pas masquer la ligne ESM.** Elle dit quelque chose de vrai — il existe
+  un correctif que cette machine ne recevra pas. La retirer échangerait un faux retard contre un
+  angle mort. ⚠️ **Et ne pas conclure « 0 de sécurité = à jour »** : Ubuntu publie beaucoup de
+  correctifs par `noble-updates`, qui ne porte pas le mot *security* — la garde était déjà écrite
+  dans le bloc, elle reste vraie.
+
+### VPS-M94 — Un test écrit d'avance contre un point de référence que la rétention efface avant l'échéance
+
+- **Domaine** : méthode · **Gravité** : 2 · **Statut** : `A_TRAITER` (règle écrite, correctif de
+  méthode et non de code)
+- **Vu** : 2026-09-09 · **Mesure** : deux tests datés arrivaient à échéance ce passage, et **les
+  deux tombent entre leurs branches, pour la deuxième fois consécutive** :
+
+  | Test, écrit le | Ce qu'il exigeait | Ce que la machine rend le 09-08 |
+  |---|---|---|
+  | VPS-039, le 09-06 | taux retenu **≥ 38 %** (cycle) ou **≤ 32 %** (dérive) | **31,5 %** |
+  | rapport du 09-08 | `MOVING` **≥ 25 %** (reprise) ou **~18 %** (pas un calendrier) | **24,3 %** |
+
+  Le second manque sa borne de **0,7 point**. Le premier la franchit — mais **sur une grandeur qui
+  n'est pas celle du seuil** : les 38 % venaient d'un rapport `positions` / `decisions` **entre deux
+  tables**, quand 31,5 % est le taux d'`INSERTED` **dans la table des décisions**. La fiche VPS-039
+  écrivait elle-même que *« les niveaux absolus diffèrent »*.
+- **QUOI — la cause, et elle est structurelle** : ces tests se réfèrent au **jeudi 09-03** (28,0 %),
+  et `position_sampling_decisions` a une rétention de **3,95 jours**. **Le point de référence a été
+  effacé de la table avant que le test n'arrive à échéance.** Au 09-09, la table commence au
+  **09-05 03:30** : les seules journées entières disponibles sont 09-06, 09-07 et 09-08.
+  🔑 **Un test daté à J+3 sur une source qui n'en garde que 4 est indécidable par construction** —
+  et rien, au moment de l'écrire, ne le disait.
+- **La démonstration, mesurée** : le point du **09-05** valait **18,6 %** hier (journée entière,
+  58 423 lignes) et vaut **21,7 %** aujourd'hui (49 374 lignes, début à **03 h 30**). **+3,1 points
+  sans qu'un seul événement ne se produise** : la journée a perdu ses heures de nuit, celles où les
+  véhicules sont à l'arrêt. *C'est **VPS-M93** qui se reproduit à l'identique, un jour plus tard, sur
+  le jour suivant — la prédiction écrite hier (« il continuera de monter chaque heure ») est vérifiée.*
+- **`pourquoiInvisible`** : un test écrit d'avance est le bon réflexe de ce dispositif, et il a
+  fermé VPS-013 et VPS-038. **Ce qui manquait n'est pas la rigueur, c'est une vérification de
+  faisabilité** : *la source garde-t-elle son point de référence jusqu'à l'échéance ?* Personne ne
+  la fait, parce que la fenêtre de rétention et la date du test sont écrites dans deux endroits
+  différents et à deux moments différents.
+- **QUOI FAIRE** : **la règle, à appliquer à chaque test daté** — avant d'écrire *« au passage du
+  JJ/MM, la grandeur X devra valoir Y »*, vérifier que **la fenêtre de rétention de la source de X
+  couvre encore l'écart entre aujourd'hui et JJ/MM, plus la profondeur du point de comparaison**.
+  Si elle ne le couvre pas, **changer de source, pas de date**.
+  ✅ **Et sur ce cas précis, la bonne source existe et le collecteur la lit déjà** : `positions`
+  garde **62 jours** et publie la comparaison **au même jour de semaine**. Le 09-09 elle rend
+  **×0,94 mardi contre mardi**, à effectif identique (30 émetteurs) — **dans la bande**. *La
+  question du cycle hebdomadaire, rouverte quatre passages de suite sur une table de 4 jours, se
+  tranche en une ligne sur la table de 62.*
+- **`aNePasFaire`** : ❌ **ne pas « choisir la branche qui arrange »** quand un test tombe dans
+  l'intervalle — ni « la reprise est confirmée » à 24,3 % pour 25 attendus, ni « la dérive est
+  établie » à 31,5 % contre un seuil écrit sur une autre grandeur.
+  ❌ **ne pas reporter le test d'un jour** : la fenêtre reculera d'autant, et le point de référence
+  sera **encore plus** effacé. Reporter un test indécidable le rend moins décidable, pas plus.
+
+### VPS-M96 — Le contrôle croisé de VPS-M89 confrontait une table de trames à une table de trajets, et il a crié au loup
+
+- **Domaine** : méthode · **Gravité** : 2 · **Statut** : ✅ `APPLIQUE` le 2026-09-09 (banc sur
+  7 cas dont les 3 vecteurs réels, coût zéro requête)
+- **Vu** : 2026-09-09 · **Mesure à la découverte** : sur la base **`tracky_demo`**, le bloc de
+  confrontation posé la veille a publié :
+
+  ```
+  positions   37 emetteurs sur 24 h        trips    3 emetteurs sur 24 h
+  🔴 LES COMPTES DIVERGENT : 3 au minimum, 37 au maximum, soit 34 emetteur(s) decart.
+     Ces tables voient la MEME flotte au MEME instant : lecart ne peut PAS venir
+     de la flotte, il vient dun ETAGE de la chaine qui perd des emetteurs.
+  ```
+
+  **L'affirmation est fausse, et l'écart est attendu** : `positions` porte **une ligne par trame**
+  (4,7 lignes/émetteur/h), `trips` **une ligne par trajet clôturé** (0,1). Un boîtier qui roule sans
+  clôturer de trajet dans la fenêtre est **légitimement** dans l'une et pas dans l'autre.
+- **QUOI — la cause** : le bloc confronte les **trois plus grosses tables** de la base, et suppose
+  qu'elles comptent toutes la même chose à des étages différents. C'est vrai sur `tracky_prod`
+  (`positions`, `wire_logs`, `position_sampling_decisions` : 30,6 / 114,5 / 92,2 lignes/émetteur/h,
+  **facteur 3,7**) et faux dès qu'une table d'**agrégats** entre dans le trio — ce qui est arrivé
+  **le lendemain de la pose**, sur la base de démonstration devenue assez grosse pour franchir le
+  seuil de 100 Mo.
+- **`pourquoiInvisible`** : **le 🔴 est plausible et il est même spectaculaire** — 34 émetteurs
+  d'écart sur la famille de constats la plus lourde de la machine (VPS-038, gravité 1). *Un
+  correctif posé la veille produit une alerte majeure le lendemain, et rien ne distingue son faux
+  positif d'une vraie perte de flotte.*
+  🔑 **C'est le quatrième remède de cette série à porter un défaut de son propre père** :
+  VPS-M76 → VPS-M78 → VPS-M90 → VPS-M96. *Ici la faute n'est plus symétrique, elle est de PORTÉE :
+  le contrôle a raison, et il s'applique là où sa prémisse ne tient pas.*
+- **Le correctif** : le **débit par émetteur** — déjà calculé, jamais retenu — devient le
+  discriminant de **grain**. Au-delà d'un facteur **10** entre le plus haut et le plus bas, le
+  verdict passe de 🔴 à **🟠**, avec les **deux lectures énoncées côte à côte** (un étage qui perd
+  des émetteurs / des tables de grains différents) et le moyen de trancher. **Jamais VERT** : on
+  refuse le rouge non prouvé, on ne déclare pas pour autant que tout va bien (VPS-M02).
+- **Contre-épreuve, 7 cas, sur le code réel extrait du collecteur et non sur une paraphrase** :
+  **(A)** `tracky_prod` du 09-09, 30/30/30 → ✅ inchangé ; **(B)** la divergence **réelle** du 09-07
+  rejouée (31/30/30, facteur de grain 4,2) → **🔴 conservé, aucune régression** ; **(C)** le faux du
+  jour → 🟠 avec le facteur 42 nommé ; **(D)** une seule table → « comparaison NON FAITE » ;
+  **(E)** fichier vide → silence (garde `[ -s ]` du shell) ; **(F)** débit nul et **(G)** 5ᵉ champ
+  absent → voir ci-dessous. **COÛT : ZÉRO requête.**
+- ⚠️ **L'aveu que le banc a arraché avant publication, pour la deuxième fois en deux passages.**
+  Les cas **F** et **G** ont montré que la branche 🔴, quand le grain n'est **pas** mesurable
+  (`pmn = 0`), imprimait quand même *« au MEME grain (facteur 0.0) »* — **une affirmation
+  rassurante tirée d'une mesure non faite, dans le paragraphe même écrit pour distinguer les
+  grains.** C'est VPS-M02, commis à l'intérieur de son propre correctif. La branche dit désormais
+  **« GRAIN NON MESURÉ »** et laisse les deux lectures ouvertes.
+- **`aNePasFaire`** : ❌ **ne pas retirer la confrontation** : elle a attrapé la divergence réelle
+  du 09-07 et le rejeu (B) prouve qu'elle l'attrape toujours. ❌ **ne pas écarter la base de
+  démonstration par une liste de noms** — c'est VPS-M88, et VPS-M91 (b) l'a déjà refusé une fois.
+  *Le discriminant doit être une propriété MESURÉE de la table, pas une convention de nommage.*
+
+### VPS-M95 — Le dénominateur était honnête, la somme ne l'était pas : `/opt` a perdu 1,5 Go sans perdre un octet
+
+- **Domaine** : méthode · **Gravité** : 2 · **Statut** : ✅ `APPLIQUE` le 2026-09-09 (banc sur
+  3 cas, coût zéro commande)
+- **Vu** : 2026-09-09 · **Mesure à la découverte** :
+
+  | | 2026-09-08 | 2026-09-09 |
+  |---|---|---|
+  | ligne publiée | `→ /opt = 6.0 Go, mesures sur 18 / 18 sous-dossiers, en 32 s` | `→ /opt = 4.5 Go, mesures sur 17 / 18 sous-dossiers, en 40 s` |
+  | `/opt/maalem` | **1,5 Go**, mesuré en 8 224 ms | **non mesuré** — `timeout 12` dépassé (12 004 ms) |
+
+  **L'écart de −1,5 Go est exactement le dossier manquant.** Rien n'a été supprimé, rien n'a
+  changé sur le disque.
+- **QUOI — la cause** : la moitié du garde était posée. Le **dénominateur** (`17 / 18`) et la ligne
+  `⚠️ NON MESURE` étaient imprimés, tous les deux, correctement. Mais **la grandeur que l'on compare
+  d'un passage à l'autre est la SOMME** — et la somme, elle, ne portait **aucune marque**.
+  🔑 *C'est VPS-M08 / VPS-M22 à un cran de plus : annoncer le dénominateur ne suffit pas s'il faut
+  le lire pour savoir que le NUMÉRATEUR est faux.*
+- ⚠️ **Et le tirage est aléatoire.** Le coût d'un `du` varie d'un facteur **~20** entre froid et
+  chaud (VPS-M18) : ce n'est pas toujours le même dossier qui tombe sous le `timeout 12`. **Une
+  série de totaux `/opt` mélange donc des périmètres différents sans jamais le dire.**
+- **`pourquoiInvisible`** : la ligne était **complète et bien formée**, et le chiffre a l'air d'un
+  chiffre. Le lecteur qui compare deux rapports lit `6,0` puis `4,5` ; le `17 / 18` est sur la même
+  ligne, quatre mots plus loin, et ne se lit que si l'on sait déjà qu'il faut le lire.
+- **Le correctif** : la somme partielle est publiée `≥ X Go` avec un **🔴 explicite disant qu'elle
+  ne se compare pas**, et la somme complète porte un **✅ disant qu'elle se compare**. *La ligne
+  verte est indispensable : sans elle, on ne peut pas voir qu'une comparabilité a **cessé**.*
+  **Contre-épreuve, 3 cas** : 18/18 → ✅ comparable ; 17/18 → `≥ 4,5 Go` + 🔴 ; 0/18 (dégénéré) →
+  `≥ 0,0 Go` + 🔴, **et non « /opt est vide »**. **COÛT : ZÉRO commande de plus.**
+- **`aNePasFaire`** : ❌ **ne pas allonger le `timeout 12` pour « faire passer maalem ».** Le
+  plafond global de 45 s de ce bloc existe pour borner le coût de l'audit sur 2 vCPU (VPS-M05) ;
+  l'allonger déplacerait le dépassement sur la durée totale, déjà à 147 s pour un budget de 90.
+  ❌ **ne pas retirer le total** : il reste utile *dans* un passage. C'est sa **comparaison** entre
+  passages qui est fausse, et c'est elle qu'on interdit.
+
 ### VPS-M93 — Le jour le plus ancien d'une série est érodé par la rétention, et son point dérive sans que rien n'arrive
 
-- **Domaine** : méthode · **Gravité** : 2 · **Statut** : `A_TRAITER` (piste écrite, coût nul)
+- **Domaine** : méthode · **Gravité** : 2 · **Statut** : `A_TRAITER` (piste écrite, coût nul) —
+  ✅ **PRÉDICTION VÉRIFIÉE le 2026-09-09**
+- ✅ **Vu : 2026-09-09 — LE MÊME PHÉNOMÈNE S'EST REPRODUIT SUR LE JOUR SUIVANT, EXACTEMENT COMME
+  ANNONCÉ.** Cette fiche écrivait hier : *« il a maigri par le bas, et il continuera de monter
+  chaque heure jusqu'à disparaître. »*
+
+  | | mesuré le 09-08 | mesuré le 09-09 |
+  |---|---|---|
+  | le point `sam 09-05` | **18,6 %** `MOVING`, 58 423 lignes, journée entière | **21,7 %** `MOVING`, **49 374** lignes, début à **03 h 30** |
+
+  **+3,1 points, −9 049 lignes, zéro événement.** Le 09-04 a entièrement disparu de la table ; le
+  09-05 est devenu le nouveau jour rongé. *La prédiction n'était pas une intuition : elle découlait
+  de la fenêtre, et la fenêtre a fait ce qu'elle devait faire.*
+  🔑 **Et ce passage montre ce que le constat coûte vraiment** — pas 3 points sur un tableau, mais
+  **deux tests datés rendus indécidables** : voir **VPS-M94**, ouvert ce jour.
 - **Vu** : 2026-09-08 · **Mesure** : le rapport du 09-07 inscrivait **`ven 09-04 : MOVING 25,3 %`**.
   **La même requête, le lendemain, rend `29,5 %` pour le même jour** — un écart de **4,2 points**.
   Aucune ligne n'a été ajoutée à un jour passé : **des lignes en ont été retirées.**
@@ -5295,7 +5570,30 @@ confondre les deux ferait accuser le mauvais coupable.
 
 ### VPS-M91 — La couverture des sauvegardes ne connaît pas « reconstructible », et le verdict « jamais exécutée » ne couvre que les unités `*-backup`
 
-- **Domaine** : méthode · **Gravité** : 2 · **Statut** : `A_TRAITER` (pistes écrites, coût nul)
+- **Domaine** : méthode · **Gravité** : 2 · **Statut** : ✅ **volet (a) `APPLIQUE` le 2026-09-09**
+  (banc sur la machine, coût **négatif**) · **volet (b) `A_TRAITER`, intact**
+- ✅ **Volet (a), corrigé le 2026-09-09.** Le verdict de VPS-M87 est étendu aux **25 unités** que
+  `systemctl list-timers --all` déclare, et non plus aux seules 7 portant « backup » dans leur nom.
+  Première mesure en service : **22 ont réussi, 0 ont échoué, 0 armées-jamais-exécutées, 3
+  minuteries non démarrées, 0 active sans échéance.**
+  ⚠️ **COÛT NÉGATIF, et c'est mesurable** : l'ancienne boucle faisait **un `systemctl show` par
+  unité** (~22 chaînes de processus) ; il y en a désormais **deux au total**, toutes les unités
+  passant au même appel. *Banc sur la machine : `systemctl show a.service b.service -p Id …` rend
+  bien un bloc par unité, séparés par une ligne vide — et **l'ordre des propriétés n'est pas celui
+  demandé**, donc l'analyse porte sur le nom, jamais sur la position.*
+  🔴 **ET LE BANC A ARRÊTÉ TROIS FAUSSES ALERTES AVANT PUBLICATION.** La première rédaction
+  déclarait *« 🔴 JAMAIS EXÉCUTÉE et AUCUNE échéance — rien ne la déclenchera : VPS-015 »* sur
+  `apport-autoreport`, `snapd.snap-repair` et `ua-timer`. Vérification faite : les trois sont
+  `UnitFileState=enabled` **et `ActiveState=inactive`** — chargées, non démarrées, donc **sans
+  échéance et c'est normal**. *Trois fausses alertes quotidiennes sur le bloc même qui existe pour
+  attraper VPS-015 : « un contrôle qui crie au loup se fait désactiver en trois jours » (VPS-M13),
+  et c'est ainsi qu'on perd la vraie alerte.* Le discriminant est l'`ActiveState` **de la
+  minuterie**, et il voyage dans le même appel groupé — coût nul.
+  🔑 **Et le bloc a immédiatement produit un fait que rien d'autre ne disait** :
+  `tracky-demo-refresh.service` porte `ExecMainExitTimestamp = 2026-09-08 16:14:37 UTC` pendant que
+  **sa minuterie n'a toujours jamais déclenché** (`LastTriggerUSec` vide, échéance dimanche 09-13).
+  *Un rafraîchissement complet de la base de démonstration depuis la production a donc eu lieu un
+  mardi après-midi, hors de tout horaire déclaré, et aucun catalogue ne l'enregistre* (VPS-040).
 - **Vu** : 2026-09-08 · **Deux mesures, un même angle mort — la portée d'un bloc qui a raison** :
   - **(a) `Result=success` sur une unité née la veille et jamais exécutée.**
     `tracky-demo-refresh.service` (créée le 09-07 à 14 h 08) porte `Result=success` avec
