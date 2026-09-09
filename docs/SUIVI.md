@@ -7,6 +7,11 @@
 >
 > **Règle de tenue :** après chaque tâche terminée, on coche ici **et** on met à jour sa ligne
 > `T-nn` / `V-nn` dans la roadmap. Une tâche ne disparaît jamais : elle passe en ✅ avec sa date.
+>
+> 📺 **La même chose en page lisible, à ouvrir depuis n'importe quel appareil :**
+> <https://claude.ai/code/artifact/860096da-d994-4fa5-ab53-6fda6c3fd817>
+> Les coches y sont gardées. Ce fichier reste la source ; la page en est le miroir, et les deux
+> se mettent à jour ensemble.
 
 *Dernière mise à jour : 2026-09-10 · dépôt sur `main`*
 
