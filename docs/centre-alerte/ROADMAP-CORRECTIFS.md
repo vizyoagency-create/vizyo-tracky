@@ -63,12 +63,37 @@ d'une section à l'autre sans le dire, ou cocher `[x]` sur la foi d'une fiche pl
 
 ---
 
-## 🗂️ Tableau de bord — 55 tâches, l'avancement d'un coup d'œil
+## 🗂️ Tableau de bord — 56 tâches, l'avancement d'un coup d'œil
 
-**Au 2026-09-08 (après la routine VPS) : 5 faites · 3 déployées, preuve attendue · 0 commitée ·
-47 ouvertes.**
+**Au 2026-09-09 (après la routine centre d'alerte) : 6 faites · 4 déployées, preuve attendue ·
+0 commitée · 46 ouvertes.**
 
-> ✅ **LE FAIT DU JOUR, 08/09 : V11 REMONTE DE `»` À ✅ FAIT, ET LA PREUVE EST VENUE EN QUATRE
+> ✅ **LE FAIT DU JOUR, 09/09 : T24 PASSE À ✅ FAIT, ET LA PREUVE ÉTAIT ÉCRITE D'AVANCE — AU MOT
+> PRÈS.** La consigne du 08/09 exigeait *« 24 lignes, **dont une ou plusieurs MARQUÉES
+> INTERROMPUES** — et si le compte monte à 24 sans qu'aucune ne soit marquée, on a maquillé le carnet
+> au lieu de le tenir »*. Le **08/09 rend 24 passages sur 24, dont EXACTEMENT 1 `interrupted`** :
+> celui de **05:45:00**, tué en vol par le déploiement de 05:45. **Les deux moitiés du test sont
+> franchies séparément** — le compte monte à 24, *et* la ligne manquante n'a pas été fabriquée.
+> 🔑 *Une consigne qui prévoit d'avance la façon dont on pourrait la satisfaire malhonnêtement est ce
+> qui sépare une preuve d'un chiffre qui arrange.*
+>
+> ✅ **Et T26 passe à `»` DÉPLOYÉ** : le trajet du 8 juillet s'est tu — dernière ligne le 08/09 15:55,
+> puis **8 passages horaires sans une seule**, après *une par passage sans exception*. ⚠️ **Sa double
+> condition était invérifiable telle qu'elle avait été écrite la veille : elle est REFORMULÉE, pas
+> déclarée satisfaite.** *Le correctif ne retire aucun candidat, il les exclut à la sélection — donc
+> une lecture voit le vivier, et le vivier GROSSIT (17 → 20, dont 3 → 4 immortels). C'est la fuite
+> lente annoncée, à la vitesse annoncée.*
+>
+> 🔴 **Le seul chiffre qui ment ce jour est celui de T13.** Le recalage rend **0,0 %** d'échec sur
+> 24 h contre 85,5 % la veille — **mais le 07/09 lui-même est passé de 85,5 % à 1,2 % pour LES MÊMES
+> trajets**, recalés *après* leur clôture par le rattrapage. La fenêtre n'a pas bougé : **le passé a
+> bougé.** `trips` n'a pas d'`updatedAt`, donc rien ne distingue « bien fait tout de suite » de
+> « rattrapé la nuit suivante ». **La série de dix points ne se prolonge pas**, et **T28 est ouverte**
+> pour redéfinir la mesure *avant* que quiconque ne conclue sur T13.
+>
+> ---
+>
+> ✅ **LE FAIT DU 08/09 : V11 REMONTE DE `»` À ✅ FAIT, ET LA PREUVE EST VENUE EN QUATRE
 > EXEMPLAIRES.** Requalifiée **vers le bas** la veille — *« la règle n° 2 vaut aussi quand elle
 > dérange »* —, elle remonte aujourd'hui **sur mesure, pas sur promesse** : `LastTriggerUSec` porte
 > **07/09 04 h 30 min 56 / 04 h 40 min 56 / 04 h 50 min 30 UTC**, `ExecMainExitTimestamp` est **non
@@ -92,7 +117,7 @@ d'une section à l'autre sans le dire, ou cocher `[x]` sur la foi d'une fiche pl
 
 > 🖥️ **Le même état, en visuel : [`TABLEAU-DE-BORD.html`](./TABLEAU-DE-BORD.html)** — un fichier autonome, regénéré à chaque passage des deux routines quotidiennes, qui se filtre par gravité, par partie et par état. *Il ne remplace pas ce fichier-ci : il en donne l'état, jamais le pourquoi.*
 
-### Partie I — centre d'alerte *(27 tâches)*
+### Partie I — centre d'alerte *(28 tâches)*
 
 | | ID | Fiche | La tâche | État |
 |:--:|:--:|---|---|---|
@@ -108,7 +133,7 @@ d'une section à l'autre sans le dire, ou cocher `[x]` sur la foi d'une fiche pl
 | `»` | **T10** | TRK-070 | Le niveau de l'escalade suit la **cause**, pas la gravité | 🗓️ **DÉPLOYÉ** `2112e9ae` |
 | `»` | **T11** | TRK-068 | Borner le `fetch` vers Vizyo Auth *(+ le jumeau)* | 🗓️ **DÉPLOYÉ** `c80632ba` |
 | ☐ | **T12** | TRK-022 | Déduplication **générique** des alarmes du boîtier | 🔧 À CODER |
-| ☐ | **T13** | TRK-016 | Recalage cartographique — **~88 % d'échec** | 🔧 CHANTIER |
+| ☐ | **T13** | TRK-016 | Recalage — **flux neuf réparé (0 %)**, mais **la mesure ne mesure plus** et 8 882 trajets d'historique restent | 🔧 CHANTIER |
 | ☐ | **T14** | TRK-053 | Provoquer ou requalifier *(échéance **08/09**)* | ⛔ sans occasion |
 | ☐ | **T15** | TRK-060 | Guetter : « Un point de mesure système… » | 🗓️ NON EXERCÉ |
 | ☐ | **T16** | TRK-064 | **À clore ?** — le sujet a changé, la chaîne est armée | 🗓️ NON EXERCÉ |
@@ -119,10 +144,11 @@ d'une section à l'autre sans le dire, ou cocher `[x]` sur la foi d'une fiche pl
 | ☐ | **T21** | TRK-018 | Accusé de remise de la passerelle SMS | ⛔ BLOQUÉ |
 | ☐ | **T22** | TRK-014 | Rectifier son `quoiFaire` *(renvoie à TRK-012, clos)* | 🧹 dette doc |
 | ☐ | **T23** | — | Créer ou déréférencer `TACHES-AMELIORATION.md` | 🧹 dette doc |
-| ☐ | **T24** | TRK-073 | 🔴 **Marquer le passage au DÉPART, pas à l'arrivée** *(8 passages perdus)* | 🔧 À CODER |
-| ☐ | **T25** | TRK-074 | Donner une **résolution automatique** au témoin des tâches | 🔧 À CODER |
-| ☐ | **T26** | TRK-075 | 🔴 Remonter la décision d'alerter au bon étage, et **borner le rejeu par la rétention** | 🔧 À CODER |
-| `»` | **T27** | TRK-076 | La carte **survit à une perte de contexte WebGL** *(corrigé hors session)* | 🗓️ **DÉPLOYÉ** `09d04e2b` |
+| ☑ | **T24** | TRK-073 | ✅ **La ligne au DÉPART** — *24/24 le 08/09, **dont 1 marquée `interrupted`***, la consigne écrite d'avance est tombée au mot près | ✅ **FAIT ET PROUVÉ** `dae97b03` |
+| ☐ | **T25** | TRK-074 | Donner une **résolution automatique** au témoin des tâches — **3ᵉ vérif. négative**, 4 `CRITICAL` de 4 jours | 🔧 À CODER |
+| `»` | **T26** | TRK-075 | Le trajet s'est tu — **8 passages sans une ligne** ; ⚠️ double condition **reformulée**, pas satisfaite | 🗓️ **DÉPLOYÉ** `dc35f1a3` |
+| `»` | **T27** | TRK-076 | La carte **survit à une perte de contexte WebGL** — **0 ligne sur 48 h**, échéance 15/09 | 🗓️ **DÉPLOYÉ** `09d04e2b` |
+| ☐ | **T28** | TRK-016 | 🆕 🔴 **Redéfinir la mesure du recalage** : à la clôture, sur une fenêtre **fermée** — *sans ça, T13 est indécidable* | 🔧 À CODER |
 
 ### Partie II — VPS *(28 tâches)*
 
@@ -160,9 +186,16 @@ d'une section à l'autre sans le dire, ou cocher `[x]` sur la foi d'une fiche pl
 
 
 > ⭐ **Les deux tâches les plus rentables de tout le fichier, si vous n'en faites que deux :**
-> **T1** *(recharger un compte IA — rien d'autre ne débloque quoi que ce soit, 97 h)* et **T24**
-> *(marquer le passage au départ — tant que ce n'est pas fait, **on ne peut pas savoir si une tâche
-> de fond tourne**, et chaque redéploiement fabrique de fausses `CRITICAL`)*.
+> **T1** *(recharger un compte IA — rien d'autre ne débloque quoi que ce soit, **145 h au 09/09**)*
+> et **T25** *(la résolution automatique du témoin des tâches — 4 `CRITICAL` traînent depuis 4 jours
+> pendant que sa jumelle archive seule, et **c'est ce genre d'écran qui finit par faire dire « videz
+> tout »**)*.
+>
+> *T24, qui occupait cette place depuis le 06/09, est **faite et prouvée** le 09/09.* 🔑 **Et elle
+> laisse une leçon de méthode plus durable que le correctif :** sa consigne d'acceptation prévoyait
+> **d'avance la façon dont on aurait pu la satisfaire malhonnêtement** (« si le compte monte à 24
+> sans qu'aucune ne soit marquée, on a maquillé le carnet »). *C'est ce qui sépare une preuve d'un
+> chiffre qui arrange* — et c'est reproductible sur n'importe quelle autre tâche de ce fichier.
 >
 > *T10, qui occupait cette place hier, est **déployée**.* ⚠️ **V11 y était aussi, annoncée « faite
 > et prouvée » — elle est redescendue à **déployée** le 07/09 : ses trois minuteries n'avaient
@@ -194,6 +227,8 @@ d'une section à l'autre sans le dire, ou cocher `[x]` sur la foi d'une fiche pl
 | **05/09** | 65 | **Déploiement non annoncé de 17:01** : six correctifs d'un coup, deux prouvés le jour même (TRK-061, TRK-059) ; les alertes de vitesse enfin armées sur 2 sociétés sur 5 *(🆕 TRK-067, TRK-068)* |
 | **07/09** | **94** | **La tâche tournait, son carnet de bord était vide, et le témoin a crié « à l'arrêt »** — 8 passages sur 24 perdus le 06/09 alors que **sept portent la preuve d'avoir tourné** *(🆕 TRK-073, TRK-074)* |
 | **06/09** | **82** | **Les DEUX fournisseurs IA sont à sec en même temps** — le repli `claude → gpt` livré la veille a été exercé 6 min après sa mise en ligne et n'avait nulle part où aller *(🆕 TRK-070, TRK-071, TRK-072)* |
+| **08/09** | **118** | **Un seul trajet du 8 juillet produit 15 des 17 défauts neufs** : ses positions viennent de franchir le front de purge, et trois commentaires promettent un silence que leur couche n'a pas le pouvoir d'accorder *(🆕 TRK-075, TRK-076)* |
+| **09/09** | **138** | **Une preuve écrite d'avance tombe au mot près** — 24 passages sur 24 dont **1 marqué `interrupted`** *(T24 ✅)*, le trajet du 8 juillet se tait *(T26 `»`)*, et **le seul chiffre qui ment est celui du recalage : le passé a été réécrit** *(🆕 T28)* |
 
 **Ce que la série raconte** — les actives passent de 26 à 82 en six jours, et **ce n'est pas une
 dégradation de la plateforme** : **48 des 82** sont des `DEGRADATION` (Overpass, dépendance tierce
@@ -848,6 +883,10 @@ feront perdre une heure le jour où quelqu'un les suivra.*
 
 | Date | ID | Tâche | État | Commit | La preuve |
 |---|:--:|---|:--:|---|---|
+| **09/09** | **T24** | [TRK-073](./REFERENCE-ERREURS.md#trk-073) — marquer le passage au DÉPART | ✅ **FAIT ET PROUVÉ** | `dae97b03` + `dc35f1a3` | 🎯 **LA CONSIGNE ÉCRITE D'AVANCE EST TOMBÉE AU MOT PRÈS.** Elle exigeait *« 24 lignes, **dont une ou plusieurs MARQUÉES INTERROMPUES** — et si le compte monte à 24 sans qu'aucune ne soit marquée, on a maquillé le carnet »*. **Le 08/09 rend 24 passages sur 24, dont EXACTEMENT 1 `interrupted`** : celui de **05:45:00**, tué en vol par le déploiement de 05:45. **Les deux moitiés sont franchies séparément** — le compte monte à 24, *et* la ligne manquante n'a pas été fabriquée. Série : 05/09 **23** · 06/09 **16** · 07/09 **17** · 08/09 **24**. Déployé **08/09 17:12:05** (migration `20260908053000`). Vérifié sur l'**artefact servi** : `running` **×7**, `interrupted` **×2** dans `dist/trip-analysis/trip-automation.service.js`. 🔴 **L'effet de bord est réel et déjà traité** : depuis `f988c74e`, **une `CRITICAL` suffit à envoyer un e-mail**, donc tout déploiement pendant un passage en enverrait un — `deploy.sh` **refuse désormais de partir** quand une ligne `running` est ouverte (`fd87ca46`), **vérifié présent sur le VPS**, arbre git propre au commit `578038d0`. ⚠️ **`trip_automation_runs` ne garde que 100 lignes** : le 04/09 valait 22 le 06/09 et vaut **19** ce jour — la journée la plus ancienne **s'érode par le bas**, la mise en garde écrite hier vient de servir. ⚠️ **L'audit du 08/09 cherchait `EN_COURS` et le trouvait absent** — le correctif avait livré la même idée sous le nom `running` : *chercher le mot d'une spécification plutôt que le comportement qu'elle décrit fait manquer un correctif présent* |
+| **09/09** | **T26** | [TRK-075](./REFERENCE-ERREURS.md#trk-075) — remonter la décision d'alerter, borner le rejeu | `»` **DÉPLOYÉ** *(moitié de la preuve venue)* | `dc35f1a3` | ✅ **Le trajet s'est tu** : dernière ligne le **08/09 15:55:05**, puis **8 passages horaires consécutifs sans aucune** ligne `stage: 'compute'` (tous `done`), après **une par passage sans exception** depuis le 07/09 03:45 — 27 au total. Artefact servi : `PositionsIntrouvables` ×2, `fige-retention` ×5, `fige-sans-positions` ×5, `horizonRetention` ×7. ⚠️ **LA SECONDE MOITIÉ DE LA DOUBLE CONDITION ÉTAIT INVÉRIFIABLE TELLE QU'ÉCRITE, ET ELLE EST REFORMULÉE PLUTÔT QUE DÉCLARÉE SATISFAITE.** « Les candidats tombent de 17 à 14 » suppose que le correctif retire des lignes : il n'en retire **aucune**, il **exclut** les candidats sous l'horizon *à la sélection*. Une lecture voit donc le **vivier**, et le vivier **GROSSIT** : **17 → 20**, dont **3 → 4** sous l'horizon. *C'est la fuite lente annoncée, à la vitesse annoncée : +3 candidats et +1 immortel par jour.* Et le rejeu **n'est pas éteint** — les 8 passages ont analysé **2 à 8 trajets chacun**, 30 analyses portent un `computedAt` postérieur. 🗓️ **Test qui tranche au 10/09** : **24 h pleines** sans une ligne, pendant que le vivier sous horizon passe de **4 à ~5** |
+| **09/09** | **T28** | 🆕 [TRK-016](./REFERENCE-ERREURS.md#trk-016) — redéfinir la mesure du recalage | ☐ **OUVERT** | — | *(tâche neuve)* 🔴 **L'instrument a cessé de mesurer ce qu'il mesurait.** La fenêtre 24 h rend **0,0 %** d'échec (186 trajets, 0 sans recalage ; **témoin impossible posé** : longueur minimale **265** caractères, aucune chaîne vide — ce sont de vraies géométries) contre **85,5 %** la veille. **Mais le 07/09 lui-même est passé de 85,5 % à 1,2 % POUR LES MÊMES TRAJETS** : ils ont été recalés **après leur clôture**, par `recalerAnciensTraces` ou par le recalage à la demande du rejeu (`c2afb01f`). *La fenêtre n'a pas bougé — le passé a bougé.* 🔴 **Et `trips` n'a pas d'`updatedAt`** : rien ne distingue « bien fait tout de suite » de « rattrapé la nuit suivante ». **La série de dix points ne se prolonge pas.** Ce qui reste mesurable : **1 150 trajets d'historique déjà recalés sur 10 032**. ⏳ **Preuve attendue au 10/09** : ~**1 510** à 15 par passage — *s'il ne bouge pas, le rattrapage ne tourne pas ; s'il bondit très au-delà, un autre chemin recale en masse et il faut le nommer* |
+| **09/09** | **T13** | [TRK-016](./REFERENCE-ERREURS.md#trk-016) — le chantier du recalage | ☐ **OUVERT, et sa prémisse est périmée** | — | **Le « ~88 % d'échec depuis avril » sur lequel ce chantier devait s'ouvrir ne décrit plus rien** : le flux neuf est réparé (0 % sur les trajets clôturés depuis le 08/09). Ce qui reste est **l'historique** — **8 882 trajets** non recalés — et **une mesure cassée**. 👉 **Faire T28 AVANT de rouvrir ou de clore T13** : sur une grandeur que le rattrapage réécrit, aucune conclusion n'est décidable |
 | **08/09** *(VPS)* | **V11** | VPS-013 — trois bases de production sans sauvegarde reproductible | ✅ **FAIT ET PROUVÉ** *(remonté de `[»]`)* | *(unités systemd)* | ✅ **Les trois preuves écrites d'avance le 07/09 sont tombées, toutes les trois.** **(1)** `LastTriggerUSec` **renseigné** : `vizyo-manager-backup` **07/09 04:30:56**, `vizyo-texto-backup` **04:40:56**, `capcom6-backup` **04:50:30** — chacun **à la seconde près sur son propre `OnCalendar`**. **(2)** `ExecMainExitTimestamp` **non vide** (04:30:57 · 04:40:57 · 04:50:30), donc le `Result=success` est **adossé à une fin réelle** et non à la valeur par défaut de systemd *(VPS-M87)*. **(3)** **DEUX** copies dans chacun de `/var/backups/{vizyo_manager,vizyo_texto,sms}`, datées 06/09 puis 07/09. 🔑 **LE DISCRIMINANT DE VPS-M81, RETOURNÉ** : le 06/09 les trois démarrages tombaient dans la **même seconde** (06:35:47-48) — un `systemctl start` en rafale, donc un **geste** ; le 07/09 ils tombent à **10 min d'intervalle**. *Trois horloges distinctes qui sonnent chacune à son heure ne sont pas une main qui appuie trois fois.* 🔑 **Et une quatrième preuve, non demandée** : le journal imprime sa rétention et elle **compte** — « 0 supprimée(s), **1** conservée(s) » le 06/09, « **2** conservée(s) » le 07/09. Le second passage a **relu un dossier qu'un passage précédent avait peuplé** : un cycle, pas une exécution. ⚠️ **Aucune unité n'a été relancée à la main** entre les deux passages — le test est resté décidable |
 | **08/09** *(VPS)* | **V27** | 🆕 [VPS-040](../vps-audit/REFERENCE-CONSTATS.md) · VPS-M91 — trancher si la base de **démonstration** doit être sauvegardée | ☐ **OUVERT** | — | *(tâche neuve)* Le parc `tracky-demo` a été déployé le **07/09 à 14 h 08** (4 conteneurs) et le collecteur écrit `🔴 AUCUNE SAUVEGARDE → la sauvegarder couterait 433MB par jour`. **Le suivre coûterait ~13 Go** (433 Mo/j × 30 j) **sur un disque à 55 %**, pour copier une base que `demo-refresh.sh` **reconstruit depuis la production** chaque dimanche — source qui est, elle, sauvegardée (✅ à jour, 42 copies). ⏳ **Question restante, produit et non machine** : `demo_replay_frames` (28 Mo, 115 265 lignes) n'existe **pas** en production — l'import les regénère-t-il ? ⚠️ **Ne pas éteindre le 🔴 en allongeant une liste blanche de noms** : ce serait reproduire la cause de VPS-M88. Le verdict doit rester **ORANGE** — *un faux vert sur une sauvegarde est la plus chère des erreurs de ce dispositif* |
 | **08/09** *(VPS)* | **V26** | VPS-013 · VPS-M88 — ranger les dossiers de sauvegarde abandonnés | 🔓 **DÉBLOQUÉE** *(reste ouverte)* | — | **Le test de V11 est clos, donc le renommage ne rend plus rien indécidable.** 🔴 **Et le faux orange est désormais MESURÉ, pas prédit** : `capcom6`, `vizyo-manager` et `vizyo-texto` affichent **93 h ⚠️ PÉRIMÉE** pendant que `sms`, `vizyo_manager` et `vizyo_texto` portent chacun **2 copies de 21 h**. Pire, la table de **couverture** dit l'inverse sur les mêmes applications (« en retard (3 j) »), sauf `texto-postgres` que le rapprochement attrape. *Deux des trois sont faux côté couverture ; les trois le sont côté âge.* ⚠️ **Renommer, jamais supprimer**, et **seulement après** avoir constaté les copies fraîches — l'ordre inverse laisse `capcom6` sans aucune sauvegarde si le nouveau mécanisme tombe la même nuit |
@@ -887,9 +926,27 @@ feront perdre une heure le jour où quelqu'un les suivra.*
    ⚠️ **Les deux attendent une OCCASION qui ne vient pas** : aucun échec IA depuis le 05/09 17:00,
    aucun rejet de transport depuis le 04/09 12:57. *Un correctif déployé qu'aucun événement
    n'exerce reste un correctif non prouvé — le dire vaut mieux que l'oublier.*
-4. 🆕 **Relever la série de `trip_automation_runs`** — 02/09 **15** · 03/09 **23** · 04/09 **22** ·
-   05/09 **23** · 06/09 **16** passages sur 24. C'est la mesure de **T24**, et elle ne devient
-   dicible qu'à force de points.
+4. ~~🆕 **Relever la série de `trip_automation_runs`**~~ → ✅ **T24 EST CLOSE le 09/09.** Série
+   complète : 02/09 **15** · 03/09 **23** · 04/09 **22** · 05/09 **23** · 06/09 **16** · 07/09 **17**
+   · **08/09 24 sur 24, dont 1 `interrupted`**. ⚠️ **Cette série est désormais à recopier ici et
+   nulle part ailleurs** : `trip_automation_runs` ne garde que **100 lignes**, et le 04/09 est déjà
+   passé de 22 à **19 par le bas**. *Une preuve qui doit être relue plus tard doit vivre hors d'une
+   table qui s'élague.*
+
+6. 🆕 **Au 09/09, trois tests sont écrits d'avance pour le 10/09 :**
+   - 🔬 **T26** — **24 h pleines sans une seule ligne** `stage: 'compute'` pour un trajet sous
+     l'horizon, **pendant que** le vivier sous horizon passe de **4 à ~5**. *Si les lignes
+     reviennent, le gel ne tient pas ; si le vivier sous horizon cesse de croître, on a purgé au lieu
+     de borner.*
+   - 🔬 **T28 / T13** — les trajets d'historique déjà recalés doivent passer de **1 150** à **~1 510**
+     (15 par passage × 24 passages). *Immobile = le rattrapage ne tourne pas ; très au-delà = un
+     autre chemin recale en masse, et il faut le nommer avant d'en tirer quoi que ce soit.*
+   - 🔬 **La sentinelle « vitesse contredite » change de forme** (`8fa14cb4`, en ligne depuis 17:12) :
+     au passage de **06:30**, le message doit désigner **les véhicules qui sortent du lot** (≥ 5
+     analyses touchées **et** ≥ 50 % des leurs) et porter `vehiculesHorsNorme` au contexte — et non
+     plus des flottes entières. ⚠️ **Il doit rester possible qu'elle se taise** : une flotte sans
+     véhicule hors norme ne doit produire **aucune** ligne. *Un instrument qui ne peut plus rien dire
+     rend le même silence qu'un instrument qui n'a rien à dire — c'est la leçon du témoin désarmé.*
 5. 🆕 **Au 08/09 après la routine VPS, deux tests sont écrits d'avance pour le 09/09 :**
    - 🔬 **Le taux `MOVING` du mardi 09-08** doit rendre **≥ 25 %** si la reprise d'activité est en
      cours. La série des journées **complètes** fait ven 09-04 *(tronquée)* · sam **18,6 %** · dim

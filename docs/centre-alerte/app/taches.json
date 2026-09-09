@@ -1,7 +1,7 @@
 {
   "_comment": "SOURCE STRUCTUREE DES TACHES — lue par app/generer-tableau-de-bord.mjs pour produire TABLEAU-DE-BORD.html. Le fichier de PROSE reste ROADMAP-CORRECTIFS.md : il dit le detail, le pourquoi et les pieges. Ici, uniquement l'etat. LES DEUX DOIVENT S'ACCORDER — si l'un dit FAIT et l'autre OUVERT, c'est la PREUVE qui tranche, jamais le fichier le plus recent. Un identifiant n'est JAMAIS reutilise, meme quand la tache est close.",
   "version": 1,
-  "misAJourLe": "2026-09-08",
+  "misAJourLe": "2026-09-09",
   "etats": {
     "OUVERT": {
       "libelle": "Ouvert",
@@ -224,19 +224,20 @@
       "id": "T13",
       "partie": "centre-alerte",
       "fiche": "TRK-016",
-      "titre": "Recalage cartographique : ~88 % d'echec depuis avril",
-      "detail": "Mesure fraiche du 07/09 : 82 trajets sur 94, soit 87,2 pour cent. Cinquieme point sous le nouveau code, stable autour de 88 pour cent sur trois releves frais. Le chantier peut s ouvrir sur ce chiffre.",
+      "titre": "Recalage cartographique : flux neuf repare, mesure a redefinir, historique a rattraper",
+      "detail": "AU 09/09 LE CHIFFRE BRUT INDUIT EN ERREUR. La fenetre 24 h rend 0,0 pour cent d echec (186 trajets, 0 sans recalage) contre 85,5 pour cent la veille — mais le 07/09 LUI-MEME est passe de 85,5 a 1,2 pour cent POUR LES MEMES TRAJETS : ils ont ete recales APRES leur cloture, par le rattrapage recalerAnciensTraces (15 par passage, deploye a 17:12) ou par le recalage a la demande du rejeu (c2afb01f). Temoin impossible pose avant de conclure : polylineMatched vide = 0, longueur minimale 265 caracteres, moyenne 20 188 — ce sont de vraies geometries. La serie de dix points ne se prolonge donc pas par ce 0,0 : la definition a change sous elle. Et trips porte un createdAt mais PAS d updatedAt, donc le recalage ne peut pas etre date. Ce qui reste mesurable est le stock : 10 032 trajets de 2 a 60 jours, dont 1 150 deja recales.",
       "classe": "CHANTIER",
       "gravite": 2,
       "etat": "OUVERT",
-      "depuis": "2026-08-09"
+      "depuis": "2026-08-09",
+      "preuveAttendue": "Au 10/09, a 15 trajets par passage et 24 passages, les 1 150 trajets anciens deja recales doivent passer a environ 1 510. S il ne bouge pas, le rattrapage ne tourne pas ; s il bondit tres au-dela, un autre chemin recale en masse et il faut le nommer. La tache T28 doit etre faite AVANT de conclure quoi que ce soit sur T13."
     },
     {
       "id": "T14",
       "partie": "centre-alerte",
       "fiche": "TRK-053",
       "titre": "Provoquer ou requalifier : boitier debranche ne fait pas taire les alarmes",
-      "detail": "Deploye le 01/09, sans regression — alertes_depuis_declaration vaut 7, QUATRE points identiques les 4, 5, 6 et 7 septembre — mais JAMAIS exerce : les 10 vehicules declares sont muets. Echeance atteinte le 08/09 : provoquer en atelier, ou requalifier.",
+      "detail": "Correctif deploye le 01/09 a 09:17. Sans regression : alertes_depuis_declaration vaut 7 au 09/09, 6e point identique. Ce qui manque est une OCCASION : les 10 vehicules declares hors service sont muets, et un correctif qui fait taire des boitiers deja silencieux ne prouve rien. ECHEANCE DU 08/09 DEPASSEE : la decision ne peut plus attendre — provoquer au prochain retour de LLD, ou requalifier.",
       "classe": "TEST_DATE",
       "gravite": 1,
       "etat": "OUVERT",
@@ -353,17 +354,17 @@
       "detail": "L historique de l automatisation ne peut contenir que des succes : persistRun et recordRun ne sont appeles que sur le chemin heureux. Un passage interrompu y est indiscernable d un passage qui n a jamais eu lieu, et le temoin de vie en conclut a tort que la tache est a l arret. Ecrire la ligne au depart en etat EN COURS, la completer a la cloture, et refermer au demarrage du service celles restees ouvertes.",
       "classe": "A_CODER",
       "gravite": 1,
-      "etat": "OUVERT",
+      "etat": "FAIT",
       "depuis": "2026-09-06",
-      "phare": true,
-      "preuveAttendue": "Au prochain jour comportant un redeploiement, trip_automation_runs doit porter 24 lignes, dont une ou plusieurs MARQUEES INTERROMPUES — et non 16 lignes toutes en succes. Si le compte monte a 24 sans qu aucune ne soit marquee interrompue, on a maquille le carnet au lieu de le tenir."
+      "preuveAttendue": "Au prochain jour comportant un redeploiement, trip_automation_runs doit porter 24 lignes, dont une ou plusieurs MARQUEES INTERROMPUES — et non 16 lignes toutes en succes. Si le compte monte a 24 sans qu aucune ne soit marquee interrompue, on a maquille le carnet au lieu de le tenir.",
+      "preuve": "09/09 : la consigne ecrite d avance est tombee AU MOT PRES. Le 08/09 porte 24 passages sur 24, dont EXACTEMENT 1 marque interrupted — celui de 05:45:00, tue en vol par le deploiement de 05:45. Les deux moities du test sont franchies separement : le compte monte a 24, ET la ligne manquante n a pas ete fabriquee. Serie : 05/09 23, 06/09 16, 07/09 17, 08/09 24. Deploye le 08/09 a 17:12:05 (dae97b03 + dc35f1a3, migration 20260908053000). Verifie sur l ARTEFACT SERVI : running x7 et interrupted x2 dans dist/trip-analysis/trip-automation.service.js. Le garde-fou qui evite l effet de bord est en place sur le VPS : deploy.sh refuse de partir quand une ligne running est ouverte (fd87ca46, arbre git propre au commit 578038d0). ATTENTION : trip_automation_runs ne garde que 100 lignes, la journee la plus ancienne de la fenetre s erode par le bas (04/09 valait 22 le 06/09, vaut 19 le 09/09) — ne pas la lire comme une baisse."
     },
     {
       "id": "T25",
       "partie": "centre-alerte",
       "fiche": "TRK-074",
       "titre": "Donner une resolution automatique au temoin des taches planifiees",
-      "detail": "Quatre CRITICAL du 6 septembre restent ouvertes alors que la condition est close depuis 20h45. La sentinelle des agents du poste, nee le 5 septembre, archive les siennes toute seule — quatre sur quatre le meme jour. Porter ce comportement, en filtrant sur le NOM DE TACHE structure et jamais sur le texte du message.",
+      "detail": "Quatre CRITICAL du 6 septembre restent ouvertes alors que la condition est close depuis 20h45. La sentinelle des agents du poste archive les siennes toute seule — encore une fois le 08/09 a 16:50. Porter ce comportement, en filtrant sur le NOM DE TACHE structure et jamais sur le texte du message. Au 09/09 : 3e verification negative sur l artefact servi, resolution automatique toujours absente de dist/observability/scheduled-task-heartbeat.service.js. Les 4 lignes ont 4 jours. L ecart entre les deux instruments se creuse d un jour par jour, et c est ce qui finit par faire dire videz l ecran.",
       "classe": "A_CODER",
       "gravite": 2,
       "etat": "OUVERT",
@@ -697,10 +698,10 @@
       "detail": "Deux defauts qui se composent. UN : la methode d analyse enregistre au centre d alerte dans son PROPRE bloc de rattrapage puis releve, alors que ses trois appelants decident ensuite quoi en faire — et deux d entre eux portent un commentaire promettant explicitement de se taire, le troisieme annoncant que le figeage tient lieu de trace. Trois commentaires promettent un silence que leur couche n a pas le pouvoir d accorder : lui donner un drapeau de signalement explicite, vrai par defaut pour la route utilisateur. DEUX : la methode de rejeu des analyses incompletes n a pas le plancher de retention que sa jumelle possede, si bien qu un candidat dont les positions sont purgees reste candidat pour toujours et remonte en tete de file. Poser ce plancher. Le refus d ecrire une analyse vide, lui, ne doit PAS bouger : il est juste.",
       "classe": "A_CODER",
       "gravite": 1,
-      "etat": "OUVERT",
+      "etat": "DEPLOYE",
       "depuis": "2026-09-08",
       "phare": true,
-      "preuveAttendue": "Double condition. Plus AUCUNE ligne de source trip-analysis portant le marqueur d etape compute pour un trajet sous l horizon de retention ; ET le compte de candidats au rejeu qui tombe de 17 a 14, SANS que le nombre d analyses rejouees par passage tombe a zero. Si les deux tombent, on a eteint le rejeu au lieu de le borner. Et un refus AU-DESSUS de l horizon doit continuer de crier : c est le seul cas ou l absence de positions est une vraie anomalie."
+      "preuveAttendue": "MOITIE VENUE le 09/09 : plus aucune ligne stage=compute depuis le 08/09 15:55, soit 8 passages horaires consecutifs tous done, apres UNE PAR PASSAGE sans exception depuis le 07/09 03:45 (27 au total). Artefact servi verifie : PositionsIntrouvables x2 dans trip-analysis.service.js, fige-retention x5, fige-sans-positions x5, horizonRetention x7. MOITIE REFORMULEE : la condition candidats 17 vers 14 etait INVERIFIABLE telle qu ecrite — le correctif ne retire aucune ligne, il EXCLUT les candidats sous l horizon au moment de la selection. Une lecture voit le vivier, et le vivier GROSSIT : 17 vers 20, dont 3 vers 4 sous l horizon. C est la fuite lente annoncee, a la vitesse annoncee. Le rejeu n est pas eteint : 8 passages ont analyse 2 a 8 trajets chacun, 30 analyses portent un computedAt posterieur au deploiement. TEST QUI TRANCHE AU 10/09 : 24 h pleines sans une seule ligne stage=compute, pendant que le vivier sous horizon passe de 4 a environ 5. Si les lignes reviennent, le gel ne tient pas ; si le vivier sous horizon cesse de croitre, on a purge au lieu de borner."
     },
     {
       "id": "T27",
@@ -713,7 +714,19 @@
       "etat": "DEPLOYE",
       "depuis": "2026-09-07",
       "deployeLe": "2026-09-08",
-      "preuveAttendue": "Marqueurs deja VERIFIES SUR L ARTEFACT SERVI le 08/09 (ecoute de la perte de contexte et nouvelle garde presentes dans le paquet livre par le serveur web, image de 00h56m15). Ce qui manque est la preuve de PRODUCTION : aucune nouvelle erreur de cette famille sur sept jours, ET l apparition du bandeau de reprise plutot qu un message generique si le cas se reproduit. A la collecte, l artefact n avait que vingt-six minutes de vie."
+      "preuveAttendue": "Au 09/09 : 0 ligne getSource depuis le deploiement du 08/09 01:01, soit 48 h. La barre que la fiche se donne est de sept jours — echeance au 15/09. Preuve complete : aucune nouvelle ligne sur 7 j, ET le bandeau de reprise plutot qu un Une erreur est survenue si le cas se reproduit."
+    },
+    {
+      "id": "T28",
+      "partie": "centre-alerte",
+      "fiche": "TRK-016",
+      "titre": "Redefinir la mesure du recalage : a la cloture, sur une fenetre fermee",
+      "detail": "Un taux calcule sur polylineMatched IS NULL dans une fenetre glissante melange desormais DEUX choses : ce que le recalage fait A LA CLOTURE du trajet, et ce que le rattrapage fait RETROACTIVEMENT. Mesure du 09/09 : le 07/09 rendait 85,5 pour cent d echec la veille et rend 1,2 pour cent le lendemain, sans qu aucun trajet nouveau ne soit apparu. La colonne n a pas d horodatage — trips porte un createdAt, pas d updatedAt — donc rien ne distingue bien fait tout de suite de rattrape la nuit suivante. Le geste : mesurer le recalage a la cloture (horodater la pose du trace, ou compter sur une fenetre FERMEE anterieure au rattrapage), et publier les deux grandeurs separement : qualite a la cloture, avancement du rattrapage.",
+      "classe": "A_CODER",
+      "gravite": 2,
+      "etat": "OUVERT",
+      "depuis": "2026-09-09",
+      "preuveAttendue": "Deux nombres distincts publies, et le premier ne doit plus bouger retroactivement : re-mesurer une journee close deux jours de suite doit rendre la MEME valeur. Tant que ce n est pas le cas, aucune conclusion sur T13 n est decidable."
     }
   ]
 }
