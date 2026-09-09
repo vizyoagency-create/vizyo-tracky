@@ -62,7 +62,7 @@ export class UsersController {
   private static readonly DOMAINE_DEMO = '@demo.vizyoagency.com';
 
   /**
-   * ── EN DÉMONSTRATION, UN PROSPECT NE VOIT QUE LUI-MÊME ───────────────────────────────
+   * ── EN DÉMONSTRATION, UN PROSPECT NE VOIT QUE SA LIGNÉE ──────────────────────────────
    *
    * L'isolation, dans ce produit, se fait par FLOTTE : `GET /users` borne à
    * `fleetId = celui de l'appelant`. La démonstration n'a qu'une flotte, par choix — c'est
@@ -79,18 +79,65 @@ export class UsersController {
    * levier, et on ne peut pas descendre le prospect sous FLEET_ADMIN sans lui retirer la
    * moitié du produit qu'il vient voir. D'où ce filtre, au ras de la requête.
    *
-   * Ce qui reste visible : lui-même, et les comptes de rôle du seed — fictifs, et utiles à
-   * la démonstration de la gestion d'équipe. Le super-administrateur n'est pas filtré :
-   * c'est l'exploitant, et c'est lui qui administre la démonstration.
+   * ── LA CLOISON EST UN ARBRE, PAS UN MUR AUTOUR DE SOI ────────────────────────────────
+   *
+   * Un prospect garde le droit d'inviter : c'est ce qui lui montre la gestion d'équipe, et
+   * c'est le geste qu'il vient évaluer. Il doit donc VOIR les collègues qu'il a invités —
+   * sinon la fonction qu'on lui laisse ne lui montre rien. Mais il ne doit jamais voir la
+   * lignée d'un AUTRE prospect.
+   *
+   * On borne donc à la descendance d'invitation du lecteur : lui, ceux qu'il a invités, ceux
+   * qu'ils ont invités à leur tour. Jamais ses ascendants — l'adresse du commercial qui l'a
+   * fait venir ne le regarde pas — et jamais une lignée sœur.
+   *
+   * L'arbre se reconstruit depuis `Invitation` (`createdById` → `email`), qui SURVIT à son
+   * acceptation : rien à ajouter au schéma. Deux lectures de plus par appel, sur des tables
+   * qui tiennent en quelques dizaines de lignes, et seulement en démonstration.
+   *
+   * Ce qui reste visible en plus : les comptes de rôle du seed — fictifs, et utiles à la
+   * démonstration. Le super-administrateur n'est pas filtré : c'est l'exploitant.
    */
-  private cloisonDemo(viewer: { id: string; role: UserRole }): Prisma.UserWhereInput | null {
+  private async cloisonDemo(
+    viewer: { id: string; role: UserRole },
+  ): Promise<{ utilisateurs: Prisma.UserWhereInput; invitations: Prisma.InvitationWhereInput } | null> {
     if (!this.demoMode?.enabled) return null;
     if (viewer.role === UserRole.SUPER_ADMIN) return null;
+
+    const [invitations, comptes] = await Promise.all([
+      this.prisma.invitation.findMany({ select: { email: true, createdById: true } }),
+      this.prisma.user.findMany({ select: { id: true, email: true } }),
+    ]);
+    const idParEmail = new Map(comptes.map((c) => [c.email.toLowerCase(), c.id]));
+
+    // Parcours en largeur de la descendance. Un e-mail déjà vu ne se rouvre pas : c'est ce
+    // qui borne le parcours si deux invitations se croisaient.
+    const idsAutorises = new Set<string>([viewer.id]);
+    const emailsVus = new Set<string>();
+    const file: string[] = [viewer.id];
+    while (file.length > 0) {
+      const auteur = file.shift()!;
+      for (const inv of invitations) {
+        if (inv.createdById !== auteur) continue;
+        const email = inv.email.toLowerCase();
+        if (emailsVus.has(email)) continue;
+        emailsVus.add(email);
+        const id = idParEmail.get(email);
+        if (id && !idsAutorises.has(id)) {
+          idsAutorises.add(id);
+          file.push(id);
+        }
+      }
+    }
+
     return {
-      OR: [
-        { id: viewer.id },
-        { email: { endsWith: UsersController.DOMAINE_DEMO } },
-      ],
+      utilisateurs: {
+        OR: [
+          { id: { in: [...idsAutorises] } },
+          { email: { endsWith: UsersController.DOMAINE_DEMO } },
+        ],
+      },
+      // Une invitation en attente EST une adresse en clair : même lignée, même règle.
+      invitations: { createdById: { in: [...idsAutorises] } },
     };
   }
 
@@ -248,8 +295,10 @@ export class UsersController {
     // Démonstration — une invitation en attente EST une adresse en clair. Un non-super-admin
     // ne voit que les siennes : le commercial gère les prospects qu'il a invités, un prospect
     // n'en voit aucune.
-    if (this.cloisonDemo(req.user)) {
-      items = items.filter((it) => it.createdById === req.user.id);
+    const cloison = await this.cloisonDemo(req.user);
+    if (cloison) {
+      const lignee = cloison.invitations.createdById as { in: string[] };
+      items = items.filter((it) => lignee.in.includes(it.createdById));
     }
     // Owner plateforme — masque l'owner comme CRÉATEUR d'invitation (→ compte
     // système) pour un viewer non-owner, sans cacher l'invitation elle-même
@@ -403,9 +452,9 @@ export class UsersController {
     // Owner plateforme — invisible aux autres super-admins (un owner voit tout).
     if (this.ownerVis.isMasked(req.user)) where.isOwner = false;
 
-    // Démonstration — un prospect ne voit que lui-même et les comptes de rôle.
-    const cloison = this.cloisonDemo(req.user);
-    if (cloison) Object.assign(where, cloison);
+    // Démonstration — un prospect ne voit que sa propre lignée d'invitation.
+    const cloison = await this.cloisonDemo(req.user);
+    if (cloison) Object.assign(where, cloison.utilisateurs);
 
     const users = await this.prisma.user.findMany({
       where,
@@ -430,9 +479,8 @@ export class UsersController {
       if (req.user.role !== UserRole.SUPER_ADMIN) {
         invWhere.fleetId = req.user.fleetId;
       }
-      // Démonstration — une invitation en attente EST une adresse en clair : on ne montre
-      // à un non-super-admin que celles qu'il a émises lui-même.
-      if (this.cloisonDemo(req.user)) invWhere.createdById = req.user.id;
+      // Démonstration — une invitation en attente EST une adresse en clair : même lignée.
+      if (cloison) Object.assign(invWhere, cloison.invitations);
       const invitations = await this.prisma.invitation.findMany({
         where: invWhere,
         orderBy: { createdAt: 'desc' },
@@ -497,8 +545,8 @@ export class UsersController {
     if (this.ownerVis.isMasked(req.user)) fleetFilter.isOwner = false;
 
     // Démonstration — le panorama rend e-mails, rôles ET permissions : même cloison.
-    const cloisonPanorama = this.cloisonDemo(req.user);
-    if (cloisonPanorama) Object.assign(fleetFilter, cloisonPanorama);
+    const cloisonPanorama = await this.cloisonDemo(req.user);
+    if (cloisonPanorama) Object.assign(fleetFilter, cloisonPanorama.utilisateurs);
 
     const [users, groups] = await Promise.all([
       this.prisma.user.findMany({
