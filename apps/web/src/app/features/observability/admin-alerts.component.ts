@@ -6,6 +6,7 @@ import {
   AlertTriangle,
   ArrowLeft,
   BookOpen,
+  ListChecks,
   Archive,
   Bug,
   CheckCircle,
@@ -87,6 +88,17 @@ const AUCUN_AGENT_EN_ALERTE: AgentsDuPosteBloc = { ouverts: 0, lignes: [] };
           </p>
         </div>
         <div class="flex gap-2">
+          <!-- Le POSTE DE COMMANDE du proprietaire : ce qui reste a faire, qui agit, ou on en
+               est. La page est GENEREE depuis docs/centre-alerte/app/taches.json — la meme
+               source que le tableau de bord ci-dessous — et republiee par l'audit de nuit.
+               ⚠️ Elle est privee : un autre compte y verrait une invitation a se connecter. -->
+          <a href="https://claude.ai/code/artifact/860096da-d994-4fa5-ab53-6fda6c3fd817"
+             target="_blank" rel="noopener"
+             class="px-3 py-2 bg-bg-secondary border border-border-subtle text-fg-secondary rounded-lg text-sm font-medium hover:text-fg-primary cursor-pointer flex items-center gap-2 no-underline"
+             title="Poste de commande : ce qu'il reste a faire, tenu a jour par l'audit de nuit">
+            <lucide-icon [img]="ListChecks" [size]="14"></lucide-icon>
+            <span class="hidden sm:inline">Poste de commande</span>
+          </a>
           <button (click)="wikiOpen.set(true)"
                   class="px-3 py-2 bg-bg-secondary border border-border-subtle text-fg-secondary rounded-lg text-sm font-medium hover:text-fg-primary cursor-pointer flex items-center gap-2"
                   title="Referentiel des erreurs, procedure d'audit et rapports quotidiens">
@@ -655,6 +667,7 @@ export class AdminAlertsComponent implements OnInit {
   protected readonly AlertTriangle = AlertTriangle;
   protected readonly ArrowLeft = ArrowLeft;
   protected readonly BookOpen = BookOpen;
+  protected readonly ListChecks = ListChecks;
   protected readonly Bug = Bug;
   protected readonly CheckCircle = CheckCircle;
   protected readonly Copy = Copy;

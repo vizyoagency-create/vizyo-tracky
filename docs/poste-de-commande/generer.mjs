@@ -72,6 +72,41 @@ const PASTILLE = {
 
 const lire = (f) => JSON.parse(readFileSync(f, 'utf8'));
 
+/**
+ * ⚠️ UN `</script>` DANS UNE DONNÉE COUPERAIT LE BLOC EN DEUX.
+ *
+ * Le JSON est posé dans un `<script type="application/json">` : le navigateur y cherche la
+ * première balise fermante, sans se soucier des guillemets JSON. Un titre de tâche — ou une
+ * note que le propriétaire tape sur la page — contenant ces neuf caractères casserait donc la
+ * page en silence, et la régénération suivante planterait à la relecture.
+ *
+ * Échapper `<` en `<` règle les deux : la balise ne peut plus apparaître, et `JSON.parse`
+ * rend la chaîne d'origine sans que personne n'ait à la déséchapper.
+ */
+const enJsonSurUnePage = (valeur) => JSON.stringify(valeur).replace(/</g, '\\u003c');
+
+/**
+ * Lire le bloc d'état d'une page publiée, MÊME si une balise fermante s'y est glissée.
+ *
+ * Les pages écrites avant le 2026-09-10 n'échappaient pas `<` : une note du propriétaire
+ * contenant une balise fermante y a coupé le bloc en deux. S'arrêter à la première balise
+ * rendrait alors un JSON tronqué, et l'audit perdrait toutes les coches d'un coup.
+ *
+ * On essaie donc chaque fermeture candidate, de la plus proche à la plus lointaine, et on
+ * garde la PREMIÈRE qui donne un JSON valide. Aucune ne convient : on refuse, sans rien
+ * écrire — mieux vaut une page d'hier qu'une page dont les coches ont disparu.
+ */
+function lireEtatPublie(html) {
+  const ouverture = '<script id="etat" type="application/json">';
+  const debut = html.indexOf(ouverture);
+  if (debut < 0) throw new Error('Page publiée sans bloc <script id="etat"> : je refuse d’effacer les coches.');
+  const apres = debut + ouverture.length;
+  for (let i = html.indexOf('</script>', apres); i > -1; i = html.indexOf('</script>', i + 1)) {
+    try { return JSON.parse(html.slice(apres, i).trim()); } catch { /* fermeture suivante */ }
+  }
+  throw new Error('Bloc <script id="etat"> illisible : je refuse d’effacer les coches.');
+}
+
 function main() {
   const argEtat = process.argv.indexOf('--etat');
   const source = lire(TACHES);
@@ -156,16 +191,14 @@ function main() {
   // Les cases cochées par le propriétaire, reprises telles quelles depuis la page publiée.
   let etat = '{"version":1,"taches":{},"decisions":{},"maj":null}';
   if (argEtat > -1 && process.argv[argEtat + 1]) {
-    const publiee = readFileSync(process.argv[argEtat + 1], 'utf8');
-    const m = publiee.match(/<script id="etat" type="application\/json">([\s\S]*?)<\/script>/);
-    if (!m) throw new Error('Page publiée sans bloc <script id="etat"> : je refuse d’effacer les coches.');
-    etat = m[1].trim();
-    JSON.parse(etat); // un état illisible casse ici, pas dans le navigateur du propriétaire.
+    // Un état illisible casse ICI, pas dans le navigateur du propriétaire. Et il est réécrit
+    // échappé, de sorte qu'une note contenant une balise fermante ne casse plus rien ensuite.
+    etat = enJsonSurUnePage(lireEtatPublie(readFileSync(process.argv[argEtat + 1], 'utf8')));
   }
 
   page = page
     .replace(/<script id="donnees" type="application\/json">[\s\S]*?<\/script>/,
-      '<script id="donnees" type="application/json">' + JSON.stringify(donnees) + '</script>')
+      '<script id="donnees" type="application/json">' + enJsonSurUnePage(donnees) + '</script>')
     .replace(/<script id="etat" type="application\/json">[\s\S]*?<\/script>/,
       '<script id="etat" type="application/json">' + etat + '</script>');
 

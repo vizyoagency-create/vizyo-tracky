@@ -438,7 +438,10 @@ var LOGO = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAGAAAABiCAYAAACvUNYzAA
     enCours = true;
     var doc = document.documentElement.cloneNode(true);
     var bloc = doc.querySelector('#etat');
-    if (bloc) bloc.textContent = JSON.stringify(etat);
+    /* ⚠️ `outerHTML` ne rééchappe RIEN dans un <script> : une note contenant une balise
+       fermante casserait la page publiée en deux. On échappe « < » — JSON.parse le rend tel
+       quel à la relecture, et la balise ne peut plus apparaître. */
+    if (bloc) bloc.textContent = JSON.stringify(etat).replace(/</g, '\\u003c');
     var barre = doc.querySelector('#barre');
     if (barre) barre.remove();
     var r = doc.querySelector('#racine');
