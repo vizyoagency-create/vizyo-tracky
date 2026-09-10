@@ -288,7 +288,7 @@ var LOGO = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAGAAAABiCAYAAACvUNYzAA
       + '<a href="#toi" class="urgent">Ce qui t’attend <b id="nav-toi">' + totalToi() + '</b></a>'
       + '<a href="#moi">Ce que je code <b id="nav-moi">' + reste(MOI) + '</b></a>'
       + '<a href="#guette">On guette <b>' + GUETTE.length + '</b></a>'
-      + '<a href="#vps">Côté VPS <b>28</b></a>'
+      + '<a href="#vps">Côté VPS <b>' + VPS.length + '</b></a>'
       + '<a href="#faits">Fait et prouvé <b>' + FAITS.length + '</b></a>'
       + '</nav>';
     h += '<div class="chiffres">';
@@ -317,7 +317,7 @@ var LOGO = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAGAAAABiCAYAAACvUNYzAA
 
     /* ── Ce qui t'attend ── */
     h += '<section class="section" id="toi"><div class="section__tete"><h2>Ce qui t’attend</h2><span class="compte" id="compte-toi">' + reste(TOI) + ' gestes · ' + decisionsRestantes() + ' décisions</span></div>';
-    h += '<p class="intro">Huit gestes que le code ne peut pas faire, dans l’ordre où ils débloquent le reste. Les triangles marquent ce qui bloque en amont.</p>';
+    h += '<p class="intro">' + TOI.length + (TOI.length > 1 ? ' gestes' : ' geste') + ' que le code ne peut pas faire, dans l’ordre où ils débloquent le reste. Les triangles marquent ce qui bloque en amont.</p>';
     h += '<div class="liste">';
     TOI.forEach(function (t) { h += ligne(t, '<span class="chip chip--alerte">toi</span>'); });
     h += '</div>';
@@ -348,7 +348,7 @@ var LOGO = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAGAAAABiCAYAAACvUNYzAA
 
     /* ── On guette ── */
     h += '<section class="section" id="guette"><div class="section__tete"><h2>Ce qu’on guette</h2><span class="compte">rien à faire</span></div>';
-    h += '<p class="intro">Quatre correctifs sont en ligne et attendent leur occasion de se prouver. La mesure tombe toute seule.</p>';
+    h += '<p class="intro">Des correctifs en ligne qui attendent leur occasion, et des tâches qu’un prérequis retient. Rien à faire : la mesure tombe toute seule, et la pastille dit laquelle des deux raisons s’applique.</p>';
     h += '<div class="liste">';
     GUETTE.forEach(function (g) {
       h += '<div class="ligne est-lecture">';
@@ -361,8 +361,8 @@ var LOGO = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAGAAAABiCAYAAACvUNYzAA
     h += '</div></section>';
 
     /* ── VPS ── */
-    h += '<section class="section" id="vps"><div class="section__tete"><h2>Côté VPS</h2><span class="compte">28 constats</span></div>';
-    h += '<p class="intro">Presque tous des gestes d’infrastructure. Les quatre plus lourds :</p>';
+    h += '<section class="section" id="vps"><div class="section__tete"><h2>Côté VPS</h2><span class="compte">' + VPS.length + (VPS.length > 1 ? ' constats' : ' constat') + '</span></div>';
+    h += '<p class="intro">Presque tous des gestes d’infrastructure, du plus grave au moins grave.</p>';
     h += '<div class="liste">';
     VPS.forEach(function (v) {
       h += '<div class="ligne est-lecture">';
@@ -375,7 +375,7 @@ var LOGO = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAGAAAABiCAYAAACvUNYzAA
     h += '</div></section>';
 
     /* ── Fait et prouvé ── */
-    h += '<section class="section" id="faits"><div class="section__tete"><h2>Fait et prouvé</h2><span class=\"compte\">' + FAITS.length + ' racontés · ' + FAITS_CLOS + ' tâches closes</span></div>';
+    h += '<section class="section" id="faits"><div class="section__tete"><h2>Fait et prouvé</h2><span class="compte">' + FAITS.length + ' racontés · ' + FAITS_CLOS + ' tâches closes</span></div>';
     h += '<p class="intro">« Prouvé » veut dire mesuré sur la production, pas déployé. Un correctif déployé qu’aucun événement n’exerce reste un correctif non prouvé.</p>';
     h += '<div class="faits">';
     FAITS.forEach(function (f) {
