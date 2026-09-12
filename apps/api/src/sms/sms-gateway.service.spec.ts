@@ -1,4 +1,11 @@
-import { SmsGatewayService } from './sms-gateway.service';
+import { SmsGatewayService, smsOutcomeFromStatus } from './sms-gateway.service';
+
+describe('smsOutcomeFromStatus — aucune fausse preuve de remise', () => {
+  it('considère sent comme accepté, et seulement delivered comme remis', () => {
+    expect(smsOutcomeFromStatus('sent')).toBe('accepted');
+    expect(smsOutcomeFromStatus('delivered')).toBe('delivered');
+  });
+});
 
 /**
  * ── TRK-036 : DE QUEL BOÎTIER VIENT CE SMS ENTRANT ? ────────────────────────────────
@@ -150,9 +157,11 @@ describe('SmsGatewayService — réconciliation du sortant (TRK-026)', () => {
 
     const out = await service.reconcileOutboundStatus('log-1');
 
-    expect(out).toEqual({ outcome: 'delivered', status: 'delivered' });
+    expect(out).toEqual({ outcome: 'delivered', status: 'delivered', changed: true });
     expect(update).toHaveBeenCalledWith(
-      expect.objectContaining({ data: { status: 'delivered' } }),
+      expect.objectContaining({
+        data: expect.objectContaining({ status: 'delivered', statusUpdatedAt: expect.any(Date) }),
+      }),
     );
   });
 
@@ -164,7 +173,7 @@ describe('SmsGatewayService — réconciliation du sortant (TRK-026)', () => {
 
     const out = await service.reconcileOutboundStatus('log-1');
 
-    expect(out).toEqual({ outcome: 'accepted', status: 'queued' });
+    expect(out).toEqual({ outcome: 'accepted', status: 'queued', changed: false });
     expect(update).not.toHaveBeenCalled();
   });
 
@@ -174,7 +183,7 @@ describe('SmsGatewayService — réconciliation du sortant (TRK-026)', () => {
 
     const out = await service.reconcileOutboundStatus('log-1');
 
-    expect(out).toEqual({ outcome: 'accepted', status: 'queued' });
+    expect(out).toEqual({ outcome: 'accepted', status: 'queued', changed: false });
     expect(update).not.toHaveBeenCalled();
   });
 
@@ -197,7 +206,7 @@ describe('SmsGatewayService — réconciliation du sortant (TRK-026)', () => {
 
     const out = await service.reconcileOutboundStatus('log-1');
 
-    expect(out).toEqual({ outcome: 'delivered', status: 'delivered' });
+    expect(out).toEqual({ outcome: 'delivered', status: 'delivered', changed: false });
     expect(spy).not.toHaveBeenCalled();
     expect(update).not.toHaveBeenCalled();
   });
@@ -219,7 +228,121 @@ describe('SmsGatewayService — réconciliation du sortant (TRK-026)', () => {
 
     const out = await service.reconcileOutboundStatus('log-1');
 
-    expect(out).toEqual({ outcome: 'accepted', status: 'queued' });
+    expect(out).toEqual({ outcome: 'accepted', status: 'queued', changed: false });
     expect(spy).not.toHaveBeenCalled();
+  });
+});
+
+describe('SmsGatewayService — file de protection de la passerelle', () => {
+  const build = (intervalMs = 0, create?: jest.Mock) => {
+    const smsCreate = create ?? jest.fn().mockImplementation(({ data }) =>
+      Promise.resolve({ id: `log-${data.body}`, ...data }),
+    );
+    const prisma = { smsLog: { create: smsCreate } };
+    const config = {
+      get: (key: string) => key === 'SMS_MIN_INTERVAL_MS' ? intervalMs : undefined,
+    };
+    const service = new SmsGatewayService(
+      prisma as never,
+      { record: jest.fn() } as never,
+      { emit: jest.fn() } as never,
+      { record: jest.fn() } as never,
+      config as never,
+    );
+    return { service, smsCreate };
+  };
+
+  it('cadence deux soumissions au lieu de les envoyer en rafale', async () => {
+    const instants: number[] = [];
+    const create = jest.fn().mockImplementation(({ data }) => {
+      instants.push(Date.now());
+      return Promise.resolve({ id: `log-${data.body}`, ...data });
+    });
+    const { service } = build(30, create);
+
+    await Promise.all([
+      service.send('+33600000001', 'a', { template: 'engine_control_fallback' }),
+      service.send('+33600000002', 'b', { template: 'engine_control_fallback' }),
+    ]);
+
+    expect(instants).toHaveLength(2);
+    expect(instants[1] - instants[0]).toBeGreaterThanOrEqual(20);
+  });
+
+  it('fait passer un RESTORE critique avant les SMS ordinaires encore en attente', async () => {
+    let releaseFirst!: () => void;
+    const firstBlocked = new Promise<void>((resolve) => { releaseFirst = resolve; });
+    let call = 0;
+    const create = jest.fn().mockImplementation(async ({ data }) => {
+      call += 1;
+      if (call === 1) await firstBlocked;
+      return { id: `log-${data.body}`, ...data };
+    });
+    const { service, smsCreate } = build(0, create);
+
+    const first = service.send('+33600000001', 'ordinaire-1', { template: 'generic' as never });
+    const second = service.send('+33600000002', 'ordinaire-2', { template: 'generic' as never });
+    const restore = service.send('+33600000003', 'resume123456', {
+      template: 'engine_control_fallback', priority: 'critical_restore',
+    });
+    releaseFirst();
+    await Promise.all([first, second, restore]);
+
+    expect(smsCreate.mock.calls.map(([arg]) => arg.data.body)).toEqual([
+      'ordinaire-1', 'resume123456', 'ordinaire-2',
+    ]);
+  });
+});
+
+describe('SmsGatewayService — fraîcheur de la preuve terminale', () => {
+  it('utilise la date de réception du statut, pas la date ancienne de soumission', async () => {
+    const submittedAt = new Date('2026-09-01T07:00:00.000Z');
+    const deliveredAt = new Date('2026-09-13T00:00:00.000Z');
+    const prisma = {
+      smsLog: {
+        count: jest.fn().mockResolvedValue(1),
+        findFirst: jest.fn()
+          .mockResolvedValueOnce(null)
+          .mockResolvedValueOnce(null)
+          .mockResolvedValueOnce({ createdAt: submittedAt, statusUpdatedAt: deliveredAt }),
+      },
+    };
+    const service = new SmsGatewayService(
+      prisma as never,
+      { record: jest.fn() } as never,
+      { emit: jest.fn() } as never,
+      { record: jest.fn() } as never,
+      { get: jest.fn().mockReturnValue(undefined) } as never,
+    );
+
+    const health = await service.healthCheck();
+
+    expect(health.lastTerminalSuccessAt).toBe(deliveredAt.toISOString());
+  });
+});
+
+describe('SmsGatewayService — idempotence des webhooks terminaux', () => {
+  it('ne crée pas une seconde alerte pour le même échec déjà enregistré', async () => {
+    const prisma = {
+      smsLog: {
+        findFirst: jest.fn().mockResolvedValue({ id: 'log-1', imei: 'imei-1' }),
+        findUnique: jest.fn().mockResolvedValue({
+          id: 'log-1', direction: 'OUT', status: 'failed', twilioSid: 'cap-1',
+        }),
+        update: jest.fn().mockResolvedValue({ status: 'failed' }),
+      },
+    };
+    const errorLogger = { record: jest.fn().mockResolvedValue(undefined) };
+    const service = new SmsGatewayService(
+      prisma as never,
+      errorLogger as never,
+      { emit: jest.fn() } as never,
+      { record: jest.fn() } as never,
+    );
+
+    await service.recordOutboundStatus({ providerId: 'cap-1', status: 'failed' });
+
+    expect(prisma.smsLog.update).toHaveBeenCalled();
+    expect(errorLogger.record).not.toHaveBeenCalled();
   });
 });

@@ -48,6 +48,7 @@ export class SmsAdminController {
     // L'UI doit privilegier `reachable` sur `enabled` pour le verdict visuel.
     const hc = await this.sms.healthCheck();
     const provider = this.sms.currentProvider();
+    const dispatchQueue = this.sms.dispatchQueueState();
     // mode reflete le provider reel : 'vizyo-texto' | 'twilio' | 'noop'
     // (+ suffixe '-broken' si configure mais injoignable).
     let mode: string;
@@ -63,6 +64,11 @@ export class SmsAdminController {
       fromNumber: hc.fromNumber,
       recentFailures24h: hc.recentFailures24h,
       lastFailure: hc.lastFailure,
+      deliveryProofAvailable: hc.deliveryProofAvailable,
+      pendingWithoutReceipt: hc.pendingWithoutReceipt,
+      oldestPendingAt: hc.oldestPendingAt,
+      lastTerminalSuccessAt: hc.lastTerminalSuccessAt,
+      dispatchQueue,
     };
   }
 

@@ -128,6 +128,52 @@ export class SmsWebhookController implements OnModuleInit {
     return { ok: true };
   }
 
+  /** Statuts sortants sms:sent/sms:delivered/sms:failed, signés comme les entrants. */
+  @Post('webhook/status')
+  @HttpCode(HttpStatus.OK)
+  async handleOutboundStatus(
+    @Req() req: RawBodyRequest<Request>,
+    @Headers('x-vizyo-signature') signature: string | undefined,
+    @Headers('x-vizyo-timestamp') timestamp: string | undefined,
+    @Body() body: {
+      providerId?: string;
+      id?: string;
+      status?: string;
+      errorCode?: string;
+      errorMessage?: string;
+    },
+  ): Promise<{ ok: boolean; found?: boolean }> {
+    const secret = this.config.get('VIZYO_TEXTO_WEBHOOK_SECRET', { infer: true });
+    if (!secret) {
+      if (this.isProd) return { ok: false };
+    } else if (!this.verifySignature(req.rawBody, signature, timestamp, secret)) {
+      this.errorLogger.record(
+        'Webhook statut SMS : signature HMAC invalide',
+        'sms-webhook',
+        { timestamp, providerId: body?.providerId ?? body?.id },
+      ).catch(() => undefined);
+      return { ok: false };
+    }
+
+    const providerId = body?.providerId ?? body?.id;
+    if (!providerId || !body?.status) {
+      this.errorLogger.record(
+        'Webhook statut SMS incomplet (providerId/id ou status manquant)',
+        'sms-webhook',
+        { bodyKeys: Object.keys(body ?? {}) },
+      ).catch(() => undefined);
+      return { ok: false };
+    }
+
+    const result = await this.sms.recordOutboundStatus({
+      providerId,
+      status: body.status,
+      errorCode: body.errorCode,
+      errorMessage: body.errorMessage,
+    });
+    return { ok: true, found: result.found };
+  }
+
   /** HMAC-SHA256(secret, `${ts}.${rawBody}`) hex + anti-replay 5 min, timing-safe. */
   private verifySignature(
     raw: Buffer | undefined,

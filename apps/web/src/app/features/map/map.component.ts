@@ -47,7 +47,7 @@ function haversineMeters(lat1: number, lng1: number, lat2: number, lng2: number)
   const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
   return 2 * R * Math.asin(Math.min(1, Math.sqrt(a)));
 }
-import { firstValueFrom } from 'rxjs';
+import { finalize, firstValueFrom } from 'rxjs';
 import { reprendreApresContexte } from './reprise-contexte-webgl';
 import { ETAT_TRAINEE_VIDE, mettreAJourTrainee, type EtatTrainee } from './trainee';
 import { LegendeVitesseComponent } from '../../shared/ui/legende-vitesse/legende-vitesse.component';
@@ -71,6 +71,7 @@ import {
 import { VehiclesApiService, type VehicleDetailDto } from '../../core/services/vehicles.service';
 import { AuthService } from '../../core/services/auth.service';
 import { EngineControlService } from '../../core/services/engine-control.service';
+import { EngineCommandLockService } from '../../core/services/engine-command-lock.service';
 import { VisibilityService } from '../../core/services/visibility.service';
 import { ToastService } from '../../shared/ui/toast/toast.service';
 import { ConfirmModalComponent } from '../../shared/ui/confirm-modal/confirm-modal.component';
@@ -1464,7 +1465,7 @@ const RESYNC_RADIUS_M = 150;
       [confirmLabel]="engineModalConfirmLabel()"
       cancelLabel="Annuler"
       [danger]="engineModalOpen() === 'cut'"
-      [loading]="engineModalLoading()"
+      [loading]="engineModalBusy()"
       (confirmed)="onEngineModalConfirm()"
       (cancelled)="engineModalOpen.set(null)"
     />
@@ -2891,6 +2892,7 @@ export class MapComponent implements AfterViewInit, OnDestroy {
   private readonly mapSvc = inject(MapService);
   private readonly mapBridge = inject(MapBridgeService);
   private readonly engineControl = inject(EngineControlService);
+  private readonly commandLocks = inject(EngineCommandLockService);
   private readonly visibility = inject(VisibilityService);
   private readonly toast = inject(ToastService);
   // V1.10 (Sprint 5 stabilite) — DestroyRef pour brancher takeUntilDestroyed
@@ -2941,6 +2943,10 @@ export class MapComponent implements AfterViewInit, OnDestroy {
   // Modal engine CUT/RESTORE (remplace window.confirm)
   protected readonly engineModalOpen = signal<'cut' | 'restore' | null>(null);
   protected readonly engineModalLoading = signal(false);
+  protected readonly engineModalBusy = computed(() => {
+    this.engineModalOpen(); // réévalue aussi quand le tracker de la modale change
+    return this.engineModalLoading() || this.commandLocks.isLocked(this.engineModalTrackerId);
+  });
   private engineModalTrackerId: string | null = null;
   private engineModalHasSchedule = false;
 
@@ -6434,6 +6440,7 @@ export class MapComponent implements AfterViewInit, OnDestroy {
     const trackerId = this.engineModalTrackerId;
     const action = this.engineModalOpen() === 'cut' ? 'CUT' as const : 'RESTORE' as const;
     if (!trackerId) return;
+    if (this.engineModalBusy() || !this.commandLocks.acquire(trackerId)) return;
 
     this.engineModalLoading.set(true);
     // V1.10 (Sprint 5 stabilite) — takeUntilDestroyed annule la souscription
@@ -6444,6 +6451,10 @@ export class MapComponent implements AfterViewInit, OnDestroy {
     // jusqu'à la prochaine bascule côté backend). On n'envoie donc plus `disableSchedule`.
     this.engineControl.requestCommand(trackerId, action, 'depuis carte').pipe(
       takeUntilDestroyed(this.destroyRef),
+      finalize(() => {
+        this.engineModalLoading.set(false);
+        this.commandLocks.release(trackerId);
+      }),
     ).subscribe({
       next: () => {
         // Sprint 2 (revue #4) — PAS de faux succès : la commande est ENVOYÉE, pas
@@ -6451,14 +6462,13 @@ export class MapComponent implements AfterViewInit, OnDestroy {
         // carte est piloté par le WS). Toast neutre « envoyée » + attente de confirmation.
         this.toast.show({
           kind: 'info',
-          title: action === 'CUT' ? 'Coupure envoyée' : 'Rallumage envoyé',
+          title: action === 'CUT' ? 'Coupure en cours' : 'Rallumage en cours',
           message: action === 'CUT'
             ? 'En attente de confirmation du boîtier (chute d\'ignition)…'
-            : 'Commande transmise au véhicule.',
-          duration: 4000,
+            : 'RESTORE enregistré : TCP et le secours SMS restent surveillés jusqu’à confirmation.',
+          duration: 8000,
         });
         this.engineModalOpen.set(null);
-        this.engineModalLoading.set(false);
         this.closePopup();
       },
       error: (err) => {
@@ -6475,7 +6485,6 @@ export class MapComponent implements AfterViewInit, OnDestroy {
         });
         // Fermer la modal aussi sur erreur/409 (sinon elle reste ouverte et masque le toast). Cf smoke prod 2026-06-18.
         this.engineModalOpen.set(null);
-        this.engineModalLoading.set(false);
       },
     });
   }

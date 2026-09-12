@@ -60,7 +60,19 @@ const SCHEDULE_CUT_MIN_STOPPED_MS = Math.max(0, Number(process.env.SCHEDULE_CUT_
  * planning reste `enabled` ; un RESTORE (n'importe quel acteur) repose ensuite une grâce 1h normale.
  */
 const WATCHMAN_HOLD_UNTIL = new Date('9999-12-31T23:59:59.000Z');
-const ENGINE_ACK_TIMEOUT_MS = 15_000;
+const ENGINE_ACK_TIMEOUT_MS = Math.max(
+  1_000,
+  Number(process.env['ENGINE_RESTORE_ACK_TIMEOUT_MS']) || 15_000,
+);
+const ENGINE_RESTORE_ALERT_AFTER_MS = Math.max(
+  10_000,
+  Number(process.env['ENGINE_RESTORE_ALERT_AFTER_MS']) || 60_000,
+);
+const ENGINE_RESTORE_MAX_SMS_ATTEMPTS = Math.max(
+  1,
+  Number(process.env['ENGINE_RESTORE_MAX_SMS_ATTEMPTS']) || 3,
+);
+const ENGINE_DISPATCH_LEASE_MS = 60_000;
 const ENGINE_STOP_ACK_PATTERN = /imei:\d{15},J/i;
 const ENGINE_RESUME_ACK_PATTERN = /imei:\d{15},K/i;
 
@@ -125,6 +137,8 @@ export class PresumedParkedException extends ForbiddenException {}
 @Injectable()
 export class EngineControlService implements OnModuleDestroy {
   private readonly logger = new Logger(EngineControlService.name);
+  private automaticCutHealthCache: { expiresAt: number; safe: boolean; reason: string } | null = null;
+  private restoreWorkerRunning = false;
 
   /**
    * Timers armés par la sentinelle « coupure non confirmée ». SUIVIS pour pouvoir les annuler à
@@ -189,10 +203,19 @@ export class EngineControlService implements OnModuleDestroy {
       const { count } = await this.prisma.engineControlCommand.updateMany({
         where: {
           status: CommandStatus.SENT,
+          // Une intention RESTORE ne doit jamais disparaître dans la clôture générique :
+          // son worker dédié la suit jusqu'à ACK ou escalade humaine explicite.
+          action: EngineAction.CUT,
           ackedAt: null,
           sentAt: { lt: echeance },
         },
-        data: { status: CommandStatus.SENT_UNCONFIRMED, expiredAt: new Date() },
+        data: {
+          status: CommandStatus.SENT_UNCONFIRMED,
+          expiredAt: new Date(),
+          activeKey: null,
+          nextAttemptAt: null,
+          dispatchLeaseUntil: null,
+        },
       });
       if (count > 0) {
         this.logger.log(
@@ -266,7 +289,13 @@ export class EngineControlService implements OnModuleDestroy {
       // un acquittement deja pose. Le chemin est rejouable sans effet de bord.
       const { count } = await this.prisma.engineControlCommand.updateMany({
         where: { id: commande.id, status: CommandStatus.SENT },
-        data: { status: CommandStatus.ACKNOWLEDGED, ackedAt: new Date() },
+        data: {
+          status: CommandStatus.ACKNOWLEDGED,
+          ackedAt: new Date(),
+          activeKey: null,
+          nextAttemptAt: null,
+          dispatchLeaseUntil: null,
+        },
       });
       if (count === 0) return;
 
@@ -298,6 +327,7 @@ export class EngineControlService implements OnModuleDestroy {
     source: 'MANUAL' | 'SCHEDULER' = 'MANUAL',
     disableSchedule?: boolean,
     preserveSchedule?: boolean,
+    idempotencyKey?: string,
   ): Promise<EngineControlCommand> {
     // V1.10 (Sprint 6) — IDOR fix : filtre tenant integre au where pour
     // empecher un user d'envoyer un CUT/RESTORE sur un tracker d'une autre
@@ -321,6 +351,42 @@ export class EngineControlService implements OnModuleDestroy {
     }
 
     const fleetId = tracker.vehicle.fleetId;
+
+    // Kill-switch fail-open : en production, une variable absente ou mal
+    // orthographiée BLOQUE les coupures automatiques. RESTORE et actions manuelles
+    // restent disponibles. La réactivation est une décision Go explicite.
+    if (
+      source === 'SCHEDULER' &&
+      action === EngineAction.CUT &&
+      process.env['NODE_ENV'] === 'production' &&
+      process.env['ENGINE_AUTOMATIC_CUT_ENABLED'] !== 'true'
+    ) {
+      this.errorLogger.record(
+        'CUT automatique bloquée par le kill-switch de fiabilité',
+        'engine-control-interlock',
+        { trackerId, imei: tracker.imei, fleetId, action, source },
+        'CRITICAL',
+      ).catch(() => undefined);
+      throw new ServiceUnavailableException(
+        'Coupures automatiques désactivées par le garde-fou de fiabilité',
+      );
+    }
+    if (
+      source === 'SCHEDULER' &&
+      action === EngineAction.CUT &&
+      process.env['NODE_ENV'] === 'production'
+    ) {
+      await this.assertAutomaticCutSafe(trackerId, tracker.imei, fleetId);
+    }
+
+    // Un retry HTTP portant la même clé converge immédiatement vers l'intention
+    // existante. Le filtre tenant a déjà été appliqué au tracker ci-dessus.
+    if (idempotencyKey) {
+      const replay = await this.prisma.engineControlCommand.findFirst({
+        where: { idempotencyKey, trackerId },
+      });
+      if (replay) return replay;
+    }
 
     // ── COUPE AUTOMATIQUE sur boîtier DORMANT : on ne tente pas ──────────────
     // Un boîtier muet depuis des jours ne répondra ni en TCP ni en SMS. Le
@@ -621,25 +687,79 @@ export class EngineControlService implements OnModuleDestroy {
       }
     }
 
-    const command = await this.prisma.engineControlCommand.create({
-      data: {
-        trackerId,
-        action,
-        reason,
-        requestedBy: requestedBy.userId,
-        source,
-        status: CommandStatus.PENDING,
-        confirmationExpected,
-      },
-    });
+    const activeKey = `${trackerId}:${action}`;
+    if (action === EngineAction.RESTORE) {
+      // Un ordre de sécurité RESTORE rend toute CUT encore en vol obsolète. Un
+      // ACK tardif de cette CUT ne devra plus refaire croire que le véhicule est
+      // coupé ; l'état explicite conserve néanmoins la trace de l'incertitude.
+      await this.prisma.engineControlCommand.updateMany({
+        where: {
+          trackerId,
+          action: EngineAction.CUT,
+          status: { in: [CommandStatus.PENDING, CommandStatus.SENT] },
+          activeKey: { not: null },
+        },
+        data: {
+          status: CommandStatus.SENT_UNCONFIRMED,
+          activeKey: null,
+          nextAttemptAt: null,
+          dispatchLeaseUntil: null,
+          expiredAt: new Date(),
+          lastError: 'CUT supplantée par une intention RESTORE plus récente',
+        },
+      });
+    }
+    let command: EngineControlCommand;
+    try {
+      command = await this.prisma.engineControlCommand.create({
+        data: {
+          trackerId,
+          action,
+          reason,
+          requestedBy: requestedBy.userId,
+          source,
+          status: CommandStatus.PENDING,
+          confirmationExpected,
+          idempotencyKey: idempotencyKey ?? null,
+          activeKey,
+          nextAttemptAt: new Date(),
+        },
+      });
+    } catch (err) {
+      // La contrainte unique est l'arbitre réel des clics concurrents entre
+      // plusieurs instances API. Une collision renvoie l'intention déjà active.
+      if ((err as { code?: string })?.code !== 'P2002') throw err;
+      const existing = await this.prisma.engineControlCommand.findFirst({
+        where: {
+          OR: [
+            ...(idempotencyKey ? [{ idempotencyKey }] : []),
+            { activeKey },
+          ],
+        },
+        orderBy: { createdAt: 'desc' },
+      });
+      if (!existing) throw err;
+      return existing;
+    }
 
     if (command.status === CommandStatus.PENDING) {
       // Palier B — journalise la commande moteur (arrière-plan / device). SUCCESS = commande
       // livrée (TCP ou SMS) ; FAILURE = dispatch impossible. L'ACK/confirmation détaillé reste
       // dans l'onglet « Commandes moteur ». Les refus (REJECTED_SPEED) lèvent avant ce point.
       try {
-        await this.dispatchCommand(tracker.imei, command, action, fleetId);
-        this.recordSystemActivity(action, tracker.vehicle, reason, requestedBy, source, fleetId, 'SUCCESS');
+        command = await this.dispatchCommand(tracker.imei, command, action, fleetId);
+        // Une intention RESTORE conservée en base mais pas encore transmise n'est pas un
+        // « succès ». SKIPPED signifie ici « en attente/reprise automatique » ; les détails
+        // de transport et l'ACK restent portés par EngineControlCommand.
+        this.recordSystemActivity(
+          action,
+          tracker.vehicle,
+          reason,
+          requestedBy,
+          source,
+          fleetId,
+          command.status === CommandStatus.PENDING ? 'SKIPPED' : 'SUCCESS',
+        );
       } catch (err) {
         this.recordSystemActivity(action, tracker.vehicle, reason, requestedBy, source, fleetId, 'FAILURE');
         throw err;
@@ -657,7 +777,7 @@ export class EngineControlService implements OnModuleDestroy {
     requestedBy: RequestedBy,
     source: 'MANUAL' | 'SCHEDULER',
     fleetId: string,
-    status: 'SUCCESS' | 'FAILURE',
+    status: 'SUCCESS' | 'FAILURE' | 'SKIPPED',
   ): void {
     this.systemActivity.record({
       category: 'ENGINE',
@@ -705,12 +825,96 @@ export class EngineControlService implements OnModuleDestroy {
     throw new ForbiddenException(throwMessage);
   }
 
+  private attemptDelegate(): {
+    create(args: unknown): Promise<{ id: string }>;
+    updateMany(args: unknown): Promise<{ count: number }>;
+  } | undefined {
+    return (this.prisma as unknown as {
+      engineDeliveryAttempt?: {
+        create(args: unknown): Promise<{ id: string }>;
+        updateMany(args: unknown): Promise<{ count: number }>;
+      };
+    }).engineDeliveryAttempt;
+  }
+
+  /** Deuxième étage du fail-open, évalué seulement quand le kill-switch est armé. */
+  private async assertAutomaticCutSafe(trackerId: string, imei: string, fleetId: string): Promise<void> {
+    const now = Date.now();
+    if (!this.automaticCutHealthCache || this.automaticCutHealthCache.expiresAt <= now) {
+      try {
+        const health = await this.sms.healthCheck();
+        const queue = this.sms.dispatchQueueState();
+        const terminalAgeMs = health.lastTerminalSuccessAt
+          ? now - new Date(health.lastTerminalSuccessAt).getTime()
+          : Number.POSITIVE_INFINITY;
+        const freshProof = terminalAgeMs <= 24 * 60 * 60 * 1000;
+        const safe = health.enabled && health.reachable && health.deliveryProofAvailable && freshProof && queue.depth < 10;
+        const reason = safe
+          ? 'ok'
+          : !health.enabled
+            ? 'passerelle SMS désactivée'
+            : !health.reachable
+              ? `relais SMS injoignable${health.error ? ` : ${health.error}` : ''}`
+              : !health.deliveryProofAvailable
+                ? 'aucune preuve de remise SMS disponible'
+                : !freshProof
+                  ? 'dernière preuve de remise SMS trop ancienne (> 24 h)'
+                : `file SMS trop profonde (${queue.depth})`;
+        this.automaticCutHealthCache = { expiresAt: now + 30_000, safe, reason };
+      } catch (err) {
+        this.automaticCutHealthCache = {
+          expiresAt: now + 10_000,
+          safe: false,
+          reason: `contrôle de santé impossible : ${err instanceof Error ? err.message : String(err)}`,
+        };
+      }
+    }
+
+    if (this.automaticCutHealthCache.safe) return;
+    const reason = this.automaticCutHealthCache.reason;
+    await this.errorLogger.record(
+      `CUT automatique bloquée : capacité de RESTORE non démontrée (${reason})`,
+      'engine-control-interlock',
+      { trackerId, imei, fleetId, reason },
+      'CRITICAL',
+    ).catch(() => undefined);
+    throw new ServiceUnavailableException(`Coupure automatique différée : ${reason}`);
+  }
+
+  private async beginAttempt(
+    command: EngineControlCommand,
+    channel: 'TCP' | 'SMS',
+    status: string,
+  ): Promise<{ id: string | null; number: number }> {
+    const number = Number((command as EngineControlCommand & { attemptCount?: number }).attemptCount ?? 0) + 1;
+    const delegate = this.attemptDelegate();
+    if (!delegate) return { id: null, number };
+    const row = await delegate.create({
+      data: { commandId: command.id, attemptNumber: number, channel, status },
+      select: { id: true },
+    });
+    return { id: row.id, number };
+  }
+
+  private async finishAttempt(
+    id: string | null,
+    status: string,
+    data: { providerId?: string; smsLogId?: string; rawCode?: string; errorMessage?: string } = {},
+  ): Promise<void> {
+    if (!id) return;
+    await this.attemptDelegate()?.updateMany({
+      where: { id },
+      data: { status, finishedAt: new Date(), ...data },
+    });
+  }
+
   private async dispatchCommand(
     imei: string,
     command: EngineControlCommand,
     action: EngineAction,
     fleetId: string,
-  ): Promise<void> {
+    allowSmsOnOfflineRestore = false,
+  ): Promise<EngineControlCommand> {
     const cobanCmd: CobanCommand =
       action === EngineAction.CUT
         ? { type: 'engine_stop' }
@@ -722,9 +926,47 @@ export class EngineControlService implements OnModuleDestroy {
     const sent = this.sessionRegistry.send(imei, payload);
 
     if (!sent) {
-      // Fallback SMS : envoyer stop123456 / resume123456 au boitier via Twilio.
+      // RESTORE : une absence instantanée de socket ne doit pas consommer un SMS tout de
+      // suite. L'intention reste durable, attend une courte reconnexion, puis le worker
+      // fera une seconde tentative TCP avant d'autoriser le secours payant.
+      if (action === EngineAction.RESTORE && !allowSmsOnOfflineRestore) {
+        const attempt = await this.beginAttempt(command, 'TCP', 'UNAVAILABLE');
+        const now = new Date();
+        await this.finishAttempt(attempt.id, 'UNAVAILABLE', {
+          errorMessage: 'Socket TCP absente au premier dispatch',
+        });
+        const waiting = await this.prisma.engineControlCommand.update({
+          where: { id: command.id },
+          data: {
+            status: CommandStatus.PENDING,
+            channel: 'TCP',
+            attemptCount: attempt.number,
+            lastAttemptAt: now,
+            nextAttemptAt: new Date(now.getTime() + ENGINE_ACK_TIMEOUT_MS),
+            dispatchLeaseUntil: null,
+            lastError: 'Socket TCP absente — reconnexion prioritaire avant secours SMS',
+          },
+        });
+        this.emitUpdate(waiting, fleetId);
+        return waiting;
+      }
+
+      const attempt = await this.beginAttempt(command, 'SMS', 'QUEUED');
+      const smsAttemptNumber = Number(
+        (command as EngineControlCommand & { smsAttemptCount?: number }).smsAttemptCount ?? 0,
+      ) + 1;
       const smsSent = await this.trySmsFallback(imei, action, command.id);
       if (smsSent.ok) {
+        await this.finishAttempt(
+          attempt.id,
+          smsSent.outcome === 'delivered' ? 'DELIVERED' : 'ACCEPTED',
+          {
+            providerId: smsSent.providerId,
+            smsLogId: smsSent.smsLogId,
+            rawCode: smsSent.submittedStatus,
+          },
+        );
+        const now = new Date();
         const updated = await this.prisma.engineControlCommand.update({
           where: { id: command.id },
           // TRK-018 — le ROUTAGE sort du champ d'erreur. `lastError` portait « Envoyé via
@@ -739,14 +981,53 @@ export class EngineControlService implements OnModuleDestroy {
           // une donnée pour corriger un nom serait pire que le nom.
           data: {
             status: CommandStatus.SENT,
-            sentAt: new Date(),
+            sentAt: now,
             channel: 'SMS',
             lastError: null,
+            smsLogId: smsSent.smsLogId ?? null,
+            attemptCount: attempt.number,
+            smsAttemptCount: smsAttemptNumber,
+            lastAttemptAt: now,
+            dispatchLeaseUntil: null,
+            nextAttemptAt: new Date(now.getTime() + 30_000),
           },
         });
         this.emitUpdate(updated, fleetId);
-        this.logger.log({ commandId: command.id, imei, channel: 'SMS' }, 'Command dispatched via SMS fallback');
-        return;
+        this.logger.log(
+          { commandId: command.id, attemptId: attempt.id, imei, channel: 'SMS' },
+          'Command accepted by SMS fallback; delivery remains unconfirmed',
+        );
+        return updated;
+      }
+
+      await this.finishAttempt(attempt.id, 'FAILED', { errorMessage: smsSent.reason });
+
+      // RESTORE est asymétrique : un refus de soumission ne l'abandonne pas. Il
+      // reste visible et le worker le réessaie avec backoff, puis escalade.
+      if (action === EngineAction.RESTORE && smsAttemptNumber < ENGINE_RESTORE_MAX_SMS_ATTEMPTS) {
+        const retryAt = new Date(Date.now() + Math.min(5 * 60_000, 30_000 * smsAttemptNumber));
+        const retrying = await this.prisma.engineControlCommand.update({
+          where: { id: command.id },
+          data: {
+            status: CommandStatus.SENT,
+            channel: 'SMS',
+            lastError: `Échec SMS : ${smsSent.reason} — nouvel essai planifié`,
+            smsLogId: null,
+            attemptCount: attempt.number,
+            smsAttemptCount: smsAttemptNumber,
+            lastAttemptAt: new Date(),
+            nextAttemptAt: retryAt,
+            dispatchLeaseUntil: null,
+          },
+        });
+        this.emitUpdate(retrying, fleetId);
+        this.errorLogger.record(
+          `RESTORE SMS en échec — retry ${smsAttemptNumber + 1}/${ENGINE_RESTORE_MAX_SMS_ATTEMPTS} planifié`,
+          'engine-control-restore',
+          { imei, commandId: command.id, attemptId: attempt.id, reason: smsSent.reason, retryAt },
+          'CRITICAL',
+        ).catch(() => undefined);
+        return retrying;
       }
 
       const updated = await this.prisma.engineControlCommand.update({
@@ -754,6 +1035,12 @@ export class EngineControlService implements OnModuleDestroy {
         data: {
           status: CommandStatus.FAILED,
           lastError: `Tracker hors ligne — socket TCP indisponible et repli SMS impossible : ${smsSent.reason}`,
+          activeKey: null,
+          nextAttemptAt: null,
+          dispatchLeaseUntil: null,
+          attemptCount: attempt.number,
+          smsAttemptCount: smsAttemptNumber,
+          lastAttemptAt: new Date(),
         },
       });
       this.emitUpdate(updated, fleetId);
@@ -765,15 +1052,32 @@ export class EngineControlService implements OnModuleDestroy {
       throw new ServiceUnavailableException('Tracker hors ligne, commande non envoyée');
     }
 
-    this.wireLogger.out(imei, payload, { commandId: command.id, source: 'engine' });
-    this.logger.log({ commandId: command.id, imei, payload }, 'Command dispatched');
+    const attempt = await this.beginAttempt(command, 'TCP', 'WRITTEN');
+    const sentAt = new Date();
+    this.wireLogger.out(imei, payload, {
+      commandId: command.id,
+      attemptId: attempt.id ?? undefined,
+      source: 'engine',
+    });
+    this.logger.log({ commandId: command.id, attemptId: attempt.id, imei, payload }, 'Command dispatched');
 
     const updated = await this.prisma.engineControlCommand.update({
       where: { id: command.id },
       // TRK-018 — le canal est écrit ICI aussi, pas seulement sur le repli. Ne le renseigner
       // que sur le chemin SMS aurait laissé `channel = NULL` sur le chemin nominal : on ne
       // saurait toujours pas distinguer « parti en TCP » de « on ne sait pas ».
-      data: { status: CommandStatus.SENT, sentAt: new Date(), channel: 'TCP' },
+      data: {
+        status: CommandStatus.SENT,
+        sentAt,
+        channel: 'TCP',
+        attemptCount: attempt.number,
+        lastAttemptAt: sentAt,
+        dispatchLeaseUntil: null,
+        nextAttemptAt: action === EngineAction.RESTORE
+          ? new Date(sentAt.getTime() + ENGINE_ACK_TIMEOUT_MS)
+          : null,
+        lastError: null,
+      },
     });
     this.emitUpdate(updated, fleetId);
 
@@ -785,26 +1089,64 @@ export class EngineControlService implements OnModuleDestroy {
     this.ackWaiter
       .waitForAck(imei, ackPattern, ENGINE_ACK_TIMEOUT_MS, command.id, ENGINE_ACK_PRIORITY)
       .then(async (rawAck) => {
-        const latencyMs = updated.sentAt
-          ? Date.now() - new Date(updated.sentAt).getTime()
-          : 0;
+        const latencyMs = Date.now() - sentAt.getTime();
         this.wireLogger.ackMatch(imei, rawAck, command.id, latencyMs);
+        await this.finishAttempt(attempt.id, 'ACKNOWLEDGED', { rawCode: rawAck });
         try {
+          let current: { status: CommandStatus; activeKey: string | null } | null = null;
+          try {
+            current = await this.prisma.engineControlCommand.findUnique({
+              where: { id: command.id },
+              select: { status: true, activeKey: true },
+            });
+          } catch {
+            current = null;
+          }
+          if (current?.status === CommandStatus.SENT_UNCONFIRMED && current.activeKey == null) {
+            this.logger.warn(
+              { commandId: command.id, attemptId: attempt.id },
+              'ACK tardif ignoré : la commande a été supplantée ou clôturée',
+            );
+            return;
+          }
           const acked = await this.prisma.engineControlCommand.update({
             where: { id: command.id },
-            data: { status: CommandStatus.ACKNOWLEDGED, ackedAt: new Date() },
+            data: {
+              status: CommandStatus.ACKNOWLEDGED,
+              ackedAt: new Date(),
+              activeKey: null,
+              nextAttemptAt: null,
+              dispatchLeaseUntil: null,
+            },
           });
           this.emitUpdate(acked, fleetId);
         } catch (dbErr) {
           this.logger.error({ commandId: command.id, error: (dbErr as Error).message },
             'Failed to persist ACK status — command stuck as SENT');
           this.errorLogger.record(dbErr instanceof Error ? dbErr : new Error(String(dbErr)),
-            'engine-control', { imei, commandId: command.id, phase: 'ack-persist' },
+            'engine-control', { imei, commandId: command.id, attemptId: attempt.id, phase: 'ack-persist' },
           ).catch(() => {});
         }
-        this.logger.log({ commandId: command.id, latencyMs }, 'Engine command ACK received');
+        this.logger.log({ commandId: command.id, attemptId: attempt.id, latencyMs }, 'Engine command ACK received');
       })
-      .catch(() => {
+      .catch(async (err) => {
+        await this.finishAttempt(attempt.id, 'TIMED_OUT', {
+          errorMessage: err instanceof Error ? err.message : 'ACK timeout',
+        }).catch(() => undefined);
+        if (action === EngineAction.RESTORE) {
+          await this.prisma.engineControlCommand.updateMany({
+            where: { id: command.id, status: CommandStatus.SENT, ackedAt: null },
+            data: {
+              nextAttemptAt: new Date(),
+              lastError: 'Aucun ACK TCP dans le délai — secours SMS planifié',
+            },
+          }).catch(() => undefined);
+          this.logger.warn(
+            { commandId: command.id, attemptId: attempt.id, imei },
+            'RESTORE sans ACK TCP — fallback SMS durable planifié',
+          );
+          return;
+        }
         // V1.15 — Le Coban GPS403D EXECUTE les commandes moteur (J/K) silencieusement :
         // pas d'ACK applicatif fiable sur le fil (cf docs/03 §3.7.2). La seule preuve
         // d'execution est l'etat ignition de la trame de position suivante. Un timeout
@@ -816,8 +1158,8 @@ export class EngineControlService implements OnModuleDestroy {
         // si un firmware en emet un. Amelioration future : confirmation via etat
         // ignition de la trame suivante (a valider terrain, cf docs/03 §11).
         this.logger.debug(
-          { commandId: command.id, imei },
-          'Engine command livree — pas d\'ACK applicatif attendu (execution silencieuse Coban)',
+          { commandId: command.id, attemptId: attempt.id, imei },
+          'CUT livrée sur TCP sans ACK applicatif — attente de la preuve ignition',
         );
       });
 
@@ -839,6 +1181,317 @@ export class EngineControlService implements OnModuleDestroy {
       }, ENGINE_CONFIRM_WINDOW_MS);
       if (typeof timer.unref === 'function') timer.unref();
       this.confirmTimers.add(timer);
+    }
+    return updated;
+  }
+
+  /** Envoi SMS rejouable utilisé par la sentinelle après timeout TCP/crash. */
+  private async dispatchSmsAttempt(
+    imei: string,
+    command: EngineControlCommand,
+    action: EngineAction,
+    fleetId: string,
+  ): Promise<EngineControlCommand> {
+    const attempt = await this.beginAttempt(command, 'SMS', 'QUEUED');
+    const smsAttemptNumber = Number(
+      (command as EngineControlCommand & { smsAttemptCount?: number }).smsAttemptCount ?? 0,
+    ) + 1;
+    const result = await this.trySmsFallback(imei, action, command.id);
+    const now = new Date();
+
+    if (result.ok) {
+      await this.finishAttempt(
+        attempt.id,
+        result.outcome === 'delivered' ? 'DELIVERED' : 'ACCEPTED',
+        {
+          providerId: result.providerId,
+          smsLogId: result.smsLogId,
+          rawCode: result.submittedStatus,
+        },
+      );
+      const updated = await this.prisma.engineControlCommand.update({
+        where: { id: command.id },
+        data: {
+          status: CommandStatus.SENT,
+          sentAt: command.sentAt ?? now,
+          channel: 'SMS',
+          smsLogId: result.smsLogId ?? null,
+          attemptCount: attempt.number,
+          smsAttemptCount: smsAttemptNumber,
+          lastAttemptAt: now,
+          nextAttemptAt: new Date(now.getTime() + 30_000),
+          dispatchLeaseUntil: null,
+          lastError: null,
+        },
+      });
+      this.emitUpdate(updated, fleetId);
+      return updated;
+    }
+
+    await this.finishAttempt(attempt.id, 'FAILED', { errorMessage: result.reason });
+    const exhausted = smsAttemptNumber >= ENGINE_RESTORE_MAX_SMS_ATTEMPTS;
+    const updated = await this.prisma.engineControlCommand.update({
+      where: { id: command.id },
+      data: exhausted
+        ? {
+            status: CommandStatus.FAILED,
+            activeKey: null,
+            attemptCount: attempt.number,
+            smsAttemptCount: smsAttemptNumber,
+          lastAttemptAt: now,
+          nextAttemptAt: null,
+          dispatchLeaseUntil: null,
+          alertedAt: null,
+          lastError: `RESTORE non transmis après ${smsAttemptNumber} tentative(s) SMS — intervention humaine obligatoire : ${result.reason}`,
+          }
+        : {
+            status: CommandStatus.SENT,
+            channel: 'SMS',
+            smsLogId: null,
+            attemptCount: attempt.number,
+            smsAttemptCount: smsAttemptNumber,
+            lastAttemptAt: now,
+            nextAttemptAt: new Date(now.getTime() + Math.min(5 * 60_000, 30_000 * smsAttemptNumber)),
+            dispatchLeaseUntil: null,
+            lastError: `Échec SMS : ${result.reason} — nouvel essai planifié`,
+          },
+    });
+    this.emitUpdate(updated, fleetId);
+    await this.errorLogger.record(
+      exhausted
+        ? 'RESTORE en échec terminal — intervention humaine obligatoire'
+        : `RESTORE SMS en échec — retry ${smsAttemptNumber + 1}/${ENGINE_RESTORE_MAX_SMS_ATTEMPTS} planifié`,
+      'engine-control-restore',
+      { imei, commandId: command.id, attemptId: attempt.id, reason: result.reason },
+      'CRITICAL',
+    );
+    if (exhausted) {
+      // L'alerte immédiate a bien été persistée : évite que la sentinelle la duplique.
+      // Si record() lève, ce marquage n'a pas lieu et le cron la retentera.
+      await this.prisma.engineControlCommand.updateMany({
+        where: { id: command.id, alertedAt: null, ackedAt: null },
+        data: { alertedAt: new Date() },
+      });
+    }
+    return updated;
+  }
+
+  /**
+   * Sentinelle durable RESTORE. Toutes les décisions à reprendre sont en base :
+   * le cron peut être interrompu entre deux lignes puis recommencer sans perdre
+   * l'intention. Le lease évite deux workers simultanés ; s'il expire après un
+   * crash, un doublon RESTORE reste volontairement préférable à un abandon.
+   */
+  @Cron('*/15 * * * * *', { name: 'engine-restore-reliability' })
+  async processPendingRestores(): Promise<void> {
+    if (this.restoreWorkerRunning) return;
+    this.restoreWorkerRunning = true;
+    try {
+    const now = new Date();
+    const due = await this.prisma.engineControlCommand.findMany({
+      where: {
+        action: EngineAction.RESTORE,
+        status: { in: [CommandStatus.PENDING, CommandStatus.SENT] },
+        ackedAt: null,
+        AND: [
+          { OR: [{ nextAttemptAt: { lte: now } }, { status: CommandStatus.PENDING, nextAttemptAt: null }] },
+          { OR: [{ dispatchLeaseUntil: null }, { dispatchLeaseUntil: { lt: now } }] },
+        ],
+      },
+      include: { tracker: { include: { vehicle: true } } },
+      orderBy: [{ createdAt: 'asc' }],
+      take: 25,
+    });
+
+    for (const command of due) {
+      const leaseUntil = new Date(Date.now() + ENGINE_DISPATCH_LEASE_MS);
+      const claimed = await this.prisma.engineControlCommand.updateMany({
+        where: {
+          id: command.id,
+          ackedAt: null,
+          status: { in: [CommandStatus.PENDING, CommandStatus.SENT] },
+          OR: [{ dispatchLeaseUntil: null }, { dispatchLeaseUntil: { lt: now } }],
+        },
+        data: { dispatchLeaseUntil: leaseUntil },
+      });
+      if (claimed.count !== 1) continue;
+
+      const fleetId = command.tracker.vehicle?.fleetId;
+      if (!fleetId) {
+        await this.prisma.engineControlCommand.update({
+          where: { id: command.id },
+          data: {
+            status: CommandStatus.FAILED,
+            activeKey: null,
+            nextAttemptAt: null,
+            dispatchLeaseUntil: null,
+            alertedAt: null,
+            lastError: 'RESTORE sans véhicule/flotte : intervention humaine requise',
+          },
+        });
+        continue;
+      }
+
+      try {
+        if (command.status === CommandStatus.PENDING) {
+          await this.dispatchCommand(
+            command.tracker.imei,
+            command,
+            command.action,
+            fleetId,
+            command.channel === 'TCP',
+          );
+          continue;
+        }
+
+        // TCP écrit sans ACK après son échéance : le fallback n'est plus abandonné.
+        if (command.channel === 'TCP') {
+          await this.dispatchSmsAttempt(command.tracker.imei, command, command.action, fleetId);
+          continue;
+        }
+
+        if (!command.smsLogId) {
+          await this.dispatchSmsAttempt(command.tracker.imei, command, command.action, fleetId);
+          continue;
+        }
+
+        const reconciliation = await this.sms.reconcileOutboundStatus(command.smsLogId);
+        if (reconciliation?.outcome === 'delivered') {
+          await this.attemptDelegate()?.updateMany({
+            where: { commandId: command.id, smsLogId: command.smsLogId },
+            data: { status: 'DELIVERED', finishedAt: new Date(), rawCode: reconciliation.status ?? undefined },
+          });
+          await this.prisma.engineControlCommand.update({
+            where: { id: command.id },
+            data: {
+              nextAttemptAt: null,
+              dispatchLeaseUntil: null,
+              lastError: 'SMS remis au téléphone — exécution boîtier encore non confirmée',
+            },
+          });
+          continue;
+        }
+
+        if (reconciliation?.outcome === 'failed') {
+          await this.attemptDelegate()?.updateMany({
+            where: { commandId: command.id, smsLogId: command.smsLogId },
+            data: { status: 'FAILED', finishedAt: new Date(), rawCode: reconciliation.status ?? undefined },
+          });
+          const smsAttemptCount = Number(
+            (command as EngineControlCommand & { smsAttemptCount?: number }).smsAttemptCount ?? command.attemptCount,
+          );
+          if (smsAttemptCount < ENGINE_RESTORE_MAX_SMS_ATTEMPTS) {
+            const retryAt = new Date(Date.now() + Math.min(5 * 60_000, 30_000 * Math.max(1, smsAttemptCount)));
+            await this.prisma.engineControlCommand.update({
+              where: { id: command.id },
+              data: {
+                smsLogId: null,
+                nextAttemptAt: retryAt,
+                dispatchLeaseUntil: null,
+                lastError: `Échec SMS terminal (${reconciliation.status ?? 'inconnu'}) — retry planifié`,
+              },
+            });
+          } else {
+            await this.prisma.engineControlCommand.update({
+              where: { id: command.id },
+              data: {
+                status: CommandStatus.FAILED,
+                activeKey: null,
+                nextAttemptAt: null,
+                dispatchLeaseUntil: null,
+                alertedAt: null,
+                lastError: `RESTORE non transmis après ${smsAttemptCount} tentative(s) SMS — intervention humaine obligatoire`,
+              },
+            });
+          }
+          continue;
+        }
+
+        // Toujours queued/accepted : on repollera, sans envoyer un doublon ambigu.
+        await this.prisma.engineControlCommand.update({
+          where: { id: command.id },
+          data: { nextAttemptAt: new Date(Date.now() + 30_000), dispatchLeaseUntil: null },
+        });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        await this.prisma.engineControlCommand.updateMany({
+          where: { id: command.id, ackedAt: null },
+          data: {
+            nextAttemptAt: new Date(Date.now() + 30_000),
+            dispatchLeaseUntil: null,
+            lastError: `Worker RESTORE en erreur : ${message}`,
+          },
+        }).catch(() => undefined);
+        this.errorLogger.record(
+          'Worker RESTORE en erreur — intention conservée pour reprise',
+          'engine-control-restore',
+          { commandId: command.id, imei: command.tracker.imei, error: message },
+          'CRITICAL',
+        ).catch(() => undefined);
+      }
+    }
+
+      await this.alertOverdueRestores();
+    } finally {
+      this.restoreWorkerRunning = false;
+    }
+  }
+
+  private async alertOverdueRestores(): Promise<void> {
+    const overdue = await this.prisma.engineControlCommand.findMany({
+      where: {
+        action: EngineAction.RESTORE,
+        // FAILED est inclus : si l'alerte immédiate n'a pas pu être persistée, le
+        // terminal reste durablement visible et sera remonté au prochain passage.
+        status: { in: [CommandStatus.PENDING, CommandStatus.SENT, CommandStatus.FAILED] },
+        ackedAt: null,
+        alertedAt: null,
+        createdAt: { lte: new Date(Date.now() - ENGINE_RESTORE_ALERT_AFTER_MS) },
+      },
+      include: { tracker: { include: { vehicle: true } } },
+      orderBy: { createdAt: 'asc' },
+      take: 100,
+    });
+
+    for (const command of overdue) {
+      const alertedAt = new Date();
+      const marked = await this.prisma.engineControlCommand.updateMany({
+        where: { id: command.id, alertedAt: null, ackedAt: null },
+        data: { alertedAt },
+      });
+      if (marked.count !== 1) continue;
+      try {
+        await this.errorLogger.record(
+          command.status === CommandStatus.FAILED
+            ? 'RESTORE en échec terminal — intervention humaine obligatoire'
+            : `RESTORE non confirmé depuis plus de ${Math.round(ENGINE_RESTORE_ALERT_AFTER_MS / 1000)} s`,
+          'engine-control-restore',
+          {
+            commandId: command.id,
+            trackerId: command.trackerId,
+            imei: command.tracker.imei,
+            plate: command.tracker.vehicle?.plate ?? undefined,
+            fleetId: command.tracker.vehicle?.fleetId ?? undefined,
+            channel: command.channel ?? undefined,
+            attemptCount: command.attemptCount,
+            lastError: command.lastError ?? undefined,
+            ageMs: Date.now() - command.createdAt.getTime(),
+            actionRequired: 'Vérifier le véhicule et déclencher la procédure manuelle de restauration',
+          },
+          'CRITICAL',
+        );
+      } catch (err) {
+        // Ne jamais mémoriser « alerté » si le centre d'alertes n'a rien persisté.
+        // La remise à null autorise le prochain passage à retenter.
+        await this.prisma.engineControlCommand.updateMany({
+          where: { id: command.id, alertedAt },
+          data: { alertedAt: null },
+        }).catch(() => undefined);
+        this.logger.error(
+          { commandId: command.id, error: err instanceof Error ? err.message : String(err) },
+          'Sentinelle RESTORE non persistée — elle sera retentée',
+        );
+      }
     }
   }
 
@@ -969,6 +1622,9 @@ export class EngineControlService implements OnModuleDestroy {
         sentAt: command.sentAt ? command.sentAt.toISOString() : null,
         ackedAt: command.ackedAt ? command.ackedAt.toISOString() : null,
         source: command.source as 'MANUAL' | 'SCHEDULER' | 'DEVICE_OBSERVED',
+        channel: command.channel,
+        attemptCount: command.attemptCount,
+        nextAttemptAt: command.nextAttemptAt?.toISOString() ?? null,
       });
     } catch (err) {
       this.logger.error({ commandId: command.id, fleetId, error: (err as Error).message },
@@ -1020,7 +1676,16 @@ export class EngineControlService implements OnModuleDestroy {
     imei: string,
     action: EngineAction,
     commandId: string,
-  ): Promise<{ ok: true } | { ok: false; reason: string }> {
+  ): Promise<
+    | {
+        ok: true;
+        outcome: 'accepted' | 'delivered';
+        smsLogId?: string;
+        providerId?: string;
+        submittedStatus?: string;
+      }
+    | { ok: false; reason: string }
+  > {
     if (!this.sms.isEnabled()) {
       return { ok: false, reason: 'passerelle SMS non configurée' };
     }
@@ -1035,9 +1700,19 @@ export class EngineControlService implements OnModuleDestroy {
     const result = await this.sms.send(tracker.simPhoneNumber, smsPayload, {
       imei,
       commandId,
+      action,
+      priority: action === EngineAction.RESTORE ? 'critical_restore' : 'engine_cut',
       template: 'engine_control_fallback', source: 'engine-control-fallback',
     });
-    if (result.ok) return { ok: true };
+    if (result.ok) {
+      return {
+        ok: true,
+        outcome: result.outcome === 'delivered' ? 'delivered' : 'accepted',
+        smsLogId: result.smsLogId,
+        providerId: result.twilioSid,
+        submittedStatus: result.submittedStatus,
+      };
+    }
     return { ok: false, reason: result.error ?? 'envoi SMS refusé par la passerelle' };
   }
 
@@ -1087,6 +1762,9 @@ export class EngineControlService implements OnModuleDestroy {
       parCanal: { TCP: number; SMS: number; INCONNU: number };
       vehiculesConcernes: number;
       plusAncienneHeures: number | null;
+      restaurationsEnCours: number;
+      retriesPlanifies: number;
+      alertesEmises: number;
     };
     parVehicule: {
       vehicleId: string | null;
@@ -1105,6 +1783,10 @@ export class EngineControlService implements OnModuleDestroy {
       plaque: string;
       origine: string;
       ageHeures: number;
+      tentatives: number;
+      prochainEssai: string | null;
+      alerteEmise: boolean;
+      dernierBlocage: string | null;
     }[];
   }> {
     // Fail-closed, exactement comme `listCommands` : un non-super sans flotte ne voit RIEN.
@@ -1115,6 +1797,7 @@ export class EngineControlService implements OnModuleDestroy {
         total: 0, dernieres24h: 0, derniers7j: 0,
         parCanal: { TCP: 0, SMS: 0, INCONNU: 0 },
         vehiculesConcernes: 0, plusAncienneHeures: null,
+        restaurationsEnCours: 0, retriesPlanifies: 0, alertesEmises: 0,
       },
       parVehicule: [],
       recentes: [],
@@ -1189,6 +1872,11 @@ export class EngineControlService implements OnModuleDestroy {
         parCanal,
         vehiculesConcernes: parVehicule.size,
         plusAncienneHeures: lignes.length ? heures(lignes[lignes.length - 1].createdAt) : null,
+        restaurationsEnCours: lignes.filter(
+          (l) => l.action === EngineAction.RESTORE && l.status === CommandStatus.SENT,
+        ).length,
+        retriesPlanifies: lignes.filter((l) => l.nextAttemptAt != null).length,
+        alertesEmises: lignes.filter((l) => l.alertedAt != null).length,
       },
       parVehicule: [...parVehicule.values()]
         .sort((a, b) => b.total - a.total || b.derniere.getTime() - a.derniere.getTime())
@@ -1209,6 +1897,10 @@ export class EngineControlService implements OnModuleDestroy {
         plaque: l.tracker?.vehicle?.plate ?? '(sans véhicule)',
         origine: l.source,
         ageHeures: heures(l.createdAt),
+        tentatives: l.attemptCount,
+        prochainEssai: l.nextAttemptAt?.toISOString() ?? null,
+        alerteEmise: l.alertedAt != null,
+        dernierBlocage: l.lastError,
       })),
     };
   }

@@ -3123,6 +3123,7 @@ model SmsLog {
   body        String   @db.Text
   twilioSid   String?
   status      String?  // queued / sent / delivered / failed / received / undelivered
+  statusUpdatedAt DateTime?
   errorCode   String?
   errorMessage String?
   imei        String?
@@ -3134,6 +3135,7 @@ model SmsLog {
   @@index([imei])
   @@index([provisioningId])
   @@index([template, createdAt])
+  @@index([status, statusUpdatedAt(sort: Desc)])
   @@map("sms_logs")
 }
 
@@ -3232,8 +3234,23 @@ model EngineControlCommand {
   /// temporel : la lecon de TRK-007 est qu'une echeance conditionnee a un etat du boitier
   /// retombe dans le piege qu'elle pretend fermer.
   expiredAt            DateTime?
+  /// Identifiant fourni par le client pour rendre un retry HTTP rejouable sans
+  /// créer une deuxième intention. Nullable pour conserver les lignes historiques.
+  idempotencyKey       String?       @unique
+  /// Une seule intention active par (tracker, action). Libéré uniquement lors
+  /// d'un état terminal afin que deux onglets/utilisateurs convergent.
+  activeKey            String?       @unique
+  /// État durable du worker RESTORE : ces champs survivent à un redémarrage API.
+  nextAttemptAt        DateTime?
+  lastAttemptAt        DateTime?
+  dispatchLeaseUntil   DateTime?
+  attemptCount         Int           @default(0)
+  smsAttemptCount      Int           @default(0)
+  alertedAt            DateTime?
+  smsLogId             String?       @db.Uuid
   createdAt            DateTime      @default(now())
   updatedAt            DateTime      @updatedAt
+  attempts             EngineDeliveryAttempt[]
 
   @@index([trackerId, status])
   // V1.10 (Sprint 2 perf) — vehicles.snapshot et positions.service appellent
@@ -3247,6 +3264,29 @@ model EngineControlCommand {
   // dégrade avec le volume. Index global dédié.
   @@index([createdAt(sort: Desc)])
   @@map("engine_control_commands")
+}
+
+/// Journal corrélé de chaque tentative TCP/SMS d'une intention moteur.
+model EngineDeliveryAttempt {
+  id            String               @id @default(uuid()) @db.Uuid
+  commandId     String               @db.Uuid
+  command       EngineControlCommand @relation(fields: [commandId], references: [id], onDelete: Cascade)
+  attemptNumber Int
+  channel       String               // TCP | SMS
+  status        String               // QUEUED | WRITTEN | ACCEPTED | DELIVERED | ACKNOWLEDGED | FAILED | TIMED_OUT
+  providerId    String?
+  smsLogId      String?              @db.Uuid
+  rawCode       String?
+  errorMessage  String?
+  startedAt     DateTime             @default(now())
+  finishedAt    DateTime?
+  createdAt     DateTime             @default(now())
+  updatedAt     DateTime             @updatedAt
+
+  @@unique([commandId, attemptNumber])
+  @@index([commandId, createdAt(sort: Desc)])
+  @@index([channel, status, createdAt])
+  @@map("engine_delivery_attempts")
 }
 
 /// Sprint 4 — Écoute audio à distance (micro embarqué), LÉGALEMENT CRITIQUE.

@@ -16,6 +16,7 @@ import {
   EngineControlService,
   type EngineControlCommandDto,
 } from '../../core/services/engine-control.service';
+import { EngineCommandLockService } from '../../core/services/engine-command-lock.service';
 import { PermissionsService } from '../../core/services/permissions.service';
 import { RealtimeService } from '../../core/services/realtime.service';
 import { VehicleSchedulesApiService } from '../../core/services/vehicle-schedules.service';
@@ -111,8 +112,8 @@ const CONFIRM_WINDOW_MS = 90_000;
             Ne considérez pas le véhicule comme immobilisé tant que ce n'est pas vérifié.
           </p>
           <div class="ec-nc-sorties">
-            <button type="button" class="ec-sortie" (click)="renvoyer()" [disabled]="loading()">
-              {{ loading() ? 'Envoi…' : 'Renvoyer la commande' }}
+            <button type="button" class="ec-sortie" (click)="renvoyer()" [disabled]="commandLocked()">
+              {{ commandLocked() ? 'Envoi…' : 'Renvoyer la commande' }}
             </button>
             <a class="ec-sortie" routerLink="/fleet-admin/activity">Voir l'historique</a>
             <button type="button" class="ec-sortie" (click)="verifieSurPlace.set(true)">
@@ -152,7 +153,7 @@ const CONFIRM_WINDOW_MS = 90_000;
         [critique]="true"
         [etat]="etatVehicule()"
         [confirmationAttendue]="vehiclePlate()"
-        [loading]="loading()"
+        [loading]="commandLocked()"
         (confirmed)="onConfirm('CUT')"
         (cancelled)="isOpen.set(null)"
       >
@@ -211,7 +212,7 @@ const CONFIRM_WINDOW_MS = 90_000;
         confirmLabel="Oui, rallumer"
         cancelLabel="Annuler"
         [danger]="false"
-        [loading]="loading()"
+        [loading]="commandLocked()"
         (confirmed)="onConfirm('RESTORE')"
         (cancelled)="isOpen.set(null)"
       >
@@ -337,12 +338,16 @@ export class EngineControlButtonComponent implements OnInit {
 
   private readonly authService = inject(AuthService);
   private readonly engineControl = inject(EngineControlService);
+  private readonly commandLocks = inject(EngineCommandLockService);
   private readonly perms = inject(PermissionsService);
   private readonly toast = inject(ToastService);
   private readonly realtime = inject(RealtimeService);
   private readonly schedulesApi = inject(VehicleSchedulesApiService);
   /** Environnement de démonstration : encarts des confirmations, toast et pastille « simulation ». */
   protected readonly demo = inject(DemoModeService);
+  protected readonly commandLocked = computed(
+    () => this.loading() || this.commandLocks.isLocked(this.trackerId()),
+  );
 
   /**
    * V1.11 Phase 1 — VehicleId effectif : prend l'input si fourni, sinon resout
@@ -378,12 +383,10 @@ export class EngineControlButtonComponent implements OnInit {
     // chute d'ignition). Une coupure seulement SENT (pas encore confirmee) NE compte
     // PAS : l'etat ne bascule qu'a la preuve reelle — jamais de faux succes.
     const lastCut = cmds.find((c) => c.action === 'CUT' && c.status === 'ACKNOWLEDGED');
-    // Revue #1 — un RESTORE nettoie l'etat des l'ENVOI (SENT||ACK) : rallumer est
-    // toujours sur, on ne requiert PAS de preuve device pour CESSER d'afficher
-    // "coupe". Sinon le bouton resterait colle sur « Rallumer » (un RESTORE app
-    // n'atteint jamais ACKNOWLEDGED : seul un CUT est confirme par la chute d'ignition).
+    // Un RESTORE seulement SENT ne nettoie jamais l'état : la soumission au
+    // transport n'est pas une preuve d'exécution par le boîtier.
     const lastRestore = cmds.find(
-      (c) => c.action === 'RESTORE' && (c.status === 'SENT' || c.status === 'ACKNOWLEDGED'),
+      (c) => c.action === 'RESTORE' && c.status === 'ACKNOWLEDGED',
     );
     if (!lastCut) return false;
     if (!lastRestore) return true;
@@ -497,6 +500,18 @@ export class EngineControlButtonComponent implements OnInit {
       };
     }
     // status === 'SENT'
+    if (c.action === 'RESTORE') {
+      const ageMs = this._now() - new Date(c.sentAt ?? c.createdAt).getTime();
+      const late = ageMs >= 60_000;
+      return {
+        short: late ? 'Rallumage non confirmé' : 'Rallumage en cours',
+        label: late
+          ? 'Le rallumage n’est toujours pas confirmé. Vérifiez l’alerte et le véhicule.'
+          : 'RESTORE enregistré : TCP puis secours SMS seront suivis jusqu’au statut final.',
+        textClass: late ? 'ec-alerte' : 'ec-attente',
+        dotClass: late ? 'ec-point-alerte' : 'ec-point-attente',
+      };
+    }
     if (c.confirmationExpected === false) {
       return {
         short: 'Envoyée',
@@ -527,7 +542,10 @@ export class EngineControlButtonComponent implements OnInit {
 
   /** L'etat NON CONFIRME est-il a l'ecran ? Il ouvre alors ses trois sorties. */
   protected readonly nonConfirmee = computed<boolean>(
-    () => this.commandStateBrut()?.short === 'Non confirmée',
+    () => {
+      const short = this.commandStateBrut()?.short;
+      return short === 'Non confirmée' || short === 'Rallumage non confirmé';
+    },
   );
   /**
    * Sortie n° 3 : « j'ai verifie sur place ».
@@ -545,7 +563,7 @@ export class EngineControlButtonComponent implements OnInit {
   /** Sortie n° 1 : rejouer exactement la meme commande, sans repasser par la confirmation. */
   protected renvoyer(): void {
     const c = this.lastAppCommand();
-    if (!c || this.loading()) return;
+    if (!c || this.commandLocked()) return;
     this.verifieSurPlace.set(false);
     void this.onConfirm(c.action);
   }
@@ -765,7 +783,8 @@ export class EngineControlButtonComponent implements OnInit {
   }
 
   protected async onConfirm(action: 'CUT' | 'RESTORE'): Promise<void> {
-    if (this.loading()) return; // Protection double-clic
+    const trackerId = this.trackerId();
+    if (this.commandLocked() || !this.commandLocks.acquire(trackerId)) return;
     this.loading.set(true);
     const reasonText = action === 'CUT' ? this.reason() || undefined : undefined;
     // « Immobilisation durable » (case optionnelle, CUT uniquement) → désactive le planning (sortie
@@ -805,14 +824,16 @@ export class EngineControlButtonComponent implements OnInit {
           duration: 9000,
         });
       } else {
-        this.toast.success(
-          action === 'CUT' ? 'Coupure envoyée' : 'Rallumage envoyé',
-          dormant
-            ? `Commande ${cmd.id.slice(0, 8)} — boîtier muet depuis ${dormant.silence} : aucune confirmation à attendre, à vérifier physiquement.`
+        this.toast.show({
+          kind: 'info',
+          title: action === 'CUT' ? 'Coupure en cours' : 'Rallumage en cours',
+          message: dormant
+            ? `Commande ${cmd.id.slice(0, 8)} — boîtier muet depuis ${dormant.silence} : vérification physique requise.`
             : action === 'CUT'
               ? `Commande ${cmd.id.slice(0, 8)} — en attente de confirmation du boîtier…`
-              : `Commande ${cmd.id.slice(0, 8)} transmise au véhicule.`,
-        );
+              : `Commande ${cmd.id.slice(0, 8)} enregistrée — elle reste surveillée jusqu’à confirmation.`,
+          duration: 8000,
+        });
       }
       await this.loadRecentCommands();
     } catch (err) {
@@ -830,6 +851,7 @@ export class EngineControlButtonComponent implements OnInit {
       }
     } finally {
       this.loading.set(false);
+      this.commandLocks.release(trackerId);
     }
   }
 

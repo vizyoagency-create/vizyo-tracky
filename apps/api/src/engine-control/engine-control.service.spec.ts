@@ -183,7 +183,16 @@ describe('EngineControlService', () => {
         // Pré-existant : EngineControlService injecte SmsGatewayService (fallback SMS
         // V1.5 sprint-i) mais le provider manquait → toute la suite ne compilait pas.
         // isEnabled=false : trySmsFallback reste un no-op, on garde le chemin offline→FAILED.
-        { provide: SmsGatewayService, useValue: { isEnabled: jest.fn().mockReturnValue(false), send: jest.fn() } },
+        {
+          provide: SmsGatewayService,
+          useValue: {
+            isEnabled: jest.fn().mockReturnValue(false),
+            send: jest.fn(),
+            reconcileOutboundStatus: jest.fn(),
+            healthCheck: jest.fn(),
+            dispatchQueueState: jest.fn().mockReturnValue({ depth: 0, minIntervalMs: 15000, nextDispatchAt: null }),
+          },
+        },
         // Zones mortes GPS : par defaut AUCUNE zone -> la sentinelle « coupure
         // inverifiable » remonte normalement. Les tests qui veulent l'inverse
         // surchargent matchZoneForPoint.
@@ -559,7 +568,8 @@ describe('EngineControlService', () => {
 
     const result = await service.requestCommand(TRACKER_ID, EngineAction.CUT, null, fleetAdmin);
 
-    expect(result.status).toBe(CommandStatus.PENDING);
+    // La réponse HTTP reflète maintenant l'état réellement persisté après dispatch.
+    expect(result.status).toBe(CommandStatus.SENT);
     expect(registry.send).toHaveBeenCalledWith(
       '123456789012345',
       expect.stringContaining('**,imei:123456789012345,J;'),
@@ -595,9 +605,9 @@ describe('EngineControlService', () => {
     prisma.tracker.findFirst.mockResolvedValue(trackerWithVehicle);
     registry.send.mockReturnValue(false);
 
-    await expect(
-      service.requestCommand(TRACKER_ID, EngineAction.RESTORE, null, fleetAdmin),
-    ).rejects.toThrow(ServiceUnavailableException);
+    const result = await service.requestCommand(TRACKER_ID, EngineAction.RESTORE, null, fleetAdmin);
+    expect(result.status).toBe(CommandStatus.PENDING);
+    expect(result.lastError).toContain('reconnexion prioritaire');
 
     expect(prisma.engineControlCommand.create).toHaveBeenCalledWith({
       data: expect.objectContaining({ status: CommandStatus.PENDING, action: EngineAction.RESTORE }),
@@ -612,7 +622,7 @@ describe('EngineControlService', () => {
 
     await expect(
       service.requestCommand(TRACKER_ID, EngineAction.RESTORE, null, fleetAdmin),
-    ).rejects.toThrow(ServiceUnavailableException);
+    ).resolves.toEqual(expect.objectContaining({ status: CommandStatus.PENDING }));
 
     expect(prisma.position.findFirst).not.toHaveBeenCalled();
   });
@@ -689,7 +699,7 @@ describe('EngineControlService', () => {
 
     await expect(
       service.requestCommand(TRACKER_ID, EngineAction.RESTORE, null, fleetAdmin),
-    ).rejects.toThrow(ServiceUnavailableException); // passe le lock, echoue au dispatch offline
+    ).resolves.toEqual(expect.objectContaining({ status: CommandStatus.PENDING }));
     expect(prisma.engineControlCommand.create).toHaveBeenCalledWith({
       data: expect.objectContaining({ action: EngineAction.RESTORE }),
     });
@@ -846,7 +856,7 @@ describe('EngineControlService', () => {
     registry.send.mockReturnValue(false);
     await expect(
       service.requestCommand(TRACKER_ID, EngineAction.RESTORE, null, nightWatchman),
-    ).rejects.toThrow(ServiceUnavailableException); // RESTORE saute tout le bloc CUT, échoue au dispatch
+    ).resolves.toEqual(expect.objectContaining({ status: CommandStatus.PENDING }));
     expect(prisma.position.findFirst).not.toHaveBeenCalled();
     expect(prisma.engineControlCommand.create).toHaveBeenCalledWith({
       data: expect.objectContaining({ action: EngineAction.RESTORE }),
@@ -1188,7 +1198,7 @@ describe('EngineControlService', () => {
     registry.send.mockReturnValue(false);
     await expect(
       service.requestCommand(TRACKER_ID, EngineAction.RESTORE, null, superAdmin, 'SCHEDULER'),
-    ).rejects.toThrow(ServiceUnavailableException); // la commande PART (échec dispatch offline)
+    ).resolves.toEqual(expect.objectContaining({ status: CommandStatus.PENDING }));
     expect(prisma.engineControlCommand.create).toHaveBeenCalledWith({
       data: expect.objectContaining({ status: CommandStatus.PENDING, action: EngineAction.RESTORE }),
     });
@@ -1339,8 +1349,9 @@ describe('EngineControlService', () => {
       await service.cloturerCommandesPerimees();
 
       const where = prisma.engineControlCommand.updateMany.mock.calls[0][0].where;
-      expect(Object.keys(where).sort()).toEqual(['ackedAt', 'sentAt', 'status']);
+      expect(Object.keys(where).sort()).toEqual(['ackedAt', 'action', 'sentAt', 'status']);
       expect(where.status).toBe('SENT');
+      expect(where.action).toBe('CUT');
       expect(where.ackedAt).toBeNull();
       expect(where.sentAt.lt).toBeInstanceOf(Date);
     });
@@ -1519,6 +1530,264 @@ describe('EngineControlService', () => {
       expect(prisma.engineControlCommand.update).not.toHaveBeenCalled();
       expect(prisma.engineControlCommand.updateMany).not.toHaveBeenCalled();
       expect(prisma.engineControlCommand.create).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('fiabilité coupe-circuit — incident septembre 2026', () => {
+    it('bloque par défaut une CUT automatique en production', async () => {
+      const previousNodeEnv = process.env['NODE_ENV'];
+      const previousFlag = process.env['ENGINE_AUTOMATIC_CUT_ENABLED'];
+      process.env['NODE_ENV'] = 'production';
+      delete process.env['ENGINE_AUTOMATIC_CUT_ENABLED'];
+      prisma.tracker.findFirst.mockResolvedValue(trackerWithVehicle);
+
+      try {
+        await expect(
+          service.requestCommand(TRACKER_ID, EngineAction.CUT, null, superAdmin, 'SCHEDULER'),
+        ).rejects.toThrow('Coupures automatiques désactivées');
+        expect(prisma.engineControlCommand.create).not.toHaveBeenCalled();
+        expect(errorLogger.record).toHaveBeenCalledWith(
+          expect.stringContaining('kill-switch'),
+          'engine-control-interlock',
+          expect.objectContaining({ trackerId: TRACKER_ID }),
+          'CRITICAL',
+        );
+      } finally {
+        if (previousNodeEnv === undefined) delete process.env['NODE_ENV'];
+        else process.env['NODE_ENV'] = previousNodeEnv;
+        if (previousFlag === undefined) delete process.env['ENGINE_AUTOMATIC_CUT_ENABLED'];
+        else process.env['ENGINE_AUTOMATIC_CUT_ENABLED'] = previousFlag;
+      }
+    });
+
+    it('renvoie la même intention après collision idempotente', async () => {
+      const replay = createdCommand({
+        action: EngineAction.RESTORE,
+        status: CommandStatus.SENT,
+        idempotencyKey: 'same-click',
+      });
+      prisma.tracker.findFirst.mockResolvedValue(trackerWithVehicle);
+      prisma.engineControlCommand.findFirst
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(replay);
+      prisma.engineControlCommand.create.mockRejectedValueOnce({ code: 'P2002' });
+
+      const result = await service.requestCommand(
+        TRACKER_ID,
+        EngineAction.RESTORE,
+        null,
+        fleetAdmin,
+        'MANUAL',
+        false,
+        false,
+        'same-click',
+      );
+
+      expect(result.id).toBe(replay.id);
+      expect(registry.send).not.toHaveBeenCalled();
+    });
+
+    it('reprend un RESTORE TCP sans ACK par le fallback SMS', async () => {
+      const sms = testModule.get(SmsGatewayService) as unknown as {
+        isEnabled: jest.Mock;
+        send: jest.Mock;
+      };
+      sms.isEnabled.mockReturnValue(true);
+      sms.send.mockResolvedValue({
+        ok: true,
+        outcome: 'accepted',
+        submittedStatus: 'queued',
+        smsLogId: '00000000-0000-0000-0000-000000000099',
+        twilioSid: 'cap-99',
+      });
+      prisma.tracker.findFirst.mockResolvedValue({ simPhoneNumber: '+33600000000' });
+      prisma.engineControlCommand.findMany
+        .mockResolvedValueOnce([{
+          ...createdCommand({
+            action: EngineAction.RESTORE,
+            status: CommandStatus.SENT,
+            channel: 'TCP',
+            attemptCount: 1,
+            sentAt: new Date(Date.now() - 20_000),
+            nextAttemptAt: new Date(Date.now() - 1_000),
+            dispatchLeaseUntil: null,
+          }),
+          tracker: { imei: trackerWithVehicle.imei, vehicle: trackerWithVehicle.vehicle },
+        }])
+        .mockResolvedValueOnce([]);
+
+      await service.processPendingRestores();
+
+      expect(sms.send).toHaveBeenCalledWith(
+        '+33600000000',
+        'resume123456',
+        expect.objectContaining({ commandId: expect.any(String) }),
+      );
+      expect(prisma.engineControlCommand.update).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ channel: 'SMS' }) }),
+      );
+    });
+
+    it('attend une reconnexion TCP avant de payer le secours SMS si la socket était absente', async () => {
+      const sms = testModule.get(SmsGatewayService) as unknown as {
+        isEnabled: jest.Mock;
+        send: jest.Mock;
+      };
+      sms.isEnabled.mockReturnValue(true);
+      sms.send.mockResolvedValue({
+        ok: true,
+        outcome: 'accepted',
+        submittedStatus: 'queued',
+        smsLogId: '00000000-0000-0000-0000-000000000098',
+      });
+      prisma.tracker.findFirst.mockResolvedValue({ simPhoneNumber: '+33600000000' });
+      registry.send.mockReturnValue(false);
+      prisma.engineControlCommand.findMany
+        .mockResolvedValueOnce([{
+          ...createdCommand({
+            action: EngineAction.RESTORE,
+            status: CommandStatus.PENDING,
+            channel: 'TCP',
+            attemptCount: 1,
+            nextAttemptAt: new Date(Date.now() - 1_000),
+            dispatchLeaseUntil: null,
+          }),
+          tracker: { imei: trackerWithVehicle.imei, vehicle: trackerWithVehicle.vehicle },
+        }])
+        .mockResolvedValueOnce([]);
+
+      await service.processPendingRestores();
+
+      expect(registry.send).toHaveBeenCalled();
+      expect(sms.send).toHaveBeenCalledWith(
+        '+33600000000',
+        'resume123456',
+        expect.objectContaining({ priority: 'critical_restore' }),
+      );
+    });
+
+    it('rend visible un échec SMS terminal et exige une intervention après épuisement', async () => {
+      const sms = testModule.get(SmsGatewayService) as unknown as { reconcileOutboundStatus: jest.Mock };
+      sms.reconcileOutboundStatus.mockResolvedValue({ outcome: 'failed', status: 'failed' });
+      prisma.engineControlCommand.findMany
+        .mockResolvedValueOnce([{
+          ...createdCommand({
+            action: EngineAction.RESTORE,
+            status: CommandStatus.SENT,
+            channel: 'SMS',
+            smsLogId: '00000000-0000-0000-0000-000000000099',
+            attemptCount: 3,
+            smsAttemptCount: 3,
+            nextAttemptAt: new Date(Date.now() - 1_000),
+            dispatchLeaseUntil: null,
+          }),
+          tracker: { imei: trackerWithVehicle.imei, vehicle: trackerWithVehicle.vehicle },
+        }])
+        .mockResolvedValueOnce([]);
+
+      await service.processPendingRestores();
+
+      expect(prisma.engineControlCommand.update).toHaveBeenCalledWith({
+        where: { id: expect.any(String) },
+        data: expect.objectContaining({
+          status: CommandStatus.FAILED,
+          activeKey: null,
+          nextAttemptAt: null,
+        }),
+      });
+    });
+
+    it('émet une sentinelle CRITICAL unique pour un RESTORE en retard', async () => {
+      prisma.engineControlCommand.findMany
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([{
+          ...createdCommand({
+            action: EngineAction.RESTORE,
+            status: CommandStatus.SENT,
+            channel: 'SMS',
+            attemptCount: 2,
+            alertedAt: null,
+            createdAt: new Date(Date.now() - 120_000),
+          }),
+          tracker: { imei: trackerWithVehicle.imei, vehicle: trackerWithVehicle.vehicle },
+        }]);
+
+      await service.processPendingRestores();
+
+      expect(errorLogger.record).toHaveBeenCalledWith(
+        expect.stringContaining('RESTORE non confirmé'),
+        'engine-control-restore',
+        expect.objectContaining({ plate: 'AB-123-CD', attemptCount: 2 }),
+        'CRITICAL',
+      );
+      expect(prisma.engineControlCommand.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({ data: { alertedAt: expect.any(Date) } }),
+      );
+    });
+
+    it('réarme la sentinelle si le centre d alertes ne persiste pas le signal', async () => {
+      prisma.engineControlCommand.findMany
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([{
+          ...createdCommand({
+            action: EngineAction.RESTORE,
+            status: CommandStatus.SENT,
+            alertedAt: null,
+            createdAt: new Date(Date.now() - 120_000),
+          }),
+          tracker: { imei: trackerWithVehicle.imei, vehicle: trackerWithVehicle.vehicle },
+        }]);
+      errorLogger.record.mockRejectedValueOnce(new Error('centre indisponible'));
+
+      await expect(service.processPendingRestores()).resolves.toBeUndefined();
+
+      expect(prisma.engineControlCommand.updateMany).toHaveBeenLastCalledWith({
+        where: { id: expect.any(String), alertedAt: expect.any(Date) },
+        data: { alertedAt: null },
+      });
+    });
+
+    it('remonte aussi un RESTORE terminal FAILED resté sans alerte persistée', async () => {
+      prisma.engineControlCommand.findMany
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([{
+          ...createdCommand({
+            action: EngineAction.RESTORE,
+            status: CommandStatus.FAILED,
+            alertedAt: null,
+            createdAt: new Date(Date.now() - 120_000),
+            lastError: '3 SMS refusés',
+          }),
+          tracker: { imei: trackerWithVehicle.imei, vehicle: trackerWithVehicle.vehicle },
+        }]);
+
+      await service.processPendingRestores();
+
+      expect(errorLogger.record).toHaveBeenCalledWith(
+        'RESTORE en échec terminal — intervention humaine obligatoire',
+        'engine-control-restore',
+        expect.objectContaining({ lastError: '3 SMS refusés', actionRequired: expect.any(String) }),
+        'CRITICAL',
+      );
+      const sentinelQuery = prisma.engineControlCommand.findMany.mock.calls[1][0].where;
+      expect(sentinelQuery.status.in).toContain(CommandStatus.FAILED);
+    });
+
+    it('ignore un tick concurrent pendant qu un worker RESTORE est encore actif', async () => {
+      let release!: (rows: unknown[]) => void;
+      const blocked = new Promise<unknown[]>((resolve) => { release = resolve; });
+      prisma.engineControlCommand.findMany
+        .mockReturnValueOnce(blocked)
+        .mockResolvedValueOnce([]);
+
+      const first = service.processPendingRestores();
+      await Promise.resolve();
+      await expect(service.processPendingRestores()).resolves.toBeUndefined();
+      expect(prisma.engineControlCommand.findMany).toHaveBeenCalledTimes(1);
+
+      release([]);
+      await first;
+      expect(prisma.engineControlCommand.findMany).toHaveBeenCalledTimes(2);
     });
   });
 });

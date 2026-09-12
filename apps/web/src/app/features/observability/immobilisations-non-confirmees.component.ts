@@ -22,6 +22,10 @@ interface Recente {
   plaque: string;
   origine: string;
   ageHeures: number;
+  tentatives: number;
+  prochainEssai: string | null;
+  alerteEmise: boolean;
+  dernierBlocage: string | null;
 }
 
 interface Reponse {
@@ -33,6 +37,9 @@ interface Reponse {
     parCanal: { TCP: number; SMS: number; INCONNU: number };
     vehiculesConcernes: number;
     plusAncienneHeures: number | null;
+    restaurationsEnCours: number;
+    retriesPlanifies: number;
+    alertesEmises: number;
   };
   parVehicule: ParVehicule[];
   recentes: Recente[];
@@ -110,6 +117,11 @@ interface Reponse {
         } @else {
           <div class="inc-cartes">
             <div class="inc-c">
+              <span class="inc-c-n" [class.inc-c-n--attention]="d.resume.restaurationsEnCours > 0">{{ d.resume.restaurationsEnCours }}</span>
+              <span class="inc-c-l">RESTORE en cours</span>
+              <span class="inc-c-s">{{ d.resume.retriesPlanifies }} retry(s) planifié(s) · {{ d.resume.alertesEmises }} alerte(s)</span>
+            </div>
+            <div class="inc-c">
               <span class="inc-c-n">{{ d.resume.total }}</span>
               <span class="inc-c-l">sans confirmation</span>
               <span class="inc-c-s">sur {{ d.fenetreJours }} jours</span>
@@ -164,6 +176,10 @@ interface Reponse {
                 </span>
                 <span class="inc-tag" [class.inc-tag--sms]="r.canal === 'SMS'">{{ r.canal }}</span>
                 <span class="inc-tag">{{ r.origine === 'SCHEDULER' ? 'automatique' : 'manuelle' }}</span>
+                <span class="inc-tag">{{ r.tentatives }} tentative(s)</span>
+                @if (r.alerteEmise) { <span class="inc-tag inc-tag--cut">alerte émise</span> }
+                @if (r.prochainEssai) { <span class="inc-tag inc-tag--sms">retry {{ dateCourte(r.prochainEssai) }}</span> }
+                @if (r.dernierBlocage) { <span class="inc-blocage" [title]="r.dernierBlocage">{{ r.dernierBlocage }}</span> }
                 <span class="inc-date">{{ age(r.ageHeures) }}</span>
               </article>
             }
@@ -226,6 +242,7 @@ interface Reponse {
       .inc-tag--sms { background: rgba(224, 163, 64, .14); color: var(--warning, #e0a340) }
       .inc-tag--cut { background: rgba(242, 116, 138, .13); color: var(--danger, #f2748a) }
       .inc-date { font-size: 11px; color: var(--fg-tertiary); margin-left: auto }
+      .inc-blocage { flex-basis: 100%; font-size: 11px; color: var(--danger, #f2748a); overflow-wrap: anywhere }
     `,
   ],
 })

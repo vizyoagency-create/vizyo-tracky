@@ -114,6 +114,28 @@ type Tab = 'status' | 'logs' | 'allowlist' | 'backup';
                   }
                 </div>
               }
+              @if (status()?.deliveryProofAvailable === false) {
+                <div class="mt-2 text-xs text-rose-300">
+                  <lucide-icon [img]="AlertTriangle" [size]="12" class="inline-block align-[-2px]"></lucide-icon>
+                  Aucune preuve de remise disponible : la passerelle est joignable, mais la chaîne SMS n’est pas validée.
+                </div>
+              }
+              @if ((status()?.pendingWithoutReceipt ?? 0) > 0) {
+                <div class="mt-2 text-xs text-amber-300">
+                  {{ status()?.pendingWithoutReceipt }} SMS sans statut terminal
+                  @if (status()?.oldestPendingAt) { · plus ancien {{ status()?.oldestPendingAt | date: 'dd/MM HH:mm' }} }
+                </div>
+              }
+              @if (status()?.dispatchQueue; as q) {
+                <div class="mt-1 text-xs text-fg-tertiary">
+                  File Tracky : {{ q.depth }} · cadence minimale {{ q.minIntervalMs / 1000 }} s
+                </div>
+              }
+              @if (status()?.lastTerminalSuccessAt) {
+                <div class="mt-1 text-xs text-fg-tertiary">
+                  Dernière remise terminale : {{ status()?.lastTerminalSuccessAt | date: 'dd/MM HH:mm:ss' }}
+                </div>
+              }
               @if (status()?.fromNumber) {
                 <div class="mt-1 text-xs font-mono text-fg-tertiary">From : {{ status()?.fromNumber }}</div>
               }
@@ -447,7 +469,7 @@ export class AdminSmsComponent implements OnInit, OnDestroy {
   // V1.13 — Verdict reel SMS Gateway (utilise dans card status).
   private modeOk(): boolean {
     const m = this.status()?.mode;
-    return m === 'twilio' || m === 'vizyo-texto';
+    return (m === 'twilio' || m === 'vizyo-texto') && this.status()?.deliveryProofAvailable === true;
   }
   private modeBroken(): boolean {
     const m = this.status()?.mode;
@@ -470,6 +492,9 @@ export class AdminSmsComponent implements OnInit, OnDestroy {
   }
   protected cardTitleText(): string {
     const m = this.status()?.mode;
+    if ((m === 'vizyo-texto' || m === 'twilio') && this.status()?.deliveryProofAvailable !== true) {
+      return 'Passerelle joignable · remise non prouvée';
+    }
     if (m === 'vizyo-texto') return 'vizyo-texto actif';
     if (m === 'vizyo-texto-broken') return 'vizyo-texto injoignable';
     if (m === 'twilio') return 'Twilio actif';
@@ -478,10 +503,14 @@ export class AdminSmsComponent implements OnInit, OnDestroy {
   }
   protected cardSubText(): string {
     const m = this.status()?.mode;
-    if (m === 'vizyo-texto') return 'Les SMS partent via la passerelle maison vizyo-texto.';
+    if (m === 'vizyo-texto' && this.status()?.deliveryProofAvailable !== true)
+      return 'Le relais répond, mais aucun statut terminal positif ne prouve encore la chaîne Android/SIM.';
+    if (m === 'vizyo-texto') return 'Passerelle maison joignable et au moins une remise terminale observée.';
     if (m === 'vizyo-texto-broken')
       return 'vizyo-texto est configure mais injoignable — verifier le relay (texto.vizyoagency.com).';
-    if (m === 'twilio') return 'Les SMS sont reellement envoyes (Twilio).';
+    if (m === 'twilio' && this.status()?.deliveryProofAvailable !== true)
+      return 'Twilio répond, mais aucune remise terminale n’est actuellement prouvée.';
+    if (m === 'twilio') return 'Twilio joignable et au moins une remise terminale observée.';
     if (m === 'twilio-broken')
       return 'Les credentials TWILIO_* sont presents mais Twilio refuse l\'authentification — verifier sid/token.';
     return 'Les SMS sont simules — aucune gateway configuree.';

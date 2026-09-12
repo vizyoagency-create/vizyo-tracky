@@ -23,6 +23,15 @@ export interface SmsStatus {
     errorCode?: string;
     errorMessage?: string;
   } | null;
+  deliveryProofAvailable?: boolean;
+  pendingWithoutReceipt?: number;
+  oldestPendingAt?: string | null;
+  lastTerminalSuccessAt?: string | null;
+  dispatchQueue?: {
+    depth: number;
+    minIntervalMs: number;
+    nextDispatchAt: string | null;
+  };
 }
 
 export interface SmsTestFallbackResult {

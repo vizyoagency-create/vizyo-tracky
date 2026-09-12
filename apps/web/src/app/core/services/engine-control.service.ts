@@ -17,6 +17,9 @@ export interface EngineControlCommandDto {
   /** Sprint 2 — true si une chute d'ignition est attendable comme preuve (CUT en marche). */
   confirmationExpected?: boolean;
   ackedAt?: string | null;
+  channel?: string | null;
+  attemptCount?: number;
+  nextAttemptAt?: string | null;
 }
 
 @Injectable({ providedIn: 'root' })
@@ -29,9 +32,12 @@ export class EngineControlService {
     reason?: string,
     disableSchedule?: boolean,
   ): Observable<EngineControlCommandDto> {
+    // Créée avant la souscription : un retry du même Observable conserve la clé.
+    const idempotencyKey = globalThis.crypto?.randomUUID?.() ??
+      `engine-${Date.now()}-${Math.random().toString(36).slice(2)}`;
     return this.http.post<EngineControlCommandDto>(
       `/api/engine-control/trackers/${trackerId}/commands`,
-      { action, reason, ...(disableSchedule ? { disableSchedule: true } : {}) },
+      { action, reason, idempotencyKey, ...(disableSchedule ? { disableSchedule: true } : {}) },
     );
   }
 

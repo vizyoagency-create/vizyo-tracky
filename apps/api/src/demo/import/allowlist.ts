@@ -273,7 +273,7 @@ export const EXCLUS: Readonly<Record<string, string>> = {
   ),
   ...exclure(
     "commandes et boîtiers : historique des commandes, écoute audio, provisionnement SMS, diagnostics GPS — du matériel réel et des numéros ; la démo n'a ni l'un ni l'autre. La SIM, elle, est désormais importée pseudonymisée (cf. entrée `Sim`) : son absence faisait afficher « SIM manquante » sur les trente-sept véhicules, ce qu'un prospect lit comme une installation ratée.",
-    'TrackerCommand', 'EngineControlCommand', 'AudioMonitoringCommand', 'FleetAudioConfig', 'TrackerProvisioning',
+    'TrackerCommand', 'EngineControlCommand', 'EngineDeliveryAttempt', 'AudioMonitoringCommand', 'FleetAudioConfig', 'TrackerProvisioning',
     'GpsDeadZone', 'GpsLossEvent', 'GpsZoneDiagnostic', 'ScheduleHistory', 'PrivacyModeEvent',
   ),
   ...exclure(

@@ -68,6 +68,16 @@ const envSchema = z.object({
   // SmsHeartbeatService.
   SMS_HEARTBEAT_RECIPIENTS: z.string().default(''),
 
+  // Coupe-circuit : une variable absente ne doit jamais réactiver les CUT
+  // automatiques. L'activation est une décision Go explicite.
+  ENGINE_AUTOMATIC_CUT_ENABLED: z.string().default('false'),
+  // Cadence serveur vers la passerelle Android (rafale du 11/09 : 10 SMS/6 s).
+  SMS_MIN_INTERVAL_MS: z.coerce.number().int().nonnegative().default(15000),
+  // Worker RESTORE durable : délais et plafond d'essais SMS avant escalade.
+  ENGINE_RESTORE_ACK_TIMEOUT_MS: z.coerce.number().int().positive().default(15000),
+  ENGINE_RESTORE_ALERT_AFTER_MS: z.coerce.number().int().positive().default(60000),
+  ENGINE_RESTORE_MAX_SMS_ATTEMPTS: z.coerce.number().int().positive().default(3),
+
   // Email Gateway (Resend) — Sprint J. Si RESEND_API_KEY est vide, le module
   // est en mode no-op (les invitations sont creees mais l'email n'est pas envoye,
   // log de debug). Permet de developper sans compte Resend.

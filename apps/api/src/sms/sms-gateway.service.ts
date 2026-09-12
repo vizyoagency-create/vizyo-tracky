@@ -25,7 +25,7 @@ import { SystemActivityService } from '../system-activity/system-activity.servic
  * Statut de SOUMISSION d'un SMS sortant, tel que la passerelle le rend dans la même
  * seconde. Ce sont les valeurs jamais réécrites par personne (cf. TRK-026).
  */
-export const SMS_SUBMISSION_STATUSES = ['queued', 'accepted', 'sending', 'noop'] as const;
+export const SMS_SUBMISSION_STATUSES = ['queued', 'accepted', 'sending', 'sent', 'noop'] as const;
 /** Statuts terminaux d'ÉCHEC connus (fournisseur). */
 export const SMS_FAILED_STATUSES = [
   'failed',
@@ -36,7 +36,7 @@ export const SMS_FAILED_STATUSES = [
   'canceled',
 ] as const;
 /** Statuts terminaux de SUCCÈS — les seuls qui prouvent une remise. */
-export const SMS_DELIVERED_STATUSES = ['delivered', 'sent', 'received'] as const;
+export const SMS_DELIVERED_STATUSES = ['delivered', 'received'] as const;
 
 /**
  * Issue d'un envoi, à trois états — TRK-026 (2026-08-17).
@@ -150,6 +150,29 @@ export function decrireEchecRelaisSms(motif: string, destinataire: string): stri
 export class SmsGatewayService implements OnModuleInit {
   private readonly logger = new Logger(SmsGatewayService.name);
 
+  /**
+   * File FIFO locale devant la passerelle Android. Elle ne remplace pas la file
+   * persistante du téléphone : elle empêche Tracky de lui injecter une rafale
+   * (10 messages en 6 s lors de l'incident du 11/09).
+   *
+   * Les RESTORE restent, eux, rejouables depuis la base par EngineControlService :
+   * un redémarrage API ne peut donc pas les perdre avec cette file mémoire.
+   */
+  private smsDispatchQueue: Array<{
+    sequence: number;
+    priority: number;
+    to: string;
+    body: string;
+    context: SmsSendContext;
+    resolve: (result: SendSmsResult) => void;
+    reject: (reason: unknown) => void;
+  }> = [];
+  private smsDispatchSequence = 0;
+  private smsDispatchProcessing = false;
+  private queuedForDispatch = 0;
+  private nextDispatchAt = 0;
+  private readonly minIntervalMs: number;
+
   // Provider actif : vizyo-texto (passerelle SMS maison) > twilio (legacy/fallback) > noop.
   private readonly provider: 'vizyo-texto' | 'twilio' | 'noop';
 
@@ -174,6 +197,15 @@ export class SmsGatewayService implements OnModuleInit {
     const sid = this.config?.get('TWILIO_ACCOUNT_SID', { infer: true }) ?? '';
     const token = this.config?.get('TWILIO_AUTH_TOKEN', { infer: true }) ?? '';
     this.fromNumber = this.config?.get('TWILIO_PHONE_NUMBER', { infer: true }) ?? '';
+    const configuredInterval = this.config?.get('SMS_MIN_INTERVAL_MS', { infer: true });
+    this.minIntervalMs = Math.max(
+      0,
+      Number.isFinite(Number(configuredInterval))
+        ? Number(configuredInterval)
+        : process.env['NODE_ENV'] === 'production'
+          ? 15_000
+          : 0,
+    );
 
     if (this.textoUrl && this.textoApiKey) {
       this.provider = 'vizyo-texto';
@@ -209,6 +241,15 @@ export class SmsGatewayService implements OnModuleInit {
   /** Provider SMS actif (pour l'affichage du statut admin). */
   currentProvider(): 'vizyo-texto' | 'twilio' | 'noop' {
     return this.provider;
+  }
+
+  /** Mesures sans effet de bord pour les sentinelles et l'interface admin. */
+  dispatchQueueState(): { depth: number; minIntervalMs: number; nextDispatchAt: string | null } {
+    return {
+      depth: this.queuedForDispatch,
+      minIntervalMs: this.minIntervalMs,
+      nextDispatchAt: this.nextDispatchAt > Date.now() ? new Date(this.nextDispatchAt).toISOString() : null,
+    };
   }
 
   /**
@@ -252,17 +293,19 @@ export class SmsGatewayService implements OnModuleInit {
     pendingWithoutReceipt: number;
     /** Date du plus ancien sortant sans accusé de remise (null si aucun). */
     oldestPendingAt: string | null;
+    /** Dernière preuve terminale positive, pour distinguer preuve historique et fraîche. */
+    lastTerminalSuccessAt: string | null;
   }> {
     // Compte les SMS OUT en echec dans les 24h (utile meme en mode noop).
     const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
     const submission = [...SMS_SUBMISSION_STATUSES];
-    const [recentFailures24h, lastFailureRow, pendingWithoutReceipt, oldestPending, everDelivered] =
+    const [recentFailures24h, lastFailureRow, pendingWithoutReceipt, oldestPending, everDelivered, lastDelivered] =
       await Promise.all([
         this.prisma.smsLog.count({
-          where: { direction: 'OUT', status: 'failed', createdAt: { gte: since } },
+          where: { direction: 'OUT', status: { in: [...SMS_FAILED_STATUSES] }, createdAt: { gte: since } },
         }),
         this.prisma.smsLog.findFirst({
-          where: { direction: 'OUT', status: 'failed' },
+          where: { direction: 'OUT', status: { in: [...SMS_FAILED_STATUSES] } },
           orderBy: { createdAt: 'desc' },
           select: { createdAt: true, toNumber: true, errorCode: true, errorMessage: true },
         }),
@@ -280,6 +323,14 @@ export class SmsGatewayService implements OnModuleInit {
         this.prisma.smsLog.count({
           where: { direction: 'OUT', status: { in: [...SMS_DELIVERED_STATUSES] } },
         }),
+        this.prisma.smsLog.findFirst({
+          where: { direction: 'OUT', status: { in: [...SMS_DELIVERED_STATUSES] } },
+          orderBy: [
+            { statusUpdatedAt: { sort: 'desc', nulls: 'last' } },
+            { createdAt: 'desc' },
+          ],
+          select: { createdAt: true, statusUpdatedAt: true },
+        }),
       ]);
 
     const lastFailure = lastFailureRow
@@ -292,6 +343,9 @@ export class SmsGatewayService implements OnModuleInit {
       : null;
     const deliveryProofAvailable = everDelivered > 0;
     const oldestPendingAt = oldestPending ? oldestPending.createdAt.toISOString() : null;
+    const lastTerminalSuccessAt = lastDelivered
+      ? (lastDelivered.statusUpdatedAt ?? lastDelivered.createdAt).toISOString()
+      : null;
 
     // vizyo-texto : ping le /health du relay (cout = 1 GET, pas de SMS).
     if (this.provider === 'vizyo-texto') {
@@ -307,6 +361,7 @@ export class SmsGatewayService implements OnModuleInit {
           deliveryProofAvailable,
           pendingWithoutReceipt,
           oldestPendingAt,
+          lastTerminalSuccessAt,
         };
       } catch (err) {
         return {
@@ -319,6 +374,7 @@ export class SmsGatewayService implements OnModuleInit {
           deliveryProofAvailable,
           pendingWithoutReceipt,
           oldestPendingAt,
+          lastTerminalSuccessAt,
         };
       }
     }
@@ -333,6 +389,7 @@ export class SmsGatewayService implements OnModuleInit {
         deliveryProofAvailable,
         pendingWithoutReceipt,
         oldestPendingAt,
+        lastTerminalSuccessAt,
       };
     }
 
@@ -349,6 +406,7 @@ export class SmsGatewayService implements OnModuleInit {
         deliveryProofAvailable,
         pendingWithoutReceipt,
         oldestPendingAt,
+        lastTerminalSuccessAt,
       };
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : String(err);
@@ -364,6 +422,7 @@ export class SmsGatewayService implements OnModuleInit {
         deliveryProofAvailable,
         pendingWithoutReceipt,
         oldestPendingAt,
+        lastTerminalSuccessAt,
       };
     }
   }
@@ -423,7 +482,7 @@ export class SmsGatewayService implements OnModuleInit {
   async reconcileOutboundStatus(
     smsLogId: string,
     providerStatus?: string | null,
-  ): Promise<{ outcome: SmsOutcome; status: string | null } | null> {
+  ): Promise<{ outcome: SmsOutcome; status: string | null; changed: boolean } | null> {
     const log = await this.prisma.smsLog.findUnique({
       where: { id: smsLogId },
       select: { id: true, status: true, direction: true, twilioSid: true },
@@ -433,7 +492,7 @@ export class SmsGatewayService implements OnModuleInit {
     // Un statut déjà terminal n'est JAMAIS réécrit — une preuve de remise ne se dégrade pas.
     const current = smsOutcomeFromStatus(log.status);
     if (current !== 'accepted') {
-      return { outcome: current, status: log.status };
+      return { outcome: current, status: log.status, changed: false };
     }
 
     // ══ TRK-026 (2026-08-24) — ON VA CHERCHER L'ACCUSÉ AU LIEU DE L'ATTENDRE ═══════════
@@ -460,20 +519,65 @@ export class SmsGatewayService implements OnModuleInit {
       statutFournisseur = await this.lireStatutPasserelle(log.twilioSid);
     }
     if (!statutFournisseur) {
-      return { outcome: current, status: log.status };
+      return { outcome: current, status: log.status, changed: false };
     }
 
     const next = String(statutFournisseur).toLowerCase();
     if (smsOutcomeFromStatus(next) === 'accepted') {
       // Le fournisseur répond encore un statut de soumission → toujours aucune preuve.
-      return { outcome: 'accepted', status: log.status };
+      return { outcome: 'accepted', status: log.status, changed: false };
     }
     const updated = await this.prisma.smsLog.update({
       where: { id: log.id },
-      data: { status: next },
+      data: { status: next, statusUpdatedAt: new Date() },
       select: { status: true },
     });
-    return { outcome: smsOutcomeFromStatus(updated.status), status: updated.status };
+    return { outcome: smsOutcomeFromStatus(updated.status), status: updated.status, changed: true };
+  }
+
+  /**
+   * Point d'entrée des webhooks de statut sortant. Le poller reste la seconde
+   * voie indépendante ; le webhook accélère seulement la vérité terminale.
+   */
+  async recordOutboundStatus(input: {
+    providerId: string;
+    status: string;
+    errorCode?: string;
+    errorMessage?: string;
+  }): Promise<{ found: boolean; smsLogId?: string; outcome?: SmsOutcome }> {
+    const log = await this.prisma.smsLog.findFirst({
+      where: { direction: 'OUT', twilioSid: input.providerId },
+      orderBy: { createdAt: 'desc' },
+      select: { id: true, imei: true },
+    });
+    if (!log) return { found: false };
+
+    const rec = await this.reconcileOutboundStatus(log.id, input.status);
+    if (!rec) return { found: false };
+    if (rec.outcome === 'failed') {
+      await this.prisma.smsLog.update({
+        where: { id: log.id },
+        data: {
+          errorCode: input.errorCode ?? undefined,
+          errorMessage: input.errorMessage ?? undefined,
+        },
+      });
+      if (rec.changed) {
+        this.errorLogger.record(
+          `SMS en échec terminal (${rec.status ?? input.status})`,
+          'sms-gateway-status',
+          {
+            smsLogId: log.id,
+            providerId: input.providerId,
+            imei: log.imei ?? undefined,
+            errorCode: input.errorCode,
+            errorMessage: input.errorMessage,
+          },
+          'CRITICAL',
+        ).catch(() => undefined);
+      }
+    }
+    return { found: true, smsLogId: log.id, outcome: rec.outcome };
   }
 
   /**
@@ -494,10 +598,63 @@ export class SmsGatewayService implements OnModuleInit {
     // On NORMALISE ici plutôt que de rejeter : si un autre chemin écrit un numéro brut un jour, le
     // SMS partira quand même. `toE164` reste prudent (un numéro national n'est jamais préfixé).
     const normalized = toE164(to) ?? to;
-    const result = await this.performSend(normalized, body, context);
-    const safeTo = normalized.trim();
-    if (safeTo) this.recordSystemActivity(safeTo, body, context, result);
-    return result;
+    const priority = context['priority'] === 'critical_restore'
+      ? 100
+      : context.template === 'engine_control_fallback'
+        ? 50
+        : 0;
+    this.queuedForDispatch += 1;
+    return new Promise<SendSmsResult>((resolve, reject) => {
+      this.smsDispatchQueue.push({
+        sequence: this.smsDispatchSequence++,
+        priority,
+        to: normalized,
+        body,
+        context,
+        resolve,
+        reject,
+      });
+      // Le drain est unique. Une RESTORE peut dépasser les SMS ordinaires encore en
+      // attente, tout en conservant le FIFO entre commandes de même priorité.
+      void this.drainDispatchQueue();
+    });
+  }
+
+  private async drainDispatchQueue(): Promise<void> {
+    if (this.smsDispatchProcessing) return;
+    this.smsDispatchProcessing = true;
+    try {
+      while (this.smsDispatchQueue.length > 0) {
+        this.smsDispatchQueue.sort((a, b) => b.priority - a.priority || a.sequence - b.sequence);
+        const job = this.smsDispatchQueue.shift();
+        if (!job) continue;
+        try {
+      const waitMs = Math.max(0, this.nextDispatchAt - Date.now());
+      if (waitMs > 0) {
+        await new Promise<void>((resolve) => {
+          const timer = setTimeout(resolve, waitMs);
+          // Le timer doit garder le processus vivant tant qu'un appel HTTP attend sa
+          // place : contrairement aux sentinelles de fond, cet envoi a un appelant.
+          if (typeof timer.ref === 'function') timer.ref();
+        });
+      }
+
+          const result = await this.performSend(job.to, job.body, job.context);
+      this.nextDispatchAt = Date.now() + this.minIntervalMs;
+          const safeTo = job.to.trim();
+          if (safeTo) this.recordSystemActivity(safeTo, job.body, job.context, result);
+          job.resolve(result);
+        } catch (err) {
+          job.reject(err);
+        } finally {
+          this.queuedForDispatch = Math.max(0, this.queuedForDispatch - 1);
+        }
+      }
+    } finally {
+      this.smsDispatchProcessing = false;
+      // Couvre une insertion arrivée exactement entre la fin de la boucle et le finally.
+      if (this.smsDispatchQueue.length > 0) void this.drainDispatchQueue();
+    }
   }
 
   private async performSend(
@@ -610,14 +767,20 @@ export class SmsGatewayService implements OnModuleInit {
     this.systemActivity.record({
       category: 'SMS',
       action: source ? `sms_${source}`.replace(/[^a-z0-9_-]/gi, '_').slice(0, 60) : 'sms_sent',
-      status: result.ok ? 'SUCCESS' : 'FAILURE',
+      // « accepted » signifie seulement que la passerelle a pris la demande. Le journal
+      // global ne doit plus transformer cette soumission en fausse preuve de remise.
+      status: result.outcome === 'delivered' ? 'SUCCESS' : result.outcome === 'failed' ? 'FAILURE' : 'SKIPPED',
       actor: 'system',
       target: maskPhone(to),
-      detail: source ? `SMS (${source})` : redactSmsBody(body),
+      detail:
+        result.outcome === 'accepted'
+          ? `${source ? `SMS (${source})` : redactSmsBody(body)} — soumis, remise non prouvée`
+          : source ? `SMS (${source})` : redactSmsBody(body),
       triggeredByUserId,
       meta: {
         imei: typeof context?.imei === 'string' ? context.imei : undefined,
         provider: this.provider,
+        outcome: result.outcome,
         error: result.error,
       },
     });
