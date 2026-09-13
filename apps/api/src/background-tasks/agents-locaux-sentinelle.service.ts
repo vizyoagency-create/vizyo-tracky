@@ -3,6 +3,7 @@ import { Cron } from '@nestjs/schedule';
 import { UserRole } from '@prisma/client';
 import { NotificationDispatchService } from '../notifications/notification-dispatch.service';
 import { ErrorLogger } from '../observability/error-logger.service';
+import { NIVEAU_DEGRADATION } from '../observability/niveaux-erreur';
 import { CLES_REFROIDISSEMENT, RefroidissementAlerteService } from '../observability/refroidissement-alerte.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { DemoModeService } from '../demo/demo-mode.service';
@@ -14,10 +15,11 @@ export const SOURCE_AGENTS_LOCAUX = 'agents-locaux';
 /**
  * Échéancier RÉEL, contrôle horaire à :50 et grâce de 2 h — un agent est jugé au premier contrôle
  * qui suit son créneau plus la grâce : récits (03:15) et rattrapage (tick de 02:00) à 05:50,
- * limites de vitesse (04:30) à 06:50, qualité GPS (05:00) à 07:50, courrier IA (06:30) à 08:50.
+ * qualité GPS (05:00) à 07:50, courrier IA (06:30) à 08:50, limites de vitesse (08:30) à 10:50.
  * Une nuit sans poste ne produit donc pas cinq lignes à 05:50 mais cinq lignes étalées jusqu'à
- * 08:50 — c'est ce que disent la fiche TRK-069 et son manifeste, et il faut que les trois
- * s'accordent (revue C3 du 2026-09-05).
+ * 10:50 — c'est ce que disent la fiche TRK-069 et son manifeste, et il faut que les trois
+ * s'accordent (revue C3 du 2026-09-05 ; 04:30 retiré des rendez-vous le 2026-09-13, voir le
+ * catalogue : le poste dort souvent à cette heure et 08:30 reprend le même travail).
  */
 /**
  * GRÂCE : deux heures après le déclenchement planifié avant de parler de passage manqué.
@@ -59,6 +61,73 @@ const MOTIFS: readonly MotifAlerte[] = ['jamais', 'manque', 'echec'];
 /** Clé de refroidissement d'un épisode : préfixe du catalogue des clés, agent, motif. */
 export function cleRefroidissement(agent: Pick<AgentDuPoste, 'id'>, motif: MotifAlerte): string {
   return `${CLES_REFROIDISSEMENT.AGENT_LOCAL}:${agent.id}:${motif}`;
+}
+
+/**
+ * ── TRK-069 / T31 (2026-09-13) — UNE CAUSE COMMUNE, UNE LIGNE ────────────────────────────
+ *
+ * Du 10/09 04:00 au 13/09 12:00 (Paris), la CLI Claude du poste était à son plafond hebdomadaire.
+ * Trente-six passages en échec avec la même phrase, et cette sentinelle a écrit VINGT-CINQ lignes
+ * CRITICAL — une par agent et par jour, toutes pour la même cause, sur laquelle aucun agent ne
+ * pouvait rien. Elle faisait exactement ce qu'on lui demandait ; c'est le NIVEAU qui était faux,
+ * comme la fiche TRK-069 l'annonçait dès sa création. Même principe que T10 : le niveau suit la
+ * CAUSE, pas la gravité apparente.
+ *
+ * Une cause extérieure CONNUE se reconnaît à son motif, produit UNE ligne en DEGRADATION (rien
+ * n'est cassé sur la plateforme : les analyses déterministes continuent, la reprise a pris douze
+ * minutes après la remise à zéro), sous une clé de refroidissement PAR CAUSE — dérivée du motif,
+ * jamais du texte complet, qui change d'un jour à l'autre —, et se referme d'elle-même au premier
+ * passage réussi d'un agent qu'elle touchait.
+ *
+ * ⚠️ Seules les causes dont on SAIT qu'elles sont communes figurent ici. Une erreur réseau nomme
+ * un point de terminaison : Overpass qui refuse le poste ne touche que l'agent des limites — ce
+ * n'est pas une cause commune, et le traiter comme telle ferait taire une vraie panne d'un agent.
+ */
+export interface CauseCommune {
+  /** Clé stable — celle du refroidissement, du contexte de la ligne et de sa résolution. */
+  cle: string;
+  libelle: string;
+  motif: RegExp;
+  /** Les agents que la cause peut toucher : un échec de l'un d'eux la signale, un succès la lève. */
+  concerne: (agent: Pick<AgentDuPoste, 'coutIa'>) => boolean;
+}
+
+/** Les agents qui passent par l'abonnement du poste, donc par la CLI Claude. */
+const parLaCli = (agent: Pick<AgentDuPoste, 'coutIa'>): boolean => agent.coutIa === 'absorbe';
+
+export const CAUSES_COMMUNES: readonly CauseCommune[] = [
+  {
+    cle: 'plafond-hebdo',
+    libelle: 'Plafond hebdomadaire de la CLI Claude atteint sur le poste',
+    motif: /hit your weekly limit/i,
+    concerne: parLaCli,
+  },
+  {
+    // Le plafond glissant (cinq heures) : même canal, même remède, une échéance plus proche.
+    cle: 'plafond-usage',
+    libelle: 'Plafond d’usage de la CLI Claude atteint sur le poste',
+    motif: /hit your (usage |rate )?limit|usage limit reached/i,
+    concerne: parLaCli,
+  },
+];
+
+/** La cause commune que ce motif d'échec trahit, ou rien — auquel cas l'échec est celui de l'agent. */
+export function causeCommune(motif: string): CauseCommune | null {
+  return CAUSES_COMMUNES.find((c) => c.motif.test(motif)) ?? null;
+}
+
+/** Clé de refroidissement d'une cause : une par cause, tous agents confondus. */
+export function cleCause(cause: Pick<CauseCommune, 'cle'>): string {
+  return `${CLES_REFROIDISSEMENT.AGENT_LOCAL}:cause:${cause.cle}`;
+}
+
+/**
+ * L'échéance que la CLI annonce dans son message (« … · resets Sep 13, 12pm (Europe/Paris) ») —
+ * la seule information utile de la phrase, reprise telle quelle. `null` quand elle n'y est pas.
+ */
+export function remiseAZeroAnnoncee(motif: string): string | null {
+  const m = /\bresets?\s+(.+?)\s*$/i.exec(motif);
+  return m ? m[1]!.trim() : null;
 }
 
 const FMT_DATE = new Intl.DateTimeFormat('fr-FR', { timeZone: 'Europe/Paris', day: '2-digit', month: '2-digit', year: 'numeric' });
@@ -144,9 +213,13 @@ export class AgentsLocauxSentinelleService {
   async verifier(nowMs = Date.now()): Promise<void> {
     // Démo : les agents du poste n'écrivent que dans la production. Rien à juger ici.
     if (this.demoMode?.enabled) return;
+    // TRK-069 — les causes communes déjà signalées PENDANT CE CONTRÔLE : trois agents en échec
+    // pour la même phrase ne doivent pas produire trois lignes, même si le refroidissement (base
+    // injoignable → « émets ») laissait passer chacune.
+    const causesSignalees = new Set<string>();
     for (const agent of this.catalogue.agentsDuPoste()) {
       try {
-        await this.examiner(agent, nowMs);
+        await this.examiner(agent, nowMs, causesSignalees);
       } catch (e) {
         // Une lecture qui échoue n'est PAS un agent à l'arrêt : accuser le poste d'une panne de
         // base enverrait chercher au mauvais endroit. On le dit avec l'opération nommée et le motif
@@ -163,7 +236,7 @@ export class AgentsLocauxSentinelleService {
     }
   }
 
-  private async examiner(agent: AgentDuPoste, nowMs: number): Promise<void> {
+  private async examiner(agent: AgentDuPoste, nowMs: number, causesSignalees: Set<string>): Promise<void> {
     // Lecture STRICTE : un journal illisible remonte à `verifier`, il ne devient pas « jamais vu ».
     const passage = await this.catalogue.dernierPassage(agent.cleJournal, { strict: true });
 
@@ -187,18 +260,76 @@ export class AgentsLocauxSentinelleService {
         { attendu, passage },
       );
     } else if (!passage.succes) {
-      await this.signaler(
-        agent,
-        'echec',
-        `Dernier passage en échec : ${agent.id} le ${dateHeureParis(passage.demarreA)} — ${motifDe(passage)}`,
-        { attendu, passage },
-      );
+      // TRK-069 — un échec dont le motif trahit une cause commune (plafond de la CLI) n'est pas
+      // l'échec de CET agent : une ligne pour la cause, aucune pour lui.
+      const cause = causeCommune(motifDe(passage));
+      if (cause && cause.concerne(agent)) {
+        await this.signalerCauseCommune(cause, agent, passage, causesSignalees);
+      } else {
+        await this.signaler(
+          agent,
+          'echec',
+          `Dernier passage en échec : ${agent.id} le ${dateHeureParis(passage.demarreA)} — ${motifDe(passage)}`,
+          { attendu, passage },
+        );
+      }
     }
 
     // Un passage réussi referme tout épisode qui lui est antérieur — y compris quand un créneau
     // plus récent vient d'être signalé manqué : la ligne du jour est postérieure au passage, la
     // borne `createdAt < demarreA` la laisse ouverte (voir `resoudre`).
     if (passage.succes) await this.resoudre(agent, passage, nowMs);
+  }
+
+  /**
+   * TRK-069 — UNE ligne pour une cause commune, en DEGRADATION, tous agents confondus.
+   *
+   * Trois gardes, dans cet ordre : déjà signalée pendant ce contrôle ; déjà OUVERTE au centre
+   * d'alerte (une par épisode — la ligne reste jusqu'à ce qu'un passage réussi la referme, ou
+   * qu'un humain l'archive) ; refroidissement par cause (une par jour si l'épisode s'éternise ou
+   * si la ligne a été archivée à la main). Le premier agent touché est nommé, et la remise à zéro
+   * que la CLI annonce est reprise : c'est la seule échéance qui compte.
+   */
+  private async signalerCauseCommune(
+    cause: CauseCommune,
+    agent: AgentDuPoste,
+    passage: PassageLocal,
+    causesSignalees: Set<string>,
+  ): Promise<void> {
+    if (causesSignalees.has(cause.cle)) return;
+    causesSignalees.add(cause.cle);
+
+    const ouverte = await this.prisma.errorLog.findFirst({
+      where: { source: SOURCE_AGENTS_LOCAUX, resolvedAt: null, context: { path: ['cause'], equals: cause.cle } },
+      select: { id: true },
+    });
+    if (ouverte) return;
+    if (!(await this.refroidissement.tenterEmission(cleCause(cause), REFROIDISSEMENT_MS))) return;
+
+    const concernes = this.catalogue.agentsDuPoste().filter((a) => cause.concerne(a)).map((a) => a.id);
+    const remise = remiseAZeroAnnoncee(motifDe(passage));
+    const message =
+      `Cause commune aux agents du poste : ${cause.libelle}` +
+      (remise ? ` — remise à zéro annoncée : ${remise}` : '') +
+      `. Premier agent touché : ${agent.id} le ${dateHeureParis(passage.demarreA)}. ` +
+      `Concerne ${concernes.join(', ')} ; une seule ligne pour tous, refermée au premier passage réussi.`;
+    await this.errorLogger.record(
+      new Error(message),
+      SOURCE_AGENTS_LOCAUX,
+      {
+        motif: 'cause',
+        cause: cause.cle,
+        agent: agent.id,
+        cleJournal: agent.cleJournal,
+        concerne: concernes,
+        remiseAZero: remise,
+        dernierPassageAt: passage.demarreA.toISOString(),
+        erreur: passage.erreur ?? null,
+      },
+      NIVEAU_DEGRADATION,
+    );
+    this.logger.warn(message);
+    await this.prevenir(`cause:${cause.cle}`, message);
   }
 
   /**
@@ -247,7 +378,7 @@ export class AgentsLocauxSentinelleService {
       'CRITICAL',
     );
     this.logger.error(message);
-    await this.prevenir(agent, message);
+    await this.prevenir(agent.id, message);
   }
 
   /**
@@ -291,14 +422,48 @@ export class AgentsLocauxSentinelleService {
         await this.refroidissement.oublier(cle);
       }
     }
+
+    await this.leverCausesCommunes(agent, passage, nowMs);
+  }
+
+  /**
+   * TRK-069 — un passage réussi d'un agent que la cause TOUCHAIT prouve qu'elle est levée : la
+   * ligne de cause antérieure à ce passage est archivée, son refroidissement oublié.
+   *
+   * ⚠️ Seulement les causes qui concernent CET agent : les 11 et 12/09, l'agent des limites de
+   * vitesse — qui n'appelle pas la CLI — passait à 08:30 et 14:00 pendant que la CLI restait au
+   * plafond. Son succès ne prouvait rien sur elle, et n'aurait pas dû refermer la ligne.
+   */
+  private async leverCausesCommunes(agent: AgentDuPoste, passage: PassageLocal, nowMs: number): Promise<void> {
+    const fin = passage.finiA ?? passage.demarreA;
+    for (const cause of CAUSES_COMMUNES) {
+      if (!cause.concerne(agent)) continue;
+      const { count } = await this.prisma.errorLog.updateMany({
+        where: {
+          source: SOURCE_AGENTS_LOCAUX,
+          resolvedAt: null,
+          createdAt: { lt: fin },
+          context: { path: ['cause'], equals: cause.cle },
+        },
+        data: {
+          resolvedAt: new Date(nowMs),
+          resolvedNote: `Cause levée : ${agent.id} repassé le ${dateHeureParis(passage.demarreA)} (résolution automatique)`,
+        },
+      });
+      if (count > 0) this.logger.log(`Cause « ${cause.cle} » levée par ${agent.id} : ${count} ligne(s) archivée(s).`);
+
+      const derniere = await this.refroidissement.derniereEmission(cleCause(cause));
+      if (derniere && derniere.getTime() < fin.getTime()) await this.refroidissement.oublier(cleCause(cause));
+    }
   }
 
   /**
    * Prévenir les super-admins — par le socle générique (`notifyUsers`) : mêmes préférences, même
-   * anti-spam (cloisonné par agent via `subjectKey`), même journal que toute autre notification.
-   * Best-effort : la ligne du centre d'alerte est déjà écrite, un échec ici se note et ne casse rien.
+   * anti-spam (cloisonné par sujet via `subjectKey` : un agent, ou une cause commune), même
+   * journal que toute autre notification. Best-effort : la ligne du centre d'alerte est déjà
+   * écrite, un échec ici se note et ne casse rien.
    */
-  private async prevenir(agent: AgentDuPoste, message: string): Promise<void> {
+  private async prevenir(sujet: string, message: string): Promise<void> {
     if (!this.dispatch) return;
     try {
       const admins = await this.prisma.user.findMany({
@@ -310,13 +475,13 @@ export class AgentsLocauxSentinelleService {
         userIds: admins.map((a) => a.id),
         category: 'SYSTEM',
         kind: 'agent-local-absent',
-        subjectKey: agent.id,
+        subjectKey: sujet,
         title: 'Agent du poste en alerte',
         body: message,
         url: '/admin/alerts',
       });
     } catch (e) {
-      this.logger.warn(`notification des super-admins non envoyée pour ${agent.id} : ${e instanceof Error ? e.message : String(e)}`);
+      this.logger.warn(`notification des super-admins non envoyée pour ${sujet} : ${e instanceof Error ? e.message : String(e)}`);
     }
   }
 }

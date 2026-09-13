@@ -82,7 +82,11 @@ function construire(opts: {
         return args.where.agent in passages ? passages[args.where.agent] : passage(opts.now - 30 * MINUTE);
       }),
     },
-    errorLog: { updateMany: jest.fn().mockResolvedValue({ count: opts.archivees ?? 0 }) },
+    errorLog: {
+      updateMany: jest.fn().mockResolvedValue({ count: opts.archivees ?? 0 }),
+      // TRK-069 — une cause commune déjà ouverte au centre d'alerte ; `null` = aucune.
+      findFirst: jest.fn().mockResolvedValue(null),
+    },
     user: { findMany: jest.fn().mockResolvedValue([{ id: 'sa-1' }, { id: 'sa-2' }]) },
   };
   // Le VRAI catalogue : horaires, matcheurs de Paris et clés du journal sont ceux de production.
@@ -439,5 +443,202 @@ describe('Sentinelle des agents du poste — le matin, un PC éteint se lit au c
     );
     // Et l'on ne réveille personne pour une base illisible.
     expect(dispatch!.notifyUsers).toHaveBeenCalledTimes(1);
+  });
+
+  /**
+   * ── TRK-069 / T31 (2026-09-13) — UNE CAUSE COMMUNE, UNE LIGNE ────────────────────────────
+   *
+   * Du 10/09 04:00 au 13/09 12:00 (Paris), la CLI Claude du poste était à son plafond
+   * hebdomadaire : 36 passages en échec avec la même phrase, et la sentinelle a écrit 25 CRITICAL
+   * — un par agent et par jour, tous pour la même cause, sur laquelle aucun agent ne pouvait
+   * rien. TRK-069 l'annonçait à sa création : « c'est le NIVEAU qu'il faudra rediscuter, jamais
+   * la sentinelle ». Une cause extérieure connue produit UNE ligne, en DEGRADATION, avec un
+   * refroidissement PAR CAUSE, refermée d'elle-même au premier passage réussi d'un agent qu'elle
+   * touchait.
+   */
+  describe('cause commune — le plafond de la CLI ne vaut pas un CRITICAL par agent', () => {
+    const PLAFOND = "Error: echec de la CLI : You've hit your weekly limit · resets Sep 13, 12pm (Europe/Paris)";
+    /** Le refroidissement RÉEL : une clé ne passe qu'une fois. */
+    const uneFoisParCle = () => {
+      const vues = new Set<string>();
+      return (cle: string) => !vues.has(cle) && !!vues.add(cle);
+    };
+    /** Les trois agents qui passent par l'abonnement du poste, tous en échec sur la même phrase. */
+    const MATIN_PLAFONNE = {
+      now: paris(2026, 9, 10, 8, 50),
+      passages: {
+        'agent-recit-trajet': passage(paris(2026, 9, 10, 3, 15), { succes: false, erreur: PLAFOND }),
+        'rattrapage-recits': passage(paris(2026, 9, 10, 6, 0), { succes: false, erreur: PLAFOND }),
+        'agent-courrier-ia': passage(paris(2026, 9, 10, 6, 30), { succes: false, erreur: PLAFOND }),
+      },
+    };
+
+    it('⚠️ trois agents en échec pour la MÊME phrase → UNE ligne, en DEGRADATION, clé par cause', async () => {
+      const { svc, errorLogger, refroidissement, dispatch } = construire({ ...MATIN_PLAFONNE, tenterEmission: uneFoisParCle() });
+      await svc.verifier(MATIN_PLAFONNE.now);
+
+      expect(errorLogger.record).toHaveBeenCalledTimes(1);
+      const [err, source, contexte, niveau] = errorLogger.record.mock.calls[0];
+      expect(source).toBe(SOURCE_AGENTS_LOCAUX);
+      expect(niveau).toBe('DEGRADATION');
+      expect(contexte).toMatchObject({ motif: 'cause', cause: 'plafond-hebdo', agent: 'agent-recit-trajet' });
+      expect((err as Error).message).toContain('Plafond hebdomadaire de la CLI Claude');
+      // La remise à zéro annoncée par la CLI est reprise telle quelle : c'est la seule échéance utile.
+      expect((err as Error).message).toContain('Sep 13, 12pm (Europe/Paris)');
+      // Une clé PAR CAUSE, dérivée du motif — jamais du texte complet, qui change d'un jour à l'autre.
+      expect(refroidissement.tenterEmission).toHaveBeenCalledWith('agent-local:cause:plafond-hebdo', REFROIDISSEMENT_MS);
+      // Et personne n'est réveillé trois fois.
+      expect(dispatch!.notifyUsers).toHaveBeenCalledTimes(1);
+      expect(dispatch!.notifyUsers.mock.calls[0][0].subjectKey).toBe('cause:plafond-hebdo');
+    });
+
+    it('aucune ligne CRITICAL par agent ne vient doubler la cause — et leurs refroidissements restent vierges', async () => {
+      const { svc, errorLogger, refroidissement } = construire({ ...MATIN_PLAFONNE, tenterEmission: uneFoisParCle() });
+      await svc.verifier(MATIN_PLAFONNE.now);
+
+      expect(alertes(errorLogger).filter((a) => a.motif === 'echec')).toEqual([]);
+      const cles = refroidissement.tenterEmission.mock.calls.map((c: [string]) => c[0]);
+      expect(cles.filter((c) => c.endsWith(':echec'))).toEqual([]);
+    });
+
+    it('la ligne dit QUI est touché : les agents qui passent par l’abonnement du poste, pas les autres', async () => {
+      const { svc, errorLogger } = construire({ ...MATIN_PLAFONNE, tenterEmission: uneFoisParCle() });
+      await svc.verifier(MATIN_PLAFONNE.now);
+      const message = (errorLogger.record.mock.calls[0][0] as Error).message;
+      for (const a of ['agent-recit-trajet', 'rattrapage-recits', 'courrier-ia']) expect(message).toContain(a);
+      expect(message).not.toContain('agent-limites-vitesse');
+      expect(message).not.toContain('agent-qualite-gps');
+    });
+
+    it('⚠️ un agent qui n’utilise PAS la CLI et échoue pour une autre raison garde sa ligne CRITICAL à lui', async () => {
+      const now = paris(2026, 9, 10, 10, 50);
+      const { svc, errorLogger } = construire({
+        now,
+        passages: {
+          'agent-limites-vitesse': passage(paris(2026, 9, 10, 8, 30), { succes: false, erreur: 'Overpass : 504 Gateway Timeout' }),
+        },
+        tenterEmission: uneFoisParCle(),
+      });
+      await svc.verifier(now);
+      expect(alertes(errorLogger)).toEqual([
+        expect.objectContaining({ level: 'CRITICAL', agent: 'agent-limites-vitesse', motif: 'echec' }),
+      ]);
+    });
+
+    it('une ligne de cause encore OUVERTE au centre d’alerte n’est pas réécrite : une par épisode', async () => {
+      const { svc, errorLogger, prisma, refroidissement } = construire({ ...MATIN_PLAFONNE, tenterEmission: uneFoisParCle() });
+      prisma.errorLog.findFirst.mockResolvedValue({ id: 'ligne-ouverte' });
+      await svc.verifier(MATIN_PLAFONNE.now);
+
+      expect(errorLogger.record).not.toHaveBeenCalled();
+      // Sans même consommer le refroidissement : la ligne ouverte suffit.
+      expect(refroidissement.tenterEmission).not.toHaveBeenCalledWith('agent-local:cause:plafond-hebdo', REFROIDISSEMENT_MS);
+      expect(prisma.errorLog.findFirst).toHaveBeenCalledWith({
+        where: { source: SOURCE_AGENTS_LOCAUX, resolvedAt: null, context: { path: ['cause'], equals: 'plafond-hebdo' } },
+        select: { id: true },
+      });
+    });
+
+    it('⚠️ le plafond levé : le premier passage RÉUSSI d’un agent concerné archive la ligne de cause et oublie son refroidissement', async () => {
+      const now = paris(2026, 9, 13, 13, 50);
+      const finiA = new Date(paris(2026, 9, 13, 12, 22));
+      const { svc, prisma, refroidissement } = construire({
+        now,
+        passages: {
+          // Le rattrapage est passé à 12:10, juste après la remise à zéro ; les deux autres agents
+          // de la CLI n'ont pas encore eu leur créneau et portent toujours l'échec du matin.
+          'rattrapage-recits': { ...passage(paris(2026, 9, 13, 12, 10)), finiA, resume: '30 récits écrits' },
+          'agent-recit-trajet': passage(paris(2026, 9, 13, 7, 48), { succes: false, erreur: PLAFOND }),
+          'agent-courrier-ia': passage(paris(2026, 9, 13, 6, 30), { succes: false, erreur: PLAFOND }),
+        },
+        derniereEmission: { 'agent-local:cause:plafond-hebdo': new Date(paris(2026, 9, 10, 8, 50)) },
+        tenterEmission: uneFoisParCle(),
+      });
+      await svc.verifier(now);
+
+      const appel = prisma.errorLog.updateMany.mock.calls.find(
+        (c: [{ where: { context: { path: string[] } } }]) => c[0].where.context.path[0] === 'cause',
+      );
+      expect(appel).toBeDefined();
+      expect(appel![0]).toEqual({
+        where: {
+          source: SOURCE_AGENTS_LOCAUX,
+          resolvedAt: null,
+          createdAt: { lt: finiA },
+          context: { path: ['cause'], equals: 'plafond-hebdo' },
+        },
+        data: {
+          resolvedAt: new Date(now),
+          resolvedNote: 'Cause levée : rattrapage-recits repassé le 13/09/2026 à 12:10 (résolution automatique)',
+        },
+      });
+      expect(refroidissement.oublier).toHaveBeenCalledWith('agent-local:cause:plafond-hebdo');
+    });
+
+    it('⚠️ un succès de l’agent des limites de vitesse — qui n’utilise pas la CLI — ne lève PAS le plafond', async () => {
+      // Mesuré les 11 et 12/09 : cet agent passait à 08:30 et 14:00 pendant que la CLI restait au plafond.
+      const now = paris(2026, 9, 11, 10, 50);
+      const { svc, prisma, refroidissement } = construire({
+        now,
+        passages: {
+          'agent-limites-vitesse': passage(paris(2026, 9, 11, 8, 30)),
+          'agent-recit-trajet': passage(paris(2026, 9, 10, 8, 31), { succes: false, erreur: PLAFOND }),
+          'rattrapage-recits': passage(paris(2026, 9, 11, 8, 0), { succes: false, erreur: PLAFOND }),
+          'agent-courrier-ia': passage(paris(2026, 9, 10, 14, 30), { succes: false, erreur: PLAFOND }),
+        },
+        derniereEmission: { 'agent-local:cause:plafond-hebdo': new Date(paris(2026, 9, 10, 8, 50)) },
+        tenterEmission: uneFoisParCle(),
+      });
+      await svc.verifier(now);
+      const pourCause = prisma.errorLog.updateMany.mock.calls.filter(
+        (c: [{ where: { context: { path: string[] } } }]) => c[0].where.context.path[0] === 'cause',
+      );
+      expect(pourCause).toEqual([]);
+      expect(refroidissement.oublier).not.toHaveBeenCalledWith('agent-local:cause:plafond-hebdo');
+    });
+  });
+
+  /**
+   * ── TRK-069 / T31 — LE CRÉNEAU DE 04:30 DES LIMITES DE VITESSE N'EST PAS ATTENDU ─────────
+   *
+   * Les 10, 11 et 12/09, un CRITICAL « Passage manqué : agent-limites-vitesse attendu à 04:30 »
+   * s'écrivait à 06:50 et se refermait seul à 08:50 : le poste dormait à 04:30 et le créneau de
+   * 08:30 reprenait exactement le même travail — le cache de limites est cumulatif, un créneau
+   * manqué ne perd rien. Le déclencheur de 04:30 reste posé sur le poste et tourne quand il est
+   * allumé (il l'a fait les 10 et 13/09) ; il n'est simplement plus un rendez-vous dont l'absence
+   * vaut incident. Un incident sans remède et sans perte n'est pas un incident.
+   */
+  describe('limites de vitesse — 04:30 tourne si le poste est allumé, 08:30 est le premier rendez-vous', () => {
+    it('⚠️ à 06:50, rien depuis 22:00 la veille : aucune ligne', async () => {
+      const now = paris(2026, 9, 11, 6, 50);
+      const { svc, errorLogger } = construire({
+        now,
+        passages: { 'agent-limites-vitesse': passage(paris(2026, 9, 10, 22, 0), { resume: 'cache 299410 -> 299449' }) },
+      });
+      await svc.verifier(now);
+      expect(alertes(errorLogger).filter((a) => a.agent === 'agent-limites-vitesse')).toEqual([]);
+    });
+
+    it('…mais à 10:50, toujours rien depuis 22:00 : le créneau de 08:30 est manqué, CRITICAL', async () => {
+      const now = paris(2026, 9, 11, 10, 50);
+      const { svc, errorLogger } = construire({
+        now,
+        passages: { 'agent-limites-vitesse': passage(paris(2026, 9, 10, 22, 0)) },
+      });
+      await svc.verifier(now);
+      const [a] = alertes(errorLogger).filter((l) => l.agent === 'agent-limites-vitesse');
+      expect(a).toMatchObject({ level: 'CRITICAL', motif: 'manque' });
+      expect(a.message).toContain('attendu le 11/09/2026 à 08:30 (Paris)');
+    });
+
+    it('un passage à 04:30, quand le poste est allumé, compte comme n’importe quel autre', async () => {
+      const now = paris(2026, 9, 13, 6, 50);
+      const { svc, errorLogger } = construire({
+        now,
+        passages: { 'agent-limites-vitesse': passage(paris(2026, 9, 13, 4, 30)) },
+      });
+      await svc.verifier(now);
+      expect(alertes(errorLogger).filter((a) => a.agent === 'agent-limites-vitesse')).toEqual([]);
+    });
   });
 });

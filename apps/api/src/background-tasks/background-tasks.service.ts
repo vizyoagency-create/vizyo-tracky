@@ -512,14 +512,15 @@ const CATALOG: CatalogEntry[] = [
   {
     id: 'agent-limites-vitesse', label: 'Limites de vitesse OSM (agent sur poste)',
     category: 'Maintenance données', kind: 'cron',
-    scheduleHuman: '04:30, 08:30, 14:00, 18:30 et 22:00 — sur le poste du propriétaire',
+    scheduleHuman: '08:30, 14:00, 18:30 et 22:00 — et 04:30 quand le poste est allumé — sur le poste du propriétaire',
     criticality: 'moyenne', antiOverlap: true,
     note: "Ne tourne PAS sur ce serveur. L'IP du VPS s'est fait bannir d'overpass-api.de ; depuis le poste, la même requête passe et répond trois fois plus vite. Son état ci-contre est déduit des cellules réellement écrites, pas d'un simple signal de démarrage — si le poste est éteint, ça se voit.",
     purpose: "Résout auprès d'OpenStreetMap la limite légale de chaque portion de route parcourue. Sans elle, aucun excès de vitesse n'est calculable et le score de conduite ne mesure rien. Gratuit : aucun crédit d'IA.",
     externe: 'limites-vitesse',
     poste: 'outils/agent-limites-vitesse.cmd',
-    // Le plus long trou legitime de la journee est 22:00 -> 04:30, soit 6 h 30 : c'est LUI la
-    // cadence a surveiller, pas la moyenne de cinq passages.
+    // Le plus long trou legitime de la journee, poste allume, est 22:00 -> 04:30, soit 6 h 30 :
+    // c'est LUI la cadence a surveiller, pas la moyenne de cinq passages. Poste endormi, le trou
+    // va jusqu'a 08:30 : l'ecran le dit « a surveiller » (plus que la cadence), sans crier.
     cadenceMs: 6.5 * 3_600_000,
     fraicheurMs: 13 * 3_600_000,
     // « Ce que nos services ont recupere » : l'ecran ne le regle pas, il MONTRE ce que cet agent
@@ -528,10 +529,17 @@ const CATALOG: CatalogEntry[] = [
     // ⚠️ PARIS, pas SERVER_TZ. Ce serveur tourne en UTC, le poste en heure de Paris : avec
     //    SERVER_TZ l'ecran annoncait « prochain passage 14:00 » en UTC, soit deux heures APRES
     //    le passage reel. Un ecran de supervision qui se trompe d'heure est pire que pas d'ecran.
+    //
+    // ⚠️ TRK-069 / T31 (2026-09-13) — 04:30 N'EST PAS UN RENDEZ-VOUS. Le declencheur reste pose
+    //    sur le poste et tourne quand il est allume (il l'a fait les 10 et 13/09), mais le poste
+    //    dort souvent a cette heure : les 10, 11 et 12/09, la sentinelle ecrivait a 06:50 un
+    //    CRITICAL « passage manque a 04:30 » qu'elle refermait seule a 08:50, quand le creneau de
+    //    08:30 reprenait exactement le meme travail — le cache est cumulatif, rien n'est perdu.
+    //    Ce matcheur sert deux instruments : le « prochain passage » de l'ecran et le creneau
+    //    ATTENDU par la sentinelle. Un creneau qu'on ne peut pas exiger n'y a pas sa place.
     fire: {
       tz: PARIS,
       matcher: (w) =>
-        (w.getHours() === 4 && w.getMinutes() === 30) ||
         (w.getHours() === 8 && w.getMinutes() === 30) ||
         (w.getHours() === 14 && w.getMinutes() === 0) ||
         (w.getHours() === 18 && w.getMinutes() === 30) ||
@@ -658,6 +666,12 @@ export interface AgentDuPoste {
   label: string;
   /** Clé sous laquelle le POSTE écrit ses passages — pas forcément l'id (voir `cleJournalDe`). */
   cleJournal: string;
+  /**
+   * TRK-069 — qui paie son travail IA. `absorbe` = l'abonnement du poste, donc la CLI Claude :
+   * c'est ce qui dit quels agents une cause commune (plafond de la CLI) peut toucher, et lequel
+   * de leurs succès la lève. Un agent `aucun` n'y est pour rien, dans un sens comme dans l'autre.
+   */
+  coutIa: BgTaskCoutIa;
 }
 
 /** Bloc d'état d'un agent du poste, fusionné tel quel dans le DTO par `list()`. */
@@ -846,7 +860,13 @@ export class BackgroundTasksService {
 
   /** Les agents du poste tels que catalogués, chacun avec la clé sous laquelle il journalise. */
   agentsDuPoste(): AgentDuPoste[] {
-    return CATALOG.filter((e) => e.externe).map((e) => ({ id: e.id, label: e.label, cleJournal: cleJournalDe(e) }));
+    return CATALOG.filter((e) => e.externe).map((e) => ({
+      id: e.id,
+      label: e.label,
+      cleJournal: cleJournalDe(e),
+      // Même défaut que `list()` : un agent du poste n'est jamais une automatisation IA facturée.
+      coutIa: e.coutIa ?? 'aucun',
+    }));
   }
 
   /**
