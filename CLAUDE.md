@@ -52,6 +52,21 @@ Plusieurs sessions y travaillent en même temps — mesuré le 2026-09-07 : **7 
 - ⚠️ `git checkout -- <fichier>` restaure depuis le `HEAD` **courant**, qui peut avoir changé sous
   vous.
 
+## 🚀 Déployer la production : `deploy.sh`, et rien d'autre (décision D1, 2026-09-13)
+
+    ssh root@72.62.26.240 "bash /opt/vizyo-tracky/deploy/vps/deploy.sh"          # refuse si un passage tourne ou va partir
+    ssh root@72.62.26.240 "bash /opt/vizyo-tracky/deploy/vps/deploy.sh --attendre"  # patiente au lieu de refuser
+
+- **Jamais `docker compose up` à la main sur la pile de production.** L'automatisation des
+  trajets part à HH:45 et dure jusqu'à 54 min ; recréer l'API pendant ce temps tue le passage.
+  Le script lit la garde **deux fois** — au départ et juste avant la recréation (TRK-077) —, refuse
+  de recréer entre HH:42 et HH:46, pose les repères de repli (`--repli <étiquette>` pour revenir),
+  et journalise le conteneur créé. **Un conteneur qu'il n'a pas créé est signalé au centre
+  d'alerte** (« déploiement hors script ») : contourner, ça se voit.
+- Pousser sur `origin/main` d'abord : le script fait `git pull --ff-only` sur le VPS.
+- Après le déploiement, vérifier **l'artefact compilé dans le conteneur**, pas `docker ps`.
+- Le script se teste à blanc : `pnpm verif:deploiement`.
+
 ## ✅ Vérification
 
 `pnpm verify` (typecheck + tests + smoke-boot DI). ⚠️ Si la suite est instable, **la relancer

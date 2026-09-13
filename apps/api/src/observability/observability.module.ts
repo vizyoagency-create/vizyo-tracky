@@ -9,6 +9,7 @@ import { CentreAlerteWikiController } from './centre-alerte-wiki.controller';
 import { CentreAlerteWikiService } from './centre-alerte-wiki.service';
 import { CobanWireLogger } from './coban-wire-logger.service';
 import { DependencyHeartbeatService } from './dependency-heartbeat.service';
+import { DeploiementSentinelleService } from './deploiement-sentinelle.service';
 import { RefroidissementAlerteService } from './refroidissement-alerte.service';
 import { ScheduledTaskHeartbeatService } from './scheduled-task-heartbeat.service';
 import { ErrorLogger } from './error-logger.service';
@@ -51,6 +52,9 @@ import { VpsAuditWikiService } from './vps-audit-wiki.service';
     RecensementSuppressionsService,
     // Lot V6 — les sentinelles de cohérence : elles LISENT le produit et écrivent au centre.
     SentinellesCoherenceService,
+    // Décision D1 (2026-09-13) — ce conteneur a-t-il été créé par deploy/vps/deploy.sh ? Un
+    // contournement du script ne peut pas être empêché ; il ne peut plus passer inaperçu.
+    DeploiementSentinelleService,
     {
       provide: APP_FILTER,
       useClass: AllExceptionsFilter,

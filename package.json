@@ -23,7 +23,8 @@
     "verif:couleurs-kit": "node scripts/verif-couleurs-kit.mjs",
     "verif:variables": "node scripts/verif-variables.mjs",
     "verify": "pnpm typecheck && pnpm smoke && pnpm test",
-    "verif:carte-gardes": "node scripts/verif-carte-gardes.mjs"
+    "verif:carte-gardes": "node scripts/verif-carte-gardes.mjs",
+    "verif:deploiement": "node scripts/verif-deploiement.mjs"
   },
   "devDependencies": {
     "turbo": "^2.9.7",

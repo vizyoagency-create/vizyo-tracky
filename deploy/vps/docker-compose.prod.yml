@@ -145,6 +145,15 @@ services:
       # la copie embarquee dans l'image. Le script de publication cree donc le dossier avant
       # de copier (cf. docs/vps-audit/PROCEDURE-AUDIT.md).
       - /opt/tracky-vps-audit:/app/docs/vps-audit:ro
+      # Journal des deploiements (decision D1, 2026-09-13) : deploy.sh y inscrit l'identifiant
+      # du conteneur API qu'il vient de creer. Au demarrage, l'API compare son propre
+      # identifiant (son hostname) au dernier journalise : un conteneur que le script n'a pas
+      # cree — `docker compose up` a la main — produit une ligne « deploiement hors script »
+      # au centre d'alerte. C'est ce qui rend le script incontournable de fait.
+      #
+      # Meme piege que ci-dessus : le dossier doit exister AVANT le premier `up`, sinon Docker
+      # le cree vide et appartenant a root — deploy.sh fait le `mkdir -p` avant d'ecrire.
+      - /opt/tracky-deploiements:/app/deploiements:ro
     networks:
       - vizyo-tracky
       - vizyo-auth-network

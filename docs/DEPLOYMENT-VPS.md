@@ -1,5 +1,14 @@
 # Déploiement VPS — procédure
 
+> ⛔ **Depuis le 2026-09-13 (décision D1 du propriétaire), la production se déploie par
+> `bash /opt/vizyo-tracky/deploy/vps/deploy.sh` — et par rien d'autre.** Le script porte la
+> garde qui refuse de recréer l'API pendant, ou juste avant, un passage d'automatisation
+> (TRK-077), pose les repères de repli, et journalise ce qu'il a créé ; l'API compare au
+> démarrage son conteneur au dernier journalisé et **signale au centre d'alerte tout
+> conteneur qu'il n'a pas créé**. Les commandes `docker compose … up -d --build` de cette page
+> ont été remplacées ; celles qui restent (journaux, contrôles) ne touchent à rien.
+> Options et déroulé : `deploy/vps/README.md`.
+
 > Référencé par `deploy/vps/README.md`. Le déploiement est **manuel** : aucun workflow
 > GitHub sur ce dépôt, **pousser ne déploie rien**.
 >
@@ -60,41 +69,26 @@ ls -lh /var/backups/vizyo-tracky | tail -3
 
 Vérifier que le fichier du jour existe et n'est pas vide **avant** de continuer.
 
-### 1. Amener le code sur le VPS
-
-Le VPS suit `main` par défaut. Pour une recette de branche, on la sort explicitement :
+### 1 + 2. Amener le code et reconstruire — le script, et lui seul
 
 ```bash
-cd /opt/vizyo-tracky
-git fetch origin
-git checkout $BRANCHE
-git pull origin $BRANCHE
-git log --oneline -1
+bash /opt/vizyo-tracky/deploy/vps/deploy.sh                  # main
+bash /opt/vizyo-tracky/deploy/vps/deploy.sh --branche $BRANCHE   # une recette de branche
+bash /opt/vizyo-tracky/deploy/vps/deploy.sh --avec-demo      # et la démo sur les mêmes images
 ```
 
-> ⚠️ Le VPS reste alors **sur la branche**. Un futur `git pull origin main` ne le
-> ramènera pas sur `main` : il faudra un `git checkout main` explicite. C'est le principal
-> piège de cette option.
+Il fait, dans l'ordre : la garde (un passage d'automatisation tourne-t-il ?), les repères de
+repli, `git checkout` + `git pull --ff-only`, `docker compose build`, **la garde à nouveau**,
+`docker compose up -d`, le journal. S'il refuse, il dit pourquoi et quoi faire (`--attendre`
+patiente, `--force` passe outre en le disant). Le `--env-file .env.prod` qu'il faut à compose
+est dans le script : on ne peut plus l'oublier.
 
-### 2. Reconstruire
+> ⚠️ Avec `--branche`, le VPS reste **sur la branche**. Le retour à `main` est un déploiement
+> comme un autre : `deploy.sh` sans option (il fait le `git checkout main`).
 
-```bash
-cd /opt/vizyo-tracky/deploy/vps
-docker compose --env-file .env.prod -f docker-compose.prod.yml up -d --build
-```
-
-**Le `--env-file .env.prod` n'est pas optionnel.** Sans lui, échec sur
-`network <vide> declared as external, but could not be found` (cf. `deploy/vps/README.md`).
-
-> **Environnement de démonstration (2026-09)** — une fois la prod reconstruite, la démo se met
-> à jour sur les mêmes images avec **une ligne de plus** :
->
-> ```bash
-> docker compose --env-file .env.demo -f docker-compose.demo.yml up -d
-> ```
->
-> Elle joue ses propres migrations sur sa propre base. Tout le reste (installation, rafraîchissement
-> des données, comptes) : `docs/environnement-demo/EXPLOITATION.md`.
+> **Environnement de démonstration (2026-09)** — `--avec-demo` met la démo à jour sur les mêmes
+> images, dans la foulée. Elle joue ses propres migrations sur sa propre base. Tout le reste
+> (installation, rafraîchissement des données, comptes) : `docs/environnement-demo/EXPLOITATION.md`.
 
 ### 3. Vérifier que l'API a RÉELLEMENT démarré
 
@@ -170,22 +164,30 @@ docker exec tracky-api wget -qO- http://localhost:3000/api/health
 Une fois la branche sortie sur le VPS, chaque itération se réduit à :
 
 ```bash
-cd /opt/vizyo-tracky && git pull origin $BRANCHE && cd deploy/vps && docker compose --env-file .env.prod -f docker-compose.prod.yml up -d --build
+bash /opt/vizyo-tracky/deploy/vps/deploy.sh --branche $BRANCHE
 ```
 
-Pour un correctif **web seul** (le cas courant pendant B-pages), on peut ne reconstruire
-que le front, ce qui évite de rejouer le démarrage de l'API :
-
-```bash
-docker compose --env-file .env.prod -f docker-compose.prod.yml up -d --build web
-```
+Un correctif **web seul** passe par la même commande : compose ne recrée que les conteneurs
+dont l'image a changé, l'API n'est pas redémarrée pour rien. Et si elle doit l'être, la garde
+est là — c'est précisément le cas où l'on a tué des passages « en ne touchant qu'au front ».
 
 ## Revenir en arrière
 
+Deux façons, par le même script.
+
+**Aux images d'avant** — sans reconstruction, en une minute :
+
 ```bash
-cd /opt/vizyo-tracky
-git checkout main
-cd deploy/vps && docker compose --env-file .env.prod -f docker-compose.prod.yml up -d --build
+bash /opt/vizyo-tracky/deploy/vps/deploy.sh --repli avant-20260913-1130-a8f9575e
+```
+
+L'étiquette est celle que le script a affichée en déployant (« repère posé : … ») ; `docker images
+tracky-api` les liste, il y en a trois par image. Le repli passe par la garde comme un déploiement.
+
+**Au code d'avant** — un déploiement de `main` (ou de n'importe quel commit poussé) :
+
+```bash
+bash /opt/vizyo-tracky/deploy/vps/deploy.sh
 ```
 
 ⚠️ **Le code revient, pas la base.** Les migrations déjà appliquées restent : Prisma ne
