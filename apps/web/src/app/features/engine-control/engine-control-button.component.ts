@@ -832,6 +832,28 @@ export class EngineControlButtonComponent implements OnInit {
       // Boîtier muet : « en attente de confirmation » deviendrait mensonger — il n'y aura
       // PAS de confirmation. On le dit dans le toast, dernière chose lue avant de partir.
       const dormant = this.dormantWarning();
+      // P0-1 (contre-expertise du 13/09) — le serveur peut rendre une intention ANTÉRIEURE au
+      // clic : une RESTORE déjà en cours est réarmée (TCP puis SMS), une CUT en attente est
+      // rendue telle quelle. Dire « enregistrée » avec un identifiant d'hier ferait croire à
+      // une commande neuve. On nomme l'heure de l'intention et ce qui vient de lui arriver.
+      const ageMs = Date.now() - new Date(cmd.createdAt).getTime();
+      if (!this.demo.enabled() && Number.isFinite(ageMs) && ageMs > 60_000) {
+        const depuis = new Date(cmd.createdAt).toLocaleTimeString('fr-FR', {
+          hour: '2-digit',
+          minute: '2-digit',
+        });
+        this.toast.show({
+          kind: 'info',
+          title: action === 'CUT' ? 'Coupure déjà en cours' : 'Rallumage déjà en cours',
+          message:
+            action === 'CUT'
+              ? `Commande ${cmd.id.slice(0, 8)} créée à ${depuis} — toujours en attente de confirmation du boîtier.`
+              : `Commande ${cmd.id.slice(0, 8)} créée à ${depuis} — réarmée à l’instant : TCP d’abord, puis secours SMS, surveillée jusqu’à confirmation.`,
+          duration: 9000,
+        });
+        await this.loadRecentCommands();
+        return;
+      }
       if (this.demo.enabled()) {
         // Démonstration : la dernière chose lue avant de partir doit redire qu'aucun véhicule
         // n'est concerné — et annoncer ce que l'écran va montrer, pour que ce soit compris

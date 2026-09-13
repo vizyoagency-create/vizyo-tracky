@@ -514,6 +514,56 @@ describe('PositionsService.ingest — garde-fou replay/teleportation', () => {
     expect(prisma.engineControlCommand.update).not.toHaveBeenCalled();
   });
 
+  // P0-1 (contre-expertise du 13/09) — une remise en route « envoyée » est PROUVÉE par la
+  // remontée d'ignition, jusqu'à 24 h après sa création (le conducteur ne démarre pas
+  // forcément dans les 30 min), à la condition qu'aucune coupure n'ait été demandée depuis.
+  it('P0-1 : confirme un RESTORE app SENT vieux de trois heures quand le contact remonte', async () => {
+    trackerRow = makeTracker({ lastKnownIgnition: false, lastIgnition: false });
+    const restore = {
+      id: 'restore-1', action: 'RESTORE', status: 'SENT', confirmationExpected: false,
+      sentAt: new Date(Date.now() - 3 * 3600_000), createdAt: new Date(Date.now() - 3 * 3600_000),
+      ackedAt: null, source: 'SCHEDULER', channel: 'SMS', attemptCount: 2, nextAttemptAt: null,
+    };
+    prisma.engineControlCommand.findFirst
+      .mockResolvedValueOnce(restore) // la RESTORE non prouvée
+      .mockResolvedValueOnce(null);   // aucune CUT demandée depuis
+    prisma.engineControlCommand.update.mockResolvedValue({ ...restore, status: 'ACKNOWLEDGED', ackedAt: new Date() });
+
+    await service.ingest(makeFrame({ ignition: true })); // OFF -> ON
+    await new Promise((r) => setTimeout(r, 20));
+
+    const fenetre = prisma.engineControlCommand.findFirst.mock.calls[0][0].where.createdAt.gte as Date;
+    expect(Date.now() - fenetre.getTime()).toBeGreaterThanOrEqual(24 * 3600_000 - 5_000);
+    expect(prisma.engineControlCommand.findFirst.mock.calls[1][0].where).toMatchObject({
+      action: 'CUT',
+      createdAt: { gt: restore.createdAt },
+    });
+    expect(prisma.engineControlCommand.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'restore-1' },
+        data: expect.objectContaining({ status: 'ACKNOWLEDGED', activeKey: null }),
+      }),
+    );
+    expect(gateway.emitEngineCommandUpdate).toHaveBeenCalled();
+  });
+
+  it('P0-1 : ne confirme PAS un RESTORE si une CUT a été demandée depuis — l ignition parle d un autre épisode', async () => {
+    trackerRow = makeTracker({ lastKnownIgnition: false, lastIgnition: false });
+    prisma.engineControlCommand.findFirst
+      .mockResolvedValueOnce({
+        id: 'restore-1', action: 'RESTORE', status: 'SENT', confirmationExpected: false,
+        sentAt: new Date(Date.now() - 3 * 3600_000), createdAt: new Date(Date.now() - 3 * 3600_000),
+        ackedAt: null, source: 'SCHEDULER',
+      })
+      .mockResolvedValueOnce({ id: 'cut-apres' }); // une coupure demandée après la RESTORE
+
+    await service.ingest(makeFrame({ ignition: true }));
+    await new Promise((r) => setTimeout(r, 20));
+
+    expect(prisma.engineControlCommand.update).not.toHaveBeenCalled();
+    expect(prisma.engineControlCommand.create).not.toHaveBeenCalled();
+  });
+
   // Redémarrage (contact OFF->ON) : aucune commande synthétique « rallumage / reset
   // relais ». L'état coupé est piloté UNIQUEMENT par les commandes app.
   it('does NOT synthesize a RESTORE when ignition comes back on (restart)', async () => {

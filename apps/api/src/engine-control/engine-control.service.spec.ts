@@ -1347,10 +1347,38 @@ describe('EngineControlService', () => {
     it('🔴 ferme en SENT_UNCONFIRMED, jamais en FAILED', async () => {
       await service.cloturerCommandesPerimees();
 
-      expect(prisma.engineControlCommand.updateMany).toHaveBeenCalledTimes(1);
-      const arg = prisma.engineControlCommand.updateMany.mock.calls[0][0];
-      expect(arg.data.status).toBe('SENT_UNCONFIRMED');
-      expect(arg.data.expiredAt).toBeInstanceOf(Date);
+      // Deux balayages : les CUT (30 min) puis, depuis la contre-expertise du 13/09, les
+      // RESTORE sans preuve (4 h) — jamais FAILED, ni l'un ni l'autre.
+      expect(prisma.engineControlCommand.updateMany).toHaveBeenCalledTimes(2);
+      for (const [arg] of prisma.engineControlCommand.updateMany.mock.calls) {
+        expect(arg.data.status).toBe('SENT_UNCONFIRMED');
+        expect(arg.data.expiredAt).toBeInstanceOf(Date);
+      }
+    });
+
+    it('P0-1 : ferme aussi les RESTORE « envoyées » sans preuve après ENGINE_RESTORE_EXPIRY (4 h) en libérant leur clé — jamais sous lease', async () => {
+      const avant = Date.now();
+      await service.cloturerCommandesPerimees();
+
+      const { where, data } = prisma.engineControlCommand.updateMany.mock.calls[1][0];
+      expect(where.action).toBe('RESTORE');
+      expect(where.status).toBe('SENT');
+      expect(where.ackedAt).toBeNull();
+      const ecartMin = (avant - (where.sentAt.lt as Date).getTime()) / 60000;
+      expect(ecartMin).toBeGreaterThanOrEqual(239);
+      expect(ecartMin).toBeLessThanOrEqual(241);
+      // Une ligne que le worker est en train de traiter (lease posé) n'est pas réécrite.
+      expect(where.OR).toEqual([
+        { dispatchLeaseUntil: null },
+        { dispatchLeaseUntil: { lt: expect.any(Date) } },
+      ]);
+      expect(data).toMatchObject({
+        status: 'SENT_UNCONFIRMED',
+        activeKey: null,
+        nextAttemptAt: null,
+        dispatchLeaseUntil: null,
+      });
+      expect(data).not.toHaveProperty('ackedAt');
     });
 
     it('🔴 l echeance est PUREMENT TEMPORELLE — lecon de TRK-007', async () => {
@@ -1703,6 +1731,212 @@ describe('EngineControlService', () => {
         orderBy: { createdAt: 'desc' },
       });
       expect(registry.send).not.toHaveBeenCalled();
+    });
+
+    /**
+     * ══ P0-1 (contre-expertise du 13/09) — LA RESTORE DU LENDEMAIN NE DOIT JAMAIS ÊTRE AVALÉE ══
+     *
+     * Avant : une RESTORE partie par SMS, « remise » et jamais acquittée gardait `activeKey` pour
+     * toujours ; la RESTORE suivante du boîtier (planning, clic) retombait sur elle et repartait
+     * sans qu'un octet ne soit envoyé. Ces tests verrouillent le réarmement, et ses limites.
+     */
+    const restoreDHier = (overrides: Record<string, unknown> = {}) =>
+      createdCommand({
+        action: EngineAction.RESTORE,
+        status: CommandStatus.SENT,
+        channel: 'SMS',
+        smsLogId: '00000000-0000-0000-0000-000000000077',
+        attemptCount: 2,
+        smsAttemptCount: 1,
+        sentAt: new Date(Date.now() - 24 * 3600_000),
+        lastAttemptAt: new Date(Date.now() - 24 * 3600_000),
+        createdAt: new Date(Date.now() - 24 * 3600_000),
+        nextAttemptAt: null, // parquée : le worker a lu « SMS remis » et s'est arrêté là
+        dispatchLeaseUntil: null,
+        activeKey: `${TRACKER_ID}:${EngineAction.RESTORE}`,
+        alertedAt: new Date(Date.now() - 23 * 3600_000),
+        ...overrides,
+      });
+
+    it('P0-1 : la RESTORE du lendemain RÉARME une RESTORE d hier parquée et repart TCP d abord', async () => {
+      const stale = restoreDHier();
+      prisma.tracker.findFirst.mockResolvedValue(trackerWithVehicle);
+      prisma.engineControlCommand.create.mockRejectedValueOnce({ code: 'P2002' });
+      prisma.engineControlCommand.findFirst.mockResolvedValueOnce(stale); // relecture activeKey
+      prisma.engineControlCommand.findUnique.mockResolvedValueOnce({
+        ...stale,
+        status: CommandStatus.PENDING,
+        channel: null,
+        smsLogId: null,
+        smsAttemptCount: 0,
+        sentAt: null,
+      });
+      registry.send.mockReturnValue(true); // la socket est revenue depuis hier
+
+      const result = await service.requestCommand(
+        TRACKER_ID,
+        EngineAction.RESTORE,
+        'Automatisation horaire : entrée dans la plage autorisée',
+        superAdmin,
+        'SCHEDULER',
+      );
+
+      // Réarmement conditionnel : jamais sous un ACK arrivé entre-temps.
+      expect(prisma.engineControlCommand.updateMany).toHaveBeenCalledWith({
+        where: { id: stale.id, status: CommandStatus.SENT, ackedAt: null },
+        data: expect.objectContaining({
+          status: CommandStatus.PENDING,
+          channel: null,
+          smsLogId: null,
+          smsAttemptCount: 0,
+          sentAt: null,
+          nextAttemptAt: expect.any(Date),
+          dispatchLeaseUntil: expect.any(Date),
+        }),
+      });
+      // Et la commande repart dans la foulée : TCP en premier, aucun SMS payé d'office.
+      expect(registry.send).toHaveBeenCalledTimes(1);
+      const sms = testModule.get(SmsGatewayService) as unknown as { send: jest.Mock };
+      expect(sms.send).not.toHaveBeenCalled();
+      expect(prisma.engineControlCommand.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: stale.id },
+          data: expect.objectContaining({ status: CommandStatus.SENT, channel: 'TCP' }),
+        }),
+      );
+      expect(result.id).toBe(stale.id);
+    });
+
+    it('P0-1 : un clic manuel réarme aussi une RESTORE dont le prochain essai est lointain (backoff)', async () => {
+      const enBackoff = restoreDHier({
+        createdAt: new Date(Date.now() - 90_000),
+        sentAt: new Date(Date.now() - 90_000),
+        lastAttemptAt: new Date(Date.now() - 30_000),
+        nextAttemptAt: new Date(Date.now() + 4 * 60_000),
+      });
+      prisma.tracker.findFirst.mockResolvedValue(trackerWithVehicle);
+      prisma.engineControlCommand.create.mockRejectedValueOnce({ code: 'P2002' });
+      prisma.engineControlCommand.findFirst
+        .mockResolvedValueOnce(null) // clé d'idempotence inconnue
+        .mockResolvedValueOnce(null) // (collision) relecture par clé d'idempotence
+        .mockResolvedValueOnce(enBackoff); // relecture activeKey
+      prisma.engineControlCommand.findUnique.mockResolvedValueOnce({
+        ...enBackoff,
+        status: CommandStatus.PENDING,
+        channel: null,
+      });
+      registry.send.mockReturnValue(false);
+
+      await service.requestCommand(
+        TRACKER_ID,
+        EngineAction.RESTORE,
+        null,
+        fleetAdmin,
+        'MANUAL',
+        false,
+        false,
+        'clic-operateur',
+      );
+
+      expect(prisma.engineControlCommand.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: enBackoff.id, status: CommandStatus.SENT, ackedAt: null },
+        }),
+      );
+      // Socket absente : l'intention attend la reconnexion (PENDING, canal TCP), le worker
+      // paiera le SMS ensuite — même politique que pour une intention neuve.
+      expect(prisma.engineControlCommand.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            status: CommandStatus.PENDING,
+            channel: 'TCP',
+          }),
+        }),
+      );
+    });
+
+    it('P0-1 : un double clic ne réarme RIEN — une RESTORE en cours de traitement est rendue telle quelle', async () => {
+      const enCours = restoreDHier({
+        status: CommandStatus.SENT,
+        channel: 'TCP',
+        createdAt: new Date(Date.now() - 5_000),
+        sentAt: new Date(Date.now() - 5_000),
+        lastAttemptAt: new Date(Date.now() - 5_000),
+        nextAttemptAt: new Date(Date.now() + 10_000), // attente d'ACK, dans la fenêtre du worker
+      });
+      prisma.tracker.findFirst.mockResolvedValue(trackerWithVehicle);
+      prisma.engineControlCommand.create.mockRejectedValueOnce({ code: 'P2002' });
+      prisma.engineControlCommand.findFirst.mockResolvedValueOnce(enCours);
+
+      const result = await service.requestCommand(
+        TRACKER_ID,
+        EngineAction.RESTORE,
+        null,
+        fleetAdmin,
+        'MANUAL',
+      );
+
+      expect(result).toBe(enCours);
+      // Le seul updateMany attendu est la supplantation des CUT en vol (chemin RESTORE nominal) :
+      // aucun réarmement (retour en PENDING), aucun dispatch.
+      const rearms = prisma.engineControlCommand.updateMany.mock.calls.filter(
+        ([arg]) => arg?.data?.status === CommandStatus.PENDING,
+      );
+      expect(rearms).toHaveLength(0);
+      expect(prisma.engineControlCommand.update).not.toHaveBeenCalled();
+      expect(registry.send).not.toHaveBeenCalled();
+    });
+
+    it('P0-1 : si l ACK arrive entre la relecture et le réarmement, rien n est réécrit (updateMany conditionnel)', async () => {
+      const stale = restoreDHier();
+      prisma.tracker.findFirst.mockResolvedValue(trackerWithVehicle);
+      prisma.engineControlCommand.create.mockRejectedValueOnce({ code: 'P2002' });
+      prisma.engineControlCommand.findFirst.mockResolvedValueOnce(stale);
+      // La supplantation des CUT (premier updateMany) passe ; le réarmement, lui, ne trouve
+      // plus la ligne en SENT/non acquittée : un ACK vient de la clore.
+      prisma.engineControlCommand.updateMany.mockImplementation(({ data }) =>
+        Promise.resolve({ count: data?.status === CommandStatus.PENDING ? 0 : 1 }),
+      );
+
+      const result = await service.requestCommand(
+        TRACKER_ID,
+        EngineAction.RESTORE,
+        null,
+        superAdmin,
+        'SCHEDULER',
+      );
+
+      expect(result).toBe(stale);
+      expect(registry.send).not.toHaveBeenCalled();
+      expect(prisma.engineControlCommand.update).not.toHaveBeenCalled();
+    });
+
+    it('P0-1 : une CUT active n est jamais réarmée par ce chemin (périmètre RESTORE seulement)', async () => {
+      const cutActive = createdCommand({
+        action: EngineAction.CUT,
+        status: CommandStatus.SENT,
+        nextAttemptAt: null,
+        activeKey: `${TRACKER_ID}:${EngineAction.CUT}`,
+        createdAt: new Date(Date.now() - 24 * 3600_000),
+      });
+      prisma.tracker.findFirst.mockResolvedValue(trackerWithVehicle);
+      prisma.position.findFirst.mockResolvedValue(recentPosition(0));
+      prisma.engineControlCommand.create.mockRejectedValueOnce({ code: 'P2002' });
+      // 1) verrou « coupure en vol » (MANUAL) : rien ; 2) relecture activeKey
+      prisma.engineControlCommand.findFirst
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(cutActive);
+
+      const result = await service.requestCommand(
+        TRACKER_ID,
+        EngineAction.CUT,
+        null,
+        fleetAdmin,
+        'MANUAL',
+      );
+
+      expect(result).toBe(cutActive);
+      expect(prisma.engineControlCommand.updateMany).not.toHaveBeenCalled();
     });
 
     it('reprend un RESTORE TCP sans ACK par le fallback SMS', async () => {

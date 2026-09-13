@@ -73,6 +73,30 @@ const ENGINE_RESTORE_MAX_SMS_ATTEMPTS = Math.max(
   Number(process.env['ENGINE_RESTORE_MAX_SMS_ATTEMPTS']) || 3,
 );
 const ENGINE_DISPATCH_LEASE_MS = 60_000;
+/**
+ * ══ CONTRE-EXPERTISE DU 13/09 (doc 19, P0-1) — UNE CLÉ D'UNICITÉ NE PEUT PAS VIVRE POUR TOUJOURS ══
+ *
+ * `activeKey` garantit une seule intention RESTORE active par boîtier. Elle n'était libérée que
+ * par une PREUVE (ACK TCP, accusé SMS du boîtier, remontée d'ignition dans les 30 min) — preuve
+ * qui n'arrive pas dans le cas nominal du repli SMS (2 accusés SMS en cinq semaines). Une RESTORE
+ * partie par SMS, remise (`delivered`) et jamais acquittée gardait donc sa clé indéfiniment, et
+ * TOUTE RESTORE suivante du même boîtier — planning du lendemain, clic manuel — était dédupliquée
+ * vers elle : rien n'était envoyé, rien réarmé, aucune alerte neuve, et le cron avançait son état.
+ * Mesuré sur 30 jours de production : au moins une RESTORE par SMS sans accusé presque chaque jour.
+ *
+ * Deux bornes, complémentaires :
+ *   1. à la collision, une RESTORE `SENT` parquée (plus d'essai programmé), en attente lointaine
+ *      ou silencieuse depuis ENGINE_RESTORE_REARM_AFTER_MS est RÉARMÉE — TCP d'abord, puis SMS —
+ *      au lieu d'être rendue telle quelle (cf. `requestCommand`) ;
+ *   2. passé ENGINE_RESTORE_EXPIRY_MS après le premier envoi, la ligne passe « envoyée, non
+ *      confirmée » et libère la clé (cf. `cloturerCommandesPerimees`). Env
+ *      `ENGINE_RESTORE_EXPIRY_MIN`, défaut 240 min — bien au-delà du polling du secours SMS.
+ */
+const ENGINE_RESTORE_EXPIRY_MS =
+  Math.max(1, Number(process.env['ENGINE_RESTORE_EXPIRY_MIN']) || 240) *
+  60 *
+  1000;
+const ENGINE_RESTORE_REARM_AFTER_MS = 10 * 60 * 1000;
 const ENGINE_STOP_ACK_PATTERN = /imei:\d{15},J/i;
 const ENGINE_RESUME_ACK_PATTERN = /imei:\d{15},K/i;
 
@@ -220,6 +244,39 @@ export class EngineControlService implements OnModuleDestroy {
       if (count > 0) {
         this.logger.log(
           `TRK-018 : ${count} commande(s) moteur close(s) en SENT_UNCONFIRMED (échéance ${ENGINE_COMMAND_EXPIRY_MS / 60000} min).`,
+        );
+      }
+
+      // Contre-expertise du 13/09 (P0-1) — la RESTORE n'est pas abandonnée par ce balayage
+      // (son worker la suit, l'alerte à 60 s est déjà partie), mais sa clé d'unicité ne peut
+      // pas survivre indéfiniment : au-delà de ENGINE_RESTORE_EXPIRY_MS après le premier envoi,
+      // la ligne dit honnêtement « nul ne sait » et libère `activeKey`, pour qu'une nouvelle
+      // demande crée une intention neuve au lieu d'être avalée. Une ligne sous lease (worker
+      // en train de la traiter) est laissée au passage suivant : on ne réécrit jamais sous un
+      // traitement en cours.
+      const echeanceRestore = new Date(Date.now() - ENGINE_RESTORE_EXPIRY_MS);
+      const restores = await this.prisma.engineControlCommand.updateMany({
+        where: {
+          status: CommandStatus.SENT,
+          action: EngineAction.RESTORE,
+          ackedAt: null,
+          sentAt: { lt: echeanceRestore },
+          OR: [
+            { dispatchLeaseUntil: null },
+            { dispatchLeaseUntil: { lt: new Date() } },
+          ],
+        },
+        data: {
+          status: CommandStatus.SENT_UNCONFIRMED,
+          expiredAt: new Date(),
+          activeKey: null,
+          nextAttemptAt: null,
+          dispatchLeaseUntil: null,
+        },
+      });
+      if (restores.count > 0) {
+        this.logger.warn(
+          `P0-1 : ${restores.count} RESTORE close(s) en SENT_UNCONFIRMED sans preuve (échéance ${ENGINE_RESTORE_EXPIRY_MS / 60000} min) — clé d'unicité libérée, véhicule à vérifier.`,
         );
       }
     } catch (err) {
@@ -756,9 +813,16 @@ export class EngineControlService implements OnModuleDestroy {
         where: { activeKey, trackerId },
         orderBy: { createdAt: 'desc' },
       });
-      if (active?.trackerId === trackerId) return active;
-
-      throw new ConflictException('Clé de commande déjà utilisée');
+      if (active?.trackerId !== trackerId) {
+        throw new ConflictException('Clé de commande déjà utilisée');
+      }
+      // Contre-expertise du 13/09 (P0-1) : une RESTORE active n'est rendue telle quelle que si
+      // elle est réellement en cours de traitement. Parquée, en attente lointaine ou muette,
+      // elle est RÉARMÉE et repart par le dispatch ci-dessous — sinon la demande neuve serait
+      // avalée sans qu'un seul octet ne parte vers le boîtier.
+      const rearmed = await this.rearmStaleRestore(active);
+      if (!rearmed) return active;
+      command = rearmed;
     }
 
     if (command.status === CommandStatus.PENDING) {
@@ -842,6 +906,85 @@ export class EngineControlService implements OnModuleDestroy {
     this.emitUpdate(cmd, fleetId);
     this.logger.warn(`Command ${cmd.id} REJECTED: ${lastError}`);
     throw new ForbiddenException(throwMessage);
+  }
+
+  /**
+   * ══ CONTRE-EXPERTISE DU 13/09 (doc 19, P0-1) — LA DEMANDE NEUVE EST UN ORDRE ══════════════
+   *
+   * Une RESTORE active retrouvée à la collision n'est rendue telle quelle QUE si elle est
+   * réellement en train d'être traitée : essai programmé dans la fenêtre du worker et activité
+   * récente — c'est le double clic, ou le planning qui repasse pendant qu'un opérateur vient de
+   * cliquer. Dans tous les autres cas, la commande dort :
+   *   - PARQUÉE : plus aucun essai programmé (le worker a lu « SMS remis » et s'est arrêté là,
+   *     sans preuve boîtier) — le cas mesuré presque chaque jour en production ;
+   *   - LOINTAINE : prochain essai au-delà de la fenêtre d'ACK (backoff SMS) alors qu'un humain
+   *     ou le planning demande le rallumage maintenant ;
+   *   - MUETTE : aucune activité depuis ENGINE_RESTORE_REARM_AFTER_MS (worker mort, ligne
+   *     d'hier).
+   * On la réarme alors : retour en PENDING, canal effacé (TCP d'abord, secours SMS ensuite),
+   * budget SMS neuf, lease posé pour que le worker laisse passer le dispatch immédiat de
+   * `requestCommand`. Une RESTORE est idempotente : la renvoyer ne coûte au pire qu'un SMS,
+   * ne pas la renvoyer coûte un véhicule immobilisé.
+   *
+   * ⚠️ `sentAt` est remis à null : c'est l'instant du PREMIER envoi de l'intention courante, et
+   * l'échéance de `cloturerCommandesPerimees` se lit dessus — une valeur d'hier ferait clore la
+   * nouvelle tentative au balayage suivant. `alertedAt` est laissé tel quel : l'alerte « non
+   * confirmé depuis 60 s » a déjà été portée pour cette intention, et un échec terminal de la
+   * nouvelle tentative écrit la sienne.
+   *
+   * Rend `null` si rien n'a été réarmé (commande non éligible, ou modifiée entre-temps par
+   * l'ACK ou le worker — `updateMany` conditionnel).
+   */
+  private async rearmStaleRestore(
+    active: EngineControlCommand,
+  ): Promise<EngineControlCommand | null> {
+    if (active.action !== EngineAction.RESTORE) return null;
+    if (active.status !== CommandStatus.SENT || active.ackedAt) return null;
+    const now = Date.now();
+    const lastActivity = (
+      active.lastAttemptAt ??
+      active.sentAt ??
+      active.createdAt
+    ).getTime();
+    const parked = active.nextAttemptAt == null;
+    const farAway =
+      active.nextAttemptAt != null &&
+      active.nextAttemptAt.getTime() > now + ENGINE_ACK_TIMEOUT_MS;
+    const silent = now - lastActivity > ENGINE_RESTORE_REARM_AFTER_MS;
+    if (!parked && !farAway && !silent) return null;
+
+    const leaseUntil = new Date(now + ENGINE_DISPATCH_LEASE_MS);
+    const data = {
+      status: CommandStatus.PENDING,
+      channel: null,
+      smsLogId: null,
+      smsAttemptCount: 0,
+      sentAt: null,
+      nextAttemptAt: new Date(now),
+      dispatchLeaseUntil: leaseUntil,
+      lastError:
+        'Intention RESTORE réarmée par une nouvelle demande — TCP d’abord, puis secours SMS',
+    };
+    const { count } = await this.prisma.engineControlCommand.updateMany({
+      where: { id: active.id, status: CommandStatus.SENT, ackedAt: null },
+      data,
+    });
+    if (count !== 1) return null;
+    this.logger.warn(
+      {
+        commandId: active.id,
+        trackerId: active.trackerId,
+        parked,
+        farAway,
+        silent,
+        ageMs: now - active.createdAt.getTime(),
+      },
+      'RESTORE active réarmée au lieu d’être rendue telle quelle (P0-1)',
+    );
+    const reloaded = await this.prisma.engineControlCommand
+      .findUnique({ where: { id: active.id } })
+      .catch(() => null);
+    return reloaded ?? { ...active, ...data };
   }
 
   private attemptDelegate(): {

@@ -149,7 +149,7 @@ const CATALOG: CatalogEntry[] = [
     id: 'engine-command-expiry',
     source: 'engine-control/engine-control.service.ts', label: 'Fin de vie des commandes moteur', category: 'Sécurité & moteur',
     kind: 'cron', scheduleHuman: 'toutes les 10 min', criticality: 'moyenne', antiOverlap: false,
-    purpose: 'Solde les coupures/rétablissements moteur restés « envoyés » sans accusé au-delà de 30 min : ils passent en « envoyée, non confirmée ». Sans lui, la file ne se vide jamais (313 commandes ouvertes mesurées le 24/08) et l\'écran ne distingue plus « a échoué » de « nul ne sait ».',
+    purpose: "Solde les coupures moteur restées « envoyées » sans accusé au-delà de 30 min, et les rétablissements sans preuve au-delà de 4 h (ENGINE_RESTORE_EXPIRY_MIN) : ils passent en « envoyée, non confirmée » et libèrent leur clé d'unicité. Sans lui, la file ne se vide jamais (313 commandes ouvertes mesurées le 24/08), l'écran ne distingue plus « a échoué » de « nul ne sait », et une RESTORE d'hier avalerait celle du lendemain (P0-1, contre-expertise du 13/09).",
     periodic: { everyMs: 600_000, offsetMs: 0 },
   },
   {

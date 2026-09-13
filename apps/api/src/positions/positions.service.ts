@@ -31,7 +31,14 @@ import { PositionSamplingService } from './position-sampling.service';
 const CUT_DETECTION_WINDOW_MS = 5 * 60 * 1000;
 // Un RESTORE peut passer par la file SMS cadencée et ses retries. Sa preuve ignition
 // peut donc arriver bien après les cinq minutes adaptées au chemin TCP d'une CUT.
-const RESTORE_DETECTION_WINDOW_MS = 30 * 60 * 1000;
+//
+// Contre-expertise du 13/09 (doc 19, P0-1) : trente minutes ne suffisaient pas. Une remise en
+// route de 07:00 partie par SMS n'est prouvée que si le conducteur démarre avant 07:30 ; passé
+// ce délai, la commande restait « envoyée » à vie et sa clé d'unicité avalait la RESTORE du
+// lendemain. Une remontée d'ignition prouve que le moteur DÉMARRE, quel que soit le délai —
+// à une condition, vérifiée dans `handleIgnitionTransition` : qu'aucune coupure n'ait été
+// demandée depuis (sinon l'ignition parlerait d'un autre épisode).
+const RESTORE_DETECTION_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 interface RequestedBy {
   role: UserRole | string;
@@ -851,6 +858,22 @@ export class PositionsService {
       orderBy: { createdAt: 'desc' },
     });
     if (!recentCommand) return;
+
+    // P0-1 — la fenêtre RESTORE est longue (24 h) : on exige donc qu'aucune COUPURE n'ait été
+    // demandée après cette remise en route. Sinon l'ignition qui remonte raconte un autre
+    // épisode (coupure ratée, rallumage par un autre chemin) et ne prouve rien sur celle-ci.
+    if (action === EngineAction.RESTORE) {
+      const cutSince = await this.prisma.engineControlCommand.findFirst({
+        where: {
+          trackerId: tracker.id,
+          action: EngineAction.CUT,
+          status: { not: CommandStatus.REJECTED_SPEED },
+          createdAt: { gt: recentCommand.createdAt },
+        },
+        select: { id: true },
+      });
+      if (cutSince) return;
+    }
 
     try {
       const confirmed = await this.prisma.engineControlCommand.update({
