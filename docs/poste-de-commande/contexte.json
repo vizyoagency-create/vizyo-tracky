@@ -69,6 +69,93 @@
           "l": "Monter à 50 — 3× plus vite"
         }
       ]
+    },
+    {
+      "id": "D3",
+      "sujet": "Un compte API en secours — et pour quoi",
+      "texte": "Pendant 80 h (10 → 13/09), aucun canal IA : la CLI du poste au plafond, les comptes Anthropic et OpenAI à sec — Anthropic par ta décision du 05/09 (l’API ne sert que l’assistance et l’optimiseur). Coût mesuré : 0 récit sur trois jours, 7 travaux morts, les deux audits arrêtés deux jours, et le rapport d’activité hebdomadaire du 11/09 toujours pas rédigé le 13 à 15 h — le seul de ces effets qu’un client peut voir. Aujourd’hui les travaux du poste n’ont aucun chemin vers l’API : recharger seul ne suffit pas, il faut aussi que le serveur rédige lui-même quand la CLI est au plafond (une journée de code). Le courrier coûterait environ 3 $ par mois en Sonnet ; les récits, environ 3 $ par jour de plafond. Ce que je recommande : recharger 20 $ et coder le repli pour le courrier seulement — c’est lui qui porte les rapports, et il est léger.",
+      "options": [
+        {
+          "v": "courrier",
+          "l": "Recharger 20 $ — repli du courrier seulement"
+        },
+        {
+          "v": "tout",
+          "l": "Recharger — repli du courrier et des récits"
+        },
+        {
+          "v": "non",
+          "l": "Non : tout attend la remise à zéro"
+        }
+      ]
+    },
+    {
+      "id": "D4",
+      "sujet": "Un récit pour quels trajets",
+      "texte": "Les récits sont le premier volume automatisé de l’abonnement : ~200 appels par jour en Sonnet, un par trajet analysé. Sur sept jours, 27 % des récits décrivent des trajets de moins de 3 km, 9 % de moins d’un kilomètre — des manœuvres de parking racontées en trois phrases. Ne pas les narrer ne retire rien à l’analyse, ni aux rapports, ni aux alertes : seul le texte manque. Ce que je recommande : au-delà d’un kilomètre — le gain est sûr et personne ne relira le récit d’un déplacement de 600 m.",
+      "options": [
+        {
+          "v": "tous",
+          "l": "Tous les trajets (comme aujourd’hui)"
+        },
+        {
+          "v": "1km",
+          "l": "Au-delà d’un kilomètre (−9 %)"
+        },
+        {
+          "v": "3km",
+          "l": "Au-delà de trois kilomètres (−27 %)"
+        }
+      ]
+    },
+    {
+      "id": "D5",
+      "sujet": "Le poste doit-il savoir qu’il est au plafond",
+      "texte": "Pendant le plafond, les agents ont essayé 36 fois pour rien — un passage toutes les deux heures, chacun avec son contrôle de session et sa ligne d’échec — alors que la CLI annonce l’heure de remise à zéro dans son message dès la première fois. Le geste : à la première réponse « plafond », l’unique porte vers la CLI (cli-claude.cjs) retient l’heure annoncée et refuse d’appeler jusque-là ; les agents sortent aussitôt en disant pourquoi, la sentinelle n’écrit qu’une ligne (c’est déjà le cas depuis T31), et tout repart seul à l’heure dite. Zéro perte, zéro risque : un marqueur périmé se lève au premier appel qui passe. Ce que je recommande : oui, je le code dans la foulée.",
+      "options": [
+        {
+          "v": "oui",
+          "l": "Oui — les agents s’arrêtent d’eux-mêmes jusqu’à l’heure annoncée"
+        },
+        {
+          "v": "non",
+          "l": "Non — laisser essayer toutes les deux heures"
+        }
+      ]
+    },
+    {
+      "id": "D6",
+      "sujet": "Le modèle des deux audits quotidiens",
+      "texte": "Les audits du centre d’alerte (03:09) et du VPS (04:21) durent ~35 min chacun et tournent en Opus, faute de modèle fixé : ce sont les plus gros consommateurs automatisés de l’abonnement, et ils sont aussi les premiers à s’arrêter au plafond. Sonnet pèse environ cinq fois moins sur la limite hebdomadaire. L’audit VPS est mécanique — collecte, comparaison, constats — et s’en accommoderait ; celui du centre d’alerte écrit les fiches, décide des tâches et alimente cette page, sa qualité compte. Ce que je recommande : Sonnet pour le VPS, Opus pour le centre d’alerte.",
+      "options": [
+        {
+          "v": "opus",
+          "l": "Opus pour les deux (aujourd’hui)"
+        },
+        {
+          "v": "mixte",
+          "l": "Sonnet pour le VPS, Opus pour le centre d’alerte"
+        },
+        {
+          "v": "sonnet",
+          "l": "Sonnet pour les deux"
+        }
+      ]
+    },
+    {
+      "id": "D7",
+      "sujet": "Un abonnement à part pour les agents du poste",
+      "texte": "Le plafond a été atteint parce que tes sessions de développement et la production partagent la même limite hebdomadaire : une grosse semaine de travail affame les récits et le courrier. Un second compte, réservé aux agents de la CLI (récits, courrier — les audits restent sur le tien, ils tournent dans ton application), les isolerait : environ 20 $ par mois en Pro, si ses limites suffisent aux ~200 récits quotidiens — à mesurer une semaine avant de conclure. Ce que je recommande : pas maintenant. D4, D5 et D6 réduisent la pression ; si un second plafond survient malgré elles, on ouvre ce compte.",
+      "options": [
+        {
+          "v": "oui",
+          "l": "Oui, ouvrir un second compte pour les agents"
+        },
+        {
+          "v": "plus-tard",
+          "l": "Pas maintenant — d’abord D4, D5, D6"
+        }
+      ]
     }
   ],
   "faits": [

@@ -322,7 +322,7 @@ var LOGO = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAGAAAABiCAYAAACvUNYzAA
     TOI.forEach(function (t) { h += ligne(t, '<span class="chip chip--alerte">toi</span>'); });
     h += '</div>';
 
-    h += '<p class="intro" style="margin-top:6px">Et deux questions courtes. Réponds ici : je lis la page.</p>';
+    h += '<p class="intro" style="margin-top:6px">Et ' + (decisionsRestantes() > 0 ? decisionsRestantes() + (decisionsRestantes() > 1 ? ' questions à trancher' : ' question à trancher') : 'des questions déjà tranchées') + '. Réponds ici : je lis la page, et ma recommandation est dans chaque texte.</p>';
     h += '<div class="decisions">';
     DECISIONS.forEach(function (d) {
       var r = etat.decisions[d.id] || {};
