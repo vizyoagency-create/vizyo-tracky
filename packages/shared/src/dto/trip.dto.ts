@@ -90,6 +90,17 @@ export interface TripRecomputeResultDto {
    * refaire, en plus petit, le défaut qu'on corrige.
    */
   notesPerdues: number;
+  /**
+   * ── TRK-078 (2026-09-13) — LES ALERTES D'EXCÈS SUIVENT LEUR TRAJET ──────────────────
+   *
+   * `Alert.trip` est `onDelete: SetNull` : le recalcul laissait derrière lui des alertes sans
+   * lien, et « Voir le trajet » disparaissait. Chaque alerte des trajets détruits est désormais
+   * rattachée au nouveau trajet qui contient l'instant de l'excès — ou, à défaut d'instant,
+   * à celui qui recouvre le mieux l'ancien.
+   */
+  alertesRattachees: number;
+  /** Alertes qu'aucun nouveau trajet ne pouvait accueillir : le lien reste mort, mais compté. */
+  alertesOrphelines: number;
 }
 
 export interface TripStartedEvent {

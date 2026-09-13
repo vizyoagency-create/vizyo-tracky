@@ -11,7 +11,7 @@ import { Cron } from '@nestjs/schedule';
 import { Prisma, UserRole } from '@prisma/client';
 import type { Trip } from '@prisma/client';
 import type { TripCompletedEvent, TripRecomputeResultDto, TripStartedEvent } from '@vizyo/tracky-shared';
-import { MAX_VITESSE_ANNONCEE_KMH, douglasPeucker, isPlausibleJump, isValidLatLng } from '@vizyo/tracky-shared';
+import { MAX_VITESSE_ANNONCEE_KMH, TOLERANCE_MEME_EXCES_MS, douglasPeucker, instantMs, isPlausibleJump, isValidLatLng } from '@vizyo/tracky-shared';
 import { parisDayKey, parisDayStart } from '../common/utils/datetime';
 import { distanceMeters } from '../common/utils/haversine';
 import { apportTempsRoulantSec, vitesseMoyenneTrajet } from '../common/vitesse-moyenne';
@@ -1036,6 +1036,21 @@ export class TripsService implements OnModuleInit {
       await this.prisma.tripFuelStop.deleteMany({ where: { tripId: { in: idsSupprimes } } });
       await this.prisma.tripAnalysis.deleteMany({ where: { tripId: { in: idsSupprimes } } });
     }
+    /**
+     * ⚠️ TRK-078 (2026-09-13) — LES ALERTES D'EXCÈS PERDAIENT LEUR TRAJET.
+     *
+     * `Alert.trip` est `onDelete: SetNull` : la suppression ci-dessous ne détruit pas l'alerte,
+     * elle lui retire son lien — « Voir le trajet » disparaît, `payload.tripId` pointe sur un
+     * identifiant mort, et la nouvelle identité du trajet, analysée à son tour, faisait repartir
+     * la même alerte. On relève donc les alertes AVANT de supprimer, pour les rattacher ensuite
+     * au nouveau trajet qui contient l'instant de l'excès — le même chemin que les notes.
+     */
+    const alertesADeplacer = idsSupprimes.length > 0
+      ? await this.prisma.alert.findMany({
+          where: { tripId: { in: idsSupprimes } },
+          select: { id: true, tripId: true, payload: true },
+        })
+      : [];
 
     const { count: deleted } = await this.prisma.trip.deleteMany({
       where: {
@@ -1079,6 +1094,8 @@ export class TripsService implements OnModuleInit {
     const dejaRepris = new Set<string>();
     let notesReprises = 0;
     let conducteursRepris = 0;
+    /** Les nouveaux trajets, pour y rattacher les alertes une fois le découpage connu. */
+    const nouveaux: { id: string; startedAt: Date; endedAt: Date }[] = [];
     for (const draft of drafts) {
       const safeDist = Math.max(0, draft.distanceMeters);
       // Defense en profondeur : le segmenter pre-trie donc draft.durationSeconds
@@ -1141,8 +1158,42 @@ export class TripsService implements OnModuleInit {
       });
       // Sprint G.3 — map-matching async pour les trips recomputes.
       this.runMapMatchingAsync(newTrip.id, simplifiedPoly);
+      nouveaux.push({ id: newTrip.id, startedAt: draft.startedAt, endedAt: safeEndedAt });
       created++;
     }
+
+    /**
+     * TRK-078 — chaque alerte relevée retrouve un trajet : celui qui CONTIENT l'instant de
+     * l'excès quand la charge utile le porte (il vient du GPS, il survit au découpage), sinon
+     * celui qui recouvre le mieux l'ancien trajet. Aucun candidat → l'alerte reste orpheline,
+     * et c'est compté : mieux vaut un lien mort, dit, qu'un lien vers un trajet où l'excès n'a
+     * pas eu lieu.
+     */
+    let alertesRattachees = 0;
+    const anciensParId = new Map(aSupprimer.map((t) => [t.id, t]));
+    for (const alerte of alertesADeplacer) {
+      const ancien = alerte.tripId ? anciensParId.get(alerte.tripId) : undefined;
+      const accueil = this.trajetDAccueil(alerte.payload, ancien, nouveaux);
+      if (!accueil) continue;
+      const charge = alerte.payload && typeof alerte.payload === 'object' && !Array.isArray(alerte.payload)
+        ? (alerte.payload as Record<string, unknown>)
+        : {};
+      await this.prisma.alert.update({
+        where: { id: alerte.id },
+        data: {
+          tripId: accueil.id,
+          payload: {
+            ...charge,
+            tripId: accueil.id,
+            tripPrecedentId: alerte.tripId,
+            tripStartedAt: accueil.startedAt.toISOString(),
+            tripEndedAt: accueil.endedAt.toISOString(),
+          } as Prisma.InputJsonValue,
+        },
+      });
+      alertesRattachees++;
+    }
+    const alertesOrphelines = alertesADeplacer.length - alertesRattachees;
 
     /**
      * Ce qui n'a trouvé aucun porteur : deux anciens trajets fondus en un seul, et un seul jeu
@@ -1199,7 +1250,8 @@ export class TripsService implements OnModuleInit {
       detail:
         `${deleted} trajet(s) supprimé(s), ${created} recréé(s) — `
         + `${notesReprises} note(s) et ${conducteursRepris} conducteur(s) repris, `
-        + `${notesPerdues} note(s) sans trajet d'accueil`,
+        + `${notesPerdues} note(s) sans trajet d'accueil`
+        + (alertesADeplacer.length > 0 ? `, ${alertesRattachees} alerte(s) rattachée(s), ${alertesOrphelines} orpheline(s)` : ''),
       meta: {
         vehicleId: dto.vehicleId,
         du: dto.from,
@@ -1209,10 +1261,44 @@ export class TripsService implements OnModuleInit {
         notesReprises,
         conducteursRepris,
         notesPerdues,
+        alertesRattachees,
+        alertesOrphelines,
       },
     });
 
-    return { deleted, created, notesReprises, conducteursRepris, notesPerdues };
+    return { deleted, created, notesReprises, conducteursRepris, notesPerdues, alertesRattachees, alertesOrphelines };
+  }
+
+  /**
+   * TRK-078 — le nouveau trajet qui doit porter une alerte relevée sur un trajet détruit.
+   *
+   * L'instant de l'excès (`payload.startAt`) a priorité : il vient du GPS, il survit au
+   * découpage, et un trajet qui le contient — à la tolérance près, pour un excès coupé au
+   * bord — est le bon sans discussion. Sans instant (pointe au-delà du plafond sans point de
+   * tracé), on retombe sur le recouvrement de période avec l'ancien trajet, comme les notes.
+   */
+  private trajetDAccueil(
+    payload: Prisma.JsonValue,
+    ancien: { startedAt: Date; endedAt: Date | null } | undefined,
+    nouveaux: { id: string; startedAt: Date; endedAt: Date }[],
+  ): { id: string; startedAt: Date; endedAt: Date } | null {
+    const charge = payload && typeof payload === 'object' && !Array.isArray(payload) ? (payload as Record<string, unknown>) : {};
+    const instant = instantMs(charge['startAt']);
+    if (instant != null) {
+      return nouveaux.find(
+        (n) => n.startedAt.getTime() - TOLERANCE_MEME_EXCES_MS <= instant && instant <= n.endedAt.getTime() + TOLERANCE_MEME_EXCES_MS,
+      ) ?? null;
+    }
+    if (!ancien) return null;
+    const debut = ancien.startedAt.getTime();
+    const fin = (ancien.endedAt ?? ancien.startedAt).getTime();
+    let meilleur: { id: string; startedAt: Date; endedAt: Date } | null = null;
+    let meilleurRecouvrement = 0;
+    for (const n of nouveaux) {
+      const recouvrement = Math.min(fin, n.endedAt.getTime()) - Math.max(debut, n.startedAt.getTime());
+      if (recouvrement > meilleurRecouvrement) { meilleur = n; meilleurRecouvrement = recouvrement; }
+    }
+    return meilleur;
   }
 
   /**

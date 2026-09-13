@@ -122,3 +122,40 @@ export function decideAlerteExces(analyse: AnalysePourAlerte, reglage: ReglageAl
   if (parLimite && parPlafond) return parPlafond.overKmh > parLimite.overKmh ? parPlafond : parLimite;
   return parLimite ?? parPlafond;
 }
+
+/**
+ * ── TRK-078 (2026-09-13) — QU'EST-CE QU'UN « MÊME EXCÈS » ? ─────────────────────────────
+ *
+ * L'alerte d'excès était dédupliquée par identifiant de trajet. Or le recalcul horaire
+ * redécoupe sa fenêtre : il supprime les trajets et les recrée sous une autre identité, et
+ * chaque identité neuve est analysée comme un trajet neuf. Onze doublons sur cinquante-cinq
+ * alertes en quatorze jours — même véhicule, même instant à la seconde, deux `tripId`.
+ *
+ * L'identité d'un trajet est un ARTEFACT du découpage ; l'instant d'un excès est un FAIT
+ * mesuré par le GPS. Deux fenêtres d'excès d'un même véhicule qui se recouvrent décrivent le
+ * même dépassement — un véhicule n'est pas à deux endroits à la fois. La tolérance absorbe
+ * un découpage qui coupe l'excès un point plus tôt ou plus tard : elle est courte, parce que
+ * deux excès distincts sur un même trajet sont typiquement à plusieurs minutes l'un de
+ * l'autre, et qu'un seul des deux est retenu par trajet de toute façon.
+ */
+export const TOLERANCE_MEME_EXCES_MS = 30_000;
+
+/** Un horodatage ISO tel que la charge utile le porte, ou rien — jamais `NaN`. */
+export function instantMs(valeur: unknown): number | null {
+  if (typeof valeur !== 'string' || valeur === '') return null;
+  const ms = Date.parse(valeur);
+  return Number.isFinite(ms) ? ms : null;
+}
+
+/** Les deux fenêtres se recouvrent, à la tolérance près. Sans instant d'un côté : jamais. */
+export function memeExces(
+  a: { startAt: unknown; endAt: unknown },
+  b: { startAt: unknown; endAt: unknown },
+): boolean {
+  const aDebut = instantMs(a.startAt);
+  const bDebut = instantMs(b.startAt);
+  if (aDebut == null || bDebut == null) return false;
+  const aFin = instantMs(a.endAt) ?? aDebut;
+  const bFin = instantMs(b.endAt) ?? bDebut;
+  return aDebut - TOLERANCE_MEME_EXCES_MS <= bFin && bDebut - TOLERANCE_MEME_EXCES_MS <= aFin;
+}

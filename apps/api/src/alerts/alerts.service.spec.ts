@@ -805,5 +805,92 @@ describe('AlertsService', () => {
       await service.createFromCobanFrame(makeFrame('overspeed'), tracker as any);
       expect(prisma.alert.findFirst.mock.calls[0][0].where).toMatchObject({ type: 'OVERSPEED', tripId: null });
     });
+
+    /**
+     * ── TRK-078 (2026-09-13) — LA CLÉ DE DÉDUPLICATION ÉTAIT LA MAUVAISE ────────────────
+     *
+     * Onze doublons sur cinquante-cinq alertes en quatorze jours : même véhicule, même instant
+     * d'excès à la seconde, deux identifiants de trajet. Le recalcul horaire redécoupe sa
+     * fenêtre, supprime les trajets et les recrée sous une autre identité ; chaque nouvelle
+     * identité est analysée, et « dédupliquer par trajet » laisse passer l'excès une seconde
+     * fois — cinq destinataires, deux fois, pour un seul dépassement.
+     *
+     * L'instant de l'excès vient du GPS : il survit au découpage. C'est lui, la clé.
+     */
+    describe('TRK-078 — un même excès ne produit qu’une alerte, quel que soit le découpage', () => {
+      const exces = { ...decision, startAt: '2026-08-29T12:30:00.000Z', endAt: '2026-08-29T12:30:45.000Z' };
+      const chargeUtile = (patch: Record<string, unknown> = {}) => ({
+        source: 'trip-analysis', tripId: 'trip-0',
+        startAt: '2026-08-29T12:30:00.000Z', endAt: '2026-08-29T12:30:45.000Z',
+        ...patch,
+      });
+      const dejaAlerte = (patch: Record<string, unknown> = {}) => ({
+        id: 'ancienne', tripId: 'trip-0', payload: chargeUtile(), ...patch,
+      });
+
+      it('⚠️ l’excès déjà alerté sur un trajet supprimé puis recréé sous un autre identifiant ne repart pas', async () => {
+        prisma.alert.findMany.mockResolvedValue([dejaAlerte()]);
+
+        expect(await service.createSpeedingAlert({ ...entree(), decision: exces })).toBeNull();
+        expect(prisma.alert.create).not.toHaveBeenCalled();
+        expect(dispatch.dispatchAlert).not.toHaveBeenCalled();
+      });
+
+      it('cherche les alertes du VÉHICULE, du même type, dans une fenêtre bornée — pas toute la table', async () => {
+        prisma.alert.findMany.mockResolvedValue([]);
+        await service.createSpeedingAlert({ ...entree(), decision: exces });
+
+        const where = prisma.alert.findMany.mock.calls[0][0].where;
+        expect(where).toMatchObject({ vehicleId: VEHICLE_ID, type: 'OVERSPEED' });
+        expect(where.createdAt.gte).toBeInstanceOf(Date);
+        expect(Date.now() - where.createdAt.gte.getTime()).toBeLessThanOrEqual(8 * 24 * 3600 * 1000);
+      });
+
+      it('un excès à un AUTRE moment du même véhicule reste alerté', async () => {
+        prisma.alert.findMany.mockResolvedValue([
+          dejaAlerte({ payload: chargeUtile({ startAt: '2026-08-29T09:00:00.000Z', endAt: '2026-08-29T09:01:00.000Z' }) }),
+        ]);
+
+        expect(await service.createSpeedingAlert({ ...entree(), decision: exces })).not.toBeNull();
+        expect(prisma.alert.create).toHaveBeenCalledTimes(1);
+      });
+
+      it('deux fenêtres qui se CHEVAUCHENT sont le même excès — un véhicule n’est pas à deux endroits', async () => {
+        // Le redécoupage a coupé l'excès autrement : il commence 30 s plus tard et finit après.
+        prisma.alert.findMany.mockResolvedValue([
+          dejaAlerte({ payload: chargeUtile({ startAt: '2026-08-29T12:30:30.000Z', endAt: '2026-08-29T12:31:10.000Z' }) }),
+        ]);
+
+        expect(await service.createSpeedingAlert({ ...entree(), decision: exces })).toBeNull();
+      });
+
+      it('le doublon qui a PERDU son trajet est rattaché au trajet vivant — « Voir le trajet » revit', async () => {
+        // `Alert.trip` est SetNull : la suppression du trajet laisse l'alerte sans lien.
+        prisma.alert.findMany.mockResolvedValue([dejaAlerte({ tripId: null })]);
+
+        expect(await service.createSpeedingAlert({ ...entree(), decision: exces })).toBeNull();
+        expect(prisma.alert.update).toHaveBeenCalledWith(
+          expect.objectContaining({ where: { id: 'ancienne' }, data: expect.objectContaining({ tripId: 'trip-1' }) }),
+        );
+        expect(prisma.alert.update.mock.calls[0][0].data.payload).toMatchObject({ tripId: 'trip-1', tripPrecedentId: 'trip-0' });
+      });
+
+      it('un doublon qui a ENCORE son trajet n’est pas réécrit', async () => {
+        prisma.alert.findMany.mockResolvedValue([dejaAlerte()]);
+        await service.createSpeedingAlert({ ...entree(), decision: exces });
+        expect(prisma.alert.update).not.toHaveBeenCalled();
+      });
+
+      it('sans instant d’excès (plafond sans point de tracé), on retombe sur la déduplication par trajet', async () => {
+        await service.createSpeedingAlert(entree());
+        expect(prisma.alert.findMany).not.toHaveBeenCalled();
+        expect(prisma.alert.create).toHaveBeenCalledTimes(1);
+      });
+
+      it('une alarme du BOÎTIER, sans instant, ne compte jamais comme doublon', async () => {
+        prisma.alert.findMany.mockResolvedValue([{ id: 'boitier', tripId: null, payload: { alarm: 'overspeed' } }]);
+        expect(await service.createSpeedingAlert({ ...entree(), decision: exces })).not.toBeNull();
+      });
+    });
   });
 });

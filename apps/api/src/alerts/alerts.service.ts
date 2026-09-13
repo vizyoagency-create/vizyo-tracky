@@ -21,6 +21,7 @@ import {
   UserRole,
 } from '@prisma/client';
 import type { CobanAlarmType, CobanPositionFrame, DecisionAlerteVitesse, ReglageAlerteVitesse } from '@vizyo/tracky-shared';
+import { memeExces } from '@vizyo/tracky-shared';
 import { NotificationDispatchService } from '../notifications/notification-dispatch.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { VEHICLE_GROUP_INCLUDE, flattenVehicleGroup } from '../common/vehicle-group';
@@ -42,6 +43,16 @@ interface RequestedBy {
  * court pour qu'un épisode du lendemain soit bien un nouvel épisode.
  */
 const DEDUP_ALARME_MS = 6 * 60 * 60 * 1000;
+
+/**
+ * TRK-078 — jusqu'où remonter pour retrouver l'alerte d'un MÊME excès.
+ *
+ * Une alerte d'excès n'est créée que pour un trajet de moins de 48 h (`FRAICHEUR_MAX_MS`) :
+ * le doublon qu'on cherche a donc été écrit dans les deux jours qui ont suivi l'excès. Sept
+ * jours laissent de la marge sans jamais lire plus qu'une poignée de lignes par véhicule —
+ * la comparaison se fait en mémoire, sur la charge utile, où vit l'instant de l'excès.
+ */
+const FENETRE_MEME_EXCES_MS = 7 * 24 * 60 * 60 * 1000;
 
 /**
  * TRK-052 — les alarmes qui décrivent un ÉTAT QUI DURE, par opposition à un ÉVÉNEMENT.
@@ -727,9 +738,17 @@ export class AlertsService {
    * naît de la comparaison entre la vitesse MESURÉE ET CORROBORÉE et la limite légale de la
    * voie — ou du plafond absolu quand la carte n'a rien dit.
    *
-   * DÉDUPLIQUÉE PAR TRAJET, acquittée ou non : un trajet ré-analysé ne produit pas une seconde
-   * alerte. Elle porte `tripId` : c'est ce lien qui permet au clic sur la notification d'ouvrir
-   * le trajet, et à l'écran de proposer « Voir le trajet ».
+   * DÉDUPLIQUÉE PAR EXCÈS, acquittée ou non — et par trajet, ce qui est plus rapide quand ça
+   * suffit. Elle porte `tripId` : c'est ce lien qui permet au clic sur la notification
+   * d'ouvrir le trajet, et à l'écran de proposer « Voir le trajet ».
+   *
+   * ⚠️ TRK-078 (2026-09-13) — LE TRAJET N'EST PAS UNE CLÉ STABLE. Le recalcul horaire supprime
+   * les trajets et les recrée sous une autre identité ; chaque identité neuve est analysée, et
+   * dédupliquer « par trajet » laissait repartir le même excès : onze doublons sur cinquante-
+   * cinq alertes en quatorze jours, cinq destinataires prévenus deux fois du même dépassement.
+   * L'instant de l'excès, lui, vient du GPS et survit au découpage : c'est lui qu'on compare
+   * (`memeExces`). Et quand le doublon retrouvé a PERDU son trajet (`Alert.trip` est SetNull),
+   * on le rattache au trajet vivant plutôt que d'en créer un second — le lien revit.
    *
    * `createdAt` est l'heure de création, pas celle du trajet — exprès, comme pour la coupure
    * confirmée : antidater fausserait le tri du centre. L'heure vraie vit dans le message et
@@ -747,6 +766,12 @@ export class AlertsService {
       select: { id: true },
     });
     if (deja) return null;
+
+    const doublon = await this.memeExcesDejaAlerte(vehicle.id, decision);
+    if (doublon) {
+      if (doublon.tripId == null) await this.rattacherAuTrajet(doublon, trip);
+      return null;
+    }
 
     const alert = await this.prisma.alert.create({
       data: {
@@ -788,6 +813,61 @@ export class AlertsService {
       this.logger.warn(`Notification dispatch failed for OVERSPEED alert ${alert.id}: ${err instanceof Error ? err.message : err}`);
     });
     return alert;
+  }
+
+  /**
+   * TRK-078 — l'alerte déjà écrite pour ce même excès, sur ce véhicule, quel que soit le
+   * trajet qui la portait ; ou rien.
+   *
+   * Sans instant d'excès (pointe au-delà du plafond sans point de tracé), il n'y a rien à
+   * comparer : on s'en remet à la déduplication par trajet, qui vient d'être faite. Les
+   * alarmes du boîtier, qui n'ont pas d'instant non plus, ne peuvent jamais passer pour un
+   * doublon d'analyse — ni l'inverse.
+   */
+  private async memeExcesDejaAlerte(
+    vehicleId: string,
+    decision: DecisionAlerteVitesse,
+  ): Promise<{ id: string; tripId: string | null; payload: Prisma.JsonValue } | null> {
+    if (!decision.startAt) return null;
+    const candidates = await this.prisma.alert.findMany({
+      where: {
+        vehicleId,
+        type: AlertType.OVERSPEED,
+        createdAt: { gte: new Date(Date.now() - FENETRE_MEME_EXCES_MS) },
+      },
+      select: { id: true, tripId: true, payload: true },
+    });
+    for (const c of candidates) {
+      const charge = chargeUtile(c.payload);
+      if (memeExces({ startAt: charge['startAt'], endAt: charge['endAt'] }, decision)) return c;
+    }
+    return null;
+  }
+
+  /**
+   * Redonne un trajet à une alerte qui a perdu le sien. La charge utile suit — identifiant et
+   * période du trajet d'accueil — et garde la trace de l'ancien ; ce qui décrit l'EXCÈS
+   * (instant, vitesse, limite) ne bouge pas : c'est un fait GPS, pas un découpage.
+   */
+  private async rattacherAuTrajet(
+    alerte: { id: string; payload: Prisma.JsonValue },
+    trip: { id: string; startedAt: Date; endedAt: Date | null },
+  ): Promise<void> {
+    const ancienne = chargeUtile(alerte.payload);
+    await this.prisma.alert.update({
+      where: { id: alerte.id },
+      data: {
+        tripId: trip.id,
+        payload: {
+          ...ancienne,
+          tripId: trip.id,
+          tripPrecedentId: ancienne['tripId'] ?? null,
+          tripStartedAt: trip.startedAt.toISOString(),
+          tripEndedAt: trip.endedAt?.toISOString() ?? null,
+        } as Prisma.InputJsonValue,
+      },
+    });
+    this.logger.log(`[ALERT] OVERSPEED ${alerte.id} rattachée au trajet ${trip.id} (l'ancien a été recalculé)`);
   }
 
   async list(
@@ -911,6 +991,11 @@ export class AlertsService {
   }
 }
 
+
+/** La charge utile d'une alerte lue comme un objet — ou vide quand elle n'en est pas un. */
+function chargeUtile(payload: Prisma.JsonValue | null | undefined): Record<string, unknown> {
+  return payload && typeof payload === 'object' && !Array.isArray(payload) ? (payload as Record<string, unknown>) : {};
+}
 
 /**
  * Phrase de l'alerte d'excès sur trajet — en français, avec l'heure du trajet, parce que

@@ -2,7 +2,7 @@
  * Lot V5 — la décision d'alerter sur un excès est PARTAGÉE : ces tests protègent la seule
  * définition que le serveur et l'écran appliquent.
  */
-import { decideAlerteExces, reglageEffectif } from './alerte-exces';
+import { decideAlerteExces, instantMs, memeExces, reglageEffectif } from './alerte-exces';
 import { parametresTrajet, urlDuTrajet } from './lien-trajet';
 import type { SpeedingSegmentDto } from '../dto/trip-analysis.dto';
 
@@ -96,5 +96,43 @@ describe('lien vers le trajet — un seul format, serveur et écran', () => {
 
   it('omet l’alerte quand il n’y en a pas', () => {
     expect(parametresTrajet('trip-1', '2026-08-29T12:12:00.000Z')).toEqual({ tab: 'reports', trip: 'trip-1', tripDate: '2026-08-29T12:12:00.000Z' });
+  });
+});
+
+describe('TRK-078 — memeExces : l’instant GPS est la clé, pas l’identifiant de trajet', () => {
+  const f = (debut: string, fin: string | null = null) => ({ startAt: debut, endAt: fin });
+
+  it('même instant, à la seconde : le même excès', () => {
+    expect(memeExces(f('2026-08-29T12:30:00Z', '2026-08-29T12:30:45Z'), f('2026-08-29T12:30:00Z', '2026-08-29T12:30:45Z'))).toBe(true);
+  });
+
+  it('deux fenêtres qui se recouvrent : le même excès, coupé autrement par le découpage', () => {
+    expect(memeExces(f('2026-08-29T12:30:00Z', '2026-08-29T12:30:45Z'), f('2026-08-29T12:30:30Z', '2026-08-29T12:31:10Z'))).toBe(true);
+  });
+
+  it('deux fenêtres disjointes de moins que la tolérance : encore le même excès', () => {
+    // 12:30:00–12:30:45, puis 12:31:05 : 20 s d'écart, sous les 30 s.
+    expect(memeExces(f('2026-08-29T12:30:00Z', '2026-08-29T12:30:45Z'), f('2026-08-29T12:31:05Z'))).toBe(true);
+  });
+
+  it('deux excès à plusieurs minutes l’un de l’autre : deux excès', () => {
+    expect(memeExces(f('2026-08-29T12:30:00Z', '2026-08-29T12:30:45Z'), f('2026-08-29T12:36:00Z', '2026-08-29T12:36:20Z'))).toBe(false);
+  });
+
+  it('une pointe sans durée (plafond absolu) se compare sur son seul instant', () => {
+    expect(memeExces(f('2026-08-29T12:30:20Z'), f('2026-08-29T12:30:00Z', '2026-08-29T12:30:45Z'))).toBe(true);
+  });
+
+  it('⚠️ sans instant d’un côté, jamais le même excès — une alarme du boîtier n’en porte pas', () => {
+    expect(memeExces(f('2026-08-29T12:30:00Z'), { startAt: null, endAt: null })).toBe(false);
+    expect(memeExces({ startAt: undefined, endAt: undefined }, f('2026-08-29T12:30:00Z'))).toBe(false);
+    expect(memeExces(f('2026-08-29T12:30:00Z'), { startAt: 'pas une date', endAt: null })).toBe(false);
+  });
+
+  it('instantMs ne rend jamais NaN', () => {
+    expect(instantMs('2026-08-29T12:30:00.000Z')).toBe(Date.UTC(2026, 7, 29, 12, 30));
+    expect(instantMs('')).toBeNull();
+    expect(instantMs(42)).toBeNull();
+    expect(instantMs('hier')).toBeNull();
   });
 });

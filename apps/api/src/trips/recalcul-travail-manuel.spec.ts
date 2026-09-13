@@ -67,6 +67,8 @@ async function recalculer(monde: Monde) {
     tripFuelStop: { deleteMany: jest.fn().mockResolvedValue({}) },
     tripAnalysis: { deleteMany: jest.fn().mockResolvedValue({}) },
     position: { findMany: jest.fn().mockResolvedValue([]) },
+    // TRK-078 — les alertes des trajets détruits sont relevées puis rattachées ; sans objet ici.
+    alert: { findMany: jest.fn().mockResolvedValue([]), update: jest.fn().mockResolvedValue({}) },
   };
   const segmenter = { segmentPositions: jest.fn().mockReturnValue(monde.decoupes ?? []) };
 

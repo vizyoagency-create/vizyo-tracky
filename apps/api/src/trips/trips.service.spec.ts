@@ -81,6 +81,12 @@ class FakePrisma {
   position = {
     findMany: async () => this.positions,
   };
+
+  // TRK-078 — le recalcul relève les alertes des trajets qu'il détruit ; ici il n'y en a pas.
+  alert = {
+    findMany: async () => [] as AnyObj[],
+    update: async () => ({}),
+  };
 }
 
 class FakeGateway {
