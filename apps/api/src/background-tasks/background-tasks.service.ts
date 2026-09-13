@@ -3,6 +3,7 @@ import { SchedulerRegistry } from '@nestjs/schedule';
 import type {
   BackgroundTaskDto,
   BackgroundTasksResponse,
+  PauseAgentsDto,
   BgTaskCategory,
   BgTaskCoutIa,
   BgTaskCriticality,
@@ -731,6 +732,28 @@ export class BackgroundTasksService {
     private readonly tripAutomation: TripAutomationService,
   ) {}
 
+  /**
+   * T34 — la pause qui retient les agents du poste, telle que l'écran la montre. Lue ici et non
+   * dans un service à part pour rester sur la MÊME horloge que le reste de la réponse ; une
+   * lecture qui échoue (table absente avant migration) rend `null` : l'écran ne doit jamais tomber.
+   */
+  private async pauseAgents(nowMs: number): Promise<PauseAgentsDto | null> {
+    try {
+      const p = await this.prisma.pauseAgentsLocaux.findFirst({
+        where: { leveeA: null },
+        orderBy: { poseeA: 'desc' },
+        select: { id: true, poseeA: true, cause: true, motif: true, poseePar: true, jusqua: true, notifieeA: true },
+      });
+      if (!p || (p.jusqua && p.jusqua.getTime() <= nowMs)) return null;
+      return {
+        id: p.id, poseeA: p.poseeA.toISOString(), cause: p.cause, motif: p.motif, poseePar: p.poseePar,
+        jusqua: p.jusqua ? p.jusqua.toISOString() : null, notifieeA: p.notifieeA ? p.notifieeA.toISOString() : null,
+      };
+    } catch {
+      return null;
+    }
+  }
+
   async list(): Promise<BackgroundTasksResponse> {
     const now = new Date();
     const nowMs = now.getTime();
@@ -738,7 +761,7 @@ export class BackgroundTasksService {
     // Réglages des 3 automatisations IA (pour un « prochain lancement » fidèle à leur cadence).
     // Revue : même lecture que les crons consommateurs (orderBy updatedAt desc) pour lire
     // EXACTEMENT la ligne de réglages que le cron utilise, si plusieurs coexistent.
-    const [tripS, activityS, agendaS, placeS, agentLimites, agentRecit, agentQualiteGps, rattrapageRecits, courrierIa, tripGarde] = await Promise.all([
+    const [tripS, activityS, agendaS, placeS, agentLimites, agentRecit, agentQualiteGps, rattrapageRecits, courrierIa, tripGarde, pauseAgents] = await Promise.all([
       this.prisma.tripAutomationSettings.findFirst({ orderBy: { updatedAt: 'desc' } }).catch(() => null),
       this.prisma.activityReportSchedule.findFirst({ orderBy: { updatedAt: 'desc' } }).catch(() => null),
       this.prisma.agendaAgentSettings.findMany({ where: { enabled: true } }).catch(() => []),
@@ -751,6 +774,7 @@ export class BackgroundTasksService {
       this.etatRattrapageRecits(nowMs),
       this.etatCourrierIa(nowMs),
       this.gardeTrajets(nowMs),
+      this.pauseAgents(nowMs),
     ]);
 
     const tasks: BackgroundTaskDto[] = CATALOG.map((e) => {
@@ -810,6 +834,7 @@ export class BackgroundTasksService {
       serverNow: now.toISOString(),
       serverTimezone: SERVER_TZ,
       health: this.buildHealth(),
+      pauseAgents,
     };
   }
 

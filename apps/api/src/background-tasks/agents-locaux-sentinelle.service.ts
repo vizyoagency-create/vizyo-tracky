@@ -1,6 +1,8 @@
 import { Injectable, Logger, Optional } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { Cron } from '@nestjs/schedule';
 import { UserRole } from '@prisma/client';
+import { EmailService } from '../email/email.service';
 import { NotificationDispatchService } from '../notifications/notification-dispatch.service';
 import { ErrorLogger } from '../observability/error-logger.service';
 import { NIVEAU_DEGRADATION } from '../observability/niveaux-erreur';
@@ -8,6 +10,7 @@ import { CLES_REFROIDISSEMENT, RefroidissementAlerteService } from '../observabi
 import { PrismaService } from '../prisma/prisma.service';
 import { DemoModeService } from '../demo/demo-mode.service';
 import { AgentDuPoste, BackgroundTasksService, PassageLocal } from './background-tasks.service';
+import { PauseAgents, PauseAgentsLocauxService, SEUIL_ECHECS_CONSECUTIFS_MS } from './pause-agents-locaux.service';
 
 /** Source des lignes écrites au centre d'alerte — le contrôleur du centre et l'écran la lisent telle quelle. */
 export const SOURCE_AGENTS_LOCAUX = 'agents-locaux';
@@ -109,7 +112,29 @@ export const CAUSES_COMMUNES: readonly CauseCommune[] = [
     motif: /hit your (usage |rate )?limit|usage limit reached/i,
     concerne: parLaCli,
   },
+  {
+    // T34 — un agent qui sort parce que la PAUSE le retient (« en pause (cause) — … »). En dernier :
+    // s'il cite la phrase du plafond, il reste rangé sous le plafond, dont la ligne est déjà
+    // ouverte ; seule une pause posée par la sentinelle (échecs consécutifs) a la sienne.
+    cle: 'pause',
+    libelle: 'Agents du poste en pause',
+    motif: /^en pause\b/i,
+    concerne: parLaCli,
+  },
 ];
+
+/** Un passage que la pause a fait sortir : il ne dit rien de la CLI, il ne compte ni pour ni contre. */
+export function passageEnPause(p: Pick<PassageLocal, 'erreur'>): boolean {
+  return /^en pause\b/i.test(p.erreur ?? '');
+}
+
+/** Destinataire des courriels d'exploitation — le même que la vigie des erreurs critiques. */
+const DESTINATAIRE_EXPLOITATION = 'contact@vizyoagency.com';
+const LIBELLE_CAUSE_PAUSE: Record<string, string> = {
+  'plafond-hebdo': 'plafond hebdomadaire de la CLI Claude',
+  'plafond-usage': 'plafond d’usage de la CLI Claude',
+  'echecs-consecutifs': 'cinq heures d’échecs d’affilée',
+};
 
 /** La cause commune que ce motif d'échec trahit, ou rien — auquel cas l'échec est celui de l'agent. */
 export function causeCommune(motif: string): CauseCommune | null {
@@ -198,6 +223,11 @@ export class AgentsLocauxSentinelleService {
     // Environnement de démonstration : aucun agent du poste ne vise la démo — la juger « à
     // l'arrêt » toutes les heures serait un faux CRITICAL de plus. Optionnel pour les specs.
     @Optional() private readonly demoMode?: DemoModeService,
+    // T34 — la pause des agents : levée quand périmée, posée après cinq heures d'échecs, notifiée
+    // par courriel. Optionnels : sans eux, la sentinelle juge comme avant et ne touche pas la pause.
+    @Optional() private readonly pauses?: PauseAgentsLocauxService,
+    @Optional() private readonly email?: EmailService,
+    @Optional() private readonly config?: ConfigService,
   ) {}
 
   /**
@@ -213,6 +243,8 @@ export class AgentsLocauxSentinelleService {
   async verifier(nowMs = Date.now()): Promise<void> {
     // Démo : les agents du poste n'écrivent que dans la production. Rien à juger ici.
     if (this.demoMode?.enabled) return;
+    // T34 — une pause périmée ne retient personne : on la ferme avant de juger qui que ce soit.
+    await this.entretenirPause('lever les pauses périmées', () => this.pauses!.leverPerimees(nowMs));
     // TRK-069 — les causes communes déjà signalées PENDANT CE CONTRÔLE : trois agents en échec
     // pour la même phrase ne doivent pas produire trois lignes, même si le refroidissement (base
     // injoignable → « émets ») laissait passer chacune.
@@ -234,6 +266,117 @@ export class AgentsLocauxSentinelleService {
         );
       }
     }
+    // T34 — cinq heures d'échecs d'affilée : on arrête d'essayer, on prévient, un bouton relance.
+    await this.entretenirPause('poser une pause après cinq heures d’échecs', () => this.poserApresEchecs(nowMs));
+    await this.entretenirPause('notifier les pauses', () => this.notifierPauses(nowMs));
+  }
+
+  /**
+   * Un geste sur la pause qui échoue (base, courriel) ne doit ni casser le contrôle des agents ni
+   * passer inaperçu : ligne ERROR nommée, sans réveiller personne, et on continue.
+   */
+  private async entretenirPause(geste: string, action: () => Promise<unknown>): Promise<void> {
+    if (!this.pauses) return;
+    try {
+      await action();
+    } catch (e) {
+      const err = e instanceof Error ? e : new Error(String(e));
+      this.errorLogger.recordBackground(
+        new Error(`Pause des agents du poste — impossible de ${geste} : ${err.message}`),
+        SOURCE_AGENTS_LOCAUX,
+        { motif: 'pause', geste },
+        'ERROR',
+      );
+    }
+  }
+
+  /**
+   * ── T34 — CINQ HEURES D'ÉCHECS D'AFFILÉE → PAUSE SANS ÉCHÉANCE ──────────────────────────
+   *
+   * Le chiffre est celui du propriétaire (D5). Les agents qui passent par la CLI (récits,
+   * rattrapage, courrier) sont regardés ENSEMBLE : depuis leur dernier passage réussi, s'ils n'ont
+   * produit que des échecs pendant au moins cinq heures — deux au moins, pour qu'un échec isolé
+   * suivi de silence ne suffise pas —, quelque chose est cassé que réessayer n'arrangera pas
+   * (session expirée, CLI absente, réseau). La pause est posée sans échéance : seul le bouton
+   * « Reprendre maintenant » la lève, et le courriel dit lequel.
+   *
+   * Les passages « en pause » sont écartés : ce sont des conséquences de la pause, pas des
+   * échecs de la CLI — sinon une pause en engendrerait une autre à l'infini.
+   */
+  private async poserApresEchecs(nowMs: number): Promise<void> {
+    if (await this.pauses!.active(nowMs)) return;
+    const cles = this.catalogue.agentsDuPoste().filter((a) => a.coutIa === 'absorbe').map((a) => a.cleJournal);
+    if (cles.length === 0) return;
+    const depuis = new Date(nowMs - 2 * SEUIL_ECHECS_CONSECUTIFS_MS);
+    const passages = await this.prisma.passageAgentLocal.findMany({
+      where: { agent: { in: cles }, finiA: { gte: depuis } },
+      orderBy: { finiA: 'desc' },
+      select: { agent: true, demarreA: true, finiA: true, succes: true, resume: true, erreur: true },
+    });
+    const utiles = passages.filter((p) => !passageEnPause(p));
+    const dernierSucces = utiles.find((p) => p.succes)?.finiA.getTime() ?? 0;
+    const rates = utiles.filter((p) => !p.succes && p.finiA.getTime() > dernierSucces);
+    if (rates.length < 2) return;
+    const premier = Math.min(...rates.map((p) => p.demarreA.getTime()));
+    if (nowMs - premier < SEUIL_ECHECS_CONSECUTIFS_MS) return;
+    const dernier = rates[0]!;
+    const pause = await this.pauses!.poser(
+      { cause: 'echecs-consecutifs', motif: motifDe(dernier), poseePar: 'sentinelle', jusqua: null },
+      nowMs,
+    );
+    if (pause) {
+      this.logger.warn(
+        `Pause des agents du poste posée : ${rates.length} échecs d'affilée depuis ${dateHeureParis(new Date(premier))} (Paris), dernier ${dernier.agent} — ${motifDe(dernier)}`,
+      );
+    }
+  }
+
+  /**
+   * ── T34 — UN COURRIEL PAR PAUSE ────────────────────────────────────────────────────────────
+   *
+   * Qu'elle vienne du poste (plafond lu dans la réponse de la CLI) ou d'ici (échecs consécutifs),
+   * une pause posée et jamais notifiée part une fois : par courriel à l'exploitation, et par le
+   * socle générique aux super-admins. La pause n'est datée « notifiée » que si le courriel est
+   * parti — sinon, le contrôle suivant réessaie : mieux vaut un courriel en retard qu'un silence.
+   */
+  private async notifierPauses(nowMs: number): Promise<void> {
+    for (const pause of await this.pauses!.aNotifier()) {
+      const agents = this.catalogue.agentsDuPoste().filter((a) => a.coutIa === 'absorbe').map((a) => a.id);
+      const libelle = LIBELLE_CAUSE_PAUSE[pause.cause] ?? pause.cause;
+      const reprise = pause.jusqua
+        ? `reprise automatique le ${dateHeureParis(pause.jusqua)} (Paris), ou avant par le bouton « Reprendre maintenant »`
+        : 'reprise MANUELLE : bouton « Reprendre maintenant » sur /admin/background-tasks';
+      const message =
+        `Agents du poste en pause depuis le ${dateHeureParis(pause.poseeA)} (Paris) — ${libelle}, posée par ${pause.poseePar}. ` +
+        `Motif : ${pause.motif}. Concerne ${agents.join(', ')}. ${reprise}.`;
+      if (!(await this.envoyerCourrielPause(pause, agents, message))) continue;
+      await this.prevenir(`pause:${pause.cause}`, message);
+      await this.pauses!.marquerNotifiee(pause.id, nowMs);
+      this.logger.warn(message);
+    }
+  }
+
+  /** `true` si le courriel est parti — ou s'il n'y a pas de service de courriel (rien à attendre). */
+  private async envoyerCourrielPause(pause: PauseAgents, agents: string[], texte: string): Promise<boolean> {
+    if (!this.email) return true;
+    const to = (this.config?.get<string>('ERROR_RATE_ALERT_TO') || DESTINATAIRE_EXPLOITATION).trim();
+    const libelle = LIBELLE_CAUSE_PAUSE[pause.cause] ?? pause.cause;
+    const res = await this.email.send({
+      to,
+      subject: `[Tracky] Agents du poste en pause — ${libelle}`,
+      html: this.email.buildPauseAgentsEmail({
+        cause: pause.cause,
+        libelle,
+        motif: pause.motif,
+        poseeA: pause.poseeA,
+        poseePar: pause.poseePar,
+        jusqua: pause.jusqua,
+        agents,
+      }),
+      text: texte,
+    });
+    if (!res.ok) this.logger.warn(`courriel de pause non parti (${pause.id}) : ${res.error ?? 'sans motif'}`);
+    return res.ok;
   }
 
   private async examiner(agent: AgentDuPoste, nowMs: number, causesSignalees: Set<string>): Promise<void> {

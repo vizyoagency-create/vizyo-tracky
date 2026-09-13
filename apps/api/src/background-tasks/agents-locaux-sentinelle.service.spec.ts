@@ -6,6 +6,7 @@ import {
   SOURCE_AGENTS_LOCAUX,
 } from './agents-locaux-sentinelle.service';
 import { BackgroundTasksService } from './background-tasks.service';
+import { PauseAgentsLocauxService } from './pause-agents-locaux.service';
 
 /**
  * ── CE QUE CES TESTS PROTÈGENT (PS du chantier C3, 2026-09-05) ────────────────────────────
@@ -73,6 +74,12 @@ function construire(opts: {
   dispatch?: { notifyUsers: jest.Mock } | null;
   /** Clés dont la lecture du journal REJETTE (table absente, base injoignable). */
   lectureCassee?: string[];
+  /** T34 — lignes de pause ouvertes en base (la première est la plus récente). */
+  pauses?: Array<Record<string, unknown>>;
+  /** T34 — historique des passages des agents CLI (findMany), pour la règle des cinq heures. */
+  historique?: Array<Passage & { agent: string }>;
+  /** T34 — `false` = aucun EmailService injecté ; défaut : un double qui accepte tout. */
+  email?: boolean;
 }) {
   const passages = opts.passages ?? {};
   const prisma = {
@@ -81,6 +88,14 @@ function construire(opts: {
         if (opts.lectureCassee?.includes(args.where.agent)) throw new Error('relation "passages_agents_locaux" does not exist');
         return args.where.agent in passages ? passages[args.where.agent] : passage(opts.now - 30 * MINUTE);
       }),
+      findMany: jest.fn(async () => opts.historique ?? []),
+    },
+    pauseAgentsLocaux: {
+      findFirst: jest.fn(async () => opts.pauses?.[0] ?? null),
+      findMany: jest.fn(async (args: { where: { notifieeA?: null } }) =>
+        (opts.pauses ?? []).filter((p) => !('notifieeA' in args.where) || p['notifieeA'] == null)),
+      create: jest.fn(async ({ data }: { data: Record<string, unknown> }) => ({ id: 'p-new', leveeA: null, notifieeA: null, ...data })),
+      updateMany: jest.fn(async () => ({ count: 1 })),
     },
     errorLog: {
       updateMany: jest.fn().mockResolvedValue({ count: opts.archivees ?? 0 }),
@@ -102,14 +117,23 @@ function construire(opts: {
     oublier: jest.fn().mockResolvedValue(undefined),
   };
   const dispatch = opts.dispatch === null ? undefined : (opts.dispatch ?? { notifyUsers: jest.fn().mockResolvedValue(1) });
+  const email = opts.email === false ? undefined : {
+    send: jest.fn().mockResolvedValue({ ok: true, id: 'mail-1' }),
+    buildPauseAgentsEmail: jest.fn(() => '<html>pause</html>'),
+  };
+  const config = { get: jest.fn(() => 'contact@vizyoagency.com') };
   const svc = new AgentsLocauxSentinelleService(
     prisma as never,
     catalogue,
     errorLogger as never,
     refroidissement as never,
     dispatch as never,
+    undefined,
+    new PauseAgentsLocauxService(prisma as never),
+    email as never,
+    config as never,
   );
-  return { svc, prisma, errorLogger, refroidissement, dispatch };
+  return { svc, prisma, errorLogger, refroidissement, dispatch, email };
 }
 
 /** Les lignes CRITICAL écrites, réduites à (agent, motif, message). */
@@ -640,5 +664,109 @@ describe('Sentinelle des agents du poste — le matin, un PC éteint se lit au c
       await svc.verifier(now);
       expect(alertes(errorLogger).filter((a) => a.agent === 'agent-limites-vitesse')).toEqual([]);
     });
+  });
+});
+
+/**
+ * ── T34 / D5 (2026-09-13) — LA PAUSE DES AGENTS DU POSTE, VUE PAR LA SENTINELLE ──────────────
+ *
+ * Trois gestes à chaque contrôle horaire : lever une pause périmée (rien ne doit rester bloqué),
+ * poser une pause après cinq heures d'échecs d'affilée des agents qui passent par la CLI, et
+ * envoyer UN courriel par pause posée — celle du poste (plafond) comme la sienne.
+ */
+describe('Sentinelle des agents du poste — la pause (T34)', () => {
+  const now = paris(2026, 9, 13, 20, 50);
+  const PLAFOND = "You've hit your weekly limit · resets Sep 20, 12pm (Europe/Paris)";
+  const pause = (over: Record<string, unknown> = {}) => ({
+    id: 'p-1', poseeA: new Date(now - 2 * HEURE), cause: 'plafond-hebdo', motif: PLAFOND,
+    poseePar: 'rattrapage-recits', jusqua: new Date(now + 6 * 24 * HEURE), leveeA: null, leveePar: null, notifieeA: null,
+    ...over,
+  });
+
+  it('⚠️ une pause posée par le poste et jamais notifiée → UN courriel, une notification, puis datée notifiée', async () => {
+    const { svc, prisma, email, dispatch } = construire({ now, pauses: [pause()] });
+    await svc.verifier(now);
+    expect(email!.send).toHaveBeenCalledTimes(1);
+    expect(email!.send.mock.calls[0][0]).toMatchObject({ to: 'contact@vizyoagency.com' });
+    expect(String(email!.send.mock.calls[0][0].subject)).toMatch(/pause/i);
+    expect(email!.buildPauseAgentsEmail).toHaveBeenCalledWith(expect.objectContaining({ cause: 'plafond-hebdo', jusqua: pause().jusqua }));
+    expect(dispatch!.notifyUsers).toHaveBeenCalledWith(expect.objectContaining({ subjectKey: 'pause:plafond-hebdo' }));
+    expect(prisma.pauseAgentsLocaux.updateMany).toHaveBeenCalledWith({ where: { id: 'p-1' }, data: { notifieeA: new Date(now) } });
+  });
+
+  it('une pause déjà notifiée ne renvoie rien', async () => {
+    const { svc, email } = construire({ now, pauses: [pause({ notifieeA: new Date(now - HEURE) })] });
+    await svc.verifier(now);
+    expect(email!.send).not.toHaveBeenCalled();
+  });
+
+  it('⚠️ un courriel qui échoue laisse la pause « à notifier » : on réessaie au contrôle suivant', async () => {
+    const { svc, prisma, email } = construire({ now, pauses: [pause()] });
+    email!.send.mockResolvedValueOnce({ ok: false, error: 'smtp down' });
+    await svc.verifier(now);
+    expect(prisma.pauseAgentsLocaux.updateMany).not.toHaveBeenCalledWith({ where: { id: 'p-1' }, data: expect.anything() });
+  });
+
+  it('⚠️ une pause dont l’échéance est passée est LEVÉE au contrôle, au nom de l’expiration', async () => {
+    const { svc, prisma } = construire({ now, pauses: [pause({ jusqua: new Date(now - HEURE), notifieeA: new Date(now - 2 * HEURE) })] });
+    await svc.verifier(now);
+    expect(prisma.pauseAgentsLocaux.updateMany).toHaveBeenCalledWith({
+      where: { leveeA: null, jusqua: { lte: new Date(now) } },
+      data: { leveeA: new Date(now), leveePar: 'expiration' },
+    });
+  });
+
+  it('⚠️ cinq heures d’échecs d’affilée des agents CLI, sans pause → la sentinelle POSE une pause sans échéance', async () => {
+    const echec = (agent: string, ilYa: number, erreur: string) =>
+      ({ ...passage(now - ilYa, { succes: false, erreur }), agent });
+    const { svc, prisma } = construire({
+      now,
+      historique: [
+        echec('rattrapage-recits', 40 * MINUTE, 'session Claude Code du poste expiree'),
+        echec('agent-courrier-ia', 2 * HEURE, 'CLI hors abonnement : authMethod = inconnu'),
+        echec('rattrapage-recits', 4 * HEURE + 40 * MINUTE, 'session Claude Code du poste expiree'),
+        echec('rattrapage-recits', 5 * HEURE + 10 * MINUTE, 'session Claude Code du poste expiree'),
+      ],
+      passages: { 'rattrapage-recits': passage(now - 40 * MINUTE, { succes: false, erreur: 'session Claude Code du poste expiree' }) },
+    });
+    await svc.verifier(now);
+    expect(prisma.pauseAgentsLocaux.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ cause: 'echecs-consecutifs', poseePar: 'sentinelle', jusqua: null, motif: 'session Claude Code du poste expiree' }),
+    });
+  });
+
+  it('…mais un succès dans les cinq heures, ou des échecs sur moins de cinq heures : aucune pause', async () => {
+    const echec = (agent: string, ilYa: number) => ({ ...passage(now - ilYa, { succes: false, erreur: 'x' }), agent });
+    const succes = (agent: string, ilYa: number) => ({ ...passage(now - ilYa), agent });
+    const avecSucces = construire({ now, historique: [echec('rattrapage-recits', HEURE), succes('agent-courrier-ia', 3 * HEURE), echec('rattrapage-recits', 6 * HEURE)] });
+    await avecSucces.svc.verifier(now);
+    expect(avecSucces.prisma.pauseAgentsLocaux.create).not.toHaveBeenCalled();
+
+    const tropCourt = construire({ now, historique: [echec('rattrapage-recits', HEURE), echec('rattrapage-recits', 3 * HEURE)] });
+    await tropCourt.svc.verifier(now);
+    expect(tropCourt.prisma.pauseAgentsLocaux.create).not.toHaveBeenCalled();
+  });
+
+  it('⚠️ les passages « en pause » ne comptent pas comme des échecs : une pause n’en engendre pas une autre', async () => {
+    const enPause = (ilYa: number) => ({ ...passage(now - ilYa, { succes: false, erreur: `en pause (plafond-hebdo) — ${PLAFOND}` }), agent: 'rattrapage-recits' });
+    const { svc, prisma } = construire({ now, historique: [enPause(HEURE), enPause(3 * HEURE), enPause(5 * HEURE), enPause(7 * HEURE)] });
+    await svc.verifier(now);
+    expect(prisma.pauseAgentsLocaux.create).not.toHaveBeenCalled();
+  });
+
+  it('⚠️ un passage « en pause » est une cause commune : UNE ligne DEGRADATION, jamais un CRITICAL par agent', async () => {
+    const erreur = 'en pause (echecs-consecutifs) — reprise manuelle — session Claude Code du poste expiree';
+    const { svc, errorLogger } = construire({
+      now,
+      passages: {
+        'rattrapage-recits': passage(paris(2026, 9, 13, 20, 0), { succes: false, erreur }),
+        'agent-courrier-ia': passage(paris(2026, 9, 13, 18, 30), { succes: false, erreur }),
+      },
+    });
+    await svc.verifier(now);
+    const lignes = alertes(errorLogger);
+    expect(lignes).toHaveLength(1);
+    expect(lignes[0]).toMatchObject({ level: 'DEGRADATION', motif: 'cause' });
+    expect(lignes[0].message).toContain('en pause');
   });
 });

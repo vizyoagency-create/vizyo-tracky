@@ -26,6 +26,9 @@ export type EmailTemplateId =
   | 'error_rate_alert'
   // Vigie des erreurs CRITIQUES (2026-09-08) : une seule suffit, sous le seuil de saturation.
   | 'critical_error_alert'
+  // T34 / D5 (2026-09-13) : les agents du poste se sont mis en pause (plafond de la CLI, ou cinq
+  // heures d'échecs) — un courriel par pause, avec l'heure de reprise ou le bouton qui la lève.
+  | 'agents_pause'
   | 'lead'
   | 'lead_welcome'
   | 'quote_signed'
@@ -1338,6 +1341,63 @@ La conformité réglementaire reste la responsabilité de l'exploitant. Vizyo fo
     });
   }
 
+  /**
+   * T34 / D5 — les agents du poste se sont mis en PAUSE. Un seul courriel par pause : ce qui l'a
+   * motivée (la phrase de la CLI), qui l'a posée, quand elle se lève seule — ou le bouton qui la
+   * lève tout de suite. La sentinelle des agents l'envoie au premier contrôle horaire qui la voit.
+   */
+  buildPauseAgentsEmail(data: {
+    cause: string;
+    libelle: string;
+    motif: string;
+    poseeA: Date;
+    poseePar: string;
+    jusqua: Date | null;
+    agents: string[];
+  }): string {
+    const appBase = this.config.get('APP_BASE_URL', { infer: true });
+    const depuis = formatFleetDateTime(data.poseeA);
+    const reprise = data.jusqua
+      ? `Reprise automatique le <strong style="color:#0A1311;">${escapeHtml(formatFleetDateTime(data.jusqua))}</strong> — ou avant, par le bouton ci-dessous.`
+      : `<strong style="color:${EMAIL_TEXTE_ALERTE};">Reprise manuelle</strong> : rien ne repartira sans le bouton ci-dessous.`;
+    const lignes = [
+      ['Cause', data.libelle],
+      ['Motif', data.motif],
+      ['Posée par', data.poseePar],
+      ['Agents retenus', data.agents.join(', ') || '—'],
+    ]
+      .map(
+        ([k, v], i) => `
+            ${i > 0 ? '<tr><td colspan="2" style="border-top:1px solid rgba(255,255,255,.06);"></td></tr>' : ''}
+            <tr>
+              <td class="m-text" style="padding:11px 18px;font-family:${EMAIL_FONT_MONO};font-size:11px;letter-spacing:0.1em;text-transform:uppercase;color:${EMAIL_TEXTE_SECOND};white-space:nowrap;vertical-align:top;">${escapeHtml(k)}</td>
+              <td class="m-text" style="padding:11px 18px;font-family:${EMAIL_FONT};font-size:14px;line-height:1.5;color:#0A1311;">${escapeHtml(v)}</td>
+            </tr>`,
+      )
+      .join('');
+    return this.shell({
+      eyebrow: '● Agents du poste · Pause',
+      accent: '#E0A53C',
+      borderColor: 'rgba(224,165,60,.32)',
+      preheader: `${escapeHtml(data.libelle)} — depuis le ${escapeHtml(depuis)}`,
+      footer: 'VIZYO TRACKY · SENTINELLE DES AGENTS DU POSTE · E-mail automatique, ne pas répondre.<br>Un seul courriel par pause ; la levée ne prévient pas.',
+      body: `
+        <tr><td style="padding:26px 36px 0;">
+          <h1 class="m-title" style="margin:0 0 6px;font-family:${EMAIL_FONT};font-size:24px;line-height:1.2;font-weight:800;letter-spacing:-0.02em;color:#0A1311;">Les agents du poste sont en pause</h1>
+          <p class="m-text" style="margin:0 0 20px;font-family:${EMAIL_FONT};font-size:15px;line-height:1.6;color:#56635E;">
+            Depuis le ${escapeHtml(depuis)}, les agents qui passent par la CLI Claude — récits, rattrapage, courrier — sortent sans rien tenter. ${reprise}
+          </p>
+        </td></tr>
+        <tr><td style="padding:0 36px;">
+          <table class="m-panel" role="presentation" width="100%" style="background:#F6F9F7;border:1px solid rgba(255,255,255,.07);border-radius:13px;">${lignes}
+          </table>
+        </td></tr>
+        <tr><td style="padding:22px 36px 0;">
+          <a href="${appBase}/admin/background-tasks" style="display:inline-block;background:#10E0A0;color:#04130D;font-family:${EMAIL_FONT};font-size:14px;font-weight:800;text-decoration:none;padding:12px 22px;border-radius:10px;">Reprendre maintenant</a>
+        </td></tr>`,
+    });
+  }
+
   buildAlertEmail(
     alert: { title: string; message: string | null; plate: string; severity: string; createdAt: Date },
     opts: { isEscalation?: boolean } = {},
@@ -2044,6 +2104,20 @@ ${this.commercialSignatureText()}`;
             since: new Date(Date.now() - 60 * 60 * 1000),
           }),
           text: "Aperçu de l'alerte d'erreur critique (données d'exemple).",
+        };
+      case 'agents_pause':
+        return {
+          subject: '[Tracky] Agents du poste en pause — plafond hebdomadaire de la CLI Claude',
+          html: this.buildPauseAgentsEmail({
+            cause: 'plafond-hebdo',
+            libelle: 'plafond hebdomadaire de la CLI Claude',
+            motif: "You've hit your weekly limit · resets Sep 20, 12pm (Europe/Paris)",
+            poseeA: new Date(Date.now() - 60 * 60 * 1000),
+            poseePar: 'rattrapage-recits',
+            jusqua: new Date(Date.now() + 6 * 24 * 60 * 60 * 1000),
+            agents: ['agent-recit-trajet', 'rattrapage-recits', 'courrier-ia'],
+          }),
+          text: "Aperçu du courriel de pause des agents du poste (données d'exemple).",
         };
       case 'alert':
         return {

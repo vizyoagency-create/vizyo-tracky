@@ -173,6 +173,30 @@ export interface BackgroundTasksHealth {
   uncataloguedJobs: string[];
 }
 
+/**
+ * T34 / D5 (2026-09-13) — la PAUSE des agents du poste qui passent par la CLI Claude.
+ *
+ * Posée par un agent à la première réponse « plafond » de la CLI (avec l'heure de reprise qu'elle
+ * annonce), ou par la sentinelle après cinq heures d'échecs d'affilée (sans heure : reprise
+ * manuelle). Tant qu'elle est active, les agents sortent sans rien tenter. Le bouton
+ * « Reprendre maintenant » de l'écran des tâches de fond la lève.
+ */
+export interface PauseAgentsDto {
+  id: string;
+  /** ISO. */
+  poseeA: string;
+  /** 'plafond-hebdo' | 'plafond-usage' | 'echecs-consecutifs'. */
+  cause: string;
+  /** Ce qui l'a motivée — la phrase de la CLI, ou le dernier échec. */
+  motif: string;
+  /** Clé du journal de l'agent qui l'a posée, ou 'sentinelle'. */
+  poseePar: string;
+  /** ISO de la reprise automatique ; null = reprise manuelle seulement. */
+  jusqua: string | null;
+  /** ISO — le courriel de pose est parti. */
+  notifieeA: string | null;
+}
+
 export interface BackgroundTasksResponse {
   tasks: BackgroundTaskDto[];
   /** ISO — horloge serveur, pour aligner les compte-à-rebours côté client. */
@@ -180,4 +204,6 @@ export interface BackgroundTasksResponse {
   /** Fuseau serveur (les crons sans fuseau explicite tournent dessus). */
   serverTimezone: string;
   health: BackgroundTasksHealth;
+  /** T34 — la pause qui retient les agents du poste en ce moment, ou null. */
+  pauseAgents: PauseAgentsDto | null;
 }

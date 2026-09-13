@@ -70,6 +70,8 @@ const path = require('node:path');
  * reel du modele — ce que cet agent ecrivait en dur (0 jeton, « claude-code-poste ») depuis le 20/08.
  */
 const { verifierAbonnement, appeler, repartirUsage } = require('./cli-claude.cjs');
+// T34 / D5 — la pause des agents du poste : lue avant tout appel, posee au premier plafond.
+const { lirePause, poserPause, leverPause, motifEnPause, texteReprise } = require('./pause-agents.cjs');
 
 // ── Configuration ────────────────────────────────────────────────────────────────────
 const VPS = 'root@72.62.26.240';
@@ -372,7 +374,24 @@ const dors = (ms) => new Promise((r) => setTimeout(r, ms));
    * hypothese. Un refus est un passage en ECHEC explicite (code 3, comme la session expiree) :
    * la supervision doit le lire, pas le deviner d'un compteur qui n'avance plus.
    */
+  /**
+   * ── T34 / D5 — LA PAUSE, AVANT MEME LE CONTROLE DE SESSION ──────────────────────────────
+   * Une requete SQL, aucun lancement de la CLI. Une pause active fait sortir l'agent tout de
+   * suite, avec un motif qui commence par « en pause » : la sentinelle le range sous une cause
+   * commune (une ligne pour tous), jamais en CRITICAL par agent. Une pause perimee ne retient
+   * pas : on la garde sous la main pour la lever au premier appel qui reussit.
+   */
+  let pausePerimee = null;
   if (!ESSAI) {
+    const pause = lirePause(psql);
+    if (pause && pause.active) {
+      passageErreur = motifEnPause(pause);
+      passageResume = 'passage suspendu : agents du poste en pause (aucun appel)';
+      console.log(`[${h()}] EN PAUSE — ${passageErreur}`);
+      process.exit(4);
+    }
+    if (pause && pause.perimee) pausePerimee = pause;
+
     const abonnement = verifierAbonnement();
     if (!abonnement.ok) {
       passageErreur = `CLI hors abonnement : ${abonnement.motif}`;
@@ -409,6 +428,22 @@ const dors = (ms) => new Promise((r) => setTimeout(r, ms));
       ({ recits, appel } = demanderRecits(lot));
     } catch (e) {
       const msg = (e && e.message) || String(e);
+      // T34 — le plafond de l'abonnement : la CLI dit la cause et l'heure de reprise des la
+      // premiere reponse. On pose la pause avec, et on sort : plus un appel jusque-la. Le passage
+      // reste un ECHEC portant la phrase de la CLI — c'est elle que la sentinelle reconnait.
+      if (e && e.code === 'PLAFOND') {
+        passageErreur = msg;
+        const pause = { cause: e.cause, motif: e.detail || msg, poseePar: CLE_AGENT, jusqua: e.remiseAZero || null };
+        let posee = false;
+        try {
+          posee = poserPause(psql, pause);
+        } catch (pe) {
+          console.error(`  (pause non posee : ${String((pe && pe.message) || pe).slice(0, 120)})`);
+        }
+        passageResume = `plafond de l'abonnement — pause ${posee ? 'posee' : 'deja en place'}, arret apres ${ecrits} recit(s)`;
+        console.error(`[${h()}] ARRET : ${msg} — pause ${posee ? 'posee' : 'deja en place'} ; ${texteReprise(pause)}.`);
+        return;
+      }
       if (e && e.code === 'AUTH') {
         passageErreur = msg;
         passageResume = 'session Claude Code du poste expiree';
@@ -430,6 +465,18 @@ const dors = (ms) => new Promise((r) => setTimeout(r, ms));
       continue;
     }
     const secondes = Math.round((Date.now() - t0) / 1000);
+
+    // T34 — un appel qui passe leve une pause perimee : elle n'a plus lieu d'etre, et l'ecran
+    // ne doit pas la montrer une heure de plus.
+    if (pausePerimee) {
+      try {
+        leverPause(psql, `appel-reussi:${CLE_AGENT}`);
+        console.log(`[${h()}] pause perimee levee (${pausePerimee.cause}) : la CLI repond.`);
+      } catch (pe) {
+        console.warn(`  (pause perimee non levee : ${String((pe && pe.message) || pe).slice(0, 120)})`);
+      }
+      pausePerimee = null;
+    }
 
     // ⚠️ On n'ecrit QUE le concluant. Un trajet absent de la reponse, ou dont le recit est vide,
     //    n'est pas ecrit : il repassera. L'ecrire condamnerait le trajet a ne jamais etre repris,

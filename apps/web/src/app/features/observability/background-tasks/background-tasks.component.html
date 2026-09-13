@@ -40,6 +40,33 @@
       <section class="poste">
         <h2 class="group-title">Agents sur le poste du propriétaire</h2>
 
+        <!-- T34 / D5 — LA PAUSE. Posee par un agent a la premiere reponse « plafond » de la CLI
+             (avec l'heure de reprise qu'elle annonce), ou par la sentinelle apres cinq heures
+             d'echecs d'affilee (reprise manuelle). Tant qu'elle tient, les agents sortent sans
+             rien tenter ; ce bouton est la seule facon de la lever avant l'heure. -->
+        @if (pauseAgents(); as pause) {
+          <div class="poste-pause" role="status">
+            <lucide-icon [img]="PauseIcon" [size]="16" />
+            <div class="poste-pause-txt">
+              <b>Agents en pause depuis le {{ pause.poseeA | date:'dd/MM à HH:mm' }} — {{ causePause(pause.cause) }}.</b>
+              <span class="poste-pause-motif">{{ pause.motif }}</span>
+              <span>
+                Posée par <code>{{ pause.poseePar }}</code>.
+                @if (pause.jusqua) {
+                  Reprise automatique le {{ pause.jusqua | date:'dd/MM à HH:mm' }} ({{ countdown(pause.jusqua) }}) — ou tout de suite, par le bouton.
+                } @else {
+                  Reprise manuelle : rien ne repartira sans le bouton.
+                }
+                @if (!pause.notifieeA) { Le courriel de pose part au prochain contrôle horaire. }
+              </span>
+              @if (repriseErreur(); as err) { <span class="poste-pause-erreur">{{ err }}</span> }
+            </div>
+            <button type="button" class="btn reprendre" (click)="reprendre()" [disabled]="reprise()">
+              <lucide-icon [img]="PlayIcon" [size]="14" /> {{ reprise() ? 'Levée…' : 'Reprendre maintenant' }}
+            </button>
+          </div>
+        }
+
         @if (agentsEnAlerte().length > 0) {
           <div class="poste-alerte">
             <lucide-icon [img]="AlertTriangleIcon" [size]="16" />

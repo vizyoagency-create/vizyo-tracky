@@ -258,7 +258,7 @@ export const EXCLUS: Readonly<Record<string, string>> = {
     "journaux d'exploitation : trames brutes, erreurs, trafic, courriers, SMS, métriques — numéros, adresses IP et adresses e-mail ; la démo produit les siens",
     'WireLog', 'ErrorLog', 'DisparitionLignes', 'RefroidissementAlerte', 'SystemActivityLog', 'ApiTrafficLog',
     'SmsLog', 'PushLog', 'EmailLog', 'SystemMetric', 'RetentionSnapshot', 'BackupRun',
-    'PositionSamplingDecision', 'PassageAgentLocal', 'TravailIaLocal', 'FleetReportDispatch',
+    'PositionSamplingDecision', 'PassageAgentLocal', 'PauseAgentsLocaux', 'TravailIaLocal', 'FleetReportDispatch',
   ),
   ...exclure(
     "IA : réglages, budgets, traces et conversations — les échanges d'assistance portent sur des données réelles, les analyses de lieux nomment des sites, les rapports d'activité nomment des comptes",

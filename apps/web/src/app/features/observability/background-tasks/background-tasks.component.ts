@@ -7,9 +7,9 @@ import {
 import { RouterLink } from '@angular/router';
 import {
   AlarmClock, AlertTriangle, ArrowLeft, CheckCircle2, ChevronRight, LucideAngularModule,
-  MonitorSmartphone, RefreshCw, ShieldAlert, Timer,
+  MonitorSmartphone, PauseCircle, Play, RefreshCw, ShieldAlert, Timer,
 } from 'lucide-angular';
-import type { BackgroundTaskDto, BgTaskCategory, BgTaskEtatLocal } from '@vizyo/tracky-shared';
+import type { BackgroundTaskDto, BgTaskCategory, BgTaskEtatLocal, PauseAgentsDto } from '@vizyo/tracky-shared';
 import { firstValueFrom } from 'rxjs';
 import { BackgroundTasksApiService } from './background-tasks.service';
 
@@ -35,6 +35,8 @@ export class BackgroundTasksComponent implements OnInit, OnDestroy {
   protected readonly CheckIcon = CheckCircle2;
   protected readonly ChevronRightIcon = ChevronRight;
   protected readonly PosteIcon = MonitorSmartphone;
+  protected readonly PauseIcon = PauseCircle;
+  protected readonly PlayIcon = Play;
   protected readonly RefreshCwIcon = RefreshCw;
   protected readonly ShieldAlertIcon = ShieldAlert;
   protected readonly TimerIcon = Timer;
@@ -45,6 +47,10 @@ export class BackgroundTasksComponent implements OnInit, OnDestroy {
   protected readonly loading = signal(true);
   protected readonly refreshing = signal(false);
   protected readonly error = signal<string | null>(null);
+  /** T34 — la pause qui retient les agents du poste, ou null. */
+  protected readonly pauseAgents = signal<PauseAgentsDto | null>(null);
+  protected readonly reprise = signal(false);
+  protected readonly repriseErreur = signal<string | null>(null);
   protected readonly nowMs = signal(Date.now());
   /** Décalage horloge serveur − client, pour aligner les compte-à-rebours sur l'heure serveur. */
   protected readonly skew = signal(0);
@@ -232,6 +238,7 @@ export class BackgroundTasksComponent implements OnInit, OnDestroy {
       const res = await firstValueFrom(this.api.list());
       this.tasks.set(res.tasks);
       this.health.set(res.health);
+      this.pauseAgents.set(res.pauseAgents ?? null);
       this.serverTz.set(res.serverTimezone);
       this.skew.set(new Date(res.serverNow).getTime() - Date.now());
       this.nowMs.set(Date.now());
@@ -243,6 +250,36 @@ export class BackgroundTasksComponent implements OnInit, OnDestroy {
       this.loading.set(false);
       this.refreshing.set(false);
     }
+  }
+
+  /**
+   * T34 / D5 — « Reprendre maintenant ». Le bouton lève la pause côté serveur ; les agents, eux,
+   * tournent sur le poste : le prochain passage planifié (au plus deux heures) travaille. Rien ne
+   * se lance d'ici, et on le dit avant de cliquer.
+   */
+  protected async reprendre(): Promise<void> {
+    const p = this.pauseAgents();
+    if (!p || this.reprise()) return;
+    if (!confirm('Lever la pause des agents du poste ? Ils réessaieront au prochain passage planifié (au plus deux heures). Si la cause est toujours là, la pause reviendra.')) return;
+    this.reprise.set(true);
+    this.repriseErreur.set(null);
+    try {
+      await firstValueFrom(this.api.reprendreAgents());
+      await this.load(true);
+    } catch (e) {
+      swallow('background-tasks:reprendre', e);
+      this.repriseErreur.set((e as { error?: { message?: string } })?.error?.message ?? 'La pause n’a pas pu être levée');
+    } finally {
+      this.reprise.set(false);
+    }
+  }
+
+  /** Libellé humain de la cause d'une pause — la clé stable reste celle du serveur. */
+  protected causePause(cause: string): string {
+    if (cause === 'plafond-hebdo') return 'plafond hebdomadaire de la CLI Claude';
+    if (cause === 'plafond-usage') return 'plafond d’usage de la CLI Claude';
+    if (cause === 'echecs-consecutifs') return 'cinq heures d’échecs d’affilée';
+    return cause;
   }
 
   /** Compte-à-rebours vers un instant ISO, ou null. */

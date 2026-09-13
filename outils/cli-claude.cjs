@@ -58,6 +58,85 @@ const CLES_INTERDITES = Object.freeze([
 /** Ce que la CLI ecrit quand la session n'est plus valable — messages non contractuels, d'ou la largeur du filet. */
 const MOTIF_AUTH = /OAuth|authenticate|401|revoked|not logged in/i;
 
+/**
+ * ── T34 / D5 — LE PLAFOND, RECONNU A LA PORTE ────────────────────────────────────────────
+ *
+ * « You've hit your weekly limit · resets Sep 13, 12pm (Europe/Paris) » : la CLI dit tout des la
+ * premiere reponse — la cause, et l'heure de remise a zero. Pendant le plafond du 10 au 13/09, les
+ * agents ont pourtant essaye trente-six fois. Ici, la phrase devient une erreur `.code = 'PLAFOND'`
+ * portant `.cause` (la cle que le serveur connait) et `.remiseAZero` (une Date, ou null quand
+ * l'heure n'est pas lisible) : l'agent pose la pause avec, et sort.
+ *
+ * Deux plafonds, meme canal : l'hebdomadaire (des jours) et le glissant (des heures). Les motifs
+ * sont ceux de la sentinelle du serveur (`CAUSES_COMMUNES`) — les deux bords doivent s'accorder.
+ */
+const PLAFONDS = Object.freeze([
+  { cause: 'plafond-hebdo', motif: /hit your weekly limit/i },
+  { cause: 'plafond-usage', motif: /hit your (usage |rate )?limit|usage limit reached/i },
+]);
+
+const MOIS = { jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5, jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11 };
+
+/** Decalage (ms) d'un fuseau IANA a un instant donne — sans bibliotheque, par Intl. `null` si le fuseau est inconnu. */
+function decalageFuseau(instantMs, fuseau) {
+  let f;
+  try {
+    f = new Intl.DateTimeFormat('en-US', { timeZone: fuseau, hourCycle: 'h23', year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: 'numeric', second: 'numeric' });
+  } catch {
+    return null;
+  }
+  const c = {};
+  for (const part of f.formatToParts(new Date(instantMs))) c[part.type] = part.value;
+  const mur = Date.UTC(Number(c.year), Number(c.month) - 1, Number(c.day), Number(c.hour) % 24, Number(c.minute), Number(c.second));
+  return mur - Math.floor(instantMs / 1000) * 1000;
+}
+
+/** L'instant d'une heure MURALE dans un fuseau : deux passes suffisent, meme autour d'un changement d'heure. */
+function instantMural(annee, mois, jour, heure, minute, fuseau) {
+  const naif = Date.UTC(annee, mois, jour, heure, minute);
+  const d1 = decalageFuseau(naif, fuseau);
+  if (d1 === null) return null;
+  const d2 = decalageFuseau(naif - d1, fuseau);
+  return naif - (d2 === null ? d1 : d2);
+}
+
+/**
+ * L'heure de remise a zero que la CLI annonce, en Date — ou `null` si la phrase n'en porte pas
+ * de lisible. Formes vues : « resets Sep 13, 12pm (Europe/Paris) » (hebdomadaire) et
+ * « resets 12pm (Europe/Paris) » (glissant : aujourd'hui, ou demain si l'heure est passee).
+ * Sans annee : celle de `maintenant`, et l'an prochain si la date est deja loin derriere.
+ */
+function analyserRemiseAZero(texte, maintenant = new Date()) {
+  const m = /\bresets?\s+(?:([A-Za-z]{3})[a-z]*\.?\s+(\d{1,2}),?\s+)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)\s*\(([^)]+)\)/i.exec(String(texte || ''));
+  if (!m) return null;
+  const [, moisTxt, jourTxt, heureTxt, minuteTxt, ampm, fuseau] = m;
+  let heure = Number(heureTxt) % 12;
+  if (ampm.toLowerCase() === 'pm') heure += 12;
+  const minute = Number(minuteTxt || 0);
+  const nowMs = maintenant.getTime();
+  const enTz = decalageFuseau(nowMs, fuseau);
+  if (enTz === null) return null;
+  // La date « du jour » se lit dans le fuseau annonce, pas dans celui du poste.
+  const local = new Date(nowMs + enTz);
+  let annee = local.getUTCFullYear();
+  let mois = local.getUTCMonth();
+  let jour = local.getUTCDate();
+  if (moisTxt) {
+    const mi = MOIS[moisTxt.slice(0, 3).toLowerCase()];
+    if (mi === undefined) return null;
+    mois = mi;
+    jour = Number(jourTxt);
+  }
+  let t = instantMural(annee, mois, jour, heure, minute, fuseau);
+  if (t === null) return null;
+  if (moisTxt) {
+    if (t < nowMs - 24 * 3_600_000) t = instantMural(annee + 1, mois, jour, heure, minute, fuseau);
+  } else if (t <= nowMs) {
+    t = instantMural(annee, mois, jour + 1, heure, minute, fuseau);
+  }
+  return t === null ? null : new Date(t);
+}
+
 /** Un travail (rapport 8-12k jetons d'entree) peut etre long : marge large. */
 const TIMEOUT_APPEL_MS = 8 * 60 * 1000;
 /** `claude auth status` repond en moins d'une seconde ; au-dela de 30 s, quelque chose est casse. */
@@ -330,12 +409,25 @@ function extraireErreurCli(e) {
   return brut.trim().slice(-EXTRAIT_ERREUR);
 }
 
-/** Construit l'erreur a lever apres un echec de la CLI : `.code = 'AUTH'` si la session est en cause. */
-function erreurDepuisEchecCli(e) {
+/**
+ * Construit l'erreur a lever apres un echec de la CLI : `.code = 'AUTH'` si la session est en
+ * cause, `.code = 'PLAFOND'` (avec `.cause` et `.remiseAZero`) si c'est un plafond de l'abonnement.
+ */
+function erreurDepuisEchecCli(e, maintenant = new Date()) {
   const detail = extraireErreurCli(e);
   const auth = MOTIF_AUTH.test(detail);
-  const err = new Error(auth ? `session Claude Code non authentifiee : ${detail}` : `echec de la CLI : ${detail}`);
+  const plafond = PLAFONDS.find((p) => p.motif.test(detail)) || null;
+  const err = new Error(
+    auth ? `session Claude Code non authentifiee : ${detail}`
+      : plafond ? `plafond de l'abonnement atteint : ${detail}`
+        : `echec de la CLI : ${detail}`,
+  );
   if (auth) err.code = 'AUTH';
+  else if (plafond) {
+    err.code = 'PLAFOND';
+    err.cause = plafond.cause;
+    err.remiseAZero = analyserRemiseAZero(detail, maintenant);
+  }
   err.detail = detail;
   err.status = e && typeof e.status === 'number' ? e.status : null;
   return err;
@@ -391,5 +483,6 @@ module.exports = {
   repartirUsage,
   extraireErreurCli,
   erreurDepuisEchecCli,
+  analyserRemiseAZero,
   appeler,
 };

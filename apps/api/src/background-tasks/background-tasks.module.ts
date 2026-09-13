@@ -5,6 +5,7 @@ import { TripAnalysisModule } from '../trip-analysis/trip-analysis.module';
 import { AgentsLocauxSentinelleService } from './agents-locaux-sentinelle.service';
 import { BackgroundTasksController } from './background-tasks.controller';
 import { BackgroundTasksService } from './background-tasks.service';
+import { PauseAgentsLocauxService } from './pause-agents-locaux.service';
 
 /**
  * Demande CDEF (2026-07) — inventaire des traitements de fond (crons/timers).
@@ -24,6 +25,9 @@ import { BackgroundTasksService } from './background-tasks.service';
     // Elle LIT le catalogue ci-dessus et ÉCRIT au centre d'alerte — la seule voie par laquelle un
     // agent du poste qui ne tourne pas cesse d'être silencieux.
     AgentsLocauxSentinelleService,
+    // T34 / D5 : la pause des agents du poste — lue par l'écran, levée par le bouton, notifiée et
+    // posée (cinq heures d'échecs) par la sentinelle. EmailService vient d'EmailModule (@Global).
+    PauseAgentsLocauxService,
   ],
 })
 export class BackgroundTasksModule {}

@@ -252,6 +252,41 @@ test('erreurDepuisEchecCli : un motif de session pose code AUTH, sinon pas de co
   assert.equal(autre.message.includes('SECRET-DU-PROMPT'), false);
 });
 
+// ── Plafond de la CLI (T34 / D5) ──────────────────────────────────────────────────────
+
+test('erreurDepuisEchecCli : « weekly limit » → code PLAFOND, cause plafond-hebdo, et l heure annoncee lue en Date', () => {
+  const e = cli.erreurDepuisEchecCli(echecCli({ stderr: "You've hit your weekly limit · resets Sep 13, 12pm (Europe/Paris)" }));
+  assert.equal(e.code, 'PLAFOND');
+  assert.equal(e.cause, 'plafond-hebdo');
+  assert.ok(e.remiseAZero instanceof Date, 'remiseAZero doit etre une Date');
+  // 12:00 a Paris le 13/09/2026 (heure d ete, UTC+2) = 10:00 UTC.
+  assert.equal(e.remiseAZero.toISOString(), '2026-09-13T10:00:00.000Z');
+});
+
+test('erreurDepuisEchecCli : « usage limit » → plafond-usage, et la limite glissante sans date reprend aujourd hui ou demain', () => {
+  const maintenant = new Date('2026-09-13T15:00:00.000Z'); // 17:00 Paris
+  const e = cli.erreurDepuisEchecCli(echecCli({ stderr: "You've hit your usage limit · resets 8pm (Europe/Paris)" }), maintenant);
+  assert.equal(e.code, 'PLAFOND');
+  assert.equal(e.cause, 'plafond-usage');
+  assert.equal(e.remiseAZero.toISOString(), '2026-09-13T18:00:00.000Z'); // 20:00 Paris, encore a venir
+  const passe = cli.erreurDepuisEchecCli(echecCli({ stderr: "You've hit your usage limit · resets 3pm (Europe/Paris)" }), maintenant);
+  assert.equal(passe.remiseAZero.toISOString(), '2026-09-14T13:00:00.000Z'); // 15:00 Paris deja passe → demain
+});
+
+test('analyserRemiseAZero : minutes, matin, an prochain, et une phrase sans heure → null', () => {
+  const maintenant = new Date('2026-12-30T10:00:00.000Z');
+  assert.equal(cli.analyserRemiseAZero('resets Jan 2, 3:30am (Europe/Paris)', maintenant).toISOString(), '2027-01-02T02:30:00.000Z');
+  assert.equal(cli.analyserRemiseAZero('resets Dec 31, 12am (Europe/Paris)', maintenant).toISOString(), '2026-12-30T23:00:00.000Z');
+  assert.equal(cli.analyserRemiseAZero("You've hit your weekly limit", maintenant), null);
+  assert.equal(cli.analyserRemiseAZero('resets Sep 13, 12pm (Mars/Olympus)', maintenant), null); // fuseau inconnu : on ne devine pas
+});
+
+test('erreurDepuisEchecCli : un plafond sans heure lisible garde le code PLAFOND, remiseAZero null', () => {
+  const e = cli.erreurDepuisEchecCli(echecCli({ stderr: "You've hit your weekly limit" }));
+  assert.equal(e.code, 'PLAFOND');
+  assert.equal(e.remiseAZero, null);
+});
+
 // ── appeler (executeur injecte) ─────────────────────────────────────────────────────
 
 test('appeler : arguments de la CLI, consigne sur stdin, environnement nettoye, enveloppe lue', () => {

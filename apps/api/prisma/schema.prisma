@@ -4433,6 +4433,46 @@ model PassageAgentLocal {
   @@map("passages_agents_locaux")
 }
 
+/// T34 / D5 (2026-09-13) — la PAUSE des agents du poste qui passent par la CLI Claude.
+///
+/// Pendant le plafond hebdomadaire du 10 au 13/09, les agents ont essayé trente-six fois pour
+/// rien, alors que la CLI annonçait l'heure de remise à zéro dès la première réponse. Décision
+/// du propriétaire : « si ça échoue cinq heures d'affilée, on s'arrête ; un courriel ; et un
+/// bouton pour tout relancer ». La pause vit ICI, côté serveur, et non dans un fichier du poste :
+/// c'est ce qui permet au bouton de /admin de la lever, et à la sentinelle de la notifier.
+///
+/// Une ligne par épisode. La pause ACTIVE est celle sans `leveeA` dont `jusqua` est nul (reprise
+/// manuelle) ou à venir ; une pause dont `jusqua` est passé ne retient plus personne, et le premier
+/// appel qui réussit — ou le contrôle horaire de la sentinelle — la lève pour de bon.
+model PauseAgentsLocaux {
+  id String @id @default(uuid()) @db.Uuid
+
+  poseeA DateTime @default(now())
+
+  /// 'plafond-hebdo' | 'plafond-usage' (posées par l'agent qui a lu la réponse de la CLI),
+  /// 'echecs-consecutifs' (posée par la sentinelle après cinq heures d'échecs d'affilée).
+  cause String
+
+  /// Ce qui a motivé la pause, lisible sans contexte : la phrase de la CLI, tronquée à la source.
+  motif String
+
+  /// Qui l'a posée : la clé du journal de l'agent (`rattrapage-recits`…) ou `sentinelle`.
+  poseePar String
+
+  /// Reprise automatique à cet instant. `null` : reprise manuelle seulement (bouton /admin).
+  jusqua DateTime?
+
+  /// Levée : quand, et par qui — `expiration`, `appel-reussi:<agent>`, `admin:<userId>`.
+  leveeA   DateTime?
+  leveePar String?
+
+  /// Le courriel de pose est parti (la sentinelle l'envoie au premier contrôle qui la voit).
+  notifieeA DateTime?
+
+  @@index([leveeA, poseeA(sort: Desc)])
+  @@map("pauses_agents_locaux")
+}
+
 /// File de travaux IA executes sur le POSTE du proprietaire (design/C1-TRAVAUX-IA-LOCAUX.md).
 /// Le serveur PREPARE (payload complet : prompt, schema, donnees) et CONSOMME (validation +
 /// persistance par ses fonctions existantes) ; l'agent du poste n'est qu'un courrier qui

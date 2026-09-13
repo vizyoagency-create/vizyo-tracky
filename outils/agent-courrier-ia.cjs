@@ -41,6 +41,8 @@
 
 const { execFileSync } = require('node:child_process');
 const { verifierAbonnement, appeler } = require('./cli-claude.cjs');
+// T34 / D5 — la pause des agents du poste : lue avant tout appel, posee au premier plafond.
+const { lirePause, poserPause, leverPause, motifEnPause, texteReprise } = require('./pause-agents.cjs');
 
 // ── Configuration ────────────────────────────────────────────────────────────────────
 const VPS = 'root@72.62.26.240';
@@ -181,6 +183,20 @@ function reposer(id, erreur) {
   );
 }
 
+/**
+ * T34 — RENDRE un travail que le plafond a empeche d'atteindre le modele : remis en file SANS
+ * compter la tentative. Pendant le plafond du 10 au 13/09, sept travaux sont morts ainsi — trois
+ * « tentatives » chacun sans qu'un seul appel ait eu lieu, puis actes en echec par le serveur.
+ */
+function rendre(id, erreur) {
+  psql(
+    `UPDATE travaux_ia_locaux
+     SET statut='a-faire', "prisA"=NULL, tentatives=GREATEST(tentatives-1, 0), erreur=${q(String(erreur).slice(-400))}
+     WHERE id=${q(id)} AND statut='pris';`,
+    { lecture: false },
+  );
+}
+
 /** Journal des passages : l'ecran de supervision lit le TRAVAIL, pas une promesse. */
 function journaliserPassage(demarreA, succes, resume, erreur) {
   try {
@@ -246,6 +262,20 @@ function appelerModele(travail) {
    * partir sur l'API facturee. Un refus est un passage en ECHEC, dit tel quel : la supervision
    * doit le voir, pas le deviner d'une file qui n'avance plus.
    */
+  // T34 / D5 — la pause, avant meme le controle de session : une requete SQL, aucun lancement.
+  // Un motif qui commence par « en pause » : la sentinelle le range sous une cause commune.
+  let pausePerimee = null;
+  {
+    const pause = lirePause(psql);
+    if (pause && pause.active) {
+      const erreur = motifEnPause(pause);
+      console.log(`[${h()}] EN PAUSE — ${erreur} — aucun travail pris.`);
+      journaliserPassage(demarreA, false, '0 travail pris — agents du poste en pause (aucun appel)', erreur);
+      process.exit(4);
+    }
+    if (pause && pause.perimee) pausePerimee = pause;
+  }
+
   const abonnement = verifierAbonnement();
   if (!abonnement.ok) {
     const erreur = `CLI hors abonnement : ${abonnement.motif}`;
@@ -273,6 +303,16 @@ function appelerModele(travail) {
       livrer(travail.id, reponse);
       faits++;
       echecsConsecutifs = 0;
+      // T34 — un appel qui passe leve une pause perimee : elle n'a plus lieu d'etre.
+      if (pausePerimee) {
+        try {
+          leverPause(psql, 'appel-reussi:agent-courrier-ia');
+          console.log(`[${h()}] pause perimee levee (${pausePerimee.cause}) : la CLI repond.`);
+        } catch (pe) {
+          console.warn(`  (pause perimee non levee : ${String((pe && pe.message) || pe).slice(0, 120)})`);
+        }
+        pausePerimee = null;
+      }
       const j = reponse.usage;
       console.log(
         `[${h()}] ${travail.type} livre en ${((Date.now() - t0) / 1000).toFixed(0)}s (${travail.id.slice(0, 8)}) — ` +
@@ -283,6 +323,21 @@ function appelerModele(travail) {
       derniereErreur = e;
       const motif = e instanceof Error ? e.message : String(e);
       exclus.push(travail.id);
+      // T34 — plafond de l'abonnement : le travail est RENDU (la tentative n'a pas atteint le
+      // modele), la pause est posee avec l'heure que la CLI annonce, et on sort.
+      if (e && e.code === 'PLAFOND') {
+        rendre(travail.id, motif);
+        const pause = { cause: e.cause, motif: e.detail || motif, poseePar: 'agent-courrier-ia', jusqua: e.remiseAZero || null };
+        let posee = false;
+        try {
+          posee = poserPause(psql, pause);
+        } catch (pe) {
+          console.error(`  (pause non posee : ${String((pe && pe.message) || pe).slice(0, 120)})`);
+        }
+        console.error(`[${h()}] ARRET : ${motif} — travail ${travail.id.slice(0, 8)} rendu sans compter la tentative ; pause ${posee ? 'posee' : 'deja en place'}, ${texteReprise(pause)}.`);
+        process.exitCode = 4;
+        break;
+      }
       if (travail.tentatives >= TENTATIVES_MAX) {
         // 3e tentative sans livraison : on ne s'acharne pas (les 5 travaux morts du 27/08 avaient
         // ete repris jusqu'a 1 330 fois avant que quelqu'un ne les voie). Le travail est REPOSE
