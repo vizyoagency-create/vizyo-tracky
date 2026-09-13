@@ -2,7 +2,9 @@
 
 Date : 13 septembre 2026, soir (après la contre-expertise du document 19)
 Branche : `codex/tracky-cutoff-reliability-2026-09-12`, worktree `vizyo-tracky-reliability-sep2026`
-Production : **aucun changement** — code écrit et testé localement, ni committé, ni déployé.
+Production : **aucun changement** — code écrit, testé et **committé** (`d5c19a17`, décision D10 du 14/09), non déployé.
+Historique : la branche a été nettoyée du reformatage prettier du commit `b5ec9d19` et **rebasée sur `main`**
+(`049d1d11`) sans conflit le 14/09 (tâche T46) ; suites après rebase : API 259 suites / 4 002 tests, Web 727, partagé 423.
 
 ## Le défaut corrigé (document 19, P0-1)
 
