@@ -271,6 +271,19 @@ test('appeler : arguments de la CLI, consigne sur stdin, environnement nettoye, 
   assert.equal(r.usage.cacheWriteTokens, 28031);
 });
 
+test('appeler : la CLI tourne dans SA console, cachee — un Ctrl-C qui la vise ne traverse pas jusqu a l agent (T36)', () => {
+  // Sans `windowsHide`, la CLI partage la console de l agent : un CTRL_C_EVENT genere dans cette
+  // console (par elle, par un processus qui s y attache) tue l agent avec elle — 33 marques ^C
+  // dans les journaux au 13/09. Avec, CreateProcess pose CREATE_NO_WINDOW : console neuve, sans
+  // fenetre, et les evenements de console ne franchissent jamais une frontiere de console.
+  let recu = null;
+  cli.appeler({
+    consigne: 'x', modele: 'sonnet',
+    executer: (bin, args, opts) => { recu = opts; return JSON.stringify(ENVELOPPE); },
+  });
+  assert.equal(recu.windowsHide, true);
+});
+
 test('appeler : un echec de la CLI remonte SANS la ligne de commande, avec code AUTH si la session est en cause', () => {
   const executer = () => { throw echecCli({ stderr: 'OAuth token expired' }); };
   try {

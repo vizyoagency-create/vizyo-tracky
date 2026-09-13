@@ -413,6 +413,19 @@ reste-t-il ? » à cette date.
 
 ### Deux pièges du Planificateur de Windows — relevés le 22/08 au matin
 
+> **Troisième piège, relevé le 13/09 (T36) : la fenêtre de console tue les passages.** Les tâches
+> lançaient chaque `.cmd` directement, en session interactive : une console VISIBLE s'ouvrait à
+> chaque passage et prenait le focus, et un Ctrl-C tapé à ce moment tombait dedans — 33 marques
+> `^C` dans les journaux, quatre passages morts le seul 13/09, code `0xC000013A` au Planificateur.
+> Depuis, les cinq tâches passent par **`outils/lancer-sans-fenetre.js`** (JScript, `wscript.exe`
+> `//B //Nologo`, fenêtre 0, qui attend la fin et rend le code de sortie : l'anti-chevauchement et
+> la limite gardent leur sens) ; la CLI Claude est lancée dans sa propre console cachée
+> (`windowsHide`, `cli-claude.cjs`) pour qu'un Ctrl-C qui la vise ne traverse plus jusqu'à l'agent ;
+> et la limite du rattrapage, qui était de 1 h 15 pour un budget de 100 min, est à 1 h 50.
+> **`outils/taches-planifiees.ps1`** constate l'état des cinq tâches, et `-Appliquer` les remet en
+> conformité — c'est la seule façon de les (re)configurer.
+
+
 **Une tâche PONCTUELLE avec `DeleteExpiredTaskAfter` peut disparaître AVANT d'avoir tourné.**
 La tâche qui devait restaurer les réglages du cron (fenêtre 1 500 h → 26 h) le 22/08 à 21 h
 n'existait plus au matin, sans avoir jamais été déclenchée. Rien ne le signalait : une tâche

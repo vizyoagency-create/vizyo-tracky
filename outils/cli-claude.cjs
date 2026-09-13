@@ -153,8 +153,20 @@ function analyserStatutAuth(sortie) {
   return { ok: true, authMethod, subscriptionType, apiProvider: typeof statut.apiProvider === 'string' ? statut.apiProvider : null };
 }
 
+/**
+ * ⚠️ `windowsHide` N'EST PAS COSMETIQUE (T36, 13/09). Sans lui, la CLI partage la console de
+ *    l'agent qui la lance : un CTRL_C_EVENT genere dans cette console — par la CLI, par un
+ *    processus qui s'y attache pour l'arreter « proprement » — tue l'agent avec elle. Trente-trois
+ *    marques ^C dans les journaux des agents, quatre passages morts le seul 13/09, chacun pendant
+ *    un appel a la CLI. Avec lui, CreateProcess pose CREATE_NO_WINDOW : la CLI recoit une console
+ *    NEUVE, sans fenetre, et un evenement de console ne franchit jamais une frontiere de console.
+ *    Les flux restent des tuyaux : rien ne change pour ce que l'agent lit. Sans effet hors Windows.
+ */
+const CONSOLE_A_PART = Object.freeze({ windowsHide: true });
+
 function lancerStatutAuth(env) {
   return execFileSync(CLI, ['auth', 'status'], {
+    ...CONSOLE_A_PART,
     encoding: 'utf8',
     env,
     timeout: TIMEOUT_STATUT_MS,
@@ -352,6 +364,7 @@ function appeler({ system = '', consigne, modele, maxTokens, timeoutMs = TIMEOUT
   let sortie;
   try {
     sortie = executer(CLI, args, {
+      ...CONSOLE_A_PART,
       input: consigne,
       encoding: 'utf8',
       timeout: timeoutMs,
