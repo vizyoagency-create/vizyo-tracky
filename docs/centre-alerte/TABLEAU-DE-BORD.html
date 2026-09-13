@@ -88,19 +88,19 @@
 </header>
 
 <div class="kpis">
-  <div class="k ok"><div class="n">16</div><div class="l">faites et verifiees</div></div>
+  <div class="k ok"><div class="n">18</div><div class="l">faites et verifiees</div></div>
   <div class="k warn"><div class="n">8</div><div class="l">deployees, preuve attendue</div></div>
-  <div class="k"><div class="n">44</div><div class="l">ouvertes sur 68</div></div>
+  <div class="k"><div class="n">42</div><div class="l">ouvertes sur 68</div></div>
   <div class="k dgr"><div class="n">6</div><div class="l">ouvertes en gravite 1</div></div>
   <div class="k dgr"><div class="n">3</div><div class="l">au-dela de 7 jours</div></div>
   <div class="k info"><div class="n">21</div><div class="l">attendent un humain</div></div>
 </div>
 
-<div class="barre" role="img" aria-label="Avancement : 16 faites, 8 deployees, 44 ouvertes sur 68">
-  <span class="s-FAIT" style="width:24%"></span>
+<div class="barre" role="img" aria-label="Avancement : 18 faites, 8 deployees, 42 ouvertes sur 68">
+  <span class="s-FAIT" style="width:26%"></span>
   <span class="s-DEPLOYE" style="width:12%"></span>
   <span class="s-COMMITE" style="width:0%"></span>
-  <span class="s-OUVERT" style="width:65%"></span>
+  <span class="s-OUVERT" style="width:62%"></span>
 </div>
 <p class="leg">
   <i><b>✓</b> faite ET verifiee</i>
@@ -112,13 +112,13 @@
 
 <div class="filtres" id="f">
   <button data-f="tout" aria-pressed="true">Tout (68)</button>
-  <button data-f="ouvert" aria-pressed="false">Ouvertes (44)</button>
+  <button data-f="ouvert" aria-pressed="false">Ouvertes (42)</button>
   <button data-f="g1" aria-pressed="false">Gravite 1 (6)</button>
   <button data-f="humain" aria-pressed="false">Attendent un humain (21)</button>
-  <button data-f="code" aria-pressed="false">A faire soi-meme (13)</button>
+  <button data-f="code" aria-pressed="false">A faire soi-meme (11)</button>
   <button data-f="centre-alerte" aria-pressed="false">Centre d'alerte</button>
   <button data-f="vps" aria-pressed="false">VPS</button>
-  <button data-f="fait" aria-pressed="false">Closes (24)</button>
+  <button data-f="fait" aria-pressed="false">Closes (26)</button>
 </div>
 
 <h2 class="sec">Les 68 taches — ouvertes et graves d'abord</h2>
@@ -136,21 +136,6 @@
   <h3>Tuer le client Docker bloque depuis 04h34 UTC le 13/09 — 5e occurrence de VPS-016</h3>
   <p class="detail">Constate par l audit du centre d alerte le 13/09 a 10h07 UTC : « docker logs --tail 60 texto-relay » (PID 159541), lance sans timeout par un « bash -c » (PID 159533, rattache a init) qui enchainait tracky-api puis texto-relay, est bloque depuis 04h34 UTC, et dockerd tourne a 100 pour cent d un coeur sur les deux de la machine (charge 1,68 ; 36,8 pour cent de temps systeme). C est exactement le motif de VPS-016 (4e occurrence le 20/08, 3 h 54 ; 3e occurrence 152 heures), et le referentiel dit depuis le 08/08 que docker logs texto-relay ne rend jamais la main sur cet hote. Ce n est PAS l audit du centre d alerte : toutes ses commandes Docker etaient bornees (timeout ET --tail, aucun docker logs). L audit VPS, qui l aurait vu a 02h21, n a pas tourne depuis le 09/09 (plafond de la CLI, T32). Geste : tuer le PARENT puis l enfant (kill 159533 159541), verifier que pgrep -x docker est vide et que dockerd redescend ; puis retrouver QUI a lance ce bash -c sans timeout — c est la source a corriger, pas le symptome. || COMPLETE PAR L AUDIT VPS DU 13/09 (10:08 UTC) : le bash -c parent (159533) est VIVANT, PPID 1, en do_wait — c est le cas du 08-20, donc LE PARENT D ABORD : verifier les PID (ps -o pid,ppid,etimes,stat,cmd -p 159533,159541) puis kill 159533 &amp;&amp; sleep 1 &amp;&amp; kill 159541 ; attendu pgrep -xc docker = 0 et dockerd &lt; 5 % dans la minute. Lance par la session SSH root 39478 depuis le poste 82.67.153.51, ouverte 04:34:00,89 UTC puis fermee ; sar : %system 3,5 → 22,3 (04:40) → 33,6 (04:50) ; cumul dockerd 241,2 → 249,0 h ; 8,2 % d inactivite pendant la collecte. Les trois routines planifiees sont EXCLUES (bloquees par le quota, reprises ensemble a 10:06). L outil n est pas nomme (VPS-M01) ; la CLASSE l est : docker logs sans timeout depuis une session qui se ferme avant lui. dockerd avait journalise « Error decoding log file: invalid character \x00 » a 04:33:52, 8 s avant, sur le premier docker logs du meme bash — voir V29 (VPS-041). ⚠️ Si dockerd reste &gt; 50 % avec 0 client apres le kill : premiere occurrence qui survit a son client — le dire, ne pas redemarrer.</p>
   <p class="attendue"><b>Preuve attendue</b> — pgrep -x docker vide, dockerd sous 10 pour cent d un coeur au repos, et l origine du bash -c identifiee.</p>
-  <div class="badges"><span class="b b-phare">⭐ le plus rentable</span></div>
-</article>
-<article class="t etat-OUVERT g2" data-etat="OUVERT" data-partie="centre-alerte" data-classe="A_CODER" data-g="2">
-  <div class="t-h">
-    <span class="marque" title="Ouvert">☐</span>
-    <span class="id">T34</span>
-    <span class="fiche">TRK-069 · TRK-071</span>
-    <span class="classe">🔧 A coder</span>
-    <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-13">0 j</span>
-    
-  </div>
-  <h3>Le poste sait qu il est au plafond : les agents s arretent seuls, un courriel part, un bouton relance tout — decision D5</h3>
-  <p class="detail">DECISION D5 DU PROPRIETAIRE, 13/09 16h29 UTC (oui), avec cette consigne : « Si echoue par exemple 5 heures d affilee alors stopper, mais par contre bien faire un mail et aussi une page pour tout redemarrer (dans admin de Tracky et dans les trucs automatises) ». Pendant le plafond du 10 au 13/09, les agents ont essaye 36 fois pour rien alors que la CLI annoncait l heure de remise a zero des la premiere reponse. Geste, en quatre pieces : (1) la porte unique vers la CLI (outils/cli-claude.cjs) reconnait la reponse « weekly limit » et son heure de remise a zero, et compte les echecs consecutifs de toute autre cause ; (2) un marqueur de PAUSE vit cote serveur, pas dans un fichier du poste — pose a la premiere reponse plafond avec l heure annoncee, ou apres 5 heures d echecs d affilee sans heure (reprise manuelle) ; chaque agent le lit avant d appeler la CLI et sort aussitot en disant pourquoi, une seule ligne DEGRADATION (T31) ; (3) la pose du marqueur envoie UN courriel au proprietaire (motif, heure de reprise ou « manuelle », agents concernes) ; (4) l ecran /admin des taches de fond montre la pause et porte un bouton « Reprendre maintenant » qui leve le marqueur — et un marqueur perime se leve seul au premier appel qui passe. Prendre le temps : tests de la porte (message plafond avec et sans heure, 5 h d echecs, marqueur perime), tests du service et du bouton, puis verification en production sur un marqueur pose a la main et leve par le bouton.</p>
-  <p class="attendue"><b>Preuve attendue</b> — Un marqueur pose a la main en production doit : faire sortir chaque agent en moins d une seconde avec le motif dans son journal, produire UNE ligne DEGRADATION et UN courriel, apparaitre sur /admin, et disparaitre au clic « Reprendre maintenant » — le passage suivant travaille. Puis, au prochain vrai plafond : zero appel a la CLI apres la premiere reponse plafond, et reprise seule a l heure annoncee.</p>
   <div class="badges"><span class="b b-phare">⭐ le plus rentable</span></div>
 </article>
 <article class="t etat-OUVERT g1" data-etat="OUVERT" data-partie="centre-alerte" data-classe="HUMAIN" data-g="1">
@@ -302,21 +287,6 @@
   <p class="detail">16 jours d attente. Geste d interface, impossible a provoquer en lecture seule. 30 secondes pour qui a l ecran.</p>
   
   <div class="badges"><span class="b b-retard">🔴 au-dela de 7 jours</span></div>
-</article>
-<article class="t etat-OUVERT g2" data-etat="OUVERT" data-partie="centre-alerte" data-classe="A_CODER" data-g="2">
-  <div class="t-h">
-    <span class="marque" title="Ouvert">☐</span>
-    <span class="id">T36</span>
-    <span class="fiche">TRK-069</span>
-    <span class="classe">🔧 A coder</span>
-    <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-13">0 j</span>
-    
-  </div>
-  <h3>Les agents du poste meurent d un Ctrl-C qui ne leur est pas destine — fenetre cachee, CLI isolee, limite corrigee</h3>
-  <p class="detail">TROUVE LE 13/09 EN VERIFIANT LE RATTRAPAGE DES RECITS (D4). Quatre passages sont morts le jour meme d un Ctrl-C : rattrapage-recits de 10h11 (apres 30 recits), de 12h00 (apres 20), de 16h00 (avant le premier lot) et le courrier de 12h30 (UTC) — la marque ^C dans leur journal, et le code de sortie 0xC000013A (STATUS_CONTROL_C_EXIT) dans le Planificateur. Meme signature les 03, 04 et 09/09 : 33 marques ^C dans les journaux des agents, 23 pour le seul rattrapage. Ce n est ni la CLI ni le reseau : le passage de 14h00 a ecrit 390 recits sans un accroc. Un Ctrl-C n arrive a un processus que par sa CONSOLE : du clavier — les cinq taches VizyoTracky-* sont en ouverture de session interactive avec le .cmd pour action, chaque passage ouvre une fenetre VISIBLE qui prend le focus, et un Ctrl-C tape a ce moment tombe dedans —, ou d un processus qui partage cette console ou s y attache pour l arreter « proprement » : la CLI Claude que l agent lance a chaque lot en partage, et les quatre morts du jour tombent pendant un appel a la CLI, dont une a la seconde ou cette session lancait un serveur de banc (16h02). Geste en trois pieces, qui couvrent les deux origines : (1) un lanceur sans fenetre (outils/lancer-sans-fenetre.js pour wscript.exe, fenetre 0, qui ATTEND la fin pour que l anti-chevauchement et la limite du Planificateur gardent leur sens) et les cinq taches pointees dessus ; (2) dans cli-claude.cjs, la CLI lancee dans SA PROPRE console cachee (detached + windowsHide), de sorte qu un Ctrl-C vise sur elle ne traverse plus jusqu a l agent ; (3) la limite d execution de VizyoTracky-RattrapageRecits portee de 1 h 15 a 1 h 50 — l agent se donne 100 min et le Planificateur le tuait avant (celui de 14h00 s est arrete sans ligne de fin apres 390 recits). Se fait sur le poste du proprietaire, avec lui.</p>
-  <p class="attendue"><b>Preuve attendue</b> — Plus aucune marque ^C dans outils/*.log ni code 0xC000013A dans le Planificateur sur sept jours de passages, ET le rattrapage de 100 min se termine par sa propre ligne de fin, pas par le Planificateur.</p>
-  <div class="badges"></div>
 </article>
 <article class="t etat-OUVERT g2" data-etat="OUVERT" data-partie="vps" data-classe="PRODUIT" data-g="2">
   <div class="t-h">
@@ -813,6 +783,21 @@
   <p class="preuve"><b>Preuve</b> — DEPLOYE le 13/09 a 11h30 UTC par deploy.sh. Cause de fond lue dans recompute() : un trajet dont le DEPART est anterieur a la fenetre n est pas supprime (le filtre porte sur startedAt) mais ses positions dans la fenetre sont redecoupees, d ou deux trajets qui se chevauchent et deux analyses du meme exces. Geste 1 : memeExces (paquet partage) compare l instant GPS de l exces, deux fenetres d un meme vehicule qui se recouvrent a 30 s pres sont le meme exces ; createSpeedingAlert garde la deduplication par trajet puis compare aux alertes OVERSPEED du vehicule des 7 derniers jours. Geste 2 : recompute() releve les alertes des trajets qu il detruit AVANT la suppression et les rattache au nouveau trajet qui contient l instant (alertesRattachees / alertesOrphelines dans le DTO et le Journal Systeme) ; un doublon retrouve sans trajet est rattache au trajet vivant. Verifie sur l artefact servi : memeExcesDejaAlerte et rattacherAuTrajet dans dist/alerts/alerts.service.js, alertesRattachees x6 dans dist/trips/trips.service.js. Reference avant correctif : 11 paires sur 55 alertes, 2 orphelines. Depuis : 0 doublon, mais 0 exces aussi (dimanche) — la double condition sur 7 jours reste a mesurer. Tests : 8 sur la cle, 8 sur createSpeedingAlert, 7 sur le recalcul ; suite API 3898/3898.</p><p class="attendue"><b>Preuve attendue</b> — DOUBLE CONDITION sur sept jours glissants : zero groupe (vehicule, payload.startAt) de taille superieure a un, ET le nombre d exces distincts par jour reste a son regime d environ trois par jour (44 sur 14 jours). Si les alertes tombent a zero, on a casse la detection, pas le doublon. Et le compte des alertes avec tripId nul et payload.tripId renseigne (2 au 13/09) ne doit plus croitre.</p>
   <div class="badges"><span class="b b-phare">⭐ le plus rentable</span></div>
 </article>
+<article class="t etat-DEPLOYE g2" data-etat="DEPLOYE" data-partie="centre-alerte" data-classe="A_CODER" data-g="2">
+  <div class="t-h">
+    <span class="marque" title="Deploye, preuve attendue">»</span>
+    <span class="id">T34</span>
+    <span class="fiche">TRK-069 · TRK-071</span>
+    <span class="classe">🔧 A coder</span>
+    <span class="grav" title="gravite 2">G2</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-13">0 j</span>
+    <code class="commit">02d985c3</code>
+  </div>
+  <h3>Le poste sait qu il est au plafond : les agents s arretent seuls, un courriel part, un bouton relance tout — decision D5</h3>
+  <p class="detail">DECISION D5 DU PROPRIETAIRE, 13/09 16h29 UTC (oui), avec cette consigne : « Si echoue par exemple 5 heures d affilee alors stopper, mais par contre bien faire un mail et aussi une page pour tout redemarrer (dans admin de Tracky et dans les trucs automatises) ». Pendant le plafond du 10 au 13/09, les agents ont essaye 36 fois pour rien alors que la CLI annoncait l heure de remise a zero des la premiere reponse. Geste, en quatre pieces : (1) la porte unique vers la CLI (outils/cli-claude.cjs) reconnait la reponse « weekly limit » et son heure de remise a zero, et compte les echecs consecutifs de toute autre cause ; (2) un marqueur de PAUSE vit cote serveur, pas dans un fichier du poste — pose a la premiere reponse plafond avec l heure annoncee, ou apres 5 heures d echecs d affilee sans heure (reprise manuelle) ; chaque agent le lit avant d appeler la CLI et sort aussitot en disant pourquoi, une seule ligne DEGRADATION (T31) ; (3) la pose du marqueur envoie UN courriel au proprietaire (motif, heure de reprise ou « manuelle », agents concernes) ; (4) l ecran /admin des taches de fond montre la pause et porte un bouton « Reprendre maintenant » qui leve le marqueur — et un marqueur perime se leve seul au premier appel qui passe. Prendre le temps : tests de la porte (message plafond avec et sans heure, 5 h d echecs, marqueur perime), tests du service et du bouton, puis verification en production sur un marqueur pose a la main et leve par le bouton.</p>
+  <p class="preuve"><b>Preuve</b> — DEPLOYE LE 13/09 A 17h37 UTC par deploy.sh (commit 02d985c3 ; 25f7e871 pour le modele du courriel), migration pauses_agents_locaux appliquee a 17h37m46, artefacts verifies dans les deux conteneurs. VERIFIE EN PRODUCTION SUR UNE PAUSE POSEE A LA MAIN (17h41 → 17h52 UTC, plafond-usage, 25 min) : l API la rend dans pauseAgents ; le courrier lance a la main sort en 1 s, code 4, « EN PAUSE … aucun travail pris » — les 8 travaux en file n ont pas ete touches —, passage consigne avec le motif « en pause (plafond-usage) … » ; au controle de 17h50 la sentinelle a envoye UN courriel (DELIVERED a contact@vizyoagency.com, « [Tracky] Agents du poste en pause — plafond d usage de la CLI Claude »), date la pause notifiee, ecrit UNE ligne DEGRADATION (plafond-usage, premier agent courrier-ia) ; POST agents-locaux/reprendre a rendu { levees: 1 }, signe admin:&lt;id&gt;, et pauseAgents est redevenu null. Ligne d essai close avec une note. Le meme controle a leve seul la cause plafond-hebdo du 10/09 (7 lignes archivees) sur le passage reussi du rattrapage — la preuve attendue de T31. RESTE A VOIR : le prochain vrai plafond — zero appel apres la premiere reponse, reprise seule a l heure annoncee.</p><p class="attendue"><b>Preuve attendue</b> — Un marqueur pose a la main en production doit : faire sortir chaque agent en moins d une seconde avec le motif dans son journal, produire UNE ligne DEGRADATION et UN courriel, apparaitre sur /admin, et disparaitre au clic « Reprendre maintenant » — le passage suivant travaille. Puis, au prochain vrai plafond : zero appel a la CLI apres la premiere reponse plafond, et reprise seule a l heure annoncee.</p>
+  <div class="badges"><span class="b b-phare">⭐ le plus rentable</span></div>
+</article>
 <article class="t etat-DEPLOYE g2" data-etat="DEPLOYE" data-partie="centre-alerte" data-classe="CHANTIER" data-g="2">
   <div class="t-h">
     <span class="marque" title="Deploye, preuve attendue">»</span>
@@ -876,31 +861,16 @@
 <article class="t etat-DEPLOYE g2" data-etat="DEPLOYE" data-partie="centre-alerte" data-classe="A_CODER" data-g="2">
   <div class="t-h">
     <span class="marque" title="Deploye, preuve attendue">»</span>
-    <span class="id">T31</span>
+    <span class="id">T36</span>
     <span class="fiche">TRK-069</span>
     <span class="classe">🔧 A coder</span>
     <span class="grav" title="gravite 2">G2</span>
     <span class="depuis" title="ouverte depuis le 2026-09-13">0 j</span>
-    <code class="commit">a8f9575e</code>
+    <code class="commit">507f0763</code>
   </div>
-  <h3>Une cause commune aux agents du poste doit produire UNE ligne, pas vingt-cinq CRITICAL</h3>
-  <p class="detail">Du 10/09 04h00 au 13/09 12h00 (Paris), la CLI Claude du poste etait a son plafond hebdomadaire : 36 passages en echec avec la meme phrase (« You ve hit your weekly limit »), et la sentinelle agents-locaux a ecrit 25 CRITICAL (19 encore ouvertes), plus 6 ERROR travaux-ia pour la meme cause. TRK-069 l annoncait a sa creation : « c est le NIVEAU qu il faudra rediscuter, jamais la sentinelle ». Geste : quand l erreur du passage porte une cause exterieure connue (plafond, quota, reseau), ecrire UNE ligne en DEGRADATION avec un refroidissement PAR CAUSE (cle stable derivee du motif, pas du texte complet), et la refermer seule quand un passage reussit — comme le fait deja la resolution automatique de cette sentinelle. Retirer par la meme occasion du niveau CRITICAL le « Passage manque : agent-limites-vitesse » de 04h50 UTC, referme seul a 06h50 trois jours de suite (10, 11, 12/09) parce que la cadence declaree de 6,5 heures ne tombe pas sur l horaire reel — c est une cadence a corriger, pas un incident. Meme principe que T10 : le niveau suit la cause.</p>
-  <p class="preuve"><b>Preuve</b> — DEPLOYE le 13/09 a 11h30 UTC. Cause commune : un echec dont le motif trahit un plafond de la CLI (hebdomadaire ou glissant) produit UNE ligne DEGRADATION sous une cle par cause (agent-local:cause:plafond-hebdo), qui nomme le premier agent touche, reprend la remise a zero annoncee par la CLI et liste les agents concernes (coutIa absorbe) ; trois gardes (deja signalee pendant ce controle, deja ouverte au centre, refroidissement 23 h) ; levee par le premier passage REUSSI d un agent concerne, jamais par un agent qui n utilise pas la CLI. MESURE EN PRODUCTION a 11h50 UTC : une seule ligne DEGRADATION plafond-hebdo, aucun CRITICAL par agent ; a 12h50 : toujours une seule (pas de doublon), et le succes des limites de vitesse a 14h00 ne l a PAS levee. La levee attend le premier succes d un agent de la CLI. Second point : 04h30 sort des rendez-vous exiges de agent-limites-vitesse (le declencheur existe et a tourne les 10 et 13/09, c est le poste qui dort les 11 et 12 ; 08h30 reprend le meme travail, cache cumulatif) — la doctrine du 05/09 ne bouge pas pour les autres agents. Le rapport y voyait une cadence a corriger : le journal des passages dit autre chose, la correction porte sur le creneau attendu, pas sur la cadence. Tests : 7 sur la cause commune, 3 sur 04h30 ; suite API 3908/3908.</p><p class="attendue"><b>Preuve attendue</b> — DOUBLE CONDITION : au prochain plafond ou a la prochaine cause commune, UNE ligne DEGRADATION portant la cause et le nombre d agents touches, refermee seule a la reprise — ET un agent reellement en panne seul (erreur propre, sans cause commune) doit toujours produire sa ligne CRITICAL. Si plus rien n apparait, on a eteint le temoin.</p>
-  <div class="badges"></div>
-</article>
-<article class="t etat-DEPLOYE g3" data-etat="DEPLOYE" data-partie="centre-alerte" data-classe="AUTO" data-g="3">
-  <div class="t-h">
-    <span class="marque" title="Deploye, preuve attendue">»</span>
-    <span class="id">T37</span>
-    <span class="fiche">TRK-071</span>
-    <span class="classe">🟢 Agent, seul, avec preuve</span>
-    <span class="grav" title="gravite 3">G3</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-13">0 j</span>
-    
-  </div>
-  <h3>Rattraper les recits des trois jours de plafond — tous les trajets, decision D4</h3>
-  <p class="detail">D4 TRANCHEE LE 13/09 (tous les trajets) : « faire le recit de tout le monde, faire le rattrapage car j ai eu un bug d agent IA pour 3 jours ». Aucun code : le rattrapage existant (toutes les deux heures, 100 min, lots de dix) fait le travail depuis la remise a zero de 10h00 UTC — 436 recits ecrits le 13/09 entre 10h et 16h. Mesure a 16h40 UTC : 115 trajets encore sans recit (98 du 10/09, 8 du 09/09, 9 du 13/09) ; les 11 et 12/09 sont a zero. Il reste un passage plein, a condition qu il ne meure pas d un Ctrl-C (T36).</p>
-  <p class="attendue"><b>Preuve attendue</b> — Zero trajet sans recit entre le 09/09 et le 13/09 (segmentationSource = recompute), constate par l audit ; puis la mesure de chaque nuit : les trajets de la veille ont tous leur recit au matin.</p>
+  <h3>Les agents du poste meurent d un Ctrl-C qui ne leur est pas destine — fenetre cachee, CLI isolee, limite corrigee</h3>
+  <p class="detail">TROUVE LE 13/09 EN VERIFIANT LE RATTRAPAGE DES RECITS (D4). Quatre passages sont morts le jour meme d un Ctrl-C : rattrapage-recits de 10h11 (apres 30 recits), de 12h00 (apres 20), de 16h00 (avant le premier lot) et le courrier de 12h30 (UTC) — la marque ^C dans leur journal, et le code de sortie 0xC000013A (STATUS_CONTROL_C_EXIT) dans le Planificateur. Meme signature les 03, 04 et 09/09 : 33 marques ^C dans les journaux des agents, 23 pour le seul rattrapage. Ce n est ni la CLI ni le reseau : le passage de 14h00 a ecrit 390 recits sans un accroc. Un Ctrl-C n arrive a un processus que par sa CONSOLE : du clavier — les cinq taches VizyoTracky-* sont en ouverture de session interactive avec le .cmd pour action, chaque passage ouvre une fenetre VISIBLE qui prend le focus, et un Ctrl-C tape a ce moment tombe dedans —, ou d un processus qui partage cette console ou s y attache pour l arreter « proprement » : la CLI Claude que l agent lance a chaque lot en partage, et les quatre morts du jour tombent pendant un appel a la CLI, dont une a la seconde ou cette session lancait un serveur de banc (16h02). Geste en trois pieces, qui couvrent les deux origines : (1) un lanceur sans fenetre (outils/lancer-sans-fenetre.js pour wscript.exe, fenetre 0, qui ATTEND la fin pour que l anti-chevauchement et la limite du Planificateur gardent leur sens) et les cinq taches pointees dessus ; (2) dans cli-claude.cjs, la CLI lancee dans SA PROPRE console cachee (detached + windowsHide), de sorte qu un Ctrl-C vise sur elle ne traverse plus jusqu a l agent ; (3) la limite d execution de VizyoTracky-RattrapageRecits portee de 1 h 15 a 1 h 50 — l agent se donne 100 min et le Planificateur le tuait avant (celui de 14h00 s est arrete sans ligne de fin apres 390 recits). Se fait sur le poste du proprietaire, avec lui.</p>
+  <p class="preuve"><b>Preuve</b> — EN PLACE SUR LE POSTE LE 13/09 A 16h56 UTC (commit 507f0763). Les cinq taches VizyoTracky-* passent par outils/lancer-sans-fenetre.js (wscript.exe //B //Nologo, fenetre 0, attend la fin, rend le code de sortie) ; la CLI Claude tourne dans sa propre console cachee (windowsHide dans cli-claude.cjs, test 30/30) ; limite du rattrapage 1 h 15 → 1 h 50, celle des recits 72 h → 2 h ; outils/taches-planifiees.ps1 constate et applique, relecture conforme sur les cinq. Banc : tache d essai enregistree puis retiree — Running pendant le .cmd, code 0x7 rendu, chemin avec espace accepte. Premier passage reel par le lanceur (rattrapage lance a 16h56 UTC, 119 trajets a narrer) : 10 recits en 75 s, aucune fenetre. La preuve attendue reste a venir : sept jours sans ^C. — 17h28 UTC : le passage de 16h56 (lanceur sans fenetre) a tourne 82 min, ecrit 119 recits, fini par SA ligne de fin (« plus aucun trajet recent a narrer — termine ») et consigne son passage ; les quatre passages tues plus tot dans la journee (10h11, 12h00, 14h00, 16h00 UTC) n ont laisse AUCUNE ligne dans passages_agents_locaux — un agent tue ne journalise pas, c est le silence que T36 fait cesser.</p><p class="attendue"><b>Preuve attendue</b> — Plus aucune marque ^C dans outils/*.log ni code 0xC000013A dans le Planificateur sur sept jours de passages, ET le rattrapage de 100 min se termine par sa propre ligne de fin, pas par le Planificateur.</p>
   <div class="badges"></div>
 </article>
 <article class="t etat-FAIT g1" data-etat="FAIT" data-partie="centre-alerte" data-classe="A_CODER" data-g="1">
@@ -1071,6 +1041,21 @@
 <article class="t etat-FAIT g2" data-etat="FAIT" data-partie="centre-alerte" data-classe="A_CODER" data-g="2">
   <div class="t-h">
     <span class="marque" title="Fait et verifie">✓</span>
+    <span class="id">T31</span>
+    <span class="fiche">TRK-069</span>
+    <span class="classe">🔧 A coder</span>
+    <span class="grav" title="gravite 2">G2</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-13">0 j</span>
+    <code class="commit">a8f9575e</code>
+  </div>
+  <h3>Une cause commune aux agents du poste doit produire UNE ligne, pas vingt-cinq CRITICAL</h3>
+  <p class="detail">Du 10/09 04h00 au 13/09 12h00 (Paris), la CLI Claude du poste etait a son plafond hebdomadaire : 36 passages en echec avec la meme phrase (« You ve hit your weekly limit »), et la sentinelle agents-locaux a ecrit 25 CRITICAL (19 encore ouvertes), plus 6 ERROR travaux-ia pour la meme cause. TRK-069 l annoncait a sa creation : « c est le NIVEAU qu il faudra rediscuter, jamais la sentinelle ». Geste : quand l erreur du passage porte une cause exterieure connue (plafond, quota, reseau), ecrire UNE ligne en DEGRADATION avec un refroidissement PAR CAUSE (cle stable derivee du motif, pas du texte complet), et la refermer seule quand un passage reussit — comme le fait deja la resolution automatique de cette sentinelle. Retirer par la meme occasion du niveau CRITICAL le « Passage manque : agent-limites-vitesse » de 04h50 UTC, referme seul a 06h50 trois jours de suite (10, 11, 12/09) parce que la cadence declaree de 6,5 heures ne tombe pas sur l horaire reel — c est une cadence a corriger, pas un incident. Meme principe que T10 : le niveau suit la cause.</p>
+  <p class="preuve"><b>Preuve</b> — DEPLOYE le 13/09 a 11h30 UTC. Cause commune : un echec dont le motif trahit un plafond de la CLI (hebdomadaire ou glissant) produit UNE ligne DEGRADATION sous une cle par cause (agent-local:cause:plafond-hebdo), qui nomme le premier agent touche, reprend la remise a zero annoncee par la CLI et liste les agents concernes (coutIa absorbe) ; trois gardes (deja signalee pendant ce controle, deja ouverte au centre, refroidissement 23 h) ; levee par le premier passage REUSSI d un agent concerne, jamais par un agent qui n utilise pas la CLI. MESURE EN PRODUCTION a 11h50 UTC : une seule ligne DEGRADATION plafond-hebdo, aucun CRITICAL par agent ; a 12h50 : toujours une seule (pas de doublon), et le succes des limites de vitesse a 14h00 ne l a PAS levee. La levee attend le premier succes d un agent de la CLI. Second point : 04h30 sort des rendez-vous exiges de agent-limites-vitesse (le declencheur existe et a tourne les 10 et 13/09, c est le poste qui dort les 11 et 12 ; 08h30 reprend le meme travail, cache cumulatif) — la doctrine du 05/09 ne bouge pas pour les autres agents. Le rapport y voyait une cadence a corriger : le journal des passages dit autre chose, la correction porte sur le creneau attendu, pas sur la cadence. Tests : 7 sur la cause commune, 3 sur 04h30 ; suite API 3908/3908. — 13/09 17h50 UTC, DEUXIEME MOITIE DE LA DOUBLE CONDITION : au premier passage reussi d un agent CLI (rattrapage-recits, 16h56 → 17h22, 119 recits), la sentinelle a archive seule la ligne DEGRADATION « plafond-hebdo » ouverte depuis le 10/09 (« Cause « plafond-hebdo » levee par rattrapage-recits : 1 ligne archivee ») et refermé 7 lignes ouvertes de cet agent. Un echec propre produit toujours son CRITICAL (inchange, teste). T31 FAIT.</p><p class="attendue"><b>Preuve attendue</b> — DOUBLE CONDITION : au prochain plafond ou a la prochaine cause commune, UNE ligne DEGRADATION portant la cause et le nombre d agents touches, refermee seule a la reprise — ET un agent reellement en panne seul (erreur propre, sans cause commune) doit toujours produire sa ligne CRITICAL. Si plus rien n apparait, on a eteint le temoin.</p>
+  <div class="badges"></div>
+</article>
+<article class="t etat-FAIT g2" data-etat="FAIT" data-partie="centre-alerte" data-classe="A_CODER" data-g="2">
+  <div class="t-h">
+    <span class="marque" title="Fait et verifie">✓</span>
     <span class="id">T33</span>
     <span class="fiche">TRK-077</span>
     <span class="classe">🔧 A coder</span>
@@ -1126,6 +1111,21 @@
   <h3>Rectifier le quoiFaire de TRK-014</h3>
   <p class="detail">Il renvoie vers « le correctif de TRK-012 reste en attente d'accord » — or TRK-012 est CORRIGE depuis le 25/08.</p>
   <p class="preuve"><b>Preuve</b> — Le quoiFaire de TRK-014 dans app/wiki.json ne renvoie plus vers un correctif a livrer : il dit que TRK-012 est CORRIGE ET DEPLOYE depuis le 23/08 (PR 110, preuve terrain le 24/08), qu il ne reste rien a livrer au titre de la fiche, et que ce qu elle mesure est un fait materiel — zero accuse de reception sur les commandes fix_* (0 sur 477 en sept jours au 07/09) alors que le canal fonctionne pour les commandes moteur — a qualifier par un test sur boitier, pas par du code. Le point 1 de la dette doc de ROADMAP-CORRECTIFS.md est marque rectifie. Fichiers servis republies sur le VPS (wiki.json, ROADMAP-CORRECTIFS.md, TABLEAU-DE-BORD.html) sans rebuild.</p>
+  <div class="badges"></div>
+</article>
+<article class="t etat-FAIT g3" data-etat="FAIT" data-partie="centre-alerte" data-classe="AUTO" data-g="3">
+  <div class="t-h">
+    <span class="marque" title="Fait et verifie">✓</span>
+    <span class="id">T37</span>
+    <span class="fiche">TRK-071</span>
+    <span class="classe">🟢 Agent, seul, avec preuve</span>
+    <span class="grav" title="gravite 3">G3</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-13">0 j</span>
+    
+  </div>
+  <h3>Rattraper les recits des trois jours de plafond — tous les trajets, decision D4</h3>
+  <p class="detail">D4 TRANCHEE LE 13/09 (tous les trajets) : « faire le recit de tout le monde, faire le rattrapage car j ai eu un bug d agent IA pour 3 jours ». Aucun code : le rattrapage existant (toutes les deux heures, 100 min, lots de dix) fait le travail depuis la remise a zero de 10h00 UTC — 436 recits ecrits le 13/09 entre 10h et 16h. Mesure a 16h40 UTC : 115 trajets encore sans recit (98 du 10/09, 8 du 09/09, 9 du 13/09) ; les 11 et 12/09 sont a zero. Il reste un passage plein, a condition qu il ne meure pas d un Ctrl-C (T36).</p>
+  <p class="preuve"><b>Preuve</b> — MESURE EN PRODUCTION LE 13/09 A 17h28 UTC : ZERO trajet sans recit entre le 09 et le 13/09, et zero sur toute la retention (9 000 h). 555 recits ecrits dans la journee, dont 119 par le passage de 16h56 → 17h22 UTC lance par le lanceur sans fenetre (T36), « reste 0 ». Les 10, 11 et 12/09 — les trois jours du plafond — ont tous leurs recits. Le rattrapage redevient un no-op ; la mesure de chaque nuit (trajets de la veille tous narres au matin) passe a l audit.</p><p class="attendue"><b>Preuve attendue</b> — Zero trajet sans recit entre le 09/09 et le 13/09 (segmentationSource = recompute), constate par l audit ; puis la mesure de chaque nuit : les trajets de la veille ont tous leur recit au matin.</p>
   <div class="badges"></div>
 </article>
 <article class="t etat-FAIT g4" data-etat="FAIT" data-partie="centre-alerte" data-classe="DETTE_DOC" data-g="4">

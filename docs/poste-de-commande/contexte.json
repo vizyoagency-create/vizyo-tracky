@@ -129,7 +129,7 @@
         "le": "13/09",
         "choix": "tous",
         "note": "Faire le récit tout de le monde, faire le rattrapage car j'ai eu un bug d'agent IA pour 3 jours donc bien faire le récit de tout les trajets !",
-        "suite": "Tous les trajets gardent leur récit. Le rattrapage tourne depuis la remise à zéro : 436 récits écrits le 13/09, 115 restants à 16 h 40 UTC — suivi en T37, et T36 corrige ce qui tuait ses passages."
+        "suite": "Fait : 0 trajet sans récit sur toute la rétention le 13/09 à 17 h 28 UTC (555 récits écrits dans la journée) — T37 close. Et T36 a corrigé ce qui tuait les passages du rattrapage."
       }
     },
     {
@@ -150,7 +150,7 @@
         "le": "13/09",
         "choix": "oui",
         "note": "Si échoue par exemple 5 heures d'affilé alors stoppé mais par contre bien faire un mails et aussi une page pour tout redémarrer ! (dans admin de tracky et dans les truc automatiser !)",
-        "suite": "À coder : T34 — arrêt dès le message de plafond ou après cinq heures d’échecs, un courriel, et un bouton « Reprendre maintenant » dans /admin."
+        "suite": "Fait : T34 déployée le 13/09 à 17 h 37 UTC et vérifiée sur une pause posée à la main — les agents sortent en une seconde, un courriel est parti à 17 h 50, le bouton « Reprendre maintenant » de /admin l’a levée. Reste à voir au prochain vrai plafond."
       }
     },
     {
@@ -201,6 +201,16 @@
     }
   ],
   "faits": [
+    {
+      "d": "13/09",
+      "quoi": "Le poste sait qu’il est au plafond : les agents s’arrêtent, un courriel part, un bouton relance",
+      "preuve": "Pause posée à la main à 17 h 41 UTC : le courrier lancé dans la foulée est sorti en <b>une seconde</b> sans toucher aux huit travaux en file ; au contrôle de 17 h 50, <b>un courriel</b> (livré) et <b>une seule ligne</b> au centre d’alerte ; « Reprendre maintenant » a rendu <code>levées : 1</code> et le bandeau a disparu. Décision D5 tenue le jour même."
+    },
+    {
+      "d": "13/09",
+      "quoi": "Les trois jours de plafond ont leurs récits — et le rattrapage ne meurt plus d’un Ctrl-C",
+      "preuve": "<b>555 récits</b> écrits le 13/09, <b>0 trajet sans récit</b> sur toute la rétention à 17 h 28 UTC. Le dernier passage (119 récits en 82 min) est le premier lancé sans fenêtre : il a fini par sa propre ligne de fin, quand les quatre passages tués plus tôt dans la journée n’avaient laissé aucune trace."
+    },
     {
       "d": "13/09",
       "quoi": "Le témoin des tâches planifiées sait se taire",
