@@ -63,10 +63,31 @@ d'une section à l'autre sans le dire, ou cocher `[x]` sur la foi d'une fiche pl
 
 ---
 
-## 🗂️ Tableau de bord — 56 tâches, l'avancement d'un coup d'œil
+## 🗂️ Tableau de bord — 61 tâches, l'avancement d'un coup d'œil
 
-**Au 2026-09-09 (après les DEUX routines) : 6 faites · 4 déployées, preuve attendue ·
-0 commitée · 46 ouvertes.**
+**Au 2026-09-13 (centre d'alerte seul — l'audit VPS n'a pas tourné depuis le 09/09) : 10 faites ·
+2 déployées, preuve attendue · 0 commitée · 49 ouvertes.**
+
+> 🔴 **LE FAIT DU 13/09 : UN TROISIÈME CANAL IA À SEC, ET C'EST LE SEUL QUI COUPE AUSSI LES AUDITS.**
+> La CLI Claude du poste a atteint son **plafond hebdomadaire** du 10/09 04:00 au 13/09 12:00 (Paris) :
+> 36 passages d'agents en échec, 0 récit, 7 travaux IA morts, **et les audits des 11–12/09 (centre
+> d'alerte) et 10–13/09 (VPS) n'ont pas tourné** — même CLI. 31 des 63 lignes nées en trois jours ont
+> cette seule cause ; rien ne s'est cassé sur la plateforme, la reprise a pris 12 minutes. 🆕 **T31**
+> (une cause, une ligne) et **T32** (la parade au plafond — *trois canaux, trois plafonds, zéro plan*).
+>
+> ✅ **Deux tests datés franchis pendant le silence** : **T11** (TRK-068 exercée le 12/09 00:00:23 —
+> 503, `ERROR`, dépendance nommée, motif conservé, **pas de jumelle**) et **T17** (TRK-065 exercée le
+> 11/09 — `comptesTechniquesEcartes: 1`, compte technique absent ; **53 au lieu de ~21** parce que le
+> numérateur a été ×2,5 par la tempête `agents-locaux` : *c'est la forme qui prouve, pas le nombre*).
+>
+> 🆕 **T30 · TRK-078 — 1 alerte d'excès de vitesse sur 5 est un DOUBLON** : 11 sur 55 en 14 j, même
+> véhicule, même instant d'excès à la seconde, deux identités de trajet — le recalcul réécrit le
+> `tripId` qui sert de clé de déduplication. *La lecture du 10/09 (« même véhicule refaisant le même
+> trajet ») est rectifiée.* À corriger **avant** de calibrer T4.
+>
+> 🔴 **V28 — sur le VPS, un client Docker lancé sans `timeout` par une autre session est bloqué
+> depuis 04:34 UTC** (`docker logs --tail 60 texto-relay`, PID 159541, parent 159533) et `dockerd`
+> tourne à 100 % d'un cœur : **5ᵉ occurrence de VPS-016**. Tuer le parent, puis retrouver qui l'a lancé.
 
 > ⚖️ **LE FAIT VPS DU JOUR, 09/09 : DEUX TESTS ÉCRITS D'AVANCE TOMBENT ENTRE LEURS BRANCHES, ET LA
 > FAUTE EST DANS LES TESTS.** Tous deux se réfèrent au jeudi 09-03 sur une table dont la rétention
@@ -133,7 +154,7 @@ d'une section à l'autre sans le dire, ou cocher `[x]` sur la foi d'une fiche pl
 
 > 🖥️ **Le même état, en visuel : [`TABLEAU-DE-BORD.html`](./TABLEAU-DE-BORD.html)** — un fichier autonome, regénéré à chaque passage des deux routines quotidiennes, qui se filtre par gravité, par partie et par état. *Il ne remplace pas ce fichier-ci : il en donne l'état, jamais le pourquoi.*
 
-### Partie I — centre d'alerte *(28 tâches)*
+### Partie I — centre d'alerte *(32 tâches)*
 
 | | ID | Fiche | La tâche | État |
 |:--:|:--:|---|---|---|
@@ -147,13 +168,13 @@ d'une section à l'autre sans le dire, ou cocher `[x]` sur la foi d'une fiche pl
 | ☐ | **T8** | TRK-001 · 027 | 🔵 Contrôler les antennes *(3 véhicules)* | 🤝 HUMAIN |
 | ☐ | **T9** | — | 🔵 Déclarer ou dépanner `GLA•KC•31` et `FG-669-DQ` | 🤝 HUMAIN |
 | `»` | **T10** | TRK-070 | Le niveau de l'escalade suit la **cause**, pas la gravité | 🗓️ **DÉPLOYÉ** `2112e9ae` |
-| `»` | **T11** | TRK-068 | Borner le `fetch` vers Vizyo Auth *(+ le jumeau)* | 🗓️ **DÉPLOYÉ** `c80632ba` |
+| ☑ | **T11** | TRK-068 | ✅ **EXERCÉE le 12/09 00:00:23** — 503, `ERROR`, « Vizyo Auth est injoignable … Motif technique : aucune reponse en 8 s » ; `http CRITICAL` reste à 2 | ✅ **FAIT ET PROUVÉ** `c80632ba` |
 | ☐ | **T12** | TRK-022 | Déduplication **générique** des alarmes du boîtier | 🔧 À CODER |
 | ☐ | **T13** | TRK-016 | Recalage — **flux neuf réparé (0 %)**, mais **la mesure ne mesure plus** et 8 882 trajets d'historique restent | 🔧 CHANTIER |
-| ☐ | **T14** | TRK-053 | Provoquer ou requalifier *(échéance **08/09**)* | ⛔ sans occasion |
+| ☐ | **T14** | TRK-053 | **REQUALIFIER** — occasion venue **à moitié** : 3 « Retour LLD » revenus, 0 alarme, 0 alerte ; **3 déclarations périmées** à lever *(5 j de dépassement)* | 🗓️ test daté |
 | ☐ | **T15** | TRK-060 | Guetter : « Un point de mesure système… » | 🗓️ NON EXERCÉ |
 | ☑ | **T16** | TRK-064 | ✅ **CLOSE** — la sentinelle **désigne des véhicules** (`vehiculesHorsNorme`) **et sait se taire** : « cdef31 » 0 ligne le 09/09 | ✅ **FAIT ET PROUVÉ** `8fa14cb4` |
-| ☐ | **T17** | TRK-065 | Guetter la ligne hebdomadaire *(**~11/09**)* | 🗓️ NON EXERCÉ |
+| ☑ | **T17** | TRK-065 | ✅ **EXERCÉE le 11/09 06:30** — `comptesTechniquesEcartes: 1`, compte technique absent ; 53 sur un compte au lieu de 42 sur deux *(numérateur ×2,5)* | ✅ **FAIT ET PROUVÉ** `68034a1d` |
 | ☐ | **T18** | TRK-066 | Guetter « SMS non remis au relais » *(+ motif conservé)* | 🗓️ NON EXERCÉ |
 | ☐ | **T19** | TRK-032 | **REQUALIFIER** — **20 j** d'attente | 🗓️ test daté |
 | ☐ | **T20** | TRK-051 | Confier à un humain — **16 j**, **30 s** pour qui a l'écran | 🗓️ test daté |
@@ -165,9 +186,12 @@ d'une section à l'autre sans le dire, ou cocher `[x]` sur la foi d'une fiche pl
 | ☑ | **T26** | TRK-075 | ✅ **PROUVÉ** — **33,3 h et 32 passages sans une ligne** ; ⚠️ la seconde moitié n'a pas bougé et **ce n'est pas une purge** : *ce sont les mêmes 4 analyses, vieillies d'un jour* | ✅ **FAIT ET PROUVÉ** `dc35f1a3` |
 | `»` | **T27** | TRK-076 | La carte **survit à une perte de contexte WebGL** — **0 ligne depuis le 07/09 13:04** *(60,1 h ; 48,2 h depuis le déploiement)*, échéance 15/09 | 🗓️ **DÉPLOYÉ** `09d04e2b` |
 | ☐ | **T28** | TRK-016 | 🔴 **Redéfinir la mesure du recalage** : à la clôture, sur une fenêtre **fermée** — *sans ça, T13 est indécidable*. **3ᵉ jour de réécriture du passé** : 04/09 168 → 102, 05/09 132 → 0, 06/09 82 → 0 | 🔧 À CODER |
-| ☐ | **T29** | TRK-077 | 🆕 🔴 **Relire la garde du déploiement au moment où elle va TUER**, pas au moment où l'on décide de construire — *elle protège de tout sauf du cas le plus probable* | 🔧 À CODER |
+| ☐ | **T29** | TRK-077 | 🔴 **Relire la garde du déploiement au moment où elle va TUER**, pas au moment où l'on décide de construire — *elle protège de tout sauf du cas le plus probable* | 🔧 À CODER |
+| ☐ | **T30** | TRK-078 | 🆕 🔴 **Dédupliquer l'alerte de vitesse sur l'EXCÈS, pas sur le `tripId`** — 11 doublons sur 55 en 14 j : le recalcul réécrit l'identité du trajet | 🔧 À CODER |
+| ☐ | **T31** | TRK-069 | 🆕 **Une cause commune aux agents du poste = UNE ligne `DEGRADATION`**, pas 25 `CRITICAL` | 🔧 À CODER |
+| ☐ | **T32** | TRK-071 · 069 | 🆕 🔴🔴 **Décider la parade au plafond hebdomadaire de la CLI** — trois canaux IA, trois plafonds, 80 h sans aucun ouvert, audits compris | 🤝 HUMAIN |
 
-### Partie II — VPS *(28 tâches)*
+### Partie II — VPS *(29 tâches)*
 
 | | ID | Fiche | La tâche | État |
 |:--:|:--:|---|---|---|
@@ -198,7 +222,8 @@ d'une section à l'autre sans le dire, ou cocher `[x]` sur la foi d'une fiche pl
 | ☑ | **V24** | VPS-038 | **Sentinelle « boîtiers muets »** — *2 lignes à 06:30, pas 10 : **exact*** | ✅ **FAIT ET PROUVÉ** |
 | ☑ | **V25** | VPS-M59 | **`chargeDeFond.note` s'affiche** + repli explicite — *a survécu au rebuild du 07/09* | ✅ **FAIT ET PROUVÉ** |
 | ☐ | **V26** | VPS-013 · M88 | 🔓 **DÉBLOQUÉE** — ranger les **3 dossiers abandonnés** ; le faux orange est désormais **mesuré**, pas prédit | 🟡 PRÉPARÉ |
-| ☐ | **V27** | VPS-040 · M91 | 🆕 Trancher si la base de **démo** doit être sauvegardée *(le 🔴 vaut **13 Go**)* | 🔵 PRODUIT |
+| ☐ | **V27** | VPS-040 · M91 | Trancher si la base de **démo** doit être sauvegardée *(le 🔴 vaut **13 Go**)* | 🔵 PRODUIT |
+| ☐ | **V28** | VPS-016 | 🆕 🔴🔴 **Tuer le client Docker bloqué depuis le 13/09 04:34 UTC** (`docker logs texto-relay`, PID 159541, parent 159533) — `dockerd` à 100 % d'un cœur, **5ᵉ occurrence** | 🤝 HUMAIN |
 
 
 
@@ -246,6 +271,7 @@ d'une section à l'autre sans le dire, ou cocher `[x]` sur la foi d'une fiche pl
 | **06/09** | **82** | **Les DEUX fournisseurs IA sont à sec en même temps** — le repli `claude → gpt` livré la veille a été exercé 6 min après sa mise en ligne et n'avait nulle part où aller *(🆕 TRK-070, TRK-071, TRK-072)* |
 | **08/09** | **118** | **Un seul trajet du 8 juillet produit 15 des 17 défauts neufs** : ses positions viennent de franchir le front de purge, et trois commentaires promettent un silence que leur couche n'a pas le pouvoir d'accorder *(🆕 TRK-075, TRK-076)* |
 | **09/09** | **138** | **Une preuve écrite d'avance tombe au mot près** — 24 passages sur 24 dont **1 marqué `interrupted`** *(T24 ✅)*, le trajet du 8 juillet se tait *(T26 `»`)*, et **le seul chiffre qui ment est celui du recalage : le passé a été réécrit** *(🆕 T28)* |
+| **13/09** *(couvre 11→13)* | **202** | **Un troisième canal IA à sec, et c'est le seul qui coupe aussi les audits** — la CLI du poste au plafond hebdomadaire pendant 80 h : 31 des 63 lignes nées, 0 casse, et **les audits des 11-12/09 n'ont pas eu lieu**. Pendant le silence, **T11 et T17 se prouvent seules** ; 🆕 **TRK-078** : 1 alerte de vitesse sur 5 est un doublon, le recalcul réécrit la clé *(T30, T31, T32)* |
 | **10/09** | **145** | **Les trois tests datés de la veille sont franchis** — 33 h sans « Analyse impossible » *(T26 ✅)*, le rattrapage porte **+433 trajets recalés** *(T13)*, et la sentinelle de vitesse livre sa forme neuve **un jour en avance, en se taisant sur la flotte qui n'avait rien à dire** *(T16 ✅)*. 🆕 **T29** : la garde du déploiement est **présente, correcte, et ne protège de rien** — lue au moment où l'on décide de construire, pas au moment où l'on va tuer |
 
 **Ce que la série raconte** — les actives passent de 26 à 82 en six jours, et **ce n'est pas une
@@ -390,6 +416,14 @@ prouve rien*.
 
 👉 **Décision proposée** : le **provoquer** au prochain retour de LLD, ou le **requalifier** le 08/09.
 
+> 📏 **13/09 — le retour de LLD est venu, et il n'a prouvé que la moitié.** FR-629-AD, FW-298-WV et
+> FZ-731-YF sont revenus le 11/09 (1 809 et 3 889 positions ; FW-298-WV vivant **sans fix depuis
+> 41,8 h**) : **0 alerte, 0 ligne `gps-integrity`** — les chemins qui honoraient déjà la déclaration
+> tiennent. Mais **aucune trame d'alarme** n'est arrivée de ces boîtiers, et c'est le seul chemin que
+> TRK-053 touche. 🔴 **Et ces trois véhicules roulent avec toutes leurs alertes coupées** : lever la
+> déclaration. **REQUALIFIER** : débrancher volontairement un boîtier déclaré, ou clore sur les tests
+> — et le dire.
+
 ---
 
 # 🗓️ DÉPLOYÉ, NON EXERCÉ — la consigne datée attend son occasion
@@ -401,7 +435,7 @@ Aucun n'a encore eu l'occasion de se prouver. **Ne pas les rouvrir ; les guetter
 |:--:|:--:|---|---|---|
 | ☐ | **T15** | [TRK-060](./REFERENCE-ERREURS.md#trk-060) | Une ligne `system-metrics` commençant par « **Un point de mesure système n'a pas pu être enregistré** », et non par la pile de transport brute | au prochain incident DNS |
 | ☐ | **T16** | [TRK-064](./REFERENCE-ERREURS.md#trk-064) | *Son sujet a changé* : la chaîne **est armée** sur 2 sociétés sur 5, et le silence de la sentinelle est **légitime** | — 👉 **à clore ?** |
-| ☐ | **T17** | [TRK-065](./REFERENCE-ERREURS.md#trk-065) | La ligne hebdomadaire tombe de **42 à ~21**, ne cite plus `system@tracky.local`, et porte `comptesTechniquesEcartes: 1` | **~11/09** |
+| ☑ | **T17** | [TRK-065](./REFERENCE-ERREURS.md#trk-065) | ✅ **11/09 06:30** : ne cite plus `system@tracky.local`, porte `comptesTechniquesEcartes: 1` — **53 sur un compte**, pas ~21 : le numérateur a été ×2,5 (21+21 → 53+53), sans le correctif la ligne aurait dit 106 | ✅ **FAIT** |
 | ☐ | **T18** | [TRK-066](./REFERENCE-ERREURS.md#trk-066) | La ligne `sms-gateway` commence par « **SMS non remis au relais** », nomme `vizyo-texto`, **et conserve le motif technique en fin de phrase** | au prochain échec du relais |
 
 > ⚠️ **Pour TRK-066, la vérification porte sur ce qui RESTE, pas sur ce qui disparaît.** *Si le motif
@@ -901,6 +935,13 @@ feront perdre une heure le jour où quelqu'un les suivra.*
 
 | Date | ID | Tâche | État | Commit | La preuve |
 |---|:--:|---|:--:|---|---|
+| **13/09** | **T11** | [TRK-068](./REFERENCE-ERREURS.md#trk-068) — borner le `fetch` vers Vizyo Auth | ✅ **FAIT ET PROUVÉ** *(remonté de `[»]`)* | `c80632ba` | 🎯 **EXERCÉE le 12/09 à 00:00:23, et les quatre conditions écrites le 06/09 tombent au mot près** : `http \| ERROR \| Vizyo Auth est injoignable : l'appel POST /v1/auth/refresh n'a pas pu aboutir. La session de l'utilisateur ne peut pas etre verifiee : il va etre deconnecte. Motif technique : aucune reponse en 8 s.`, `statusCode: 503`. **503 et non 500 ; `ERROR` et non `CRITICAL` — et `http CRITICAL` reste à 2, pas de jumelle ; dépendance ET conséquence nommées ; motif technique conservé** (le délai de 8 s, c'est le correctif qui le pose). ⚠️ Un point : l'appel est parti vers 00:00:15, `logrotate.timer` sonne à 00:00:03 sur l'hôte — *trois points ou rien* |
+| **13/09** | **T17** | [TRK-065](./REFERENCE-ERREURS.md#trk-065) — guetter la ligne hebdomadaire | ✅ **FAIT ET PROUVÉ** | `68034a1d` | 🎯 **EXERCÉE le 11/09 à 06:30:03** : *« 53 notifications n'ont pas pu être remises cette semaine faute d'appareil abonné, sur **1 compte actif** : tyger.bcn@gmail.com (53) »*, **`comptesTechniquesEcartes: 1`**, `system@tracky.local` **absent**. ⚠️ **53 n'est pas ~21, et il fallait compter avant de conclure** : en base, 21 + 21 la semaine du 28/08→04/09 (d'où le 42), **53 + 53** celle du 04/09→11/09 — le numérateur a été **×2,5 par la tempête `agents-locaux`** du plafond CLI. Sans le correctif la ligne aurait dit **106**. 🔑 *Une consigne qui prévoit un nombre suppose un débit ; quand le débit change, c'est la FORME qui prouve* |
+| **13/09** | **T30** | 🆕 [TRK-078](./REFERENCE-ERREURS.md#trk-078) — dédupliquer l'alerte de vitesse sur l'excès, pas sur le `tripId` | ☐ **OUVERT** | — | *(tâche neuve)* 🔴 **11 doublons sur 55 alertes `OVERSPEED` en 14 j (20 %)** — même véhicule, même `payload.startAt` **à la seconde**, deux `tripId`. Le recalcul crée **150 à 190 trajets `recompute` par jour** en supprimant les précédents (`Alert.trip` est `onDelete: SetNull` : 2 alertes orphelines), chaque nouvelle identité est ré-analysée et ré-alerte ; il produit aussi des trajets qui **se chevauchent**. Cas lisible : EP-047-TY 11/09, alerte 10:14, trajet supprimé 10:53, seconde alerte 10:54. *La lecture du 10/09 est rectifiée.* Prérequis naturel de T28, à faire **avant** T4 |
+| **13/09** | **T31** · **T32** | 🆕 TRK-069 · TRK-071 — le plafond hebdomadaire de la CLI du poste | ☐ **OUVERTES** | — | *(tâches neuves)* 🔴 **Du 10/09 04:00 au 13/09 12:00 (Paris), la CLI Claude du poste était au plafond** : 36 passages en échec (« You've hit your weekly limit »), 0 succès pour les trois agents qui rédigent, 7 travaux IA morts, **et les deux audits n'ont pas tourné** (centre d'alerte 11–12/09, VPS 10–13/09). Les deux agents sans modèle ont tourné (11/11, 2/2) ; reprise **12 min** après la remise à zéro, 30 récits en 4 min, rien de cassé. **T31** : 25 `CRITICAL` pour une cause → UNE ligne `DEGRADATION` par cause. **T32** : trois canaux, trois plafonds, zéro plan — décision d'exploitation |
+| **13/09** | **T14** | [TRK-053](./REFERENCE-ERREURS.md#trk-053) — provoquer ou requalifier | ☐ **OUVERT — À REQUALIFIER** | — | 📏 **L'occasion est venue à moitié** : 3 « Retour LLD » revenus le 11/09, **0 alarme, 0 alerte** ; FW-298-WV vivant sans fix depuis 41,8 h sans une ligne `gps-integrity` (chemins déjà honorés). 🔴 **Les trois roulent avec toutes leurs alertes coupées** — lever la déclaration. Seul exercice possible : débrancher un boîtier déclaré |
+| **13/09** | **T3** | [TRK-066](./REFERENCE-ERREURS.md#trk-066) — les questions du coupe-circuit | ☐ **OUVERT — question (d) ajoutée** | — | 📏 **Angle mort du 11/09 05:00** : **12 `RESTORE` sur 26 non confirmés** (10 SMS, 2 TCP) contre 1/26 les autres jours, **0 ligne** — et le silence était juste : **aucun n'était coupé la veille**, 4 ont roulé avant toute confirmation. Creux de connectivité (23–27 boîtiers sur 30, 03:00→08:45), réessai automatique à 09:39. Le jour où ça touche un véhicule *réellement coupé*, c'est le miroir de (c) |
+| **13/09** *(VPS)* | **V28** | 🆕 VPS-016 — client Docker bloqué | ☐ **OUVERT** | — | *(tâche neuve)* 🔴🔴 `docker logs --tail 60 texto-relay` (PID 159541, parent `bash -c` 159533 rattaché à init, **sans `timeout`**) bloqué depuis **04:34 UTC**, `dockerd` à **100 % d'un cœur** (charge 1,68). **5ᵉ occurrence.** Pas cet audit (toutes ses commandes bornées). L'audit VPS, qui l'aurait vu à 02:21, n'a pas tourné depuis le 09/09 |
 | **10/09** | **T26** | [TRK-075](./REFERENCE-ERREURS.md#trk-075) — remonter la décision d'alerter, borner le rejeu | ✅ **FAIT ET PROUVÉ** *(remonté de `[»]`)* | `dc35f1a3` | ✅ **33,3 h et 32 passages horaires consécutifs sans une seule ligne** `stage=compute`, après *une par passage sans exception* (27 au total). ⚠️ **La seconde moitié — « le vivier sous horizon doit passer de 4 à ~5 » — n'a PAS bougé, et il aurait été FAUX d'en conclure une purge.** Les quatre analyses ont **64, 64, 62 et 61 jours** contre 63, 63, 61 et 60 la veille : **ce sont les MÊMES**, aucune n'a disparu ; et aucune nouvelle n'a franchi la ligne des 60 jours parce qu'**il n'existe aucun candidat entre 54 et 60 jours** (le plus proche est à 53). Le vivier total, lui, grossit comme annoncé : **17 · 20 · 23**. 🔑 **La preuve anti-purge obtenue est PLUS FORTE que celle demandée** : on ne compte pas un total qui monte, on constate que *les mêmes lignes sont toujours là, vieillies d'exactement un jour*. ⚠️ *Une consigne datée qui suppose un DÉBIT CONSTANT sur une grandeur qui arrive EN PAQUETS fabrique un faux verdict dans les deux sens.* 🗓️ À guetter au **17/09**, sans que cela bloque : 4 → ~8 |
 | **10/09** | **T16** | [TRK-064](./REFERENCE-ERREURS.md#trk-064) — la sentinelle des alertes de vitesse | ✅ **FAIT ET PROUVÉ** | `8fa14cb4` | **Test daté franchi AVEC UN JOUR D'AVANCE** : il était posé au 10/09 06:30, mais le passage du **09/09 06:30** tournait déjà sous le correctif. (1) La forme neuve est là au mot près — *« **3 véhicules** de « mh cars » annoncent une vitesse que la distance parcourue contredit bien plus souvent que le reste de la flotte : FV-941-LZ (84 % de ses 19 analyses)… La flotte entière est à 52 %, **ce qui est son régime ordinaire** »*, contexte `vehiculesHorsNorme` = 3, et 1 pour « A2R ». (2) 🔑 **LA MOITIÉ DIFFICILE EST FRANCHIE AUSSI : « cdef31 » n'a produit AUCUNE ligne**, alors qu'elle en produisait une la veille (23 analyses sur 82). *La sentinelle sait se taire — ce qu'un correctif qui aurait seulement changé le libellé n'aurait pas su faire.* ⚠️ Double condition dans le **bon sens** : 4 lignes → 3, mais les restantes en disent **plus** |
 | **10/09** | **T29** | 🆕 [TRK-077](./REFERENCE-ERREURS.md#trk-077) — relire la garde du déploiement au moment où elle va tuer | ☐ **OUVERT** | — | *(tâche neuve)* 🔴 **Le garde-fou est PRÉSENT, CORRECT, et n'a rien empêché.** Chronologie à la seconde : garde franchie vers **17:43 à juste titre** (rien ne tournait), passage parti à **17:45:00.145**, image construite à **17:46:09**, `CRITICAL` écrite à **17:46:43.678**. Le script lit la table **une seule fois, au §1**, puis construit pendant plusieurs minutes avant de recréer les conteneurs — *or une construction ne tue personne, seule la recréation le fait*. 🔑 **Conséquence contre-intuitive : la garde protège de tout SAUF du cas le plus probable** — le déploiement lancé entre HH:40 et HH:45 la franchit à coup sûr **et** tue le passage à coup sûr. *Forme générale du « vérifier puis agir » : le contrôle doit être adjacent à l'ACTE, pas à la décision.* ⚠️ **Réserve** : `deploy.sh` ne pose aucune étiquette `avant-*`, donc rien ne prouve que ce déploiement soit passé par lui — **les deux lectures mènent au même geste** |
