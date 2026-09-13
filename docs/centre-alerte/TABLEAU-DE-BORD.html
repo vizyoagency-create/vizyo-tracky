@@ -90,13 +90,13 @@
 <div class="kpis">
   <div class="k ok"><div class="n">18</div><div class="l">faites et verifiees</div></div>
   <div class="k warn"><div class="n">8</div><div class="l">deployees, preuve attendue</div></div>
-  <div class="k"><div class="n">42</div><div class="l">ouvertes sur 68</div></div>
-  <div class="k dgr"><div class="n">6</div><div class="l">ouvertes en gravite 1</div></div>
+  <div class="k"><div class="n">43</div><div class="l">ouvertes sur 69</div></div>
+  <div class="k dgr"><div class="n">7</div><div class="l">ouvertes en gravite 1</div></div>
   <div class="k dgr"><div class="n">3</div><div class="l">au-dela de 7 jours</div></div>
-  <div class="k info"><div class="n">21</div><div class="l">attendent un humain</div></div>
+  <div class="k info"><div class="n">22</div><div class="l">attendent un humain</div></div>
 </div>
 
-<div class="barre" role="img" aria-label="Avancement : 18 faites, 8 deployees, 42 ouvertes sur 68">
+<div class="barre" role="img" aria-label="Avancement : 18 faites, 8 deployees, 43 ouvertes sur 69">
   <span class="s-FAIT" style="width:26%"></span>
   <span class="s-DEPLOYE" style="width:12%"></span>
   <span class="s-COMMITE" style="width:0%"></span>
@@ -111,18 +111,33 @@
 </p>
 
 <div class="filtres" id="f">
-  <button data-f="tout" aria-pressed="true">Tout (68)</button>
-  <button data-f="ouvert" aria-pressed="false">Ouvertes (42)</button>
-  <button data-f="g1" aria-pressed="false">Gravite 1 (6)</button>
-  <button data-f="humain" aria-pressed="false">Attendent un humain (21)</button>
+  <button data-f="tout" aria-pressed="true">Tout (69)</button>
+  <button data-f="ouvert" aria-pressed="false">Ouvertes (43)</button>
+  <button data-f="g1" aria-pressed="false">Gravite 1 (7)</button>
+  <button data-f="humain" aria-pressed="false">Attendent un humain (22)</button>
   <button data-f="code" aria-pressed="false">A faire soi-meme (11)</button>
   <button data-f="centre-alerte" aria-pressed="false">Centre d'alerte</button>
   <button data-f="vps" aria-pressed="false">VPS</button>
   <button data-f="fait" aria-pressed="false">Closes (26)</button>
 </div>
 
-<h2 class="sec">Les 68 taches — ouvertes et graves d'abord</h2>
+<h2 class="sec">Les 69 taches — ouvertes et graves d'abord</h2>
 <div id="liste">
+<article class="t etat-OUVERT g1" data-etat="OUVERT" data-partie="centre-alerte" data-classe="HUMAIN" data-g="1">
+  <div class="t-h">
+    <span class="marque" title="Ouvert">☐</span>
+    <span class="id">T38</span>
+    <span class="fiche">TRK-066</span>
+    <span class="classe">🤝 Decision ou geste humain</span>
+    <span class="grav" title="gravite 1">G1</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-13">0 j</span>
+    
+  </div>
+  <h3>Remettre en service les plannings du coupe-circuit — 37 coupes depuis le 11/09, apres le chantier fiabilite</h3>
+  <p class="detail">Le 11/09 a 18h49 UTC, apres la reprise matinale manquee de 12 vehicules sur 26, tu as desactive l automatisation horaire des 37 plannings (30 cdef31, 7 mh cars) et remis en route quatre vehicules mh cars a la main. Depuis, aucune coupure ni remise en route automatique : les vehicules des deux societes ne sont plus immobilises la nuit. Le chantier fiabilite du 12/09 (docs/fiabilite-coupe-circuit-2026-09, branche codex/tracky-cutoff-reliability-2026-09-12, worktree vizyo-tracky-reliability-sep2026) pose les conditions de la remise en service : lots R1 a R7 (verite de livraison, remise en route durable et prioritaire, interlock avant coupure, file SMS regulee, tests de panne, canari terrain), aucun deploiement ni changement VPS dans ce chantier, plan de lundi 14/09 en mode supervise sans coupure automatique. La reactivation est TA decision (R7.4), progressive, apres canari. Ce que la page doit montrer d ici la : que le coupe-circuit automatique est a l arret, et depuis quand.</p>
+  <p class="attendue"><b>Preuve attendue</b> — Les plannings reactives progressivement (canari puis flotte) SANS remise en route non confirmee a 7h00 sur sept jours — mesure : zero matin ou un vehicule coupe la veille est sans RESTORE acquittee a 7h00 (Paris), et zero alerte critique de remise en route non confirmee non traitee.</p>
+  <div class="badges"><span class="b b-phare">⭐ le plus rentable</span></div>
+</article>
 <article class="t etat-OUVERT g1" data-etat="OUVERT" data-partie="vps" data-classe="HUMAIN" data-g="1">
   <div class="t-h">
     <span class="marque" title="Ouvert">☐</span>
@@ -148,8 +163,8 @@
     <span class="depuis" title="ouverte depuis le 2026-09-04">9 j</span>
     
   </div>
-  <h3>Trancher les trois questions du coupe-circuit — plus une</h3>
-  <p class="detail">10 s sur un dernier recours ? Un reessai, et comment le rendre idempotent ? Une immobilisation demandee qui n a pas eu lieu vaut-elle CRITICAL ? 🆕 (d) AJOUTEE LE 13/09, MESUREE SUR UN ANGLE MORT : le 11/09 a 05h00, douze remises en route programmees sur vingt-six sont parties NON CONFIRMEES (dix par SMS, deux TCP) contre une sur vingt-six chaque autre jour du 06 au 13/09, sans une ligne au centre d alerte — et il avait raison de se taire CETTE FOIS : aucun de ces douze vehicules n avait ete coupe la veille (les seuls CUT du 10/09 soir visaient trois vehicules mh cars, remis en route dans les vingt minutes), et quatre d entre eux ont roule avant toute confirmation. Cause : un creux de connectivite, 23 a 27 boitiers connectes sur 30 entre 03h00 et 08h45 (GS-187-NY a rejoue un tampon de deux heures a 08h20) ; le planificateur a reessaye seul a 09h39, tous acquittes. Le jour ou la meme chose arrive a un vehicule REELLEMENT coupe la veille, une remise en route non confirmee a 07h00 (Paris) est une immobilisation qui continue sans qu on l ait demandee — le miroir exact de (c). La donnee existe (derniere commande acquittee = CUT, aucune RESTORE acquittee depuis) : faut-il une ligne, et a quel niveau ?</p>
+  <h3>Trancher les quatre questions du coupe-circuit — ou les tenir pour tranchees par le chantier fiabilite (D8)</h3>
+  <p class="detail">10 s sur un dernier recours ? Un reessai, et comment le rendre idempotent ? Une immobilisation demandee qui n a pas eu lieu vaut-elle CRITICAL ? 🆕 (d) AJOUTEE LE 13/09, MESUREE SUR UN ANGLE MORT : le 11/09 a 05h00, douze remises en route programmees sur vingt-six sont parties NON CONFIRMEES (dix par SMS, deux TCP) contre une sur vingt-six chaque autre jour du 06 au 13/09, sans une ligne au centre d alerte — et il avait raison de se taire CETTE FOIS : aucun de ces douze vehicules n avait ete coupe la veille (les seuls CUT du 10/09 soir visaient trois vehicules mh cars, remis en route dans les vingt minutes), et quatre d entre eux ont roule avant toute confirmation. Cause : un creux de connectivite, 23 a 27 boitiers connectes sur 30 entre 03h00 et 08h45 (GS-187-NY a rejoue un tampon de deux heures a 08h20) ; le planificateur a reessaye seul a 09h39, tous acquittes. Le jour ou la meme chose arrive a un vehicule REELLEMENT coupe la veille, une remise en route non confirmee a 07h00 (Paris) est une immobilisation qui continue sans qu on l ait demandee — le miroir exact de (c). La donnee existe (derniere commande acquittee = CUT, aucune RESTORE acquittee depuis) : faut-il une ligne, et a quel niveau ? — INSTRUITE LE 13/09 AU SOIR, ET RECTIFIEE : la commande en echec du 04/09 a 05h00 (Paris) sur FG-669-DQ n etait PAS une coupure mais une REMISE EN ROUTE du planificateur — le vehicule avait ete coupe la veille a 20h00 (acquittee en TCP), s est tu a 20h57, et le relais SMS n a pas repondu en dix secondes ; le planificateur a reessaye une minute plus tard par SMS, sans confirmation, et le vehicule n a plus bouge jusqu a ta verification sur place le 12/09. La fiche disait « le vehicule n a pas ete immobilise » : c est l inverse, et c est le cas (d), pas le cas (c). Mesure sur 30 jours : pres de 2 000 commandes moteur, UNE seule en echec franc, 154 « envoyees » jamais acquittees (dont 55 remises en route par SMS), et sur 731 soirs de coupure acquittee, 44 lendemains sans remise en route prouvee a 7h00 (17 le seul 30/08, 12 le 11/09). Acquittement TCP : 3 s en mediane, 10 s au pire. DEPUIS LE 11/09 A 18h49 UTC TU AS COUPE LES 37 PLANNINGS (30 cdef31, 7 mh cars) ; le chantier fiabilite ouvert le 12/09 (docs/fiabilite-coupe-circuit-2026-09, 12 documents, lots R1 a R7 dans un worktree a part, rien en production) repond aux quatre questions : (a) les dix secondes restent, mais une remise en route est reessayee par des chemins independants jusqu a confirmation ou escalade humaine ; (b) remise en route repetable et idempotente, coupure jamais rejouee apres sa validite, idempotence garantie par le serveur ; (c) et (d) toute remise en route non confirmee est une alerte critique en moins de soixante secondes, et une coupure automatique est refusee si la voie de reprise est degradee. Decision D8 posee sur le poste de commande : tenir T3 pour tranchee par ce chantier (recommande), ou rouvrir. La remise en service des plannings est suivie par T38.</p>
   
   <div class="badges"></div>
 </article>
@@ -223,8 +238,8 @@
     <span class="depuis" title="ouverte depuis le 2026-09-06">7 j</span>
     
   </div>
-  <h3>Calibrer les notifications d'exces de vitesse</h3>
-  <p class="detail">14 par jour et par super-admin, pour un produit calibre sur 2 a 3. Relever le seuil, ou restreindre les destinataires. LE SUJET A DEUX COTES depuis le 07/09 : les trajets les plus rapides sont sur A2R dont l alerte de vitesse est ETEINTE, pendant que les deux flottes armees restent sous leur seuil — la flotte qui roule le plus vite est exactement celle ou l alerte est eteinte, et regler le seuil sans regarder QUI est arme ne traiterait que la moitie bruyante. AU 10/09, un chiffre a ne pas mal lire : 52 remises sur 24 h dont 6 EN ECHEC, contre 2 la veille. Ce n est PAS une degradation — les echecs valent exactement deux fois le nombre de lignes critiques agents-locaux du jour (3 le 09/09 donnent 6, 1 le 08/09 donne 2, 3 le 06/09 donnent 6, 1 le 07/09 donne 2). Une valeur qui triple peut n etre que la fonction exacte d un autre compteur. 🔴 AU 13/09, A CORRIGER AVANT DE CALIBRER : un cinquieme des notifications d exces de vitesse est un DOUBLON (TRK-078, T30 — onze sur cinquante-cinq en quatorze jours, meme vehicule, meme instant d exces a la seconde, deux identites de trajet). Regler le seuil sans corriger la cle, c est regler la sensibilite d un instrument qui compte double. Les lignes des 10 et 11/09 : 15 a 18 notifications en 24 h par super-admin, dont 8 a 9 OVERSPEED.</p>
+  <h3>Calibrer les notifications d exces de vitesse — qui doit les recevoir (D9)</h3>
+  <p class="detail">14 par jour et par super-admin, pour un produit calibre sur 2 a 3. Relever le seuil, ou restreindre les destinataires. LE SUJET A DEUX COTES depuis le 07/09 : les trajets les plus rapides sont sur A2R dont l alerte de vitesse est ETEINTE, pendant que les deux flottes armees restent sous leur seuil — la flotte qui roule le plus vite est exactement celle ou l alerte est eteinte, et regler le seuil sans regarder QUI est arme ne traiterait que la moitie bruyante. AU 10/09, un chiffre a ne pas mal lire : 52 remises sur 24 h dont 6 EN ECHEC, contre 2 la veille. Ce n est PAS une degradation — les echecs valent exactement deux fois le nombre de lignes critiques agents-locaux du jour (3 le 09/09 donnent 6, 1 le 08/09 donne 2, 3 le 06/09 donnent 6, 1 le 07/09 donne 2). Une valeur qui triple peut n etre que la fonction exacte d un autre compteur. 🔴 AU 13/09, A CORRIGER AVANT DE CALIBRER : un cinquieme des notifications d exces de vitesse est un DOUBLON (TRK-078, T30 — onze sur cinquante-cinq en quatorze jours, meme vehicule, meme instant d exces a la seconde, deux identites de trajet). Regler le seuil sans corriger la cle, c est regler la sensibilite d un instrument qui compte double. Les lignes des 10 et 11/09 : 15 a 18 notifications en 24 h par super-admin, dont 8 a 9 OVERSPEED. — INSTRUITE LE 13/09 AU SOIR : deux societes armees (cdef31 30 vehicules, mh cars 7), DEJA reglees a +40 km/h sur la limite et 130 km/h absolu (le defaut est +20). Sur quatorze jours : 55 alertes, 49 chez mh cars (jusqu a 142 km/h), 6 chez cdef31 ; 58 pour cent viennent du plafond absolu (130 a 142 km/h sur des routes a 110), 42 pour cent de la regle des +40 ; 22 pour cent etaient des doublons, que T30 supprime depuis le 13/09 — il en reste environ trois par jour. Les destinataires : l administrateur de mh cars recoit les siennes (7 a 8 par jour : sa flotte, son reglage), et les deux super-administrateurs recoivent TOUTES les flottes — 7 a 9 exces par jour, plus 5 a 11 notifications de la sentinelle des agents pendant la panne de la semaine (11 le 13/09 : huit CRITICAL d agents tues ou au plafond, trois causes communes — T36 et T31 les reduisent, et la cause « plafond » ne se rouvre plus sur un echec ancien depuis 13471c53). La saturation est donc celle des super-admins, pas celle du client ; admin@vizyoagency.com a d ailleurs choisi « tout recevoir, des info » dans ses preferences. Decision D9 posee : couper les exces pour les super-admins et garder les seuils (recommande), relever le plafond a 140, ou ne rien changer.</p>
   
   <div class="badges"></div>
 </article>

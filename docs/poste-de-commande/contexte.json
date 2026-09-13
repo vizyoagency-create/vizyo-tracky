@@ -18,6 +18,14 @@
       "total": null,
       "pied": "25 par passage",
       "pied2": "s’éteint seule"
+    },
+    {
+      "nom": "Coupe-circuit automatique — À L’ARRÊT",
+      "texte": "37 plannings coupés par toi le 11/09 à 20 h 49, après la reprise matinale manquée de 12 véhicules sur 26. Le chantier fiabilité (12 documents, lots R1 à R7) prépare la remise en service ; lundi 14/09 en mode supervisé, sans coupure automatique.",
+      "fait": null,
+      "total": null,
+      "pied": "0 planning actif sur 37",
+      "pied2": "réactivation sur ta décision (T38)"
     }
   ],
   "chiffres": [
@@ -198,6 +206,40 @@
         "note": "Tu as raison c'est une bonne solution mais pas pour le moment on va reste sur la solution actuel, par contre cette tache laisse la moi dans les choses a faire pour ne pas oublié !",
         "suite": "Pas maintenant, par ton choix : T35 le garde dans ce qui t’attend, sans urgence, pour ne pas l’oublier."
       }
+    },
+    {
+      "id": "D8",
+      "sujet": "Les quatre questions du coupe-circuit — tranchées par le chantier fiabilité ?",
+      "texte": "Rectification d’abord : la commande qui a échoué le 04/09 à 05 h 00 sur FG-669-DQ n’était pas une coupure mais une REMISE EN ROUTE — le véhicule avait été coupé la veille à 20 h 00 (acquittée), le relais SMS n’a pas répondu en dix secondes, le planificateur a réessayé une minute plus tard par SMS sans confirmation, et le véhicule n’a plus bougé jusqu’à ta vérification sur place le 12/09. C’est le cas (d), pas le cas (c). Sur 30 jours : près de 2 000 commandes moteur, une seule en échec franc, 154 « envoyées » jamais acquittées (dont 55 remises en route par SMS), et sur 731 soirs de coupure, 44 lendemains sans remise en route prouvée à 7 h. Depuis le 11/09 à 20 h 49 tu as coupé les 37 plannings, et le chantier fiabilité ouvert le 12/09 répond aux quatre questions : (a) les dix secondes restent, mais une remise en route est réessayée par des chemins indépendants jusqu’à confirmation ou escalade humaine ; (b) remise en route répétable et idempotente, coupure jamais rejouée après sa validité, idempotence garantie par le serveur ; (c) et (d) toute remise en route non confirmée est une alerte critique en moins de soixante secondes, et une coupure automatique est refusée si la voie de reprise est dégradée. Ce que je recommande : tenir T3 pour tranchée par ce chantier, et suivre la remise en service (T38) plutôt que rouvrir les questions.",
+      "options": [
+        {
+          "v": "chantier",
+          "l": "Oui — tranchées par le chantier fiabilité"
+        },
+        {
+          "v": "revoir",
+          "l": "Non — je veux en rediscuter"
+        }
+      ]
+    },
+    {
+      "id": "D9",
+      "sujet": "Qui doit recevoir les excès de vitesse",
+      "texte": "Deux sociétés armées (cdef31, mh cars), déjà réglées à +40 km/h sur la limite et 130 km/h absolu. Sur quatorze jours : 55 alertes, 49 chez mh cars (7 véhicules, jusqu’à 142 km/h), 6 chez cdef31 ; 58 % viennent du plafond absolu (130 à 142 km/h sur des routes à 110), 42 % de la règle des +40 ; 22 % étaient des doublons, que T30 supprime depuis le 13/09 — il en reste environ trois par jour. Les destinataires : l’administrateur de mh cars reçoit les siennes (7 à 8 par jour — sa flotte, son réglage), et les deux super-administrateurs reçoivent TOUTES les flottes : 7 à 9 excès par jour, plus 5 à 11 notifications de la sentinelle des agents pendant la panne de la semaine (T36 et T31 les réduisent). La saturation est donc la tienne, pas celle du client — et ton compte a choisi « tout recevoir, dès info ». Ce que je recommande : couper les excès de vitesse dans les préférences des deux super-administrateurs (ils restent lisibles au centre d’alerte et chez le client) et ne pas toucher aux seuils — relever le plafond à 140 tolérerait 139 km/h sur une route à 110.",
+      "options": [
+        {
+          "v": "super-admins",
+          "l": "Couper les excès pour les super-admins, garder les seuils"
+        },
+        {
+          "v": "plafond-140",
+          "l": "Garder tout le monde, relever le plafond à 140"
+        },
+        {
+          "v": "rien",
+          "l": "Ne rien changer — trois par jour, c’est vivable"
+        }
+      ]
     }
   ],
   "faits": [
