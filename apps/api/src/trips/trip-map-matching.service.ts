@@ -20,6 +20,13 @@ export interface ResultatRecalage {
 }
 
 /**
+ * TRK-016 / T28 — par quel chemin un tracé recalé arrive ici. Le troisième, `cloture`, est
+ * posé par `TripsService` à la fin du trajet ou à son recalcul ; ces deux-ci sont des reprises
+ * APRÈS COUP, et c'est précisément ce que la mesure de qualité doit pouvoir écarter.
+ */
+export type OrigineRecalage = 'rejeu' | 'rattrapage';
+
+/**
  * ══════════════════════════════════════════════════════════════════════════════════════════
  * RECALER UN TRAJET SUR LES ROUTES, À LA DEMANDE
  * ══════════════════════════════════════════════════════════════════════════════════════════
@@ -53,7 +60,7 @@ export class TripMapMatchingService {
     private readonly mapMatching: MapMatchingService,
   ) {}
 
-  async recaler(tripId: string, demandeur: DemandeurRecalage): Promise<ResultatRecalage> {
+  async recaler(tripId: string, demandeur: DemandeurRecalage, origine: OrigineRecalage = 'rejeu'): Promise<ResultatRecalage> {
     const trip = await this.trips.findOne(tripId, demandeur);
     if (trip.polylineMatched) return { polylineMatched: trip.polylineMatched, enCours: false };
     if (this.enCours.has(tripId)) return { polylineMatched: null, enCours: true };
@@ -69,7 +76,11 @@ export class TripMapMatchingService {
         return { polylineMatched: null, enCours: false };
       }
       const json = JSON.stringify(recale);
-      await this.prisma.trip.update({ where: { id: tripId }, data: { polylineMatched: json } });
+      // T28 — daté et signé : une reprise après coup ne doit plus passer pour un recalage à la clôture.
+      await this.prisma.trip.update({
+        where: { id: tripId },
+        data: { polylineMatched: json, polylineMatchedAt: new Date(), polylineMatchedSource: origine },
+      });
       this.logger.log(`Recalage : trajet ${tripId}, ${brut.length} -> ${recale.length} points.`);
       return { polylineMatched: json, enCours: false };
     } finally {

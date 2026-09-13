@@ -451,6 +451,28 @@ describe('TripsService — invariants rapports', () => {
       expect(prisma.arretsCarburantSupprimes).toEqual([]);
     });
 
+    /**
+     * TRK-016 / T28 (2026-09-13) — un tracé recalé sans date ne dit pas QUAND il l'a été.
+     * La mesure « recalé à la clôture » comptait sur `polylineMatched IS NULL` dans une fenêtre
+     * glissante : le rattrapage nocturne la réécrivait chaque nuit (le 05/09 passait de 132 à 0
+     * trajets sans recalage sans qu'aucun trajet nouveau n'apparaisse). Le tracé posé à la
+     * clôture est désormais daté et signé « cloture ».
+     */
+    it('T28 — à la clôture, le tracé recalé est DATÉ et signé « cloture »', async () => {
+      const { svc, prisma } = buildService();
+      prisma.trips.set('t-clos', { id: 't-clos' });
+      const pts = [{ lat: 43.6, lng: 1.4 }, { lat: 43.61, lng: 1.41 }, { lat: 43.62, lng: 1.42 }];
+      (svc as any).mapMatching = { match: async () => pts };
+
+      (svc as any).runMapMatchingAsync('t-clos', pts);
+      await new Promise((r) => setTimeout(r, 0));
+
+      const t = prisma.trips.get('t-clos')!;
+      expect(t['polylineMatched']).toBe(JSON.stringify(pts));
+      expect(t['polylineMatchedAt']).toBeInstanceOf(Date);
+      expect(t['polylineMatchedSource']).toBe('cloture');
+    });
+
     it('recompute does not drop a live trip that started after the window (#16)', async () => {
       const { svc, prisma } = buildService();
       prisma.vehicles.set(VEHICLE_ID, {

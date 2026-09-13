@@ -1781,12 +1781,13 @@ export class TripAutomationService implements OnApplicationBootstrap {
       // redit pour qui appellerait cette méthode autrement.
       if (!c.polyline) continue;
       try {
+        // T28 — signé « rattrapage » : ce tracé n'entrera jamais dans la qualité à la clôture.
         const r = await this.mapMatching.recaler(c.id, {
           userId: user.id,
           role: user.role,
           fleetId: user.fleetId,
           accessibleVehicleIds: 'ALL',
-        });
+        }, 'rattrapage');
         if (r.polylineMatched) stats.recalesTraces++;
         else this.memoriserRefusRecalage(c.id);
       } catch (e) {

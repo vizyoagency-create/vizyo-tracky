@@ -1121,6 +1121,13 @@ model Trip {
   /// Sprint G.3 V1.4 : polyligne snappee aux routes via OSRM /match.
   /// Si null, le frontend affiche `polyline` (raw GPS).
   polylineMatched    String?
+  /// TRK-016 / T28 (2026-09-13) — QUAND le trace recale a ete pose. Sans cette date, rien ne
+  /// distinguait « recale a la cloture » de « rattrape la nuit suivante », et la mesure de
+  /// qualite du recalage se reecrivait chaque nuit. Nulle pour les traces poses avant le 13/09.
+  polylineMatchedAt  DateTime?
+  /// Par quel chemin : `cloture` (a la fin du trajet ou a son recalcul), `rattrapage` (reprise
+  /// de l historique par l automatisation), `rejeu` (a la demande, a l ouverture d un trajet).
+  polylineMatchedSource String?
   /// Note libre attachee au trajet, max ~500 chars cote app (libre cote DB).
   /// Editable par FLEET_ADMIN, FLEET_MANAGER (avec perm `trips_edit_notes`)
   /// et SUPER_ADMIN. On ne garde pas l'historique : seul le dernier auteur

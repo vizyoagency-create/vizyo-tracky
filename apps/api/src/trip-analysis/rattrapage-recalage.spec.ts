@@ -119,7 +119,9 @@ describe('Rattrapage du recalage des tracés', () => {
     const stats = await svc.runNow();
 
     expect(recale).toHaveBeenCalledTimes(3);
-    expect(recale).toHaveBeenCalledWith('t-0', expect.objectContaining({ accessibleVehicleIds: 'ALL' }));
+    // T28 — le rattrapage SIGNE ce qu'il recale : c'est ce qui permet de le compter à part de
+    // la clôture, et de ne plus lui laisser réécrire le passé.
+    expect(recale).toHaveBeenCalledWith('t-0', expect.objectContaining({ accessibleVehicleIds: 'ALL' }), 'rattrapage');
     expect(stats.recalesTraces).toBe(3);
   });
 

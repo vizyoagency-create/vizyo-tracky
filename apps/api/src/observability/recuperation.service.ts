@@ -1,5 +1,29 @@
 import { Injectable } from '@nestjs/common';
+import { formatFleetDate, parisDayKey, parisDayStart } from '../common/utils/datetime';
 import { PrismaService } from '../prisma/prisma.service';
+
+/**
+ * ── TRK-016 / T28 (2026-09-13) — « À LA CLÔTURE » SE DÉFINIT PAR LE TEMPS ─────────────────
+ *
+ * Un trajet clôturé est recalculé par le passage horaire (HH:45), et recalé dans la foulée :
+ * au pire, ~70 min après sa fin. Deux heures laissent de la marge. Au-delà, le tracé est venu
+ * du rattrapage de l'historique ou d'un rejeu — un travail après coup, qui ne dit rien de ce
+ * que la chaîne fait sur un trajet neuf.
+ *
+ * Défini par le TEMPS et non par le chemin : un trajet recalculé des jours plus tard (arriéré)
+ * porterait la signature « cloture » sans l'être. La date, elle, ne ment pas — et c'est elle
+ * qui rend le chiffre d'une journée close immuable une fois deux heures passées.
+ */
+export const DELAI_CLOTURE_MS = 2 * 3_600_000;
+
+/** Ce que la requête sur la journée close rend — des entiers, castés côté SQL. */
+interface JourneeClose {
+  total: number;
+  aLaCloture: number;
+  apresCoup: number;
+  sansRecalage: number;
+  origineInconnue: number;
+}
 
 /**
  * Ce que nos services d'enrichissement ont RÉELLEMENT récupéré — trajets et lieux.
@@ -53,7 +77,16 @@ export class RecuperationService {
     return Math.round((1000 * obtenu) / attendu) / 10;
   }
 
-  async etat(): Promise<{ lignes: LigneRecuperation[]; mesureLe: string }> {
+  /** T28 — ce qui n'a pas été recalé à la clôture, part par part : la réponse à « pourquoi pas 100 ? ». */
+  private manqueCloture(j: JourneeClose): string | null {
+    const parts: string[] = [];
+    if (j.apresCoup > 0) parts.push(`${j.apresCoup.toLocaleString('fr-FR')} recalé(s) après coup`);
+    if (j.sansRecalage > 0) parts.push(`${j.sansRecalage.toLocaleString('fr-FR')} sans tracé recalé`);
+    if (j.origineInconnue > 0) parts.push(`${j.origineInconnue.toLocaleString('fr-FR')} d’origine inconnue (recalé(s) avant le 13/09)`);
+    return parts.length > 0 ? parts.join(' · ') : null;
+  }
+
+  async etat(maintenant = new Date()): Promise<{ lignes: LigneRecuperation[]; mesureLe: string }> {
     /**
      * ⚠️ LE DÉNOMINATEUR HONNÊTE EXCLUT L'IMPOSSIBLE.
      *
@@ -91,6 +124,40 @@ export class RecuperationService {
       this.prisma.geocodeCache.count(),
       this.prisma.speedLimitCache.count(),
       this.prisma.speedLimitCache.count({ where: { maxspeed: { not: null } } }),
+    ]);
+
+    /**
+     * ── T28 — LE RECALAGE, EN DEUX GRANDEURS QUI NE SE MÉLANGENT PLUS ─────────────────────
+     *
+     * 1. La QUALITÉ À LA CLÔTURE, sur la journée CLOSE d'hier (minuit à minuit, heure de Paris) :
+     *    parmi les trajets clôturés ce jour-là, combien portaient un tracé recalé dans les deux
+     *    heures. Une journée close ne bouge plus : la re-mesurer demain rend le même chiffre.
+     *    C'est la propriété qui manquait — le taux glissant se réécrivait chaque nuit.
+     * 2. L'AVANCEMENT DU RATTRAPAGE : ce qu'il a recalé sur ce qu'il avait à faire. Compté
+     *    depuis le 13/09, jour où les tracés ont commencé à porter leur origine.
+     *
+     * La première demande de comparer deux colonnes (date du recalage contre date de clôture),
+     * ce que Prisma ne sait pas écrire : une requête brute, bornée par les deux instants.
+     */
+    const cleAujourdhui = parisDayKey(maintenant);
+    const finHier = parisDayStart(cleAujourdhui);
+    const debutHier = parisDayStart(parisDayKey(new Date(finHier.getTime() - 1)));
+    const [journee] = await this.prisma.$queryRaw<JourneeClose[]>`
+      SELECT
+        count(*)::int AS "total",
+        count(*) FILTER (WHERE "polylineMatchedAt" IS NOT NULL
+                           AND "polylineMatchedAt" <= "endedAt" + (${DELAI_CLOTURE_MS / 1000} * interval '1 second'))::int AS "aLaCloture",
+        count(*) FILTER (WHERE "polylineMatchedAt" IS NOT NULL
+                           AND "polylineMatchedAt" >  "endedAt" + (${DELAI_CLOTURE_MS / 1000} * interval '1 second'))::int AS "apresCoup",
+        count(*) FILTER (WHERE "polylineMatched" IS NULL)::int AS "sansRecalage",
+        count(*) FILTER (WHERE "polylineMatched" IS NOT NULL AND "polylineMatchedAt" IS NULL)::int AS "origineInconnue"
+      FROM "trips"
+      WHERE "endedAt" >= ${debutHier} AND "endedAt" < ${finHier} AND "polyline" IS NOT NULL
+    `;
+    const hier = journee ?? { total: 0, aLaCloture: 0, apresCoup: 0, sansRecalage: 0, origineInconnue: 0 };
+    const [rattrapes, resteARecaler] = await Promise.all([
+      this.prisma.trip.count({ where: { polylineMatchedSource: 'rattrapage' } }),
+      this.prisma.trip.count({ where: { polylineMatched: null, polyline: { not: null }, endedAt: { not: null } } }),
     ]);
 
     const reste = (n: number) => (n > 0 ? `${n.toLocaleString('fr-FR')} restant(s)` : null);
@@ -145,6 +212,33 @@ export class RecuperationService {
         obtenu: avecRecit,
         taux: this.taux(avecRecit, analyses),
         manque: reste(analyses - avecRecit),
+      },
+      {
+        id: 'recalage-cloture',
+        famille: 'Trajets',
+        libelle: `Tracé recalé à la clôture — journée du ${formatFleetDate(debutHier)}`,
+        role:
+          "Un trajet clôturé doit suivre la route dans les deux heures : le passage horaire le recalcule et le recale. " +
+          "Mesuré sur la journée close d'hier, minuit à minuit en heure de Paris — ce chiffre ne bouge plus. " +
+          "Ce qui est recalé plus tard compte « après coup » : c'est le travail du rattrapage, pas celui de la clôture, " +
+          "et le mélanger avec elle réécrivait le passé chaque nuit.",
+        attendu: hier.total,
+        obtenu: hier.aLaCloture,
+        taux: this.taux(hier.aLaCloture, hier.total),
+        manque: this.manqueCloture(hier),
+      },
+      {
+        id: 'recalage-rattrapage',
+        famille: 'Trajets',
+        libelle: 'Rattrapage des tracés (historique)',
+        role:
+          "Quinze tracés d'historique par passage horaire, en fin de course, tant qu'il en reste. " +
+          "Compté depuis le 13/09, jour où les tracés ont commencé à porter leur origine : ceux recalés avant " +
+          "ne sont ni dans l'obtenu ni dans le reste. Une autre grandeur que la clôture, exprès.",
+        attendu: rattrapes + resteARecaler,
+        obtenu: rattrapes,
+        taux: this.taux(rattrapes, rattrapes + resteARecaler),
+        manque: reste(resteARecaler),
       },
       {
         id: 'portions',

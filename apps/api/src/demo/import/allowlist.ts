@@ -174,7 +174,7 @@ export const ALLOWLIST: Readonly<Record<string, RegleModele>> = {
     copies: [
       'startedAt', 'endedAt', 'durationSeconds', 'startLat', 'startLng', 'endLat', 'endLng', 'distanceKm',
       'distanceMeters', 'maxSpeed', 'avgSpeed', 'movingSeconds', 'positionCount', 'segmentationSource',
-      'polyline', 'polylineMatched', 'driverSource', 'createdAt',
+      'polyline', 'polylineMatched', 'polylineMatchedAt', 'polylineMatchedSource', 'driverSource', 'createdAt',
     ],
     transformes: ['id', 'vehicleId', 'trackerId', 'fleetId', 'driverId'],
     imposes: ['missionId', 'notes', 'notesUpdatedAt', 'notesUpdatedById'],

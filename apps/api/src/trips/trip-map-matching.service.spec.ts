@@ -35,8 +35,21 @@ describe('TripMapMatchingService — recalage à la demande', () => {
     const r = await svc.recaler('t1', DEMANDEUR);
 
     expect(mapMatching.match).toHaveBeenCalledWith(BRUT);
-    expect(prisma.trip.update).toHaveBeenCalledWith({ where: { id: 't1' }, data: { polylineMatched: JSON.stringify(RECALE) } });
+    // TRK-016 / T28 — le tracé est DATÉ et SIGNÉ : sans cela, rien ne distingue « recalé à la
+    // clôture » de « rattrapé la nuit suivante », et la mesure réécrit le passé.
+    expect(prisma.trip.update).toHaveBeenCalledWith({
+      where: { id: 't1' },
+      data: { polylineMatched: JSON.stringify(RECALE), polylineMatchedAt: expect.any(Date), polylineMatchedSource: 'rejeu' },
+    });
     expect(r).toEqual({ polylineMatched: JSON.stringify(RECALE), enCours: false });
+  });
+
+  it('T28 — le rattrapage signe ses tracés « rattrapage », le rejeu « rejeu » par défaut', async () => {
+    const { svc, prisma } = build({ id: 't1', polyline: JSON.stringify(BRUT), polylineMatched: null });
+
+    await svc.recaler('t1', DEMANDEUR, 'rattrapage');
+
+    expect(prisma.trip.update.mock.calls[0][0].data.polylineMatchedSource).toBe('rattrapage');
   });
 
   it('un trajet déjà recalé ne coûte aucune requête : on rend ce qui existe', async () => {

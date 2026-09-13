@@ -1347,6 +1347,11 @@ export class TripsService implements OnModuleInit {
   /**
    * Sprint G.3 — lance le map-matching OSRM en arriere-plan et persiste
    * `polylineMatched` une fois pret. Ne bloque jamais le caller.
+   *
+   * TRK-016 / T28 (2026-09-13) — le tracé est DATÉ et signé « cloture » : c'est ce qui permet
+   * de mesurer la qualité du recalage à la clôture sans que le rattrapage nocturne ne réécrive
+   * le chiffre de la veille. « Clôture » vaut pour la fin du trajet live comme pour son recalcul
+   * horaire : les deux sont le moment où le trajet prend sa forme, pas une reprise après coup.
    */
   private runMapMatchingAsync(tripId: string, points: Array<{ lat: number; lng: number }>): void {
     if (points.length < 2) return;
@@ -1356,7 +1361,7 @@ export class TripsService implements OnModuleInit {
         if (!matched || matched.length < 2) return;
         await this.prisma.trip.update({
           where: { id: tripId },
-          data: { polylineMatched: JSON.stringify(matched) },
+          data: { polylineMatched: JSON.stringify(matched), polylineMatchedAt: new Date(), polylineMatchedSource: 'cloture' },
         });
         this.logger.log(`Map-matching OK pour trip ${tripId} (${points.length} -> ${matched.length} points)`);
       } catch (err) {

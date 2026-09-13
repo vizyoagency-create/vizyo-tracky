@@ -596,6 +596,8 @@ export function transformerTrajet(src: Trip, ctx: Contexte): Prisma.TripCreateMa
     missionId: null,
     polyline: src.polyline,
     polylineMatched: src.polylineMatched,
+    polylineMatchedAt: src.polylineMatchedAt,
+    polylineMatchedSource: src.polylineMatchedSource,
     notes: null,
     notesUpdatedAt: null,
     notesUpdatedById: null,
