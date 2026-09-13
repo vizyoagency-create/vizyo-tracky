@@ -73,6 +73,11 @@
   ],
   "faits": [
     {
+      "d": "13/09",
+      "quoi": "Le script de déploiement est incontournable",
+      "preuve": "Un contournement volontaire — l’API recréée à la main à 12:55 UTC — a produit la ligne « Déploiement hors script » au centre d’alerte <b>109 s plus tard</b>, avec le sha, l’heure et l’auteur du dernier déploiement légitime. La garde est relue juste avant la recréation, les repères de repli sont posés seuls. Décision D1 tenue le jour même."
+    },
+    {
       "d": "09/09",
       "quoi": "La sentinelle nomme des boîtiers, plus des flottes",
       "preuve": "Passage de 06:30 : quatre véhicules nommés avec leur part — FV-941-LZ à 84 %, GA-490-SJ à 64 % — et <b>silence pour cdef31</b>, qui recevait un message la veille. Le rejeu de la règle en SQL donne exactement les mêmes."
