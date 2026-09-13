@@ -125,24 +125,31 @@
       "id": "T5",
       "partie": "centre-alerte",
       "fiche": "TRK-062",
-      "titre": "Autoriser la migration SENT_UNCONFIRMED",
-      "detail": "Verifie absent de l artefact servi 8 fois (SENT_UNCONFIRMED : zero fichier dans dist/tracker-commands au 13/09). Les 2 commandes SMS atteignent 288,1 et 284,7 heures au 13/09, soit exactement 24,0 heures de plus par jour pour la 6e fois : elles ne se fermeront JAMAIS seules.",
-      "classe": "HUMAIN",
+      "titre": "SENT_UNCONFIRMED pour les commandes de boitier parties par SMS — la migration autorisee, la borne posee",
+      "detail": "Verifie absent de l artefact servi 8 fois (SENT_UNCONFIRMED : zero fichier dans dist/tracker-commands au 13/09). Les 2 commandes SMS atteignent 288,1 et 284,7 heures au 13/09, soit exactement 24,0 heures de plus par jour pour la 6e fois : elles ne se fermeront JAMAIS seules. — AUTORISEE ET FAITE LE 13/09 AU SOIR (« prends T5 »). Mesure avant : 2 commandes SENT/SMS a 298 h (shock_on et shock_off du 01/09 sur BP-434-RD), 999 ACKNOWLEDGED/TCP, 5 372 FAILED/TCP, et ZERO commande SMS jamais acquittee dans la table — le canal n a pas d accuse rapproche, la borne est donc la seule fin de vie possible. Geste : valeur SENT_UNCONFIRMED ajoutee a l enumeration TrackerCommandStatus et colonne expiredAt (migration 20260913200000), balayage toutes les 10 min (cloturerCommandesSmsSansReponse) qui passe en SENT_UNCONFIRMED date toute commande SENT partie par SMS depuis plus de QUATRE HEURES sans reponse — la reference mesuree du canal (3 h 50 le 19/08), reglable par TRACKER_COMMAND_SMS_EXPIRY_MIN ; inscrit au catalogue des taches de fond (tracker-command-sms-expiry) ; libelle « Envoyee, sans reponse » et ton ambre partages par les ecrans (confirmation-commande.ts). Jumeau de TRK-018 : purement temporel, rien conclu sur l issue, lastError vide.",
+      "classe": "A_CODER",
       "gravite": 2,
-      "etat": "OUVERT",
+      "etat": "FAIT",
       "depuis": "2026-09-03",
-      "bloque": true
+      "bloque": false,
+      "preuveAttendue": "Au premier balayage apres le deploiement, les deux commandes du 01/09 portent SENT_UNCONFIRMED et un expiredAt, l ecran des commandes en attente de plus de dix minutes n a plus de resident permanent, et une commande SMS neuve reste « envoyee » quatre heures puis bascule — jamais avant.",
+      "commit": "66d286f5",
+      "deployeLe": "2026-09-13",
+      "faitLe": "2026-09-13",
+      "preuve": "DEPLOYE LE 13/09 A 20h25 UTC (deploy.sh, commit 66d286f5), migration 20260913200000 appliquee a 20h25m28, enumeration verifiee en base (SENT_UNCONFIRMED en 7e valeur), balayage present dans l artefact compile. MESURE AU PREMIER BALAYAGE, 20h30m00 UTC : les deux commandes du 01/09 (shock_on 0592bca9, shock_off 2e05d62b, BP-434-RD) sont passees en SENT_UNCONFIRMED avec expiredAt = 20:30:00, apres 298,3 h et 294,9 h ; journal de l API : « TRK-062 : 2 commande(s) de boitier parties par SMS close(s) en SENT_UNCONFIRMED (echeance 240 min) » ; zero commande SENT restante. Le compteur des commandes en attente n a plus de resident permanent. Reste a voir sur une commande SMS neuve : quatre heures d attente, puis la bascule — jamais avant."
     },
     {
       "id": "T6",
       "partie": "centre-alerte",
       "fiche": "TRK-065",
-      "titre": "Prevenir le titulaire de compte sans appareil",
+      "titre": "Prevenir le titulaire de compte sans appareil — VOULU : les notifications sont en phase de test",
       "detail": "21 notifications perdues. Cette personne se croit prevenue et ne l est pas. MESURE LE 10/09 : sur 30 jours, les deux destinataires en echec faute d appareil sont a EGALITE, 9 et 9 — l un est le compte technique d identifiant nul, qui ne pourra jamais porter d appareil, l autre est un VRAI super-administrateur. C est l arithmetique du 42 vers environ 21, et c est la moitie humaine qu il faut joindre. AU 13/09, MESURE FRAICHE : 53 notifications perdues en UNE semaine pour ce compte (ligne hebdomadaire du 11/09, compte technique desormais ecarte — T17 FAIT).",
       "classe": "HUMAIN",
       "gravite": 3,
-      "etat": "OUVERT",
-      "depuis": "2026-09-04"
+      "etat": "FAIT",
+      "depuis": "2026-09-04",
+      "faitLe": "2026-09-13",
+      "preuve": "TRANCHE PAR LE PROPRIETAIRE LE 13/09 AU SOIR : « c est volontaire, on teste les notifications, je ne veux pas que les utilisateurs a part moi soient prevenus ; je l activerai quand j aurai tout teste ». Le compte tyger.bcn@gmail.com (Ibtissam Commercial, super-admin, actif, 0 appareil, derniere activite le 10/09) n est donc pas a prevenir ; son interrupteur maitre est pose a « push desactive » (preference ecrite le 13/09, reversible dans son ecran) pour que la ligne hebdomadaire de la sentinelle cesse de compter 77 remises « perdues » qui sont voulues. LA MESURE A REVELE L INVERSE DE L INTENTION : PUSH_ROLLOUT valait ALL en production, et des comptes NON super-admins recevaient des alertes push — mhcars31@hotmail.com 63 exces de vitesse en 30 jours (dernier le 12/09), admin@cdef31.org 24 (LOW_BATTERY, OVERSPEED, GPS_LOST), remyommari9@gmail.com 1. Corrige le 13/09 : PUSH_ROLLOUT=SUPER_ADMIN_ONLY dans .env.prod (copie de l ancien fichier dans /root), effectif au redemarrage de l API par deploy.sh — T39 rappelle de rouvrir. Les rapports hebdomadaires par courriel (weekly_report, lundi 08h) ne sont PAS des alertes et continuent de partir aux clients. VERIFIE APRES LE DEPLOIEMENT DE 20h25 UTC : PUSH_ROLLOUT=SUPER_ADMIN_ONLY dans l environnement du conteneur. Preuve de comportement attendue par l audit : plus aucune ligne SENT vers un compte non super-admin dans notification_deliveries apres le 13/09 20h25 UTC (les refus par perimetre ne sont pas journalises, c est l absence qui prouve)."
     },
     {
       "id": "T7",
@@ -938,6 +945,18 @@
       "depuis": "2026-09-13",
       "phare": true,
       "preuveAttendue": "Les plannings reactives progressivement (canari puis flotte) SANS remise en route non confirmee a 7h00 sur sept jours — mesure : zero matin ou un vehicule coupe la veille est sans RESTORE acquittee a 7h00 (Paris), et zero alerte critique de remise en route non confirmee non traitee."
+    },
+    {
+      "id": "T39",
+      "partie": "centre-alerte",
+      "fiche": "TRK-065",
+      "titre": "Rouvrir les notifications aux clients (PUSH_ROLLOUT=ALL) quand les tests seront finis",
+      "detail": "Depuis le 13/09 au soir, seuls les super-admins recoivent des notifications push (PUSH_ROLLOUT=SUPER_ADMIN_ONLY dans /opt/vizyo-tracky/deploy/vps/.env.prod, ligne 102) — ta consigne : « je ne veux pas que les utilisateurs a part moi soient prevenus, je l activerai quand j aurai tout teste ». Avant : ALL, et trois comptes clients avaient recu 88 alertes push en 30 jours (mh cars 63 exces de vitesse). Pour rouvrir : remettre PUSH_ROLLOUT=ALL dans ce fichier puis bash /opt/vizyo-tracky/deploy/vps/deploy.sh — rien d autre a toucher, la garde est asymetrique (seule la chaine exacte ALL ouvre). A cocher le jour ou tu le fais.",
+      "classe": "HUMAIN",
+      "gravite": 3,
+      "etat": "OUVERT",
+      "depuis": "2026-09-13",
+      "phare": false
     }
   ]
 }

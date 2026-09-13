@@ -225,7 +225,7 @@
     {
       "id": "D9",
       "sujet": "Qui doit recevoir les excès de vitesse",
-      "texte": "Deux sociétés armées (cdef31, mh cars), déjà réglées à +40 km/h sur la limite et 130 km/h absolu. Sur quatorze jours : 55 alertes, 49 chez mh cars (7 véhicules, jusqu’à 142 km/h), 6 chez cdef31 ; 58 % viennent du plafond absolu (130 à 142 km/h sur des routes à 110), 42 % de la règle des +40 ; 22 % étaient des doublons, que T30 supprime depuis le 13/09 — il en reste environ trois par jour. Les destinataires : l’administrateur de mh cars reçoit les siennes (7 à 8 par jour — sa flotte, son réglage), et les deux super-administrateurs reçoivent TOUTES les flottes : 7 à 9 excès par jour, plus 5 à 11 notifications de la sentinelle des agents pendant la panne de la semaine (T36 et T31 les réduisent). La saturation est donc la tienne, pas celle du client — et ton compte a choisi « tout recevoir, dès info ». Ce que je recommande : couper les excès de vitesse dans les préférences des deux super-administrateurs (ils restent lisibles au centre d’alerte et chez le client) et ne pas toucher aux seuils — relever le plafond à 140 tolérerait 139 km/h sur une route à 110.",
+      "texte": "Deux sociétés armées (cdef31, mh cars), déjà réglées à +40 km/h sur la limite et 130 km/h absolu. Sur quatorze jours : 55 alertes, 49 chez mh cars (7 véhicules, jusqu’à 142 km/h), 6 chez cdef31 ; 58 % viennent du plafond absolu (130 à 142 km/h sur des routes à 110), 42 % de la règle des +40 ; 22 % étaient des doublons, que T30 supprime depuis le 13/09 — il en reste environ trois par jour. Depuis ce soir, plus aucun client ne reçoit de notification (ta consigne : super-admins seulement pendant les tests, T39 rappelle de rouvrir) ; l’administrateur de mh cars en recevait 7 à 8 par jour. Restent les deux super-administrateurs, qui reçoivent TOUTES les flottes : 7 à 9 excès par jour, plus 5 à 11 notifications de la sentinelle des agents pendant la panne de la semaine (T36 et T31 les réduisent). Ce que je recommande : couper les excès de vitesse dans les préférences des deux super-administrateurs (ils restent lisibles au centre d’alerte) et ne pas toucher aux seuils — relever le plafond à 140 tolérerait 139 km/h sur une route à 110.",
       "options": [
         {
           "v": "super-admins",
@@ -243,6 +243,11 @@
     }
   ],
   "faits": [
+    {
+      "d": "13/09",
+      "quoi": "Les notifications ne partent plus qu’aux super-admins — et une commande SMS a enfin une fin de vie",
+      "preuve": "Ta consigne du soir : personne d’autre que toi pendant les tests. Trois comptes clients avaient reçu <b>88 alertes push en 30 jours</b> (mh cars 63 excès de vitesse) parce que le périmètre valait « tout le monde » : ramené aux super-admins à 20 h 25 UTC. Même déploiement : les deux commandes SMS du 1er septembre, « envoyées » depuis <b>298 heures</b>, sont passées « envoyée, sans réponse » au premier balayage (T5)."
+    },
     {
       "d": "13/09",
       "quoi": "Le poste sait qu’il est au plafond : les agents s’arrêtent, un courriel part, un bouton relance",

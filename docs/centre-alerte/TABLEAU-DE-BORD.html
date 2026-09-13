@@ -88,19 +88,19 @@
 </header>
 
 <div class="kpis">
-  <div class="k ok"><div class="n">18</div><div class="l">faites et verifiees</div></div>
+  <div class="k ok"><div class="n">20</div><div class="l">faites et verifiees</div></div>
   <div class="k warn"><div class="n">8</div><div class="l">deployees, preuve attendue</div></div>
-  <div class="k"><div class="n">43</div><div class="l">ouvertes sur 69</div></div>
+  <div class="k"><div class="n">42</div><div class="l">ouvertes sur 70</div></div>
   <div class="k dgr"><div class="n">7</div><div class="l">ouvertes en gravite 1</div></div>
   <div class="k dgr"><div class="n">3</div><div class="l">au-dela de 7 jours</div></div>
-  <div class="k info"><div class="n">22</div><div class="l">attendent un humain</div></div>
+  <div class="k info"><div class="n">21</div><div class="l">attendent un humain</div></div>
 </div>
 
-<div class="barre" role="img" aria-label="Avancement : 18 faites, 8 deployees, 43 ouvertes sur 69">
-  <span class="s-FAIT" style="width:26%"></span>
-  <span class="s-DEPLOYE" style="width:12%"></span>
+<div class="barre" role="img" aria-label="Avancement : 20 faites, 8 deployees, 42 ouvertes sur 70">
+  <span class="s-FAIT" style="width:29%"></span>
+  <span class="s-DEPLOYE" style="width:11%"></span>
   <span class="s-COMMITE" style="width:0%"></span>
-  <span class="s-OUVERT" style="width:62%"></span>
+  <span class="s-OUVERT" style="width:60%"></span>
 </div>
 <p class="leg">
   <i><b>✓</b> faite ET verifiee</i>
@@ -111,17 +111,17 @@
 </p>
 
 <div class="filtres" id="f">
-  <button data-f="tout" aria-pressed="true">Tout (69)</button>
-  <button data-f="ouvert" aria-pressed="false">Ouvertes (43)</button>
+  <button data-f="tout" aria-pressed="true">Tout (70)</button>
+  <button data-f="ouvert" aria-pressed="false">Ouvertes (42)</button>
   <button data-f="g1" aria-pressed="false">Gravite 1 (7)</button>
-  <button data-f="humain" aria-pressed="false">Attendent un humain (22)</button>
+  <button data-f="humain" aria-pressed="false">Attendent un humain (21)</button>
   <button data-f="code" aria-pressed="false">A faire soi-meme (11)</button>
   <button data-f="centre-alerte" aria-pressed="false">Centre d'alerte</button>
   <button data-f="vps" aria-pressed="false">VPS</button>
-  <button data-f="fait" aria-pressed="false">Closes (26)</button>
+  <button data-f="fait" aria-pressed="false">Closes (28)</button>
 </div>
 
-<h2 class="sec">Les 69 taches — ouvertes et graves d'abord</h2>
+<h2 class="sec">Les 70 taches — ouvertes et graves d'abord</h2>
 <div id="liste">
 <article class="t etat-OUVERT g1" data-etat="OUVERT" data-partie="centre-alerte" data-classe="HUMAIN" data-g="1">
   <div class="t-h">
@@ -242,21 +242,6 @@
   <p class="detail">14 par jour et par super-admin, pour un produit calibre sur 2 a 3. Relever le seuil, ou restreindre les destinataires. LE SUJET A DEUX COTES depuis le 07/09 : les trajets les plus rapides sont sur A2R dont l alerte de vitesse est ETEINTE, pendant que les deux flottes armees restent sous leur seuil — la flotte qui roule le plus vite est exactement celle ou l alerte est eteinte, et regler le seuil sans regarder QUI est arme ne traiterait que la moitie bruyante. AU 10/09, un chiffre a ne pas mal lire : 52 remises sur 24 h dont 6 EN ECHEC, contre 2 la veille. Ce n est PAS une degradation — les echecs valent exactement deux fois le nombre de lignes critiques agents-locaux du jour (3 le 09/09 donnent 6, 1 le 08/09 donne 2, 3 le 06/09 donnent 6, 1 le 07/09 donne 2). Une valeur qui triple peut n etre que la fonction exacte d un autre compteur. 🔴 AU 13/09, A CORRIGER AVANT DE CALIBRER : un cinquieme des notifications d exces de vitesse est un DOUBLON (TRK-078, T30 — onze sur cinquante-cinq en quatorze jours, meme vehicule, meme instant d exces a la seconde, deux identites de trajet). Regler le seuil sans corriger la cle, c est regler la sensibilite d un instrument qui compte double. Les lignes des 10 et 11/09 : 15 a 18 notifications en 24 h par super-admin, dont 8 a 9 OVERSPEED. — INSTRUITE LE 13/09 AU SOIR : deux societes armees (cdef31 30 vehicules, mh cars 7), DEJA reglees a +40 km/h sur la limite et 130 km/h absolu (le defaut est +20). Sur quatorze jours : 55 alertes, 49 chez mh cars (jusqu a 142 km/h), 6 chez cdef31 ; 58 pour cent viennent du plafond absolu (130 a 142 km/h sur des routes a 110), 42 pour cent de la regle des +40 ; 22 pour cent etaient des doublons, que T30 supprime depuis le 13/09 — il en reste environ trois par jour. Les destinataires : l administrateur de mh cars recoit les siennes (7 a 8 par jour : sa flotte, son reglage), et les deux super-administrateurs recoivent TOUTES les flottes — 7 a 9 exces par jour, plus 5 a 11 notifications de la sentinelle des agents pendant la panne de la semaine (11 le 13/09 : huit CRITICAL d agents tues ou au plafond, trois causes communes — T36 et T31 les reduisent, et la cause « plafond » ne se rouvre plus sur un echec ancien depuis 13471c53). La saturation est donc celle des super-admins, pas celle du client ; admin@vizyoagency.com a d ailleurs choisi « tout recevoir, des info » dans ses preferences. Decision D9 posee : couper les exces pour les super-admins et garder les seuils (recommande), relever le plafond a 140, ou ne rien changer.</p>
   
   <div class="badges"></div>
-</article>
-<article class="t etat-OUVERT g2" data-etat="OUVERT" data-partie="centre-alerte" data-classe="HUMAIN" data-g="2">
-  <div class="t-h">
-    <span class="marque" title="Ouvert">☐</span>
-    <span class="id">T5</span>
-    <span class="fiche">TRK-062</span>
-    <span class="classe">🤝 Decision ou geste humain</span>
-    <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-03">10 j</span>
-    
-  </div>
-  <h3>Autoriser la migration SENT_UNCONFIRMED</h3>
-  <p class="detail">Verifie absent de l artefact servi 8 fois (SENT_UNCONFIRMED : zero fichier dans dist/tracker-commands au 13/09). Les 2 commandes SMS atteignent 288,1 et 284,7 heures au 13/09, soit exactement 24,0 heures de plus par jour pour la 6e fois : elles ne se fermeront JAMAIS seules.</p>
-  
-  <div class="badges"><span class="b b-bloque">⛔ prerequis</span></div>
 </article>
 <article class="t etat-OUVERT g2" data-etat="OUVERT" data-partie="centre-alerte" data-classe="TERRAIN" data-g="2">
   <div class="t-h">
@@ -528,21 +513,6 @@
   
   <div class="badges"></div>
 </article>
-<article class="t etat-OUVERT g3" data-etat="OUVERT" data-partie="centre-alerte" data-classe="HUMAIN" data-g="3">
-  <div class="t-h">
-    <span class="marque" title="Ouvert">☐</span>
-    <span class="id">T6</span>
-    <span class="fiche">TRK-065</span>
-    <span class="classe">🤝 Decision ou geste humain</span>
-    <span class="grav" title="gravite 3">G3</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-04">9 j</span>
-    
-  </div>
-  <h3>Prevenir le titulaire de compte sans appareil</h3>
-  <p class="detail">21 notifications perdues. Cette personne se croit prevenue et ne l est pas. MESURE LE 10/09 : sur 30 jours, les deux destinataires en echec faute d appareil sont a EGALITE, 9 et 9 — l un est le compte technique d identifiant nul, qui ne pourra jamais porter d appareil, l autre est un VRAI super-administrateur. C est l arithmetique du 42 vers environ 21, et c est la moitie humaine qu il faut joindre. AU 13/09, MESURE FRAICHE : 53 notifications perdues en UNE semaine pour ce compte (ligne hebdomadaire du 11/09, compte technique desormais ecarte — T17 FAIT).</p>
-  
-  <div class="badges"></div>
-</article>
 <article class="t etat-OUVERT g3" data-etat="OUVERT" data-partie="centre-alerte" data-classe="NON_EXERCE" data-g="3">
   <div class="t-h">
     <span class="marque" title="Ouvert">☐</span>
@@ -570,6 +540,21 @@
   </div>
   <h3>Ouvrir un second abonnement reserve aux agents du poste — quand tu le decideras (D7)</h3>
   <p class="detail">D7 TRANCHEE LE 13/09 (oui, mais pas maintenant) : « c est une bonne solution mais pas pour le moment, on reste sur la solution actuelle ; laisse-la moi dans les choses a faire pour ne pas oublier ». Le jour venu : un compte Pro (~20 $ par mois) connecte a la CLI des agents (recits, courrier — les audits restent sur ton abonnement, ils tournent dans ton application), et une semaine de mesure pour verifier que ses limites tiennent les ~200 recits quotidiens. Le declencheur raisonnable : un second plafond hebdomadaire malgre T34.</p>
+  
+  <div class="badges"></div>
+</article>
+<article class="t etat-OUVERT g3" data-etat="OUVERT" data-partie="centre-alerte" data-classe="HUMAIN" data-g="3">
+  <div class="t-h">
+    <span class="marque" title="Ouvert">☐</span>
+    <span class="id">T39</span>
+    <span class="fiche">TRK-065</span>
+    <span class="classe">🤝 Decision ou geste humain</span>
+    <span class="grav" title="gravite 3">G3</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-13">0 j</span>
+    
+  </div>
+  <h3>Rouvrir les notifications aux clients (PUSH_ROLLOUT=ALL) quand les tests seront finis</h3>
+  <p class="detail">Depuis le 13/09 au soir, seuls les super-admins recoivent des notifications push (PUSH_ROLLOUT=SUPER_ADMIN_ONLY dans /opt/vizyo-tracky/deploy/vps/.env.prod, ligne 102) — ta consigne : « je ne veux pas que les utilisateurs a part moi soient prevenus, je l activerai quand j aurai tout teste ». Avant : ALL, et trois comptes clients avaient recu 88 alertes push en 30 jours (mh cars 63 exces de vitesse). Pour rouvrir : remettre PUSH_ROLLOUT=ALL dans ce fichier puis bash /opt/vizyo-tracky/deploy/vps/deploy.sh — rien d autre a toucher, la garde est asymetrique (seule la chaine exacte ALL ouvre). A cocher le jour ou tu le fais.</p>
   
   <div class="badges"></div>
 </article>
@@ -1011,6 +996,21 @@
 <article class="t etat-FAIT g2" data-etat="FAIT" data-partie="centre-alerte" data-classe="A_CODER" data-g="2">
   <div class="t-h">
     <span class="marque" title="Fait et verifie">✓</span>
+    <span class="id">T5</span>
+    <span class="fiche">TRK-062</span>
+    <span class="classe">🔧 A coder</span>
+    <span class="grav" title="gravite 2">G2</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-03">10 j</span>
+    <code class="commit">66d286f5</code>
+  </div>
+  <h3>SENT_UNCONFIRMED pour les commandes de boitier parties par SMS — la migration autorisee, la borne posee</h3>
+  <p class="detail">Verifie absent de l artefact servi 8 fois (SENT_UNCONFIRMED : zero fichier dans dist/tracker-commands au 13/09). Les 2 commandes SMS atteignent 288,1 et 284,7 heures au 13/09, soit exactement 24,0 heures de plus par jour pour la 6e fois : elles ne se fermeront JAMAIS seules. — AUTORISEE ET FAITE LE 13/09 AU SOIR (« prends T5 »). Mesure avant : 2 commandes SENT/SMS a 298 h (shock_on et shock_off du 01/09 sur BP-434-RD), 999 ACKNOWLEDGED/TCP, 5 372 FAILED/TCP, et ZERO commande SMS jamais acquittee dans la table — le canal n a pas d accuse rapproche, la borne est donc la seule fin de vie possible. Geste : valeur SENT_UNCONFIRMED ajoutee a l enumeration TrackerCommandStatus et colonne expiredAt (migration 20260913200000), balayage toutes les 10 min (cloturerCommandesSmsSansReponse) qui passe en SENT_UNCONFIRMED date toute commande SENT partie par SMS depuis plus de QUATRE HEURES sans reponse — la reference mesuree du canal (3 h 50 le 19/08), reglable par TRACKER_COMMAND_SMS_EXPIRY_MIN ; inscrit au catalogue des taches de fond (tracker-command-sms-expiry) ; libelle « Envoyee, sans reponse » et ton ambre partages par les ecrans (confirmation-commande.ts). Jumeau de TRK-018 : purement temporel, rien conclu sur l issue, lastError vide.</p>
+  <p class="preuve"><b>Preuve</b> — DEPLOYE LE 13/09 A 20h25 UTC (deploy.sh, commit 66d286f5), migration 20260913200000 appliquee a 20h25m28, enumeration verifiee en base (SENT_UNCONFIRMED en 7e valeur), balayage present dans l artefact compile. MESURE AU PREMIER BALAYAGE, 20h30m00 UTC : les deux commandes du 01/09 (shock_on 0592bca9, shock_off 2e05d62b, BP-434-RD) sont passees en SENT_UNCONFIRMED avec expiredAt = 20:30:00, apres 298,3 h et 294,9 h ; journal de l API : « TRK-062 : 2 commande(s) de boitier parties par SMS close(s) en SENT_UNCONFIRMED (echeance 240 min) » ; zero commande SENT restante. Le compteur des commandes en attente n a plus de resident permanent. Reste a voir sur une commande SMS neuve : quatre heures d attente, puis la bascule — jamais avant.</p><p class="attendue"><b>Preuve attendue</b> — Au premier balayage apres le deploiement, les deux commandes du 01/09 portent SENT_UNCONFIRMED et un expiredAt, l ecran des commandes en attente de plus de dix minutes n a plus de resident permanent, et une commande SMS neuve reste « envoyee » quatre heures puis bascule — jamais avant.</p>
+  <div class="badges"></div>
+</article>
+<article class="t etat-FAIT g2" data-etat="FAIT" data-partie="centre-alerte" data-classe="A_CODER" data-g="2">
+  <div class="t-h">
+    <span class="marque" title="Fait et verifie">✓</span>
     <span class="id">T11</span>
     <span class="fiche">TRK-068</span>
     <span class="classe">🔧 A coder</span>
@@ -1096,6 +1096,21 @@
   <h3>chargeDeFond.note s'affiche, avec un repli explicite</h3>
   <p class="detail">Corrige un defaut plus grave que celui vise : la garde que tout le monde croyait posee n'existait pas.</p>
   <p class="preuve"><b>Preuve</b> — Sur l'artefact servi le 06/09 : fond-note 0 → 1, « mesure absente du manifeste » 0 → 1, temoin impossible 0, ng build NG_EXIT=0. 🔑 PREUVE COMPLETEE LE 07/09, ET ELLE EST PLUS FORTE : tracky-web a ete RECONSTRUIT le 07/09 a 01:22:34, et les deux chaines sont toujours dans le bundle servi — desormais /usr/share/nginx/html/chunk-K6RYKC7I.js, un fichier DIFFERENT de celui d hier (chunk-K4HBXQ56.js). Ce n est donc pas l ancien artefact reste en place : c est une construction NEUVE qui porte le correctif, donc la branche d ou l on deploie le porte encore. ⚠️ Portee honnete : ceci prouve que le code est SERVI, pas que la ligne s affiche a l ecran — ce qui demanderait une session /admin que l audit n ouvre pas. C est la barre que la roadmap se donne elle-meme (« verifie sur l'artefact servi ou par la mesure »).</p>
+  <div class="badges"></div>
+</article>
+<article class="t etat-FAIT g3" data-etat="FAIT" data-partie="centre-alerte" data-classe="HUMAIN" data-g="3">
+  <div class="t-h">
+    <span class="marque" title="Fait et verifie">✓</span>
+    <span class="id">T6</span>
+    <span class="fiche">TRK-065</span>
+    <span class="classe">🤝 Decision ou geste humain</span>
+    <span class="grav" title="gravite 3">G3</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-04">9 j</span>
+    
+  </div>
+  <h3>Prevenir le titulaire de compte sans appareil — VOULU : les notifications sont en phase de test</h3>
+  <p class="detail">21 notifications perdues. Cette personne se croit prevenue et ne l est pas. MESURE LE 10/09 : sur 30 jours, les deux destinataires en echec faute d appareil sont a EGALITE, 9 et 9 — l un est le compte technique d identifiant nul, qui ne pourra jamais porter d appareil, l autre est un VRAI super-administrateur. C est l arithmetique du 42 vers environ 21, et c est la moitie humaine qu il faut joindre. AU 13/09, MESURE FRAICHE : 53 notifications perdues en UNE semaine pour ce compte (ligne hebdomadaire du 11/09, compte technique desormais ecarte — T17 FAIT).</p>
+  <p class="preuve"><b>Preuve</b> — TRANCHE PAR LE PROPRIETAIRE LE 13/09 AU SOIR : « c est volontaire, on teste les notifications, je ne veux pas que les utilisateurs a part moi soient prevenus ; je l activerai quand j aurai tout teste ». Le compte tyger.bcn@gmail.com (Ibtissam Commercial, super-admin, actif, 0 appareil, derniere activite le 10/09) n est donc pas a prevenir ; son interrupteur maitre est pose a « push desactive » (preference ecrite le 13/09, reversible dans son ecran) pour que la ligne hebdomadaire de la sentinelle cesse de compter 77 remises « perdues » qui sont voulues. LA MESURE A REVELE L INVERSE DE L INTENTION : PUSH_ROLLOUT valait ALL en production, et des comptes NON super-admins recevaient des alertes push — mhcars31@hotmail.com 63 exces de vitesse en 30 jours (dernier le 12/09), admin@cdef31.org 24 (LOW_BATTERY, OVERSPEED, GPS_LOST), remyommari9@gmail.com 1. Corrige le 13/09 : PUSH_ROLLOUT=SUPER_ADMIN_ONLY dans .env.prod (copie de l ancien fichier dans /root), effectif au redemarrage de l API par deploy.sh — T39 rappelle de rouvrir. Les rapports hebdomadaires par courriel (weekly_report, lundi 08h) ne sont PAS des alertes et continuent de partir aux clients. VERIFIE APRES LE DEPLOIEMENT DE 20h25 UTC : PUSH_ROLLOUT=SUPER_ADMIN_ONLY dans l environnement du conteneur. Preuve de comportement attendue par l audit : plus aucune ligne SENT vers un compte non super-admin dans notification_deliveries apres le 13/09 20h25 UTC (les refus par perimetre ne sont pas journalises, c est l absence qui prouve).</p>
   <div class="badges"></div>
 </article>
 <article class="t etat-FAIT g3" data-etat="FAIT" data-partie="centre-alerte" data-classe="NON_EXERCE" data-g="3">
