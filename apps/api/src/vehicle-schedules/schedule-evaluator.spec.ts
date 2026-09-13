@@ -170,6 +170,36 @@ describe('computeNextTransition (compte-à-rebours page flotte)', () => {
     });
     expect(computeNextTransition(allOpen, MONDAY_10H)).toBeNull();
   });
+
+  it('action manuelle ne casse pas le cycle : CUT en journée → CUT du soir → RESTORE le lendemain', () => {
+    const schedule = baseSchedule(); // fenêtre 08:00–18:00 UTC
+
+    // À midi le planning est en phase IN_WINDOW. La coupe manuelle est une dérogation :
+    // elle expire à la bascule du soir, sans modifier le planning ni son état mémorisé.
+    const apresCoupeManuelle = computeNextTransition(schedule, MONDAY_10H);
+    expect(apresCoupeManuelle).toEqual({
+      action: 'CUT',
+      at: new Date('2026-04-27T18:00:00.000Z'),
+    });
+
+    // Le cron reprend alors son cycle normal : OUT le soir, puis IN le lendemain matin.
+    expect(evaluateSchedule(schedule, apresCoupeManuelle!.at).state).toBe('OUT_OF_WINDOW');
+    const reprise = computeNextTransition(schedule, apresCoupeManuelle!.at);
+    expect(reprise).toEqual({
+      action: 'RESTORE',
+      at: new Date('2026-04-28T08:00:00.000Z'),
+    });
+    expect(evaluateSchedule(schedule, reprise!.at).state).toBe('IN_WINDOW');
+  });
+
+  it('RESTORE manuel après la coupe du soir → planning toujours actif et RESTORE garanti le matin', () => {
+    const schedule = baseSchedule();
+    const apresRallumageManuel = computeNextTransition(schedule, MONDAY_22H);
+    expect(apresRallumageManuel).toEqual({
+      action: 'RESTORE',
+      at: new Date('2026-04-28T08:00:00.000Z'),
+    });
+  });
 });
 
 describe('computeUpcomingHolidays (aperçu fériés page flotte — incident 14/07)', () => {

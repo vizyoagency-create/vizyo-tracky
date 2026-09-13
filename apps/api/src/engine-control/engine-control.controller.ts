@@ -1,6 +1,8 @@
 import {
+  BadRequestException,
   Body,
   Controller,
+  ForbiddenException,
   Get,
   Param,
   Post,
@@ -8,19 +10,25 @@ import {
   Req,
   UseGuards,
 } from '@nestjs/common';
-import { CommandStatus, UserRole } from '@prisma/client';
+import { CommandStatus, EngineAction, UserRole } from '@prisma/client';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { RequireVehiclePermission } from '../auth/decorators/vehicle-permissions.decorator';
 import { AuthenticatedRequest, JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../auth/guards/permissions.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
+import { PermissionsResolverService } from '../permissions/permissions-resolver.service';
+import { PrismaService } from '../prisma/prisma.service';
 import { RequestEngineCommandDto } from './dto/request-engine-command.dto';
 import { EngineControlService } from './engine-control.service';
 
 @Controller('engine-control')
 @UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
 export class EngineControlController {
-  constructor(private readonly engineControl: EngineControlService) {}
+  constructor(
+    private readonly engineControl: EngineControlService,
+    private readonly permissions: PermissionsResolverService,
+    private readonly prisma: PrismaService,
+  ) {}
 
   /**
    * V1.11 Phase 1 — Coupure/redemarrage moteur protege par la permission
@@ -39,11 +47,30 @@ export class EngineControlController {
     UserRole.NIGHT_WATCHMAN,
   )
   @RequireVehiclePermission('engine_control', { paramName: 'trackerId' })
-  requestCommand(
+  async requestCommand(
     @Param('trackerId') trackerId: string,
     @Body() dto: RequestEngineCommandDto,
     @Req() req: AuthenticatedRequest,
   ) {
+    // `disableSchedule` n'est pas une simple variante de CUT : il sort durablement le véhicule
+    // du planning. La route est normalement gardée par `engine_control`, donc on vérifie ici le
+    // second droit conditionnel. Sans cette garde, un rôle autorisé à couper mais pas à gérer les
+    // horaires pouvait contourner `schedules_manage` en forgeant le body HTTP.
+    if (dto.disableSchedule && dto.action !== EngineAction.CUT) {
+      throw new BadRequestException('disableSchedule est réservé à une coupure durable');
+    }
+    if (dto.disableSchedule) {
+      const tracker = await this.prisma.tracker.findUnique({
+        where: { id: trackerId },
+        select: { vehicle: { select: { id: true } } },
+      });
+      const vehicleId = tracker?.vehicle?.id;
+      const allowed = vehicleId
+        ? await this.permissions.canOnVehicle(req.user, vehicleId, 'schedules_manage')
+        : false;
+      if (!allowed) throw new ForbiddenException('Permission requise : schedules_manage');
+    }
+
     return this.engineControl.requestCommand(trackerId, dto.action, dto.reason ?? null, {
       userId: req.user.id,
       role: req.user.role,

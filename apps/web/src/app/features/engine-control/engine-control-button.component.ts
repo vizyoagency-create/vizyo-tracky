@@ -138,9 +138,8 @@ const CONFIRM_WINDOW_MS = 90_000;
         en un clic depuis une liste. Rallumer ne fait que deblocker : c'est reversible, et
         ca reste une confirmation standard. C'est la meme asymetrie que le mode veilleur,
         qui peut rallumer mais pas couper.
-        La plaque a retaper n'est pas une formalite : elle force a LIRE quelle ligne on a
-        ouverte. Le kit compare sans casse ni espaces — on verifie qu'on a lu, pas qu'on
-        sait taper.
+        Le glissement complet n'est pas une formalite : il impose un geste continu et volontaire,
+        identique au doigt sur la fiche et sur la carte, sans faire apparaître le clavier.
       -->
       <app-confirm-modal
         [open]="isOpen() === 'cut'"
@@ -152,14 +151,15 @@ const CONFIRM_WINDOW_MS = 90_000;
         [danger]="true"
         [critique]="true"
         [etat]="etatVehicule()"
-        [confirmationAttendue]="vehiclePlate()"
+        [slideToConfirm]="true"
+        slideLabel="Glissez pour couper le moteur"
         [loading]="commandLocked()"
         (confirmed)="onConfirm('CUT')"
         (cancelled)="isOpen.set(null)"
       >
         <!--
           ENVIRONNEMENT DE DÉMONSTRATION (2026-09). Le geste est le même qu'en production, et
-          c'est voulu : le prospect doit voir la vraie modale, la vraie plaque à retaper, les vrais
+          c'est voulu : le prospect doit voir la vraie modale, le vrai glissement, les vrais
           états. Mais il doit lire, AVANT de cliquer, qu'aucun véhicule n'est concerné — et ce qui
           se passerait sur un vrai boîtier. Le texte dit la réalité du produit : un Coban exécute
           la commande en silence, la preuve est la chute du contact sur la trame suivante.
@@ -188,7 +188,7 @@ const CONFIRM_WINDOW_MS = 90_000;
                  text-fg-primary placeholder:text-fg-tertiary resize-none
                  focus:outline-none focus:border-tracky"
         ></textarea>
-        @if (scheduleEnabled()) {
+        @if (scheduleEnabled() && canDisableSchedule()) {
           <label class="flex items-start gap-2 mt-3 text-xs text-fg-secondary cursor-pointer">
             <input
               type="checkbox"
@@ -212,6 +212,8 @@ const CONFIRM_WINDOW_MS = 90_000;
         confirmLabel="Oui, rallumer"
         cancelLabel="Annuler"
         [danger]="false"
+        [slideToConfirm]="true"
+        slideLabel="Glissez pour rallumer le moteur"
         [loading]="commandLocked()"
         (confirmed)="onConfirm('RESTORE')"
         (cancelled)="isOpen.set(null)"
@@ -332,6 +334,11 @@ export class EngineControlButtonComponent implements OnInit {
   protected readonly recentCommands = signal<EngineControlCommandDto[]>([]);
   private readonly _scheduleEnabled = signal(false);
   protected readonly scheduleEnabled = computed(() => this.scheduleEnabledInput() || this._scheduleEnabled());
+  /** Sortir durablement un véhicule du planning exige le droit de gérer SES horaires. */
+  protected readonly canDisableSchedule = computed(() => {
+    const vehicleId = this.effectiveVehicleId();
+    return !!vehicleId && this.perms.can('schedules_manage', vehicleId);
+  });
 
   protected readonly Power = Power;
   protected readonly PowerOff = PowerOff;
@@ -722,12 +729,16 @@ export class EngineControlButtonComponent implements OnInit {
   });
 
   protected readonly cutDescription = computed(
-    () =>
-      `Vous êtes sur le point d'immobiliser le véhicule <strong>${this.vehiclePlate()}</strong>.<br><br>` +
-      `Le conducteur sera impacté immédiatement et le véhicule deviendra inutilisable ` +
-      `jusqu'à réactivation manuelle.<br><br>` +
-      `<span class="text-fg-secondary text-xs">Cette action sera enregistrée dans l'audit trail.</span>` +
-      this.dormantConfirmNotice(),
+    () => {
+      const duree = this.scheduleEnabled() && !this.durableImmobilize()
+        ? `Le mode horaire reste actif : le véhicule sera de nouveau libéré à sa prochaine ` +
+          `plage autorisée, sans devoir réactiver ses horaires.`
+        : `Le conducteur sera impacté immédiatement et le véhicule deviendra inutilisable ` +
+          `jusqu'à réactivation manuelle.`;
+      return `Vous êtes sur le point d'immobiliser le véhicule <strong>${this.vehiclePlate()}</strong>.<br><br>` +
+        duree + `<br><br><span class="text-fg-secondary text-xs">Cette action sera enregistrée dans l'audit trail.</span>` +
+        this.dormantConfirmNotice();
+    },
   );
 
   /**
@@ -736,16 +747,26 @@ export class EngineControlButtonComponent implements OnInit {
    * Le kit exige que la conséquence soit nommée à part du reste : c'est elle qu'on lit
    * quand on hésite.
    *
-   * Le niveau CRITIQUE de la modale (liseré rouge, état rappelé, plaque à retaper) est
+   * Le niveau CRITIQUE de la modale (liseré rouge, état rappelé, glissement complet) est
    * spécifié pour cet écran par `B1-PAGES.md` § F « Coupure moteur ». Il se branche au
-   * lot B-pages : ajouter une saisie à un geste d'urgence est une décision d'écran, pas
+   * lot B-pages : ajouter un geste continu à une commande d'urgence est une décision d'écran, pas
    * une décision de kit.
    */
   protected readonly cutConsequences = computed(
-    () =>
-      `Le véhicule ${this.vehiclePlate()} ne redémarrera plus tant que personne ne l'aura `
-      + 'réactivé depuis Tracky. Le conducteur en cours de trajet est concerné dès la '
-      + 'prochaine coupure du contact.',
+    () => {
+      if (this.scheduleEnabled() && !this.durableImmobilize()) {
+        return `Les horaires de ${this.vehiclePlate()} restent activés. La coupure manuelle `
+          + `ne supprime pas le planning : celui-ci reprendra automatiquement et enverra le `
+          + `rallumage à la prochaine plage autorisée.`;
+      }
+      if (this.scheduleEnabled() && this.durableImmobilize()) {
+        return `${this.vehiclePlate()} sortira du planning horaire. Un rallumage manuel le rendra `
+          + `utilisable, mais ses horaires devront être réactivés séparément.`;
+      }
+      return `Le véhicule ${this.vehiclePlate()} ne redémarrera plus tant que personne ne l'aura `
+        + 'réactivé depuis Tracky. Le conducteur en cours de trajet est concerné dès la '
+        + 'prochaine coupure du contact.';
+    },
   );
 
   protected readonly restoreDescription = computed(() => {
@@ -790,7 +811,9 @@ export class EngineControlButtonComponent implements OnInit {
     // « Immobilisation durable » (case optionnelle, CUT uniquement) → désactive le planning (sortie
     // du mode horaire, cas anti-vol). Sinon l'action suspend juste le planning jusqu'à la prochaine
     // bascule côté backend (le mode reste actif).
-    const durable = action === 'CUT' && this.durableImmobilize();
+    // Double garde UI : même si le DOM était manipulé, un utilisateur sans droit horaires
+    // ne peut jamais fabriquer `disableSchedule:true` depuis ce composant.
+    const durable = action === 'CUT' && this.durableImmobilize() && this.canDisableSchedule();
     // Fermer la modal DÈS la soumission (avant l'attente réseau), succès comme erreur/409 :
     // sinon elle reste ouverte par-dessus et masque le toast + la pastille. Cf smoke prod 2026-06-18.
     this.isOpen.set(null);

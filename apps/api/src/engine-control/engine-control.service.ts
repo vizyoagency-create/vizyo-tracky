@@ -642,7 +642,10 @@ export class EngineControlService implements OnModuleDestroy {
         const isWatchman = requestedBy.role === UserRole.NIGHT_WATCHMAN;
         // Le veilleur ne gère PAS les plannings (gate `schedules_manage`) : `disableSchedule` est
         // ignoré pour lui (sinon le gate horaires serait contourné via la commande moteur).
-        const mayDisableSchedule = disableSchedule && !isWatchman;
+        // Défense en profondeur : l'option durable n'a de sens que pour CUT. Le contrôleur HTTP
+        // rejette déjà RESTORE + disableSchedule, mais aucun appel interne ne doit pouvoir sortir
+        // silencieusement un véhicule du planning en le rallumant.
+        const mayDisableSchedule = disableSchedule && action === EngineAction.CUT && !isWatchman;
         try {
           const schedule = await this.prisma.vehicleSchedule.findFirst({
             where: { vehicleId: vehicle.id, enabled: true },

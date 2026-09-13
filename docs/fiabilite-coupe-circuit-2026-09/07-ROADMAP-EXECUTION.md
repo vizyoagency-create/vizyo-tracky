@@ -22,7 +22,7 @@ Production : **hors périmètre — aucun déploiement ni changement VPS autoris
 - [x] R2.2 — API et WebSocket exposent l'état réellement persisté.
 - [x] R2.3 — UI conserve l'état en attente/non confirmé et explique le blocage.
 - [x] R3.1 — Idempotence serveur et déduplication d'une intention active.
-- [ ] R3.2 — Verrouillage cohérent multi-vues/multi-utilisateurs.
+- [x] R3.2 — Verrouillage cohérent multi-vues/multi-utilisateurs ; carte et fiche unifiées sur le même composant.
 - [x] R4.1 — Fallback SMS durable après socket absente ou timeout d'ACK TCP.
 - [x] R4.2 — Reprise des RESTORE après redémarrage et retries bornés/temporisés.
 - [x] R4.3 — Priorité RESTORE et annulation des CUT incompatibles.

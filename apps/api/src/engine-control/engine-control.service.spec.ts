@@ -895,6 +895,16 @@ describe('EngineControlService', () => {
     );
   });
 
+  it('défense interne : RESTORE avec disableSchedule=true ne désactive jamais le planning', async () => {
+    prisma.tracker.findFirst.mockResolvedValue(trackerWithVehicle);
+    prisma.vehicleSchedule.findFirst.mockResolvedValue(enabledScheduleAlwaysOpen);
+    registry.send.mockReturnValue(true);
+    await service.requestCommand(TRACKER_ID, EngineAction.RESTORE, null, fleetAdmin, 'MANUAL', true);
+    expect(prisma.vehicleSchedule.updateMany).not.toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ enabled: false }) }),
+    );
+  });
+
   // Un RESTORE (réactivation manuelle) lève le hold indéfini et suspend jusqu'à la prochaine
   // bascule. Ici planning « toujours ouvert » (pas de bascule) → fallback override 1h.
   it('NIGHT_WATCHMAN RESTORE sur planning toujours ouvert → fallback ~1h (surtout pas indéfini)', async () => {
