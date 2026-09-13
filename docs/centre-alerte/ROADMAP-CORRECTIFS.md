@@ -63,10 +63,10 @@ d'une section à l'autre sans le dire, ou cocher `[x]` sur la foi d'une fiche pl
 
 ---
 
-## 🗂️ Tableau de bord — 63 tâches, l'avancement d'un coup d'œil
+## 🗂️ Tableau de bord — 64 tâches, l'avancement d'un coup d'œil
 
-**Au 2026-09-13 (après les DEUX routines, rattrapées ensemble à 12 h 06 Paris) : 10 faites ·
-2 déployées, preuve attendue · 0 commitée · 51 ouvertes.**
+**Au 2026-09-13 (après les DEUX routines, rattrapées ensemble à 12 h 06 Paris, puis la décision D1 du propriétaire à 12 h 48) : 10 faites ·
+2 déployées, preuve attendue · 0 commitée · 52 ouvertes.**
 
 > 🔴 **LE FAIT VPS DU 13/09 : LA 5ᵉ OCCURRENCE DE VPS-016 EST NOMMÉE À LA SECONDE — ET LA CAUSE DE
 > LA CLASSE EST ENFIN MESURABLE.** Le client bloqué (`docker logs --tail 60 texto-relay`) vient d'un
@@ -173,7 +173,7 @@ d'une section à l'autre sans le dire, ou cocher `[x]` sur la foi d'une fiche pl
 
 > 🖥️ **Le même état, en visuel : [`TABLEAU-DE-BORD.html`](./TABLEAU-DE-BORD.html)** — un fichier autonome, regénéré à chaque passage des deux routines quotidiennes, qui se filtre par gravité, par partie et par état. *Il ne remplace pas ce fichier-ci : il en donne l'état, jamais le pourquoi.*
 
-### Partie I — centre d'alerte *(32 tâches)*
+### Partie I — centre d'alerte *(33 tâches)*
 
 | | ID | Fiche | La tâche | État |
 |:--:|:--:|---|---|---|
@@ -209,6 +209,7 @@ d'une section à l'autre sans le dire, ou cocher `[x]` sur la foi d'une fiche pl
 | ☐ | **T30** | TRK-078 | 🆕 🔴 **Dédupliquer l'alerte de vitesse sur l'EXCÈS, pas sur le `tripId`** — 11 doublons sur 55 en 14 j : le recalcul réécrit l'identité du trajet | 🔧 À CODER |
 | ☐ | **T31** | TRK-069 | 🆕 **Une cause commune aux agents du poste = UNE ligne `DEGRADATION`**, pas 25 `CRITICAL` | 🔧 À CODER |
 | ☐ | **T32** | TRK-071 · 069 | 🆕 🔴🔴 **Décider la parade au plafond hebdomadaire de la CLI** — trois canaux IA, trois plafonds, 80 h sans aucun ouvert, audits compris | 🤝 HUMAIN |
+| ☐ | **T33** | TRK-077 | 🆕 **Rendre `deploy.sh` INCONTOURNABLE** — *décision D1 du propriétaire, 13/09 10:48 : « le rendre incontournable … prendre le temps de bien le faire, et blocage »*. Avec T29, pas avant | 🔧 À CODER |
 
 ### Partie II — VPS *(31 tâches)*
 
@@ -961,6 +962,7 @@ feront perdre une heure le jour où quelqu'un les suivra.*
 
 | Date | ID | Tâche | État | Commit | La preuve |
 |---|:--:|---|:--:|---|---|
+| **13/09** | **T33** | 🆕 [TRK-077](./REFERENCE-ERREURS.md#trk-077) — rendre `deploy.sh` incontournable | ☐ **OUVERT** *(décision D1 tranchée)* | — | *(tâche neuve, née d'une DÉCISION)* Le propriétaire a répondu à **D1** depuis le poste de commande le **13/09 à 10:48 UTC** : **« Le rendre incontournable »**, avec la consigne *« Ajouter une tâche à faire, prendre le temps de bien le faire pour ne pas créer des bugs ! et blocage »*. Un seul chemin pour recréer les conteneurs, qui porte la garde de T29 **relue juste avant la recréation** et qui **bloque** (sortie non nulle) sauf option forcée tracée. ⚠️ **Avec T29, pas avant** : rendre obligatoire une garde lue au mauvais moment protégerait de tout sauf du cas le plus probable |
 | **13/09** *(VPS)* | **V28** | VPS-016 — 5ᵉ occurrence, **client nommé à la seconde** | ☐ **OUVERT** — *complété* | *(voir commit du jour)* | Le `bash -c` parent (159533) est **vivant, PPID 1, `do_wait`** : c'est le cas du 08-20, donc **le parent d'abord** (`kill 159533 && sleep 1 && kill 159541`). Session SSH **39478**, root depuis le poste `82.67.153.51`, ouverte **04:34:00,89 UTC** puis fermée ; `sar` : `%system` 3,5 → 22,3 (04:40) → 33,6 (04:50) et s'y tient ; cumul `dockerd` 241,2 → **249,0 h**. **Les trois routines planifiées sont exclues** (bloquées par le quota, reprises ensemble à 10:06). *L'outil n'est pas nommé (VPS-M01) ; la classe l'est.* 🔑 `dockerd` avait journalisé *« Error decoding log file: invalid character '\x00' »* à **04:33:52**, 8 s avant, sur le premier `docker logs` du même `bash` — voir V29 |
 | **13/09** *(VPS)* | **V29** | 🆕 [VPS-041](../vps-audit/REFERENCE-CONSTATS.md) — un seul rotateur pour les journaux de conteneur | ☐ **OUVERT** | *(voir commit du jour)* | *(tâche neuve)* **Deux rotateurs sur les mêmes fichiers** : le pilote `json-file` (10 Mo × 3) **et** `/etc/logrotate.d/docker-containers` (posée le 25/08, `copytruncate`, minuit). `dockerd` garde son offset → chaque rotation perce un trou de NUL **de la taille exacte du fichier tronqué** : `tracky-api json.log.1` = **8 405 652 NUL**, `json.log.2` = **8 405 652 octets** ; même égalité sur `maalem-dev-api`, `maestroo-dev-api`, `tracky-postgres`. **5 fichiers courants à 34–92 % de NUL**, 13 courants à 0 octet (dont `texto-relay`). Geste : `mv` de la stanza hors de `logrotate.d`, **avant** tout `daemon.json` ; 10 s, risque nul ; contrepartie : fenêtre = `max-file 3`. ⚠️ Ce qui n'est PAS prouvé : que les NUL soient la cause *nécessaire* du blocage — ce qui l'est : `docker logs` est faux sur 5 conteneurs, et le mécanisme est le nôtre |
 | **13/09** *(VPS)* | **V30** | 🆕 [VPS-042](../vps-audit/REFERENCE-CONSTATS.md) — reconnaître le coffre et ses deux comptes | ☐ **OUVERT** | *(voir commit du jour)* | *(tâche neuve)* `vizyo-vault` (Vaultwarden, **épinglé par empreinte** ✅, `vault.vizyoagency.com`, **memlimit 0**) créé le **09/09 20:56** ; `vaultbk` (22:21) et `conductorbk` (22:41) avec clés `command=` + `restrict` — **les mieux bornées de la machine** ; tirages nocturnes 01:00 / 01:08 / 01:35 UTC depuis **`179.198.198.199`** (4 nuits sur 4) ; **une session `vaultbk` ouverte depuis 3,5 jours**. Aucun catalogue, aucune ligne de couverture de sauvegarde (le §11 ne voit que des bases par image). 🔑 Le collecteur avait crié **« EMPREINTE NON DÉCLARÉE »** ×2 : il ne lisait que `/root` — **VPS-M98, corrigé** (tous les comptes + `useradd`). ❌ Ne rien retirer avant reconnaissance (VPS-002) |
