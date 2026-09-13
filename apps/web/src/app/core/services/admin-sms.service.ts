@@ -27,6 +27,31 @@ export interface SmsStatus {
   pendingWithoutReceipt?: number;
   oldestPendingAt?: string | null;
   lastTerminalSuccessAt?: string | null;
+  gateway?: {
+    observedAt: string;
+    operational: boolean;
+    provider: {
+      status: string;
+      version: string | null;
+      releaseId: string | null;
+    };
+    device: {
+      count: number;
+      freshestLastSeenAt: string | null;
+      ageSeconds: number | null;
+      fresh: boolean;
+      staleAfterSeconds: number;
+    };
+    sim: { configuredNumber: number | null };
+    queue: {
+      pending: number;
+      oldestPendingAt: string | null;
+      oldestAgeSeconds: number | null;
+      failed24h: number;
+    };
+    telemetry: { batteryAvailable: boolean; chargingAvailable: boolean };
+    error?: string;
+  };
   dispatchQueue?: {
     depth: number;
     minIntervalMs: number;

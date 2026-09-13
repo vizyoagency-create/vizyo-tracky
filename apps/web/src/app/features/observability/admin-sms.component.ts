@@ -131,6 +131,51 @@ type Tab = 'status' | 'logs' | 'allowlist' | 'backup';
                   File Tracky : {{ q.depth }} · cadence minimale {{ q.minIntervalMs / 1000 }} s
                 </div>
               }
+              @if (status()?.gateway; as gw) {
+                <div
+                  class="mt-2 rounded border p-2 text-xs"
+                  [class]="
+                    gw.operational
+                      ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-200'
+                      : 'border-rose-500/30 bg-rose-500/10 text-rose-200'
+                  "
+                >
+                  <div class="font-semibold">
+                    Téléphone Android :
+                    {{
+                      gw.device.fresh ? 'vu récemment' : 'absent ou ping périmé'
+                    }}
+                  </div>
+                  <div>
+                    {{ gw.device.count }} appareil(s)
+                    @if (gw.device.freshestLastSeenAt) {
+                      · dernier ping
+                      {{
+                        gw.device.freshestLastSeenAt | date: 'dd/MM HH:mm:ss'
+                      }}
+                      ({{ gw.device.ageSeconds }} s)
+                    }
+                  </div>
+                  <div>
+                    Serveur {{ gw.provider.status }}
+                    @if (gw.provider.version) {
+                      · v{{ gw.provider.version }}
+                    }
+                    · SIM {{ gw.sim.configuredNumber ?? 'auto' }}
+                  </div>
+                  <div>
+                    File relais : {{ gw.queue.pending }} en attente
+                    @if (gw.queue.oldestAgeSeconds !== null) {
+                      · plus ancien {{ gw.queue.oldestAgeSeconds }} s
+                    }
+                    · {{ gw.queue.failed24h }} échec(s)/24 h
+                  </div>
+                  <div class="mt-1 text-fg-tertiary">
+                    Batterie/charge : non fournies par l’API Android actuelle.
+                    La fraîcheur du ping et les preuves de remise font foi.
+                  </div>
+                </div>
+              }
               @if (status()?.lastTerminalSuccessAt) {
                 <div class="mt-1 text-xs text-fg-tertiary">
                   Dernière remise terminale : {{ status()?.lastTerminalSuccessAt | date: 'dd/MM HH:mm:ss' }}
@@ -478,7 +523,13 @@ export class AdminSmsComponent implements OnInit, OnDestroy {
   // V1.13 — Verdict reel SMS Gateway (utilise dans card status).
   private modeOk(): boolean {
     const m = this.status()?.mode;
-    return (m === 'twilio' || m === 'vizyo-texto') && this.status()?.deliveryProofAvailable === true;
+    const gatewayOk =
+      m !== 'vizyo-texto' || this.status()?.gateway?.operational === true;
+    return (
+      (m === 'twilio' || m === 'vizyo-texto') &&
+      gatewayOk &&
+      this.status()?.deliveryProofAvailable === true
+    );
   }
   private modeBroken(): boolean {
     const m = this.status()?.mode;
@@ -504,7 +555,12 @@ export class AdminSmsComponent implements OnInit, OnDestroy {
     if ((m === 'vizyo-texto' || m === 'twilio') && this.status()?.deliveryProofAvailable !== true) {
       return 'Passerelle joignable · remise non prouvée';
     }
+    if (m === 'vizyo-texto' && this.status()?.gateway?.operational !== true) {
+      return 'Téléphone Android/SIM indisponible';
+    }
     if (m === 'vizyo-texto') return 'vizyo-texto actif';
+    if (m === 'vizyo-texto-broken' && this.status()?.gateway)
+      return 'Téléphone Android/SIM indisponible';
     if (m === 'vizyo-texto-broken') return 'vizyo-texto injoignable';
     if (m === 'twilio') return 'Twilio actif';
     if (m === 'twilio-broken') return 'Twilio configure mais auth KO';
@@ -514,7 +570,12 @@ export class AdminSmsComponent implements OnInit, OnDestroy {
     const m = this.status()?.mode;
     if (m === 'vizyo-texto' && this.status()?.deliveryProofAvailable !== true)
       return 'Le relais répond, mais aucun statut terminal positif ne prouve encore la chaîne Android/SIM.';
-    if (m === 'vizyo-texto') return 'Passerelle maison joignable et au moins une remise terminale observée.';
+    if (m === 'vizyo-texto' && this.status()?.gateway?.operational !== true)
+      return 'Le relais répond, mais aucun téléphone Android frais n’est démontré. Les coupes automatiques restent bloquées.';
+    if (m === 'vizyo-texto')
+      return 'Relais, téléphone Android et preuve de remise contrôlés.';
+    if (m === 'vizyo-texto-broken' && this.status()?.gateway)
+      return 'Le relais répond, mais le serveur Android ou le dernier ping téléphone est en défaut. Les coupes automatiques restent bloquées.';
     if (m === 'vizyo-texto-broken')
       return 'vizyo-texto est configure mais injoignable — verifier le relay (texto.vizyoagency.com).';
     if (m === 'twilio' && this.status()?.deliveryProofAvailable !== true)

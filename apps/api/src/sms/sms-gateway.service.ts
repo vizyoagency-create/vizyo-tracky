@@ -108,6 +108,52 @@ export interface SmsInboundEvent {
   receivedAt: string;
 }
 
+export interface TextoGatewayHealth {
+  observedAt: string;
+  operational: boolean;
+  provider: {
+    status: string;
+    version: string | null;
+    releaseId: string | null;
+  };
+  device: {
+    count: number;
+    freshestLastSeenAt: string | null;
+    ageSeconds: number | null;
+    fresh: boolean;
+    staleAfterSeconds: number;
+  };
+  sim: { configuredNumber: number | null };
+  queue: {
+    pending: number;
+    oldestPendingAt: string | null;
+    oldestAgeSeconds: number | null;
+    failed24h: number;
+  };
+  telemetry: { batteryAvailable: boolean; chargingAvailable: boolean };
+  error?: string;
+}
+
+export interface SmsGatewayHealth {
+  enabled: boolean;
+  reachable: boolean;
+  error?: string;
+  errorCode?: string;
+  fromNumber?: string;
+  recentFailures24h?: number;
+  lastFailure?: {
+    at: string;
+    toNumber: string | null;
+    errorCode?: string;
+    errorMessage?: string;
+  } | null;
+  deliveryProofAvailable: boolean;
+  pendingWithoutReceipt: number;
+  oldestPendingAt: string | null;
+  lastTerminalSuccessAt: string | null;
+  gateway?: TextoGatewayHealth;
+}
+
 /**
  * ══ TRK-066 — QUAND LE DERNIER RECOURS SE TAIT, IL DOIT AU MOINS DIRE LEQUEL ═════════════
  *
@@ -269,14 +315,7 @@ export class SmsGatewayService implements OnModuleInit {
    * Le ping est non-bloquant : si Twilio est down/timeout, on retourne
    * unreachable avec l'erreur — pas d'exception propagee.
    */
-  async healthCheck(): Promise<{
-    enabled: boolean;
-    reachable: boolean;
-    error?: string;
-    errorCode?: string;
-    fromNumber?: string;
-    recentFailures24h?: number;
-    lastFailure?: { at: string; toNumber: string | null; errorCode?: string; errorMessage?: string } | null;
+  async healthCheck(): Promise<SmsGatewayHealth> {
     /**
      * 🔴 TRK-026 — **`recentFailures24h` n'est PAS un indicateur de santé**, et l'écran ne
      * doit plus le présenter comme tel. Il compte les lignes `status='failed'`, or aucun
@@ -288,14 +327,6 @@ export class SmsGatewayService implements OnModuleInit {
      * `deliveryProofAvailable` dit la vérité : tant qu'il vaut `false`, AUCUN compteur de
      * cette réponse ne peut affirmer que la chaîne fonctionne.
      */
-    deliveryProofAvailable: boolean;
-    /** Sortants jamais sortis de leur statut de soumission — le vrai chiffre à afficher. */
-    pendingWithoutReceipt: number;
-    /** Date du plus ancien sortant sans accusé de remise (null si aucun). */
-    oldestPendingAt: string | null;
-    /** Dernière preuve terminale positive, pour distinguer preuve historique et fraîche. */
-    lastTerminalSuccessAt: string | null;
-  }> {
     // Compte les SMS OUT en echec dans les 24h (utile meme en mode noop).
     const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
     const submission = [...SMS_SUBMISSION_STATUSES];
@@ -347,14 +378,40 @@ export class SmsGatewayService implements OnModuleInit {
       ? (lastDelivered.statusUpdatedAt ?? lastDelivered.createdAt).toISOString()
       : null;
 
-    // vizyo-texto : ping le /health du relay (cout = 1 GET, pas de SMS).
+    // vizyo-texto : santé authentifiée BOUT-EN-BOUT. `/health` ne prouvait que
+    // le processus Node ; `/v1/texto/health` prouve aussi que le téléphone ping.
     if (this.provider === 'vizyo-texto') {
       try {
-        const res = await fetch(`${this.textoUrl}/health`, { signal: AbortSignal.timeout(5_000) });
+        const res = await fetch(`${this.textoUrl}/v1/texto/health`, {
+          headers: { Authorization: `Bearer ${this.textoApiKey}` },
+          signal: AbortSignal.timeout(5_000),
+        });
+        if (!res.ok) {
+          return {
+            enabled: true,
+            reachable: false,
+            error: `Télémétrie Android indisponible (HTTP ${res.status})`,
+            fromNumber: this.textoUrl,
+            recentFailures24h,
+            lastFailure,
+            deliveryProofAvailable,
+            pendingWithoutReceipt,
+            oldestPendingAt,
+            lastTerminalSuccessAt,
+          };
+        }
+        const gateway = (await res.json()) as TextoGatewayHealth;
+        const valid =
+          typeof gateway?.operational === 'boolean' &&
+          typeof gateway?.device?.fresh === 'boolean' &&
+          typeof gateway?.provider?.status === 'string';
+        if (!valid) throw new Error('réponse de télémétrie Android invalide');
         return {
           enabled: true,
-          reachable: res.ok,
-          error: res.ok ? undefined : `HTTP ${res.status}`,
+          reachable: true,
+          error: gateway.operational
+            ? undefined
+            : (gateway.error ?? 'téléphone Android absent ou périmé'),
           fromNumber: this.textoUrl,
           recentFailures24h,
           lastFailure,
@@ -362,6 +419,7 @@ export class SmsGatewayService implements OnModuleInit {
           pendingWithoutReceipt,
           oldestPendingAt,
           lastTerminalSuccessAt,
+          gateway,
         };
       } catch (err) {
         return {

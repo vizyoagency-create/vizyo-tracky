@@ -30,10 +30,12 @@ Production : **hors périmètre — aucun déploiement ni changement VPS autoris
 - [x] R5.2 — Interlock de santé fail-closed avant CUT automatique.
 - [x] R6.1 — File SMS FIFO et cadence prudente configurable.
 - [x] R6.1b — File CUT automatique du bouton flotte : une coupe/10 s, reprise prioritaire, état récupérable après crash.
-- [ ] R6.2 — Heartbeat/ping, fraîcheur et métriques de passerelle.
+- [x] R6.2a — Ping authentifié, fraîcheur Android, métriques de passerelle et sentinelle sous 60 s.
+- [ ] R6.2b — Qualification physique écran éteint/arrière-plan/reboot (téléphone requis).
 - [x] R6.3 — Procédure du second téléphone documentée (achat différé).
 - [x] R7.1 — Tests unitaires et intégration des scénarios critiques.
-- [ ] R7.2 — Tests de crash/reprise, ACK perdu, webhook perdu et rafale de 22 RESTORE.
+- [x] R7.2a — Tests automatisés ACK perdu, webhook perdu, reprise par worker et rafale de 22 RESTORE.
+- [ ] R7.2b — Crash/reprise sur une copie PostgreSQL et relais/téléphone réels.
 - [x] R7.3 — Runbook, variables, rollback et critères Go/No-Go finalisés.
 - [ ] R7.4 — Canari terrain et réactivation progressive (nécessite décision explicite ultérieure).
 
@@ -43,16 +45,16 @@ Règle de coche : une case n'est cochée qu'après code, test automatisé pertin
 
 L'ordre ci-dessous est une dépendance technique, pas une préférence. On commence par voir la vérité, puis on corrige les états, ensuite seulement on automatise les retries. Sinon une nouvelle logique pourrait multiplier silencieusement les SMS ou présenter un faux succès.
 
-| Lot | Priorité | Bugs couverts | Résultat attendu | Condition de sortie |
-|---|---:|---|---|---|
-| R0 | immédiat | conservation des preuves | Journal complet et configuration du téléphone sauvegardés | L'incident est reproductible et horodaté |
-| R1 | P0 | CC-004, 013, 028, 030, 032 | Chaque tentative est visible de bout en bout | Un échec apparaît dans Tracky en moins de 60 s |
-| R2 | P0 | CC-001, 005, 008, 009, 010, 021 | Plus aucun faux état « restauré » | `queued/sent` ne nettoie jamais l'état coupé |
-| R3 | P0 | CC-016 à 020 | Une intention unique malgré clics concurrents | Tests multi-onglets et multi-utilisateurs verts |
-| R4 | P0 | CC-002, 003, 007, 027 | RESTORE durable et rejouable | Crash, socket absente et ACK perdu sont récupérés |
-| R5 | P0 | CC-006, 014, 026 | Interlock fail-closed avant CUT | Une panne volontaire du secours bloque la CUT |
-| R6 | P1 | CC-011, 012, 015, 024, 029, 031 | Passerelle SMS régulée et redondante | Vague de 22 RESTORE dans le SLO sans rafale |
-| R7 | validation | CC-022, 023 et ensemble du registre | Canari puis réactivation progressive | Critères terrain signés, rollback testé |
+| Lot |   Priorité | Bugs couverts                       | Résultat attendu                                          | Condition de sortie                               |
+| --- | ---------: | ----------------------------------- | --------------------------------------------------------- | ------------------------------------------------- |
+| R0  |   immédiat | conservation des preuves            | Journal complet et configuration du téléphone sauvegardés | L'incident est reproductible et horodaté          |
+| R1  |         P0 | CC-004, 013, 028, 030, 032          | Chaque tentative est visible de bout en bout              | Un échec apparaît dans Tracky en moins de 60 s    |
+| R2  |         P0 | CC-001, 005, 008, 009, 010, 021     | Plus aucun faux état « restauré »                         | `queued/sent` ne nettoie jamais l'état coupé      |
+| R3  |         P0 | CC-016 à 020                        | Une intention unique malgré clics concurrents             | Tests multi-onglets et multi-utilisateurs verts   |
+| R4  |         P0 | CC-002, 003, 007, 027               | RESTORE durable et rejouable                              | Crash, socket absente et ACK perdu sont récupérés |
+| R5  |         P0 | CC-006, 014, 026                    | Interlock fail-closed avant CUT                           | Une panne volontaire du secours bloque la CUT     |
+| R6  |         P1 | CC-011, 012, 015, 024, 029, 031     | Passerelle SMS régulée et redondante                      | Vague de 22 RESTORE dans le SLO sans rafale       |
+| R7  | validation | CC-022, 023 et ensemble du registre | Canari puis réactivation progressive                      | Critères terrain signés, rollback testé           |
 
 ## R0 — préserver les preuves avant toute manipulation du téléphone
 
@@ -95,11 +97,11 @@ Chaque transition doit enregistrer : acteur, ancien état, nouvel état, raison,
 - poller les messages non terminaux toutes les 30 à 60 secondes ;
 - considérer le webhook comme accélérateur, jamais comme l'unique vérité ;
 - rendre les événements désordonnés et dupliqués idempotents ;
-- surveiller `lastSeen`, `system:ping`, batterie, charge, version, âge de la plus vieille entrée et dernier message effectivement envoyé.
+- surveiller `lastSeen`, fraîcheur du téléphone, version, âge de la plus vieille entrée et dernier message effectivement envoyé ; afficher batterie/charge comme indisponibles tant que l'API Android ne les fournit pas, afin de ne jamais inventer un voyant vert ;
 
 Alertes minimales :
 
-- passerelle sans ping depuis 90 secondes ;
+- passerelle sans ping au-delà du seuil configuré (120 secondes par défaut, contrôle toutes les 60 secondes) ;
 - message encore `queued/pending` après 60 secondes pour RESTORE ;
 - échec Android terminal immédiat avec plaque et code ;
 - aucun ACK boîtier dans le délai ;
@@ -216,7 +218,7 @@ Pour chaque flotte et canal :
 - taux de fallback et sa cause ;
 - âge de la file SMS, temps avant prise en charge téléphone, taux `sent/delivered/failed` ;
 - erreurs par code Android, SIM, opérateur, version et plage horaire ;
-- fraîcheur du dernier ping, état batterie/charge et version SMSGate ;
+- fraîcheur du dernier ping et version SMSGate ; batterie/charge restent un contrôle physique documenté jusqu'à exposition par l'API ;
 - nombre de RESTORE non confirmés et âge maximal ;
 - nombre de CUT bloquées par l'interlock ;
 - coût SMS évité/utilisé sans sacrifier les SLO.
@@ -234,4 +236,4 @@ Un bug n'est pas clos quand le code est fusionné. Il est clos quand : test auto
 - `git diff --check` : aucun défaut d'espacement ;
 - production non modifiée : travail limité à `codex/tracky-cutoff-reliability-2026-09-12`.
 
-Le code n'est pas déclaré prêt production tant que R6.2, R7.2 et R7.4 restent décochés. Ces points exigent notamment le relais/téléphone réel, une vague contrôlée de 22 RESTORE, un test de crash/reprise sur une base de test et un canari véhicule avec présence terrain.
+Le code automatisable est terminé. La réactivation des CUT reste No-Go tant que R6.2b, R7.2b et R7.4 restent décochés : ils exigent le relais/téléphone réel, une copie PostgreSQL et un canari véhicule avec présence terrain. La vague logicielle de 22 RESTORE est verte ; sa mesure physique reste dans R6.2b.

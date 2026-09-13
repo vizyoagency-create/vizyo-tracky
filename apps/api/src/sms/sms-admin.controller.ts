@@ -53,7 +53,11 @@ export class SmsAdminController {
     // (+ suffixe '-broken' si configure mais injoignable).
     let mode: string;
     if (provider === 'noop' || !hc.enabled) mode = 'noop';
-    else if (hc.reachable) mode = provider;
+    else if (
+      hc.reachable &&
+      (provider !== 'vizyo-texto' || hc.gateway?.operational === true)
+    )
+      mode = provider;
     else mode = `${provider}-broken`;
     return {
       enabled: hc.enabled,
@@ -68,6 +72,7 @@ export class SmsAdminController {
       pendingWithoutReceipt: hc.pendingWithoutReceipt,
       oldestPendingAt: hc.oldestPendingAt,
       lastTerminalSuccessAt: hc.lastTerminalSuccessAt,
+      gateway: hc.gateway,
       dispatchQueue,
     };
   }

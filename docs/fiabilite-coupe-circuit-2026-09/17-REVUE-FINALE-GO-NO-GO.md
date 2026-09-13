@@ -9,13 +9,14 @@ Deux décisions doivent rester séparées :
 
 1. déployer techniquement avec `ENGINE_AUTOMATIC_CUT_ENABLED=false` peut être envisagé après
    sauvegarde et répétition de la migration sur une base de test ;
-2. réactiver les CUT automatiques reste **No-Go** tant que R6.2, R7.2 et R7.4 ne sont pas validés.
+2. réactiver les CUT automatiques reste **No-Go** tant que R6.2b, R7.2b et R7.4 ne sont pas validés.
 
 ## Revue du code
 
 - restauration durable, reprises bornées, fallback TCP vers SMS et alertes conservés ;
 - aucun statut de soumission ou de transport ne vaut preuve de rallumage ;
 - garde-fou des CUT automatiques fail-closed et désactivé par défaut ;
+- santé authentifiée du serveur SMS et fraîcheur du dernier ping Android ; une sentinelle ouvre une alerte critique par épisode et interdit les CUT si le téléphone est périmé ;
 - file anti-rafale des CUT compatible avec l'unique instance API déclarée par le déploiement ;
 - actions manuelles sans désactivation explicite : horaires conservés et prochaine transition
   suspendue jusqu'à la bascule suivante ;
@@ -36,7 +37,7 @@ Deux décisions doivent rester séparées :
 
 - typecheck des trois paquets : succès ;
 - smoke de démarrage API : 5 tests réussis ;
-- suite API finale exécutée en série : 254 suites et 3 915 tests réussis ;
+- suite API finale exécutée en série : 255 suites et 3 920 tests réussis ;
 - suite Web : 727 tests réussis ;
 - suite partagée : 416 tests réussis ;
 - tests moteur ciblés après les derniers durcissements : 95 réussis ;
@@ -52,8 +53,9 @@ pas installé alors que le script existe ; typecheck, tests et builds restent le
 
 - appliquer puis rejouer la migration sur une copie de PostgreSQL ; Docker local n'était pas
   disponible pendant la revue, donc aucun test de migration réelle n'est revendiqué ;
-- crash/reprise avec RESTORE en attente, ACK perdu et webhook perdu ;
-- vague contrôlée de 22 RESTORE et mesure du délai, de la file et du coût SMS ;
+- crash/reprise sur une copie PostgreSQL avec RESTORE en attente et perte réseau réelle ;
+- ACK et webhook perdus sont couverts automatiquement ; il reste à reproduire le scénario contre le relais et le téléphone réels ;
+- la vague de 22 RESTORE est validée en simulation automatisée sans perte ni doublon ; il reste à mesurer délai, file et coût sur le téléphone/SIM réels ;
 - preuve réelle du téléphone : premier SMS, écran éteint, application en arrière-plan et reboot ;
 - deux canaris maximum avec contrôle physique et rollback prêt ;
 - réactivation progressive, jamais les 37 véhicules ensemble.

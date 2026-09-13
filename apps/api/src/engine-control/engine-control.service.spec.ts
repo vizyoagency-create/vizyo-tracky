@@ -190,6 +190,7 @@ describe('EngineControlService', () => {
             send: jest.fn(),
             reconcileOutboundStatus: jest.fn(),
             healthCheck: jest.fn(),
+            currentProvider: jest.fn().mockReturnValue('noop'),
             dispatchQueueState: jest.fn().mockReturnValue({ depth: 0, minIntervalMs: 15000, nextDispatchAt: null }),
           },
         },
@@ -1566,6 +1567,56 @@ describe('EngineControlService', () => {
         if (previousNodeEnv === undefined) delete process.env['NODE_ENV'];
         else process.env['NODE_ENV'] = previousNodeEnv;
         if (previousFlag === undefined) delete process.env['ENGINE_AUTOMATIC_CUT_ENABLED'];
+        else process.env['ENGINE_AUTOMATIC_CUT_ENABLED'] = previousFlag;
+      }
+    });
+
+    it('bloque une CUT automatique si le téléphone Android ne ping plus', async () => {
+      const previousNodeEnv = process.env['NODE_ENV'];
+      const previousFlag = process.env['ENGINE_AUTOMATIC_CUT_ENABLED'];
+      process.env['NODE_ENV'] = 'production';
+      process.env['ENGINE_AUTOMATIC_CUT_ENABLED'] = 'true';
+      prisma.tracker.findFirst.mockResolvedValue(trackerWithVehicle);
+      const sms = testModule.get(SmsGatewayService) as unknown as {
+        currentProvider: jest.Mock;
+        healthCheck: jest.Mock;
+      };
+      sms.currentProvider.mockReturnValue('vizyo-texto');
+      sms.healthCheck.mockResolvedValue({
+        enabled: true,
+        reachable: true,
+        deliveryProofAvailable: true,
+        pendingWithoutReceipt: 0,
+        oldestPendingAt: null,
+        lastTerminalSuccessAt: new Date().toISOString(),
+        gateway: {
+          operational: false,
+          device: { fresh: false, freshestLastSeenAt: null, ageSeconds: null },
+        },
+      });
+
+      try {
+        await expect(
+          service.requestCommand(
+            TRACKER_ID,
+            EngineAction.CUT,
+            null,
+            superAdmin,
+            'SCHEDULER',
+          ),
+        ).rejects.toThrow('téléphone Android/SIM indisponible');
+        expect(prisma.engineControlCommand.create).not.toHaveBeenCalled();
+        expect(errorLogger.record).toHaveBeenCalledWith(
+          expect.stringContaining('téléphone Android/SIM indisponible'),
+          'engine-control-interlock',
+          expect.objectContaining({ trackerId: TRACKER_ID }),
+          'CRITICAL',
+        );
+      } finally {
+        if (previousNodeEnv === undefined) delete process.env['NODE_ENV'];
+        else process.env['NODE_ENV'] = previousNodeEnv;
+        if (previousFlag === undefined)
+          delete process.env['ENGINE_AUTOMATIC_CUT_ENABLED'];
         else process.env['ENGINE_AUTOMATIC_CUT_ENABLED'] = previousFlag;
       }
     });

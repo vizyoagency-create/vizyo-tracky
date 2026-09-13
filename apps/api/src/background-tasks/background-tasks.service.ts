@@ -177,6 +177,20 @@ const CATALOG: CatalogEntry[] = [
     purpose: "Prévient par e-mail quand plus de 5 erreurs sont enregistrées sur l'heure glissante, ou dès UNE erreur critique (2026-09-08) — 1 e-mail/h max, quelle que soit la vigie qui parle.",
     periodic: { everyMs: 600_000, offsetMs: 0 },
   },
+  {
+    id: 'sms-gateway-watchdog',
+    source: 'sms/sms-gateway-watchdog.service.ts',
+    label: 'Sonde du téléphone passerelle SMS',
+    category: 'Sécurité & moteur',
+    kind: 'cron',
+    scheduleHuman: 'chaque minute',
+    criticality: 'haute',
+    antiOverlap: true,
+    purpose:
+      'Vérifie sans envoyer de SMS que le relais, le serveur Android et le dernier ping téléphone sont frais ; une panne bloque les coupes automatiques.',
+    note: 'Alerte dédupliquée avec rappel toutes les 15 min tant que la chaîne reste indisponible.',
+    periodic: { everyMs: 60_000, offsetMs: 0 },
+  },
 
   // ───────── IA & rapports ─────────
   {

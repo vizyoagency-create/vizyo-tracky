@@ -347,6 +347,94 @@ describe('SmsGatewayService — fraîcheur de la preuve terminale', () => {
   });
 });
 
+describe('SmsGatewayService — santé Android bout-en-bout', () => {
+  const build = () => {
+    const prisma = {
+      smsLog: {
+        count: jest
+          .fn()
+          .mockResolvedValueOnce(0)
+          .mockResolvedValueOnce(0)
+          .mockResolvedValueOnce(1),
+        findFirst: jest
+          .fn()
+          .mockResolvedValueOnce(null)
+          .mockResolvedValueOnce(null)
+          .mockResolvedValueOnce({
+            createdAt: new Date(),
+            statusUpdatedAt: new Date(),
+          }),
+      },
+    };
+    const config = {
+      get: jest.fn(
+        (key: string) =>
+          ({
+            VIZYO_TEXTO_URL: 'https://texto.test',
+            VIZYO_TEXTO_API_KEY: 'secret-key',
+            SMS_MIN_INTERVAL_MS: 0,
+          })[key],
+      ),
+    };
+    return new SmsGatewayService(
+      prisma as never,
+      { record: jest.fn() } as never,
+      { emit: jest.fn() } as never,
+      { record: jest.fn() } as never,
+      config as never,
+    );
+  };
+
+  afterEach(() => jest.restoreAllMocks());
+
+  it('authentifie le contrôle et expose un téléphone frais', async () => {
+    const gateway = {
+      observedAt: new Date().toISOString(),
+      operational: true,
+      provider: { status: 'pass', version: '1.0', releaseId: 'r1' },
+      device: {
+        count: 1,
+        freshestLastSeenAt: new Date().toISOString(),
+        ageSeconds: 12,
+        fresh: true,
+        staleAfterSeconds: 120,
+      },
+      sim: { configuredNumber: 1 },
+      queue: {
+        pending: 0,
+        oldestPendingAt: null,
+        oldestAgeSeconds: null,
+        failed24h: 0,
+      },
+      telemetry: { batteryAvailable: false, chargingAvailable: false },
+    };
+    const fetchSpy = jest.spyOn(global, 'fetch').mockResolvedValue({
+      ok: true,
+      json: jest.fn().mockResolvedValue(gateway),
+    } as never);
+
+    const health = await build().healthCheck();
+
+    expect(fetchSpy).toHaveBeenCalledWith(
+      'https://texto.test/v1/texto/health',
+      expect.objectContaining({
+        headers: { Authorization: 'Bearer secret-key' },
+      }),
+    );
+    expect(health.reachable).toBe(true);
+    expect(health.gateway?.operational).toBe(true);
+  });
+
+  it('échoue fermé si un ancien relais ne fournit pas la télémétrie', async () => {
+    jest
+      .spyOn(global, 'fetch')
+      .mockResolvedValue({ ok: false, status: 404 } as never);
+    const health = await build().healthCheck();
+    expect(health.reachable).toBe(false);
+    expect(health.error).toContain('Télémétrie Android indisponible');
+  });
+});
+
 describe('SmsGatewayService — idempotence des webhooks terminaux', () => {
   it('ne crée pas une seconde alerte pour le même échec déjà enregistré', async () => {
     const prisma = {

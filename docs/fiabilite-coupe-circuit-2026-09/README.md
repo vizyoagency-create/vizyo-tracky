@@ -48,6 +48,7 @@ Les traitements CUT et RESTORE sont volontairement asymétriques :
 15. [File anti-rafale du bouton Horaires flotte](./15-FILE-ANTI-RAFALE-HORAIRES-FLOTTE.md)
 16. [Actions manuelles, horaires et confirmation par glissement](./16-ACTIONS-MANUELLES-ET-HORAIRES.md)
 17. [Revue finale du candidat et décision Go/No-Go](./17-REVUE-FINALE-GO-NO-GO.md)
+18. [Sentinelle Android et fermeture du périmètre logiciel](./18-SENTINELLE-ANDROID-ET-FERMETURE-CODE.md)
 
 ## Document directeur du week-end
 

@@ -867,19 +867,34 @@ export class EngineControlService implements OnModuleDestroy {
           ? now - new Date(health.lastTerminalSuccessAt).getTime()
           : Number.POSITIVE_INFINITY;
         const freshProof = terminalAgeMs <= 24 * 60 * 60 * 1000;
-        const safe = health.enabled && health.reachable && health.deliveryProofAvailable && freshProof && queue.depth < 10;
+        const gatewayOperational =
+          this.sms.currentProvider() !== 'vizyo-texto' ||
+          health.gateway?.operational === true;
+        const safe =
+          health.enabled &&
+          health.reachable &&
+          gatewayOperational &&
+          health.deliveryProofAvailable &&
+          freshProof &&
+          queue.depth < 10;
         const reason = safe
           ? 'ok'
           : !health.enabled
             ? 'passerelle SMS désactivée'
             : !health.reachable
               ? `relais SMS injoignable${health.error ? ` : ${health.error}` : ''}`
-              : !health.deliveryProofAvailable
-                ? 'aucune preuve de remise SMS disponible'
-                : !freshProof
-                  ? 'dernière preuve de remise SMS trop ancienne (> 24 h)'
-                : `file SMS trop profonde (${queue.depth})`;
-        this.automaticCutHealthCache = { expiresAt: now + 30_000, safe, reason };
+              : !gatewayOperational
+                ? `téléphone Android/SIM indisponible${health.error ? ` : ${health.error}` : ''}`
+                : !health.deliveryProofAvailable
+                  ? 'aucune preuve de remise SMS disponible'
+                  : !freshProof
+                    ? 'dernière preuve de remise SMS trop ancienne (> 24 h)'
+                    : `file SMS trop profonde (${queue.depth})`;
+        this.automaticCutHealthCache = {
+          expiresAt: now + 30_000,
+          safe,
+          reason,
+        };
       } catch (err) {
         this.automaticCutHealthCache = {
           expiresAt: now + 10_000,
