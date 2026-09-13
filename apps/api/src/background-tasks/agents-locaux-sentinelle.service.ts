@@ -444,6 +444,26 @@ export class AgentsLocauxSentinelleService {
     if (causesSignalees.has(cause.cle)) return;
     causesSignalees.add(cause.cle);
 
+    // Constat du 13/09 à 18:50 UTC : la cause « plafond » venait d'être LEVÉE par le passage
+    // réussi du rattrapage (17:22), et la sentinelle l'a rouverte une heure plus tard sur le
+    // dernier passage de l'agent NOCTURNE — un échec de 05:48, antérieur à cette réussite, que
+    // l'agent ne remplacera qu'à son prochain créneau. Un échec plus ANCIEN qu'un succès d'un
+    // agent concerné ne dit rien de l'état présent de la cause : on ne l'écrit pas. Si la cause
+    // revient, un échec plus récent que ce succès le dira.
+    const cles = this.catalogue.agentsDuPoste().filter((a) => cause.concerne(a)).map((a) => a.cleJournal);
+    const fin = passage.finiA ?? passage.demarreA;
+    const succesDepuis = await this.prisma.passageAgentLocal.findMany({
+      where: { agent: { in: cles }, succes: true, finiA: { gt: fin } },
+      select: { agent: true, finiA: true },
+      take: 1,
+    });
+    if (succesDepuis.length > 0) {
+      this.logger.log(
+        `Cause « ${cause.cle} » non signalée : l'échec de ${agent.id} (${dateHeureParis(fin)}) est antérieur au succès de ${succesDepuis[0]!.agent} (${dateHeureParis(succesDepuis[0]!.finiA)}).`,
+      );
+      return;
+    }
+
     const ouverte = await this.prisma.errorLog.findFirst({
       where: { source: SOURCE_AGENTS_LOCAUX, resolvedAt: null, context: { path: ['cause'], equals: cause.cle } },
       select: { id: true },

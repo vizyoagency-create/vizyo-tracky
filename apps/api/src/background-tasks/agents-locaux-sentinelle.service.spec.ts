@@ -88,7 +88,12 @@ function construire(opts: {
         if (opts.lectureCassee?.includes(args.where.agent)) throw new Error('relation "passages_agents_locaux" does not exist');
         return args.where.agent in passages ? passages[args.where.agent] : passage(opts.now - 30 * MINUTE);
       }),
-      findMany: jest.fn(async () => opts.historique ?? []),
+      // Le double honore les deux filtres que le service emploie : `succes` et `finiA > x`.
+      findMany: jest.fn(async (args: { where?: { succes?: boolean; finiA?: { gt?: Date; gte?: Date } } }) =>
+        (opts.historique ?? []).filter((p) =>
+          (args.where?.succes === undefined || p.succes === args.where.succes) &&
+          (!args.where?.finiA?.gt || p.finiA.getTime() > args.where.finiA.gt.getTime()) &&
+          (!args.where?.finiA?.gte || p.finiA.getTime() >= args.where.finiA.gte.getTime()))),
     },
     pauseAgentsLocaux: {
       findFirst: jest.fn(async () => opts.pauses?.[0] ?? null),
@@ -674,6 +679,31 @@ describe('Sentinelle des agents du poste — le matin, un PC éteint se lit au c
  * poser une pause après cinq heures d'échecs d'affilée des agents qui passent par la CLI, et
  * envoyer UN courriel par pause posée — celle du poste (plafond) comme la sienne.
  */
+describe('Sentinelle des agents du poste — une cause levée ne revient pas sur un échec ANCIEN (T31, constat du 13/09)', () => {
+  const now = paris(2026, 9, 13, 20, 50);
+  const PLAFOND = "You've hit your weekly limit · resets 12pm (Europe/Paris)";
+
+  it('⚠️ le dernier passage de l’agent nocturne est un échec « plafond » de 07:48, mais le rattrapage a RÉUSSI à 19:22 : aucune ligne', async () => {
+    const { svc, errorLogger } = construire({
+      now,
+      passages: { 'agent-recit-trajet': passage(paris(2026, 9, 13, 7, 48), { succes: false, erreur: `Error: echec de la CLI : ${PLAFOND}` }) },
+      historique: [{ ...passage(paris(2026, 9, 13, 18, 56), { resume: '119 recit(s) ecrit(s)' }), finiA: new Date(paris(2026, 9, 13, 19, 22)), agent: 'rattrapage-recits' }],
+    });
+    await svc.verifier(now);
+    expect(alertes(errorLogger).filter((a) => a.motif === 'cause')).toEqual([]);
+  });
+
+  it('…et sans succès postérieur d’un agent concerné, la cause est bien signalée', async () => {
+    const { svc, errorLogger } = construire({
+      now,
+      passages: { 'agent-recit-trajet': passage(paris(2026, 9, 13, 7, 48), { succes: false, erreur: `Error: echec de la CLI : ${PLAFOND}` }) },
+      historique: [{ ...passage(paris(2026, 9, 13, 6, 0), { resume: 'avant' }), finiA: new Date(paris(2026, 9, 13, 6, 30)), agent: 'rattrapage-recits' }],
+    });
+    await svc.verifier(now);
+    expect(alertes(errorLogger).filter((a) => a.motif === 'cause')).toHaveLength(1);
+  });
+});
+
 describe('Sentinelle des agents du poste — la pause (T34)', () => {
   const now = paris(2026, 9, 13, 20, 50);
   const PLAFOND = "You've hit your weekly limit · resets Sep 20, 12pm (Europe/Paris)";
