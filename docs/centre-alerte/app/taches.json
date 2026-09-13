@@ -218,8 +218,11 @@
       "detail": "Posee seulement sur le chemin de la survitesse. Le modele existe dix lignes plus loin (perte GPS, 24 h).",
       "classe": "A_CODER",
       "gravite": 2,
-      "etat": "OUVERT",
-      "depuis": "2026-08-13"
+      "etat": "FAIT",
+      "depuis": "2026-08-13",
+      "faitLe": "2026-09-13",
+      "deployeLe": "2026-08-19",
+      "preuve": "ENTREE PERIMEE, close sur la mesure. Le libelle date du 13/08 ; la deduplication generique a ete livree le 19/08 dans createFromCobanFrame (DEDUP_ALARME_MS = 6 h, meme predicat pour TOUS les types d alarme du boitier, un findFirst par vehicule et par type), puis durcie le 01/09 par TRK-052 (une alarme d ETAT — POWER_CUT, LOW_BATTERY, OVERSPEED… — ne se rearme plus a l acquittement). Verifie dans le code le 13/09 : where { vehicleId, type: mapping.type, createdAt >= now - 6 h, tripId: null }, plus acknowledgedAt: null pour les seules alarmes ponctuelles. MESURE EN PRODUCTION sur 14 jours (30/08 → 13/09), alarmes du boitier hors chaine trajet : pire journee 2 alertes par type et par vehicule (LOW_BATTERY 9, POWER_CUT 8, GPS_LOST 7, OVERSPEED 5, ACCIDENT 2 sur la periode), contre 1 317 OVERSPEED le 12/08 ; intervalle minimal OVERSPEED 6 h 30 ; les seules paires sous 6 h sont deux LOW_BATTERY du 31/08 a 15 min d ecart, acquittees — la veille du correctif TRK-052, le cas exact qu il documente. Aucune depuis. Restent HORS de cette tache, sur la fiche TRK-022 : le volet 2 (42 boitiers sans alarme embarquee) repondu par la chaine V5 des exces nes de l analyse, dont le calibrage est T4 ; et le volet 3, l enrichissement du message du boitier (duree et maximum d episode), non fait — a decider s il vaut une tache."
     },
     {
       "id": "T13",
@@ -229,9 +232,12 @@
       "detail": "LE RATTRAPAGE TOURNE, MESURE LE 10/09 : les trajets anciens deja recales passent de 1 150 a 1 583, soit +433 pour environ 360 predits — l ecart est du meme ordre que le recalage a la demande du rejeu, et ce n est ni un arret ni un bond qui obligerait a nommer un autre chemin. 🔴 IL A FALLU ECARTER UN PIEGE DE DEFINITION POUR POUVOIR L ECRIRE : la meme requete sur la date de CREATION au lieu de la date de DEPART rend 11 475 trajets et 1 713 recales, soit un denominateur en hausse de 1 443 en un jour — impossible sur une fenetre glissante de 58 jours qui recoit environ 190 trajets par jour. C est la definition par date de depart qui rend +16 au denominateur, donc c est celle de la veille, et c est la seule qui rende la comparaison decidable. Avec la mauvaise on publiait +563, un chiffre faux obtenu en comparant deux fenetres differentes. 🔑 AVANT DE LIRE UNE VARIATION, VERIFIER QUE LA FENETRE N A PAS BOUGE AUTANT QUE LA MESURE. Et le passe continue d etre reecrit : le 04/09 passe de 168 a 102 trajets sans recalage, le 05/09 de 132 a 0, le 06/09 de 82 a 0, sans qu aucun trajet nouveau n apparaisse. AUCUN VERDICT SUR CETTE TACHE N EST DECIDABLE TANT QUE T28 N EST PAS FAITE. AU 13/09 : fenetre 2 a 60 jours par date de depart, 10 238 trajets dont 3 283 deja recales (1 583 le 10/09, soit +1 700 en trois jours, environ 570 par jour — le rattrapage planifie plus le recalage a la demande), et 0 trajet sans recalage sur chaque journee du 04 au 13/09 : LE PASSE EST ENTIEREMENT REECRIT. T28 reste la seule voie vers un verdict.",
       "classe": "CHANTIER",
       "gravite": 2,
-      "etat": "OUVERT",
+      "etat": "DEPLOYE",
       "depuis": "2026-08-09",
-      "preuveAttendue": "Au 10/09, a 15 trajets par passage et 24 passages, les 1 150 trajets anciens deja recales doivent passer a environ 1 510. S il ne bouge pas, le rattrapage ne tourne pas ; s il bondit tres au-dela, un autre chemin recale en masse et il faut le nommer. La tache T28 doit etre faite AVANT de conclure quoi que ce soit sur T13."
+      "preuveAttendue": "DOUBLE CONDITION. (a) La journee du 14/09 — premiere entierement couverte par les colonnes — doit rendre un taux « a la cloture » eleve (attendu : > 95 pour cent, le flux neuf recale tout dans l heure) ET LA MEME VALEUR quand on la re-mesure le 15 puis le 16/09 : si elle bouge, le rattrapage reecrit encore le passe. (b) Le rattrapage avance d environ 360 traces par jour a 15 par passage (12 606 restants au 13/09 14h17) : s il ne bouge pas, il ne tourne pas ; s il bondit tres au-dela, un autre chemin recale en masse et il faut le nommer.",
+      "deployeLe": "2026-09-13",
+      "commit": "4d1c4cb5",
+      "preuve": "LES TROIS PARTIES DU CHANTIER SONT COUVERTES, le verdict est une mesure a venir. (1) Flux neuf repare le 08/09 : 224/224 alors, 923/923 au 13/09. (2) Mesure redefinie par T28, deployee le 13/09 : le trace recale est date et signe (cloture / rattrapage / rejeu), « a la cloture » = dans les deux heures suivant la fin du trajet, mesure sur la journee CLOSE d hier — ecran Recuperation, ligne « Trace recale a la cloture ». Premiere mesure : 15 traces signes cloture au passage de 13h45, poses 22 min apres la cloture en moyenne, 64 max. (3) Historique en rattrapage : 15 traces par passage, 12 606 restants au 13/09 14h17, soit ~35 jours au rythme que le proprietaire a choisi de garder (D2) ; 15 signes « rattrapage » au meme passage. Le piege de definition du 10/09 (createdAt contre startedAt) ne peut plus se produire : la journee close est bornee par endedAt et ne bouge plus. Pour l audit : le verdict sur le flux neuf se lit desormais sur la ligne « a la cloture » de la journee close, jamais sur un taux glissant."
     },
     {
       "id": "T14",
