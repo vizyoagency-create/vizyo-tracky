@@ -344,8 +344,10 @@
       "detail": "Il renvoie vers « le correctif de TRK-012 reste en attente d'accord » — or TRK-012 est CORRIGE depuis le 25/08.",
       "classe": "DETTE_DOC",
       "gravite": 3,
-      "etat": "OUVERT",
-      "depuis": "2026-09-06"
+      "etat": "FAIT",
+      "depuis": "2026-09-06",
+      "faitLe": "2026-09-13",
+      "preuve": "Le quoiFaire de TRK-014 dans app/wiki.json ne renvoie plus vers un correctif a livrer : il dit que TRK-012 est CORRIGE ET DEPLOYE depuis le 23/08 (PR 110, preuve terrain le 24/08), qu il ne reste rien a livrer au titre de la fiche, et que ce qu elle mesure est un fait materiel — zero accuse de reception sur les commandes fix_* (0 sur 477 en sept jours au 07/09) alors que le canal fonctionne pour les commandes moteur — a qualifier par un test sur boitier, pas par du code. Le point 1 de la dette doc de ROADMAP-CORRECTIFS.md est marque rectifie. Fichiers servis republies sur le VPS (wiki.json, ROADMAP-CORRECTIFS.md, TABLEAU-DE-BORD.html) sans rebuild."
     },
     {
       "id": "T23",
@@ -355,8 +357,10 @@
       "detail": "Reference pour la dette d'architecture (cles AM-nnn), le fichier est absent du depot. Un renvoi vers un fichier fantome est pire que pas de renvoi.",
       "classe": "DETTE_DOC",
       "gravite": 4,
-      "etat": "OUVERT",
-      "depuis": "2026-09-06"
+      "etat": "FAIT",
+      "depuis": "2026-09-06",
+      "faitLe": "2026-09-13",
+      "preuve": "LE CONSTAT ETAIT FAUX SUR UN POINT : le fichier n etait pas absent du depot, il etait A LA RACINE (cree le 23/08 par l audit multi-agents, 40 sections AM-nnn, suivi par git depuis 3594bb43, touche le 05/09) — la ou la regle du 07/09 interdit tout .md, et la ou l audit du centre d alerte, qui pense en docs/, ne le cherchait pas. Choix : LE TENIR, pas le dereferencer. Deplace par git mv dans docs/TACHES-AMELIORATION.md (historique conserve), une ligne en tete dit d ou il vient, et les renvois sont reecrits dans le meme commit : docs/README.md (index, lien direct), docs/REARCHITECTURE-ARBORESCENCE.md (inventaire du lot R1 et sa note « traiter T23 avant ce lot »), docs/centre-alerte/ROADMAP-CORRECTIFS.md (point 2 de la dette doc). Zero renvoi vers l ancien chemin apres coup (git grep). Le fichier ne porte aucun lien markdown vers la racine : rien a casser en le deplacant."
     },
     {
       "id": "T24",

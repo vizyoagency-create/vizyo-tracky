@@ -872,11 +872,15 @@ feront perdre une heure le jour où quelqu'un les suivra.*
    Elle dit *« le correctif de TRK-012 reste en attente d'accord ; c'est lui qu'il faut livrer »* —
    or **TRK-012 est `CORRIGÉ` depuis le 25/08**. Le résidu de TRK-014 est désormais **une mesure**
    (0 acquittement sur 437), pas une tâche à livrer.
-   👉 **Rectifier le `quoiFaire` de TRK-014.**
+   👉 **Rectifier le `quoiFaire` de TRK-014.** ✅ **RECTIFIÉ le 13/09** (T22) : le `quoiFaire` dit désormais
+   que TRK-012 est corrigé et déployé depuis le 23/08, qu'il ne reste rien à livrer, et que la fiche
+   mesure un fait matériel à qualifier par un test sur boîtier.
 2. **`TACHES-AMELIORATION.md` est référencé mais n'existe pas.** L'en-tête de la roadmap précédente y
    renvoyait pour la dette d'architecture (clés `AM-NNN`) ; le fichier est **absent du dépôt**.
    👉 **Le créer, ou retirer la référence** — *un renvoi vers un fichier fantôme est pire que pas de
-   renvoi.*
+   renvoi.* ✅ **RÉGLÉ le 13/09** (T23) : le fichier n'était pas absent, il était **à la racine du
+   dépôt** (créé le 23/08, touché le 05/09), là où la règle du 07/09 interdit tout `.md` et où cet
+   audit ne le cherchait pas. Déplacé par `git mv` dans `docs/TACHES-AMELIORATION.md`, renvois réécrits.
 3. ✅ **`docs/vps-audit/ROADMAP.md` — RETIRÉ le 06/09.** Il datait du 04/09 et son tableau de
    synthèse annonçait **VPS-013 « ✅ FAIT »** (la fiche est `A_TRAITER` au 29ᵉ passage) et
    **VPS-038 en gravité 2** (elle est passée en **gravité 1** le 05/09). **Cette roadmap-ci fait
