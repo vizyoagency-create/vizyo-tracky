@@ -1040,6 +1040,45 @@ echo "$PROJETS" | grep -v '^$' | sort | awk -F'|' '
 echo "  → une ligne dont les conteneurs appartiennent a DEUX applications sans rapport est un"
 echo "     defaut : voir VPS-020. Le nom vient du dossier, pas du contenu."
 
+# ⚠️⚠️ AJOUTE LE 2026-09-13 (VPS-M92, angle mort reporte 3 fois) — LE PERIMETRE SE COMPARE A
+# CELUI DU PASSAGE PRECEDENT, PAS A LUI-MEME. Tous les denominateurs de ce script sont
+# auto-referents (« 38 / 38 conteneurs decrits ») : ils ne peuvent PAS dire qu un conteneur est
+# NEUF. Le 09-08, quatre conteneurs (tracky-demo) sont apparus sans qu une ligne le dise ; le
+# 09-13, un cinquieme (vizyo-vault). Les deux fois, la difference a ete faite A LA MAIN.
+#
+# Le manifeste du passage precedent est SUR CETTE MACHINE : /opt/tracky-vps-audit/app/wiki.json
+# (copie servie par /admin → Audit VPS). Son premier passage porte `chiffres.conteneursListe`
+# (ecrit depuis ce jour). On imprime la DIFFERENCE D ENSEMBLES, pas les cardinaux : un retire +
+# un ajoute laissent 38 = 38 (aNePasFaire de VPS-M92).
+# ⚠️ COUT : un `jq` sur un fichier local deja en cache. Aucun appel Docker de plus.
+# ⚠️ PORTEE : la reference est le DERNIER manifeste publie, pas « hier » — apres des passages
+#    manques (VPS-M73), l ecart couvre plusieurs jours, et c est dit.
+sub "Perimetre : qu est-ce qui est NEUF ou DISPARU depuis le dernier manifeste publie ? (VPS-M92)"
+LISTE_NOW=$(printf '%s\n' "$PROJETS" | grep -v '^$' | awk -F'|' '{print $2}' | sort -u)
+echo "  conteneursListe (a reporter tel quel dans chiffres) : $(printf '%s\n' "$LISTE_NOW" | paste -sd, -)"
+MANIF=/opt/tracky-vps-audit/app/wiki.json
+if [ -r "$MANIF" ] && command -v jq >/dev/null 2>&1; then
+  REF_DATE=$(jq -r '.passages[0].date // empty' "$MANIF" 2>/dev/null)
+  REF_LISTE=$(jq -r '.passages[0].chiffres.conteneursListe // empty' "$MANIF" 2>/dev/null | tr ',' '\n' | sed '/^$/d' | sort -u)
+  if [ -z "$REF_LISTE" ]; then
+    echo "  ⚠️ le manifeste publie (passage du ${REF_DATE:-?}) ne porte pas encore conteneursListe :"
+    echo "     comparaison NON FAITE ce passage (premiere pose), PAS « perimetre inchange »."
+  else
+    NEUFS=$(comm -13 <(printf '%s\n' "$REF_LISTE") <(printf '%s\n' "$LISTE_NOW") | paste -sd, -)
+    PARTIS=$(comm -23 <(printf '%s\n' "$REF_LISTE") <(printf '%s\n' "$LISTE_NOW") | paste -sd, -)
+    if [ -z "$NEUFS" ] && [ -z "$PARTIS" ]; then
+      echo "  ✅ perimetre IDENTIQUE au manifeste du $REF_DATE ($(printf '%s\n' "$LISTE_NOW" | grep -c .) conteneurs, memes noms)"
+    else
+      [ -n "$NEUFS" ]  && echo "  🟠 NEUF(S) depuis le manifeste du $REF_DATE : $NEUFS"
+      [ -n "$PARTIS" ] && echo "  🟠 DISPARU(S) depuis le manifeste du $REF_DATE : $PARTIS"
+      echo "     → un objet neuf en production sans ligne d annonce : verifier sa sauvegarde (section 11),"
+      echo "       sa limite memoire, sa sonde, et ses minuteries dans ordonnancement (VPS-040)."
+    fi
+  fi
+else
+  echo "  ⚠️ manifeste $MANIF illisible ou jq absent : comparaison NON FAITE (pas « inchange »)"
+fi
+
 # ── Qui sert quel domaine ? (angle mort n° 2 des rapports du 08-06 au 08-08) ──
 # ⚠️ POURQUOI CETTE TABLE EXISTE. VPS-021 — « foodsqan-traefik tient les ports 80/443 de TOUTE
 # la production » — a ete trouve A LA MAIN, par trois commandes lancees en marge, apres cinq
@@ -1433,6 +1472,54 @@ sub "Rotation des journaux de conteneur"
 cat /etc/docker/daemon.json 2>/dev/null || echo "  !! aucun daemon.json → journaux NON bornes"
 find /var/lib/docker/containers -name "*-json.log" -printf "%s\n" 2>/dev/null \
   | awk '{t+=$1} END {printf "  total journaux : %.1f Mo\n", t/1048576}'
+# ⚠️⚠️ AJOUTE LE 2026-09-13 (VPS-041) — DEUX ROTATEURS SUR LES MEMES FICHIERS, ET L UN DES DEUX
+# PERCE DES TROUS. Le pilote json-file de Docker rote deja (max-size / max-file ci-dessus). Une
+# stanza logrotate de l hote rote LES MEMES fichiers avec `copytruncate` : elle copie puis
+# tronque a 0, pendant que dockerd garde son descripteur et son OFFSET. La prochaine ecriture
+# retombe a l ancien offset → le fichier devient creux, et le trou est rempli d octets NUL,
+# de la taille EXACTE du fichier au moment de la troncature (mesure du 2026-09-13 : tracky-api
+# json.log.1 porte 8 405 652 NUL, et json.log.2 pese 8 405 652 octets ; meme egalite sur
+# maalem-dev-api, maestroo-dev-api, tracky-postgres). Consequence : `docker logs` lit du NUL,
+# dockerd journalise « Error decoding log file: invalid character '\x00' », et un `docker logs
+# --tail` peut ne jamais rendre la main — la classe de client qui declenche VPS-016 (5e
+# occurrence, ce jour, sur `docker logs --tail 60 texto-relay`).
+# ⚠️ COUT : un `grep` de /etc/logrotate.d (rien) + un `tr` sur les seuls fichiers COURANTS
+#    (< 10 Mo chacun, ~40 fichiers, en priorite idle). Les rotations (.1 … .14) ne sont PAS
+#    relues : c est le fichier courant qui dit si le mecanisme perce ENCORE.
+LR_DOCKER=$(grep -lE '^[[:space:]]*/var/lib/docker/containers' /etc/logrotate.d/* /etc/logrotate.conf 2>/dev/null | tr '\n' ' ')
+if [ -n "$LR_DOCKER" ]; then
+  if grep -qE '^[[:space:]]*copytruncate' $LR_DOCKER 2>/dev/null; then
+    echo "  🔴 DEUX ROTATEURS sur /var/lib/docker/containers/*/*-json.log : le pilote json-file de"
+    echo "     Docker (ci-dessus) ET la stanza hote $LR_DOCKER— avec copytruncate."
+    echo "     copytruncate tronque un fichier que dockerd continue d ecrire a son ancien offset :"
+    echo "     chaque rotation perce un trou d octets NUL de la taille du fichier tronque (VPS-041)."
+  else
+    echo "  🟠 DEUX ROTATEURS sur les journaux de conteneur : le pilote json-file ET $LR_DOCKER"
+    echo "     (sans copytruncate : dockerd continue d ecrire dans le fichier RENOMME, le courant reste vide)"
+  fi
+else
+  echo "  ✅ un seul rotateur : le pilote json-file de Docker (aucune stanza logrotate hote ne vise ces fichiers)"
+fi
+NUL_N=0; NUL_LISTE=""
+for f in /var/lib/docker/containers/*/*-json.log; do
+  [ -s "$f" ] || continue
+  n=$($LOW tr -d -c '\000' < "$f" 2>/dev/null | wc -c)
+  if [ "${n:-0}" -gt 0 ]; then
+    NUL_N=$((NUL_N+1))
+    s=$(stat -c %s "$f"); id=$(basename "$(dirname "$f")")
+    nom=$(docker inspect --format '{{.Name}}' "$id" 2>/dev/null | sed 's|^/||')
+    NUL_LISTE="$NUL_LISTE
+       ${nom:-$id} : $((n*100/s)) % d octets NUL sur $((s/1024)) Ko (fichier COURANT)"
+  fi
+done
+if [ "$NUL_N" -gt 0 ]; then
+  echo "  🔴 $NUL_N fichier(s) journal COURANT(S) portent des octets NUL — 'docker logs' y est"
+  echo "     faux ou bloquant, et le trou se re-perce a chaque rotation :$NUL_LISTE"
+  echo "     ⚠️ Un 'docker logs --tail' sur un de ces conteneurs est un candidat a VPS-016 : toujours"
+  echo "        le lancer sous 'timeout', jamais depuis une session qui peut se fermer avant lui."
+else
+  echo "  ✅ aucun fichier journal courant ne porte d octet NUL"
+fi
 
 # ─────────────────────────────────────────────────────────────────────────────────────────────
 section "5. DONNEES (PostgreSQL)"
@@ -2029,6 +2116,36 @@ for pg in $(db_conteneurs "$MOTEURS_PG"); do
     fi
     rm -f "$EMCMP"
   fi
+  # ⚠️⚠️ AJOUTE LE 2026-09-13 (VPS-M93, angle mort reporte 2 fois) — LA SERIE MOVING / INSERTED
+  # ETAIT RELEVEE A LA MAIN DEPUIS CINQ PASSAGES, ET DEUX CONSTATS EN DEPENDAIENT. Elle vit
+  # desormais ici, AVEC LA GARDE DES DEUX BORDS : le jour EN COURS est partiel (VPS-M61), et le
+  # jour LE PLUS ANCIEN est ronge par la retention — il commence apres 00 h 00, ses heures de
+  # nuit (vehicules a l arret) ont ete purgees, donc son taux de mouvement MONTE sans qu il se
+  # passe rien (VPS-M93, mesure : 25,3 % → 29,5 % → disparu, en trois passages). Un jour dont
+  # le min(receivedAt) est posterieur a 00 h 05 est marque TRONQUE, et NE SE COMPARE PAS.
+  # ⚠️ COUT : une requete par base portant la table, ~1 s mesuree sur tracky_prod (157 Mo).
+  if docker exec "$pg" psql -U "$U" -d "$D" -t -A -c \
+       "SELECT 1 FROM information_schema.columns WHERE table_name='position_sampling_decisions' AND column_name IN ('decision','state','\"receivedAt\"','receivedAt') LIMIT 1" 2>/dev/null | grep -q 1; then
+    echo "     ── position_sampling_decisions par jour : part MOVING et taux INSERTED, bords marques (VPS-M61 / VPS-M93) ──"
+    docker exec "$pg" psql -U "$U" -d "$D" -t -A -F'|' -c "
+      SELECT to_char(date_trunc('day', \"receivedAt\"), 'Dy MM-DD') j,
+             count(*) n,
+             round(100.0*sum(case when state='MOVING' then 1 else 0 end)/count(*),1) moving,
+             round(100.0*sum(case when decision='INSERTED' then 1 else 0 end)/count(*),1) inserted,
+             to_char(min(\"receivedAt\"),'HH24:MI') debut,
+             to_char(max(\"receivedAt\"),'HH24:MI') fin,
+             case when date_trunc('day', \"receivedAt\") = date_trunc('day', now()) then 'EN COURS (partiel)'
+                  when min(\"receivedAt\") > date_trunc('day', \"receivedAt\") + interval '5 minutes' then 'TRONQUE par la retention — ne se compare pas'
+                  else 'complet' end note
+      FROM position_sampling_decisions
+      GROUP BY date_trunc('day', \"receivedAt\") ORDER BY date_trunc('day', \"receivedAt\");" 2>/dev/null \
+    | awk -F'|' 'BEGIN{printf "       %-10s %8s %8s %9s %7s %7s  %s\n","jour","lignes","MOVING%","INSERTED%","debut","fin","garde"}
+                 { m=($7 ~ /complet/) ? "  " : "⚠️"; printf "       %-10s %8s %7s%% %8s%% %7s %7s  %s %s\n",$1,$2,$3,$4,$5,$6,m,$7 }'
+    echo "       ⚠️ Seules les lignes « complet » se comparent d un passage a l autre. Le jour le plus"
+    echo "          ancien MONTE mecaniquement a mesure que ses heures de nuit sont purgees ; le jour en"
+    echo "          cours n a pas encore ses heures d activite. Un test date sur cette serie doit viser"
+    echo "          un jour qui sera ENCORE complet a l echeance (retention ~4 j : VPS-M94)."
+  fi
   # ⚠️ AJOUTE LE 2026-08-17 — angle mort n° 3 des rapports du 08-13 au 08-16, REPORTE CINQ FOIS.
   # `random_page_cost` est lu ICI pour les six bases, et le levier 4 le RELISAIT avec un
   # `docker exec` de plus par base — soit SIX chaines `runc` completes (~5 processus chacune,
@@ -2129,43 +2246,94 @@ if [ -n "$SRC" ]; then
   # ⚠️ COUT : un `ssh-keygen -lf` et un `grep` sur des lignes DEJA en memoire ($ECH). Aucune
   #    E/S disque supplementaire, aucun fork Docker.
   echo "  ── Cles SSH : ce qui est DECLARE contre ce qui a SERVI (VPS-012 / VPS-M77) ──"
-  AK=/root/.ssh/authorized_keys
-  if [ -r "$AK" ]; then
-    # Empreintes DECLAREES et actives, avec leur commentaire et leurs options.
-    # Une ligne dont le 1er champ commence par ssh-/ecdsa-/sk- ne porte AUCUNE option.
-    DECL=$(awk '!/^[[:space:]]*#/ && NF>0 {
-             opt = ($1 ~ /^(ssh-|ecdsa-|sk-)/) ? "-" : $1;
-             print $NF "\t" opt }' "$AK" 2>/dev/null)
-    NB_DECL=$(printf '%s\n' "$DECL" | grep -c . )
-    printf '    declarees et ACTIVES : %s\n' "$NB_DECL"
-    ssh-keygen -lf "$AK" 2>/dev/null | while read -r _bits fp comment _type; do
-      o=$(printf '%s\n' "$DECL" | awk -F'\t' -v c="$comment" '$1==c {print $2; exit}')
-      vue=$(echo "$ECH" | grep -c "$fp")
-      if [ "$o" = "-" ]; then
-        printf '      %-28s %s  connexions=%-5s 🟠 AUCUNE option de restriction\n' "$comment" "$fp" "$vue"
-      else
-        printf '      %-28s %s  connexions=%-5s ✅ restreinte (%s)\n' "$comment" "$fp" "$vue" "$o"
-      fi
+  # ⚠️⚠️ CORRIGE LE 2026-09-13 (VPS-M98) — L INVENTAIRE NE LISAIT QUE LA CLE DE ROOT.
+  # Le 2026-09-13, ce bloc a imprime « 🔴 EMPREINTE NON DECLAREE » deux fois : les deux cles
+  # etaient DECLAREES — dans /home/vaultbk/.ssh/authorized_keys et
+  # /home/conductorbk/.ssh/authorized_keys, deux comptes de service crees le 2026-09-09 a
+  # 22 h 21, avec `command=` et `restrict`, c est-a-dire les cles les MIEUX bornees de toute
+  # la machine. Le bloc ne regardait que /root : une cle d un autre compte etait, pour lui,
+  # indiscernable d une intrusion. Un 🔴 sur les deux cles les plus sures de l hote est
+  # exactement le faux positif que VPS-M13 dit fatal a un controle (« crie au loup → desactive »).
+  #
+  # Desormais : TOUS les fichiers que sshd lit (AuthorizedKeysFile, pour chaque compte ayant un
+  # repertoire personnel), avec le COMPTE en tete de ligne. Un compte sans shell de connexion
+  # (nologin/false) est marque : sa cle ne peut rien lancer, meme declaree.
+  # ⚠️ COUT : quelques `ssh-keygen -lf` de plus sur des fichiers de quelques lignes. Aucune E/S
+  #    mesurable, aucun fork Docker.
+  AKF=$(sshd -T 2>/dev/null | awk '$1=="authorizedkeysfile" {$1=""; print; exit}')
+  [ -n "$AKF" ] || AKF=".ssh/authorized_keys .ssh/authorized_keys2"
+  AK_LISTE=""
+  while IFS=: read -r u _ _ _ _ home shell; do
+    [ -d "$home" ] || continue
+    for rel in $AKF; do
+      case "$rel" in /*) f="$rel" ;; *) f="$home/$rel" ;; esac
+      # %h / %u : les jetons de sshd ; on ne gere que les formes courantes.
+      f=$(printf '%s' "$f" | sed "s|%h|$home|g; s|%u|$u|g")
+      [ -s "$f" ] && AK_LISTE="$AK_LISTE $u:$shell:$f"
     done
-    # L ecart qui compte : une empreinte qui a SERVI et qui n est pas declaree.
+  done < /etc/passwd
+  if [ -n "$AK_LISTE" ]; then
+    NB_DECL=0
+    for ent in $AK_LISTE; do
+      u=${ent%%:*}; rest=${ent#*:}; shell=${rest%%:*}; AK=${rest#*:}
+      [ -r "$AK" ] || { echo "    ($AK illisible — inventaire NON FAIT sur $u)"; continue; }
+      case "$shell" in */nologin|*/false) SH_NOTE="⚠️ compte SANS shell : la cle ne peut rien lancer" ;; *) SH_NOTE="" ;; esac
+      # Empreintes DECLAREES et actives, avec leur commentaire et leurs options.
+      # Une ligne dont le 1er champ commence par ssh-/ecdsa-/sk- ne porte AUCUNE option.
+      DECL=$(awk '!/^[[:space:]]*#/ && NF>0 {
+               opt = ($1 ~ /^(ssh-|ecdsa-|sk-)/) ? "-" : $1;
+               print $NF "\t" opt }' "$AK" 2>/dev/null)
+      n=$(printf '%s\n' "$DECL" | grep -c . ); NB_DECL=$((NB_DECL+n))
+      printf '    %s (%s) : %s cle(s) %s\n' "$u" "$AK" "$n" "$SH_NOTE"
+      ssh-keygen -lf "$AK" 2>/dev/null | while read -r _bits fp comment _type; do
+        o=$(printf '%s\n' "$DECL" | awk -F'\t' -v c="$comment" '$1==c {print $2; exit}')
+        vue=$(echo "$ECH" | grep -c "$fp")
+        if [ "$o" = "-" ]; then
+          printf '      %-28s %s  connexions=%-5s 🟠 AUCUNE option de restriction\n' "$comment" "$fp" "$vue"
+        else
+          # Les options peuvent porter une commande longue : on la tronque pour la lisibilite,
+          # le fichier reste la source.
+          printf '      %-28s %s  connexions=%-5s ✅ restreinte (%s)\n' "$comment" "$fp" "$vue" "$(printf '%s' "$o" | cut -c1-70)"
+        fi
+      done
+    done
+    printf '    declarees et ACTIVES (tous comptes) : %s\n' "$NB_DECL"
+    # L ecart qui compte : une empreinte qui a SERVI et qui n est declaree NULLE PART.
+    TOUTES_DECL=$(for ent in $AK_LISTE; do ssh-keygen -lf "${ent#*:*:}" 2>/dev/null; done)
     VUES=$(echo "$ECH" | grep -oE 'SHA256:[A-Za-z0-9+/]+' | sort -u)
     NB_VUES=$(printf '%s\n' "$VUES" | grep -c . )
     INC=0
     for f in $VUES; do
-      ssh-keygen -lf "$AK" 2>/dev/null | grep -q "$f" || { INC=$((INC+1)); printf '      🔴 EMPREINTE NON DECLAREE : %s\n' "$f"; }
+      printf '%s\n' "$TOUTES_DECL" | grep -qF "$f" || {
+        INC=$((INC+1))
+        compte=$(echo "$ECH" | grep -F "$f" | grep -oE 'for [a-z_][a-z0-9_-]* from' | head -1 | awk '{print $2}')
+        printf '      🔴 EMPREINTE NON DECLAREE : %s  (compte vise : %s)\n' "$f" "${compte:-?}"
+      }
     done
     printf '    empreintes VUES sur la fenetre : %s  |  non declarees : %s\n' "$NB_VUES" "$INC"
     if [ "$INC" -eq 0 ]; then
-      echo "    ✅ toute empreinte ayant servi est declaree dans authorized_keys."
+      echo "    ✅ toute empreinte ayant servi est declaree dans un authorized_keys de la machine."
       echo "       ⚠️ PORTEE : ceci ne dit PAS « aucun acces inconnu ». Le canal guest-exec de"
       echo "          l hyperviseur (VPS-027/VPS-036) execute du root SANS passer par SSH — il ne"
       echo "          laisse aucune ligne ici. Cette conclusion vaut sur les acces SSH, et sur eux seuls."
+      echo "       ⚠️ Et « declaree » ne veut pas dire « legitime » : ce bloc rend deux inventaires,"
+      echo "          il ne juge pas. Un compte de service cree hier est declare des aujourd hui."
     fi
     echo "       ⚠️ Une empreinte ABSENTE de la fenetre de 7 j n est pas une cle inutilisee :"
     echo "          c est une cle qui n a pas servi CES 7 JOURS. connexions=0 n autorise donc"
     echo "          aucun retrait sans une autre verification (VPS-M02)."
+    # Comptes de service crees RECEMMENT : c est le fait de premier ordre, et il se lit dans
+    # auth.log (useradd) — pas dans un top 5 d IP.
+    NEWU=$(cat /var/log/auth.log.1 /var/log/auth.log 2>/dev/null | grep -E "useradd\[[0-9]+\]: new user" \
+           | sed -E 's/^([0-9-]+)T([0-9:]+).*name=([^,]+),.*shell=([^,]+).*/\1 \2  \3  shell=\4/' )
+    if [ -n "$NEWU" ]; then
+      echo "    🟠 COMPTE(S) CREE(S) sur la fenetre des journaux (useradd) — a reconnaitre :"
+      printf '%s\n' "$NEWU" | sed 's/^/       /'
+    else
+      echo "    ✅ aucun compte cree sur la fenetre des journaux (useradd absent)"
+    fi
   else
-    echo "    (authorized_keys illisible — inventaire NON FAIT, ce n est pas « aucune cle »)"
+    echo "    (aucun authorized_keys lisible — inventaire NON FAIT, ce n est pas « aucune cle »)"
   fi
   # ⚠️ AJOUTE LE 2026-08-05. Le compte d'echecs porte sur TOUTE la fenetre : 176 echecs se lit
   # comme « on est attaque en ce moment » alors que le dernier datait de 22 heures. La DATE du

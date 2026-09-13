@@ -63,10 +63,29 @@ d'une section à l'autre sans le dire, ou cocher `[x]` sur la foi d'une fiche pl
 
 ---
 
-## 🗂️ Tableau de bord — 61 tâches, l'avancement d'un coup d'œil
+## 🗂️ Tableau de bord — 63 tâches, l'avancement d'un coup d'œil
 
-**Au 2026-09-13 (centre d'alerte seul — l'audit VPS n'a pas tourné depuis le 09/09) : 10 faites ·
-2 déployées, preuve attendue · 0 commitée · 49 ouvertes.**
+**Au 2026-09-13 (après les DEUX routines, rattrapées ensemble à 12 h 06 Paris) : 10 faites ·
+2 déployées, preuve attendue · 0 commitée · 51 ouvertes.**
+
+> 🔴 **LE FAIT VPS DU 13/09 : LA 5ᵉ OCCURRENCE DE VPS-016 EST NOMMÉE À LA SECONDE — ET LA CAUSE DE
+> LA CLASSE EST ENFIN MESURABLE.** Le client bloqué (`docker logs --tail 60 texto-relay`) vient d'un
+> `bash -c` de diagnostic lancé par une **session SSH root du poste** (session 39478, 04 h 34 min 00
+> UTC, un dimanche à 06 h 34 Paris), session morte, `bash` parent vivant rattaché à `init` ; les
+> trois routines planifiées sont **exclues** (toutes bloquées par le quota jusqu'à 12 h 06). *L'outil
+> n'est pas nommé — VPS-M01 — la classe l'est : un `docker logs` sans `timeout` depuis une session
+> qui se ferme avant lui.* 🆕 **VPS-041 — deux rotateurs se partagent les journaux de conteneur** :
+> la stanza `logrotate` posée le 25/08 (`copytruncate`) perce à chaque minuit un trou d'octets NUL de
+> la taille exacte du fichier tronqué (`tracky-api json.log.1` : **8 405 652 NUL** = taille de
+> `json.log.2`, même égalité sur 3 autres conteneurs) ; **5 fichiers courants à 34–92 % de NUL**, et
+> `dockerd` a journalisé *« Error decoding log file »* **8 s avant** le blocage. **V29** : un seul
+> rotateur, 10 s, risque nul. 🆕 **VPS-042 — un coffre Vaultwarden et deux comptes de dépôt** sont
+> apparus le 09/09 (les clés les mieux bornées de la machine — `command=` + `restrict` — mais aucun
+> catalogue, aucune limite mémoire, une sauvegarde visible seulement par son tirage depuis
+> `179.198.198.199`, une session ouverte depuis 3,5 jours) : **V30**, à reconnaître. ✅ **VPS-038
+> redescend en gravité 2 sur son seuil** (33 puis 32 émetteurs, 3 revenants le 11/09 après 11 jours) ;
+> ✅ `tracky-demo-refresh.timer` a déclenché seul et **l'import régénère `demo_replay_frames`** —
+> V27 n'a plus rien à mesurer. 🔧 **4 correctifs au collecteur** (VPS-M98, M92, M93, VPS-041).
 
 > 🔴 **LE FAIT DU 13/09 : UN TROISIÈME CANAL IA À SEC, ET C'EST LE SEUL QUI COUPE AUSSI LES AUDITS.**
 > La CLI Claude du poste a atteint son **plafond hebdomadaire** du 10/09 04:00 au 13/09 12:00 (Paris) :
@@ -191,18 +210,18 @@ d'une section à l'autre sans le dire, ou cocher `[x]` sur la foi d'une fiche pl
 | ☐ | **T31** | TRK-069 | 🆕 **Une cause commune aux agents du poste = UNE ligne `DEGRADATION`**, pas 25 `CRITICAL` | 🔧 À CODER |
 | ☐ | **T32** | TRK-071 · 069 | 🆕 🔴🔴 **Décider la parade au plafond hebdomadaire de la CLI** — trois canaux IA, trois plafonds, 80 h sans aucun ouvert, audits compris | 🤝 HUMAIN |
 
-### Partie II — VPS *(29 tâches)*
+### Partie II — VPS *(31 tâches)*
 
 | | ID | Fiche | La tâche | État |
 |:--:|:--:|---|---|---|
 | ☑ | **V0** | — | ✅ **Docs VPS versées sur `main`** *(06/09)* | ✅ **FAIT** |
-| ☐ | **V1** | VPS-038 | 🔵 Porter les **6 IMEI** muets à l'exploitant | 🔵 PRODUIT |
+| ☐ | **V1** | VPS-038 | 🔵 Porter les **3 IMEI encore muets** de la cohorte du 08-31 à l'exploitant *(3 sont revenus le 11/09 ; gravité **1 → 2** le 13/09)* | 🔵 PRODUIT |
 | ☐ | **V2** | VPS-038 | 🔵 Sortir du parc les 6 boîtiers muets > 7 j | 🔵 PRODUIT |
 | ☐ | **V3** | VPS-036 · 027 | 🔵 **Un seul ticket hébergeur** *(2 écritures root)* | 🔵 PRODUIT |
 | ☐ | **V4** | VPS-010 | Planifier un redémarrage *(noyau, 6 services)* | 🔴 HUMAIN |
 | ☐ | **V5** | VPS-M56 | Arbitrer le budget de collecte *(20 dépassements)* | 🟡 PRÉPARÉ |
 | ☐ | **V6** | VPS-037 | Second dépositaire de la copie hors-site | 🟡 PRÉPARÉ |
-| ☐ | **V7** | VPS-005 | Limites mémoire — **30 conteneurs sur 33** | 🔴 HUMAIN |
+| ☐ | **V7** | VPS-005 | Limites mémoire — **31 conteneurs sur 38** *(dont le coffre, VPS-042)* | 🔴 HUMAIN |
 | ☐ | **V8** | VPS-020 | Séparer les projets compose `deploy` | 🔴 HUMAIN |
 | ☐ | **V9** | VPS-017 | 4,5 Go d'outillage dans `/root` | 🔴 HUMAIN |
 | ☐ | **V10** | VPS-018 | Retirer `/opt/vizyo-leads` | 🔴 HUMAIN |
@@ -222,8 +241,10 @@ d'une section à l'autre sans le dire, ou cocher `[x]` sur la foi d'une fiche pl
 | ☑ | **V24** | VPS-038 | **Sentinelle « boîtiers muets »** — *2 lignes à 06:30, pas 10 : **exact*** | ✅ **FAIT ET PROUVÉ** |
 | ☑ | **V25** | VPS-M59 | **`chargeDeFond.note` s'affiche** + repli explicite — *a survécu au rebuild du 07/09* | ✅ **FAIT ET PROUVÉ** |
 | ☐ | **V26** | VPS-013 · M88 | 🔓 **DÉBLOQUÉE** — ranger les **3 dossiers abandonnés** ; le faux orange est désormais **mesuré**, pas prédit | 🟡 PRÉPARÉ |
-| ☐ | **V27** | VPS-040 · M91 | Trancher si la base de **démo** doit être sauvegardée *(le 🔴 vaut **13 Go**)* | 🔵 PRODUIT |
-| ☐ | **V28** | VPS-016 | 🆕 🔴🔴 **Tuer le client Docker bloqué depuis le 13/09 04:34 UTC** (`docker logs texto-relay`, PID 159541, parent 159533) — `dockerd` à 100 % d'un cœur, **5ᵉ occurrence** | 🤝 HUMAIN |
+| ☐ | **V27** | VPS-040 · M91 | Trancher si la base de **démo** doit être sauvegardée *(le 🔴 vaut **15 Go** ; 13/09 : **plus rien à mesurer**, l'import régénère `demo_replay_frames`)* | 🔵 PRODUIT |
+| ☐ | **V28** | VPS-016 | 🆕 🔴🔴 **Tuer le client Docker bloqué depuis le 13/09 04:34 UTC** (`docker logs texto-relay`, PID 159541, parent 159533 **vivant, PPID 1 — le parent d'abord**) — `dockerd` à 100 % d'un cœur, **5ᵉ occurrence** ; *lancé par une session SSH root du poste à 04:34:00, outillage non nommé* | 🤝 HUMAIN |
+| ☐ | **V29** | VPS-041 | 🆕 🔴 **Un seul rotateur pour les journaux de conteneur** — retirer la stanza `logrotate` à `copytruncate` qui perce des trous de NUL *(5 fichiers courants à 34–92 %)* | 🟡 PRÉPARÉ |
+| ☐ | **V30** | VPS-042 | 🆕 🔵 **Reconnaître le coffre Vaultwarden, `vaultbk`, `conductorbk` et `179.198.198.199`** ; limite mémoire ; où vit la copie du coffre | 🔵 PRODUIT |
 
 
 
@@ -512,6 +533,11 @@ rien ne bouge** — c'est l'absence de mouvement qui fait la preuve.*
 | **04/09** | 53 % | 33 % | 96 s | 31 | `vizyo-auth` reçoit une vraie unité de sauvegarde — **le créneau exact que le plan recommandait** |
 | **05/09** | 53 % | 32 % | 133 s | 30 | **VPS-038 passe en gravité 1** ; trois bases vertes sur un **dump manuel** *(🆕 VPS-M80/M81)* |
 | **06/09** | 53 % | 35 % | 116 s | **30** | **Premier passage sans perte nouvelle** ; deux blocs de la même section se contredisaient *(🆕 VPS-M84/M85)* |
+| **07/09** | 53 % | 35 % | 94 s | 30 | V11 requalifiée `[x]` → `[»]` : les trois minuteries n'avaient jamais déclenché seules *(VPS-M87)* |
+| **08/09** | 55 % | 40 % | 124 s | 30 | V11 **prouvée** (3 déclenchements autonomes) ; un parc de démo apparu sans annonce *(🆕 VPS-040)* |
+| **09/09** | 56 % | 42 % | 147 s | 30 | Deux tests datés indécidables — la rétention efface le point de référence *(🆕 VPS-M94)* ; `apt` enfin mesurable |
+| *10–12/09* | — | — | — | — | **Trois passages manqués** — quota hebdomadaire de l'agent, pas le poste éteint *(VPS-M73)* |
+| **13/09** | 54 % | 45 % | **186 s** | **32** | **`dockerd` brûle un cœur depuis 04 h 34 (VPS-016, 5ᵉ), client nommé à la seconde ; deux rotateurs percent les journaux** *(🆕 VPS-041)* ; coffre + 2 comptes apparus le 09/09 *(🆕 VPS-042)* ; VPS-038 **gravité 1 → 2** |
 
 **Ce que la série raconte** — **la machine va bien et n'a jamais mal été** : 33/33 conteneurs sur
 les huit passages, **0 OOM en 30 jours**, PSI `full` à 0,00, disque **stable à 53 %** avec 46 Go
@@ -570,8 +596,8 @@ date du **21/08**. *Fusionner cette branche telle quelle écraserait la roadmap 
 
 | | ID | Fiche | G | L'action, en une phrase | Classe | Depuis |
 |:--:|:--:|---|:-:|---|:--:|---|
-| ☐ | **V1** | VPS-038 | **1** | 🔵 **Porter les 6 IMEI de la flotte `2ad69ac1…` à l'exploitant** — muets depuis **5,6 jours**, avec l'heure de leur dernière trame | 🔵 PRODUIT | 31/08 |
-| ☐ | **V2** | VPS-038 | **1** | 🔵 **Sortir du parc les 6 boîtiers muets depuis > 7 j**, dont **3 sans aucun véhicule** (7,3 · 66,8 · 92,7 j) — un statut, **pas** un `DELETE` | 🔵 PRODUIT | 04/09 |
+| ☐ | **V1** | VPS-038 | **2** *(1 → 2 le 13/09)* | 🔵 **Porter les 3 IMEI encore muets de la flotte `2ad69ac1…` à l'exploitant** *(3 sur 6 revenus le 11/09 après 11 j ; `…6714` s'annonce sans mesurer, à porter à part)* — muets depuis **5,6 jours**, avec l'heure de leur dernière trame | 🔵 PRODUIT | 31/08 |
+| ☐ | **V2** | VPS-038 | **2** *(1 → 2 le 13/09)* | 🔵 **Sortir du parc les 6 boîtiers muets depuis > 7 j**, dont **3 sans aucun véhicule** (7,3 · 66,8 · 92,7 j) — un statut, **pas** un `DELETE` | 🔵 PRODUIT | 04/09 |
 | ☐ | **V3** | VPS-036 · VPS-027 | 2 | 🔵 **Un seul ticket hébergeur** couvrant les deux ordres d'écriture root (`kill -KILL` du 28/08, `systemctl mask` du 01/09) : paternité, cadence, **puis la liste de ce que ce canal s'autorise sans préavis** | 🔵 PRODUIT | 28/08 |
 | ☐ | **V4** | VPS-010 | 2 | **Planifier un redémarrage** vers 23 h 30 — noyau actif `6.8.0-136`, **trois** installés (`-137`, `-138`, `-139`), 6 services sur une bibliothèque remplacée dont `docker.service` | 🔴 HUMAIN | 04/08 |
 | ☐ | **V5** | VPS-M56 | 2 | **Arbitrer le budget de collecte** — dépassé **20 fois**, 116 s pour 90. Trois réponses chiffrées, aucune n'est technique *(détail ci-dessous)* | 🟡 PRÉPARÉ | 04/08 |
@@ -816,7 +842,7 @@ leur preuve : c'est ce qui distingue « livré » de « livré ET vérifié ».*
 
 | Mesure | Dernière valeur | Série | Ce qu'un changement signifierait |
 |---|---|---|---|
-| **VPS-038** — émetteurs distincts / 24 h | **30** | 39 · 39 · 38 · 38 · 32 · 32 · 32 · 30 · **30** | 🔴 Redescend en gravité 2 à **32 sur une journée complète**, en `SURVEILLANCE` à **38**. ⚠️ *Un compteur qui arrête de descendre n'est pas un compteur qui remonte* |
+| **VPS-038** — émetteurs distincts / jour calendaire | **32** *(ven 09-11 : **33**)* | 39 · 39 · 38 · 38 · 32 · 32 · 32 · 30 ×7 · **33 · 32** | 🔴 Redescend en gravité 2 à **32 sur une journée complète**, en `SURVEILLANCE` à **38**. ⚠️ *Un compteur qui arrête de descendre n'est pas un compteur qui remonte* |
 | **VPS-038** — registre, par **bande** | 6-24 h : 0 · 1-3 j : 1 · 3-7 j : 7 · > 7 j : 6 | total stable à **14** | ⚠️ **Ne JAMAIS comparer les totaux** (VPS-M78) : le 06/09, le total est identique et **un boîtier a changé de bande** |
 | **VPS-011** — invocations de sondes | **65/min** (~93 600/j) | 24 conteneurs sondés **sur 33** | 9 sans aucune sonde, dont `foodsqan-traefik` qui tient 80/443 |
 | **VPS-035** — trames/h/boîtier | **102,5** | bande 60–300 | ⚠️ **Un seuil par tête ne voit pas une flotte qui rétrécit** — croiser avec VPS-038 |
@@ -935,6 +961,11 @@ feront perdre une heure le jour où quelqu'un les suivra.*
 
 | Date | ID | Tâche | État | Commit | La preuve |
 |---|:--:|---|:--:|---|---|
+| **13/09** *(VPS)* | **V28** | VPS-016 — 5ᵉ occurrence, **client nommé à la seconde** | ☐ **OUVERT** — *complété* | *(voir commit du jour)* | Le `bash -c` parent (159533) est **vivant, PPID 1, `do_wait`** : c'est le cas du 08-20, donc **le parent d'abord** (`kill 159533 && sleep 1 && kill 159541`). Session SSH **39478**, root depuis le poste `82.67.153.51`, ouverte **04:34:00,89 UTC** puis fermée ; `sar` : `%system` 3,5 → 22,3 (04:40) → 33,6 (04:50) et s'y tient ; cumul `dockerd` 241,2 → **249,0 h**. **Les trois routines planifiées sont exclues** (bloquées par le quota, reprises ensemble à 10:06). *L'outil n'est pas nommé (VPS-M01) ; la classe l'est.* 🔑 `dockerd` avait journalisé *« Error decoding log file: invalid character '\x00' »* à **04:33:52**, 8 s avant, sur le premier `docker logs` du même `bash` — voir V29 |
+| **13/09** *(VPS)* | **V29** | 🆕 [VPS-041](../vps-audit/REFERENCE-CONSTATS.md) — un seul rotateur pour les journaux de conteneur | ☐ **OUVERT** | *(voir commit du jour)* | *(tâche neuve)* **Deux rotateurs sur les mêmes fichiers** : le pilote `json-file` (10 Mo × 3) **et** `/etc/logrotate.d/docker-containers` (posée le 25/08, `copytruncate`, minuit). `dockerd` garde son offset → chaque rotation perce un trou de NUL **de la taille exacte du fichier tronqué** : `tracky-api json.log.1` = **8 405 652 NUL**, `json.log.2` = **8 405 652 octets** ; même égalité sur `maalem-dev-api`, `maestroo-dev-api`, `tracky-postgres`. **5 fichiers courants à 34–92 % de NUL**, 13 courants à 0 octet (dont `texto-relay`). Geste : `mv` de la stanza hors de `logrotate.d`, **avant** tout `daemon.json` ; 10 s, risque nul ; contrepartie : fenêtre = `max-file 3`. ⚠️ Ce qui n'est PAS prouvé : que les NUL soient la cause *nécessaire* du blocage — ce qui l'est : `docker logs` est faux sur 5 conteneurs, et le mécanisme est le nôtre |
+| **13/09** *(VPS)* | **V30** | 🆕 [VPS-042](../vps-audit/REFERENCE-CONSTATS.md) — reconnaître le coffre et ses deux comptes | ☐ **OUVERT** | *(voir commit du jour)* | *(tâche neuve)* `vizyo-vault` (Vaultwarden, **épinglé par empreinte** ✅, `vault.vizyoagency.com`, **memlimit 0**) créé le **09/09 20:56** ; `vaultbk` (22:21) et `conductorbk` (22:41) avec clés `command=` + `restrict` — **les mieux bornées de la machine** ; tirages nocturnes 01:00 / 01:08 / 01:35 UTC depuis **`179.198.198.199`** (4 nuits sur 4) ; **une session `vaultbk` ouverte depuis 3,5 jours**. Aucun catalogue, aucune ligne de couverture de sauvegarde (le §11 ne voit que des bases par image). 🔑 Le collecteur avait crié **« EMPREINTE NON DÉCLARÉE »** ×2 : il ne lisait que `/root` — **VPS-M98, corrigé** (tous les comptes + `useradd`). ❌ Ne rien retirer avant reconnaissance (VPS-002) |
+| **13/09** *(VPS)* | **V27** · **V26** · **V1** | Les tâches VPS re-mesurées | ☐ **OUVERTES** | — | **V27 — plus rien à mesurer** : `tracky-demo-refresh.timer` a déclenché **seul** dimanche 04:00:04 (→ 04:04:35, *« Import réussi »*) et `demo_replay_frames` passe de 112 349 à **124 340 lignes** dans la minute : **l'import la régénère**. Ne pas sauvegarder (514 Mo/j, ~15 Go). **V26 — 7ᵉ jour** : 3 dossiers à **221 h PÉRIMÉE** pendant que les vivants portent **8 copies** chacun (3 → 8). **V1 — VPS-038 gravité 1 → 2 sur son seuil** : `positions` **33** le ven 09-11 et **32** le sam 09-12 (journées complètes) ; 3 des 6 revenus le 09-11 après 11 j (`…489431`, `…6763` émettent ; `…6714` s'annonce **sans position** depuis le 09-11 16:19) ; registre 14 → **11**, cumul `> 3 j` 13 → 11. Restent 3 IMEI de la cohorte |
+| **13/09** *(VPS)* | *(VPS-M73 · M57)* | Trois passages manqués, et une collision | ⚖️ **CAUSE NEUVE** | — | Les 10 et 11/09 : *« weekly limit · resets Sep 13, 12pm »* en 5 s ; aucune exécution le 12. **Ce n'est pas le poste éteint, c'est le quota** — et à la remise à zéro le planificateur a relancé **les trois routines à la même seconde** (10:06:13–14 UTC) : collision VPS-M57 (2ᵉ), passage à 10 h au lieu de 02 h 20, machine déjà saturée par VPS-016 → **186 s** de collecte, dont **46 % de la machine pour `dockerd`** et 15,7 % pour l'audit. *Cf. T31/T32 côté centre d'alerte : même plafond, même CLI* |
 | **13/09** | **T11** | [TRK-068](./REFERENCE-ERREURS.md#trk-068) — borner le `fetch` vers Vizyo Auth | ✅ **FAIT ET PROUVÉ** *(remonté de `[»]`)* | `c80632ba` | 🎯 **EXERCÉE le 12/09 à 00:00:23, et les quatre conditions écrites le 06/09 tombent au mot près** : `http \| ERROR \| Vizyo Auth est injoignable : l'appel POST /v1/auth/refresh n'a pas pu aboutir. La session de l'utilisateur ne peut pas etre verifiee : il va etre deconnecte. Motif technique : aucune reponse en 8 s.`, `statusCode: 503`. **503 et non 500 ; `ERROR` et non `CRITICAL` — et `http CRITICAL` reste à 2, pas de jumelle ; dépendance ET conséquence nommées ; motif technique conservé** (le délai de 8 s, c'est le correctif qui le pose). ⚠️ Un point : l'appel est parti vers 00:00:15, `logrotate.timer` sonne à 00:00:03 sur l'hôte — *trois points ou rien* |
 | **13/09** | **T17** | [TRK-065](./REFERENCE-ERREURS.md#trk-065) — guetter la ligne hebdomadaire | ✅ **FAIT ET PROUVÉ** | `68034a1d` | 🎯 **EXERCÉE le 11/09 à 06:30:03** : *« 53 notifications n'ont pas pu être remises cette semaine faute d'appareil abonné, sur **1 compte actif** : tyger.bcn@gmail.com (53) »*, **`comptesTechniquesEcartes: 1`**, `system@tracky.local` **absent**. ⚠️ **53 n'est pas ~21, et il fallait compter avant de conclure** : en base, 21 + 21 la semaine du 28/08→04/09 (d'où le 42), **53 + 53** celle du 04/09→11/09 — le numérateur a été **×2,5 par la tempête `agents-locaux`** du plafond CLI. Sans le correctif la ligne aurait dit **106**. 🔑 *Une consigne qui prévoit un nombre suppose un débit ; quand le débit change, c'est la FORME qui prouve* |
 | **13/09** | **T30** | 🆕 [TRK-078](./REFERENCE-ERREURS.md#trk-078) — dédupliquer l'alerte de vitesse sur l'excès, pas sur le `tripId` | ☐ **OUVERT** | — | *(tâche neuve)* 🔴 **11 doublons sur 55 alertes `OVERSPEED` en 14 j (20 %)** — même véhicule, même `payload.startAt` **à la seconde**, deux `tripId`. Le recalcul crée **150 à 190 trajets `recompute` par jour** en supprimant les précédents (`Alert.trip` est `onDelete: SetNull` : 2 alertes orphelines), chaque nouvelle identité est ré-analysée et ré-alerte ; il produit aussi des trajets qui **se chevauchent**. Cas lisible : EP-047-TY 11/09, alerte 10:14, trajet supprimé 10:53, seconde alerte 10:54. *La lecture du 10/09 est rectifiée.* Prérequis naturel de T28, à faire **avant** T4 |
