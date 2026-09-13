@@ -292,6 +292,32 @@ describe('SmsGatewayService — file de protection de la passerelle', () => {
       'ordinaire-1', 'resume123456', 'ordinaire-2',
     ]);
   });
+
+  it('absorbe une vague de 22 RESTORE sans perte, doublon ni rafale', async () => {
+    const instants: number[] = [];
+    const create = jest.fn().mockImplementation(({ data }) => {
+      instants.push(Date.now());
+      return Promise.resolve({ id: `log-${data.body}`, ...data });
+    });
+    // Intervalle court pour garder le test rapide ; la production utilise 15 000 ms.
+    const { service, smsCreate } = build(5, create);
+    const messages = Array.from({ length: 22 }, (_, i) => `resume-${String(i).padStart(2, '0')}`);
+
+    await Promise.all(messages.map((body, i) => service.send(
+      `+3360000${String(i).padStart(4, '0')}`,
+      body,
+      { template: 'engine_control_fallback', priority: 'critical_restore' },
+    )));
+
+    expect(smsCreate).toHaveBeenCalledTimes(22);
+    expect(smsCreate.mock.calls.map(([arg]) => arg.data.body)).toEqual(messages);
+    expect(new Set(smsCreate.mock.calls.map(([arg]) => arg.data.body)).size).toBe(22);
+    expect(instants).toHaveLength(22);
+    for (let i = 1; i < instants.length; i++) {
+      expect(instants[i]! - instants[i - 1]!).toBeGreaterThanOrEqual(3);
+    }
+    expect(service.dispatchQueueState().depth).toBe(0);
+  });
 });
 
 describe('SmsGatewayService — fraîcheur de la preuve terminale', () => {

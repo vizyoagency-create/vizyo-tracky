@@ -98,6 +98,6 @@ de dimanche et la reprise de lundi.
 - schéma Prisma valide et client régénéré ;
 - build API réussi ;
 - build Web réussi (avertissements de budget existants, sans erreur) ;
-- suite API complète : **252 suites, 3 894 tests réussis, 0 échec** ;
+- suite API complète : **252 suites, 3 900 tests réussis, 0 échec** ;
 - tests ciblés couvrant moteur, SMS, webhook, confidentialité démo et véhicules : verts ;
 - `git diff --check` : aucune erreur d'espace ou de patch.

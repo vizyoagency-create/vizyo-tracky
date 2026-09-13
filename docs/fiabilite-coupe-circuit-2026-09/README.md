@@ -44,6 +44,7 @@ Les traitements CUT et RESTORE sont volontairement asymétriques :
 11. [Synthèse finale et plan de sécurisation pour lundi](./11-SYNTHESE-ET-PLAN-LUNDI.md)
 12. [Deuxième téléphone — mémoire de décision et procédure future](./12-SECOND-TELEPHONE-PASSERELLE.md)
 13. [Implémentation isolée, déploiement, rollback et Go/No-Go](./13-IMPLEMENTATION-ET-GO-NO-GO.md)
+14. [Campagne contrôlée du dimanche et surveillance lundi matin](./14-CAMPAGNE-CONTROLEE-DIMANCHE.md)
 
 ## Document directeur du week-end
 

@@ -189,14 +189,22 @@ type Tab = 'status' | 'logs' | 'allowlist' | 'backup';
           </div>
           <p class="text-xs text-fg-tertiary">
             Envoie un SMS de test aux numéros <code>SMS_HEARTBEAT_RECIPIENTS</code> via la gateway
-            active. Le cron automatique tourne chaque lundi 09h00 (Europe/Paris) ; si la chaine SMS
-            est cassee (SIM down), un ErrorLog CRITICAL est cree.
+            active. Une soumission acceptée ne prouve pas la remise : utilisez ensuite
+            « Vérifier la remise » après quelques minutes. Le cron automatique effectue ces deux
+            phases chaque lundi à 09h00 puis 09h20 (Europe/Paris).
           </p>
-          <button (click)="runHeartbeat()" [disabled]="heartbeatRunning()"
-                  class="px-3 py-2 bg-tracky text-white rounded-lg text-sm font-medium hover:bg-tracky-dark cursor-pointer disabled:opacity-50 self-start flex items-center gap-2">
-            <lucide-icon [img]="Activity" [size]="14"></lucide-icon>
-            {{ heartbeatRunning() ? 'Envoi...' : 'Tester le heartbeat maintenant' }}
-          </button>
+          <div class="flex flex-wrap gap-2">
+            <button (click)="runHeartbeat()" [disabled]="heartbeatRunning() || heartbeatVerifying()"
+                    class="px-3 py-2 bg-tracky text-white rounded-lg text-sm font-medium hover:bg-tracky-dark cursor-pointer disabled:opacity-50 flex items-center gap-2">
+              <lucide-icon [img]="Activity" [size]="14"></lucide-icon>
+              {{ heartbeatRunning() ? 'Soumission...' : 'Envoyer le test' }}
+            </button>
+            <button (click)="verifyHeartbeat()" [disabled]="heartbeatRunning() || heartbeatVerifying()"
+                    class="px-3 py-2 bg-bg-tertiary border border-border-subtle text-fg-secondary rounded-lg text-sm font-medium cursor-pointer disabled:opacity-50 flex items-center gap-2">
+              <lucide-icon [img]="CheckCircle" [size]="14"></lucide-icon>
+              {{ heartbeatVerifying() ? 'Vérification...' : 'Vérifier la remise' }}
+            </button>
+          </div>
         </div>
 
       }
@@ -412,6 +420,7 @@ export class AdminSmsComponent implements OnInit, OnDestroy {
   readonly backupHealth = signal<BackupHealthResponse | null>(null);
   // V1.15 — heartbeat "preuve de vie" SMS en cours (bouton run-now).
   readonly heartbeatRunning = signal(false);
+  readonly heartbeatVerifying = signal(false);
   readonly activeTab = signal<Tab>('status');
 
   readonly tabs: { key: Tab; label: string }[] = [
@@ -543,8 +552,12 @@ export class AdminSmsComponent implements OnInit, OnDestroy {
   async sendAdhoc(): Promise<void> {
     try {
       const result = await firstValueFrom(this.api.send(this.adhocTo, this.adhocBody));
-      if (result.ok) {
-        this.toast.success('SMS envoyé');
+      if (result.outcome === 'delivered') {
+        this.toast.success('Remise SMS confirmée');
+        this.adhocBody = '';
+        this.reload();
+      } else if (result.outcome === 'accepted') {
+        this.toast.info('SMS soumis', 'La passerelle l’a accepté ; la remise n’est pas encore prouvée.');
         this.adhocBody = '';
         this.reload();
       } else {
@@ -564,7 +577,10 @@ export class AdminSmsComponent implements OnInit, OnDestroy {
       if (r.skipped) {
         this.toast.error('Heartbeat ignoré — aucun numéro (SMS_HEARTBEAT_RECIPIENTS vide)');
       } else if (r.failed === 0) {
-        this.toast.success(`Heartbeat OK — ${r.sent}/${r.recipients} SMS via ${r.provider}`);
+        this.toast.info(
+          `Test soumis — ${r.sent}/${r.recipients} SMS via ${r.provider}`,
+          'La remise n’est pas encore prouvée. Attendez quelques minutes puis cliquez sur « Vérifier la remise ».',
+        );
       } else {
         this.toast.error(`Heartbeat : ${r.failed}/${r.recipients} échec(s) via ${r.provider} — voir ErrorLogs`);
       }
@@ -574,6 +590,33 @@ export class AdminSmsComponent implements OnInit, OnDestroy {
       this.toast.error('Échec du heartbeat (accès SUPER_ADMIN requis)');
     } finally {
       this.heartbeatRunning.set(false);
+    }
+  }
+
+  async verifyHeartbeat(): Promise<void> {
+    this.heartbeatVerifying.set(true);
+    try {
+      const v = await firstValueFrom(this.api.verifyHeartbeat());
+      if (v.verdict === 'OK') {
+        this.toast.success(`Remise SMS prouvée — ${v.delivered}/${v.checked}`);
+      } else if (v.verdict === 'INDETERMINE') {
+        this.toast.warning(
+          'Remise SMS non prouvée',
+          `${v.indeterminate}/${v.checked} message(s) restent sans statut terminal.`,
+        );
+      } else if (v.verdict === 'SANS_OBJET') {
+        this.toast.warning('Heartbeat non configuré', 'SMS_HEARTBEAT_RECIPIENTS est vide.');
+      } else if (v.verdict === 'NON_EMIS') {
+        this.toast.error('Aucun heartbeat récent trouvé — le test n’a pas été émis.');
+      } else {
+        this.toast.error(`Chaîne SMS en échec — ${v.failed}/${v.checked} message(s) refusé(s).`);
+      }
+      this.reload();
+    } catch (err) {
+      swallow('admin-sms:verifyHeartbeat', err);
+      this.toast.error('Impossible de vérifier la remise du heartbeat');
+    } finally {
+      this.heartbeatVerifying.set(false);
     }
   }
 
