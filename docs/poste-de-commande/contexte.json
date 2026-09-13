@@ -74,6 +74,11 @@
   "faits": [
     {
       "d": "13/09",
+      "quoi": "Le témoin des tâches planifiées sait se taire",
+      "preuve": "Quatre CRITICAL ouvertes depuis le 6 septembre — 164 heures — se sont archivées seules au contrôle de 13:35, note « Tâche repassée … (résolution automatique) ». Le témoin crie toujours sur une tâche vraiment arrêtée : une ligne écrite après le dernier passage n’est jamais touchée."
+    },
+    {
+      "d": "13/09",
       "quoi": "Le script de déploiement est incontournable",
       "preuve": "Un contournement volontaire — l’API recréée à la main à 12:55 UTC — a produit la ligne « Déploiement hors script » au centre d’alerte <b>109 s plus tard</b>, avec le sha, l’heure et l’auteur du dernier déploiement légitime. La garde est relue juste avant la recréation, les repères de repli sont posés seuls. Décision D1 tenue le jour même."
     },

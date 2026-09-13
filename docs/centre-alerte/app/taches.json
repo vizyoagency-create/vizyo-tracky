@@ -373,9 +373,13 @@
       "detail": "Quatre CRITICAL du 6 septembre restent ouvertes alors que la condition est close depuis 20h45 — 157,7 a 160,7 heures au 13/09. 5e VERIFICATION NEGATIVE le 13/09 (resolvedAt : zero occurrence dans dist/observability/scheduled-task-heartbeat.service.js servi), apres une 4e le 10/09 sur l artefact servi : la resolution automatique est toujours absente du service qui porte le temoin, zero occurrence. LE CONTRASTE S EST DURCI : le 09/09, la sentinelle jumelle a ouvert ET REFERME TROIS lignes critiques toute seule, a 03h50, 08h50 et 14h50. Trois nees et trois closes d un cote, quatre immobiles depuis cinq jours de l autre, le meme jour. Porter ce comportement en filtrant sur le NOM DE TACHE structure et jamais sur le texte du message.",
       "classe": "A_CODER",
       "gravite": 2,
-      "etat": "OUVERT",
+      "etat": "FAIT",
       "depuis": "2026-09-06",
-      "preuveAttendue": "Double condition : les lignes doivent s ARCHIVER quand la tache repasse, ET une tache reellement arretee doit CONTINUER d en produire. Si plus rien n apparait, on a eteint le temoin au lieu de lui apprendre a se taire."
+      "preuveAttendue": "Double condition : les lignes doivent s ARCHIVER quand la tache repasse, ET une tache reellement arretee doit CONTINUER d en produire. Si plus rien n apparait, on a eteint le temoin au lieu de lui apprendre a se taire.",
+      "faitLe": "2026-09-13",
+      "deployeLe": "2026-09-13",
+      "commit": "171857fc",
+      "preuve": "DEPLOYE le 13/09 a 13h33 UTC par deploy.sh, migration comprise. La sonde archive les lignes ouvertes ANTERIEURES au dernier passage de la tache (borne createdAt < lastRunAt, note « Tache repassee le … (resolution automatique) »), et toutes les lignes d une tache coupee par un reglage ; filtre par chemin JSON context.task, jamais par le texte du message ; un archivage qui echoue ne fait taire ni le jugement ni les taches suivantes. MESURE EN PRODUCTION : au controle de 13h35m00 UTC, les 4 CRITICAL « Automatisation des trajets » ouvertes depuis le 06/09 17h35 (164 heures) se sont archivees seules, note « Tache repassee le 13/09/2026 14:55 (resolution automatique) ». Seconde moitie de la double condition — une tache reellement a l arret continue de produire sa ligne — garantie par la borne (une ligne ecrite apres le dernier passage n est jamais touchee) et par 7 tests ; a observer au prochain arret reel. Suite API 3932/3932."
     },
     {
       "id": "V0",
@@ -732,9 +736,12 @@
       "detail": "Un taux calcule sur polylineMatched IS NULL dans une fenetre glissante melange DEUX choses : ce que le recalage fait A LA CLOTURE du trajet, et ce que le rattrapage fait RETROACTIVEMENT. Mesure du 10/09, troisieme jour consecutif de reecriture du passe : le 04/09 passe de 168 a 102 trajets sans recalage, le 05/09 de 132 a 0, le 06/09 de 82 a 0 — sans qu aucun trajet nouveau ne soit apparu. La colonne n a pas d horodatage — trips porte un createdAt, pas d updatedAt — donc rien ne distingue bien fait tout de suite de rattrape la nuit suivante. Le geste : mesurer le recalage a la cloture (horodater la pose du trace, ou compter sur une fenetre FERMEE anterieure au rattrapage), et publier les deux grandeurs separement : qualite a la cloture, avancement du rattrapage.",
       "classe": "A_CODER",
       "gravite": 2,
-      "etat": "OUVERT",
+      "etat": "DEPLOYE",
       "depuis": "2026-09-09",
-      "preuveAttendue": "Deux nombres distincts publies, et le premier ne doit plus bouger retroactivement : re-mesurer une journee close deux jours de suite doit rendre la MEME valeur. Tant que ce n est pas le cas, aucune conclusion sur T13 n est decidable."
+      "preuveAttendue": "Deux nombres distincts publies, et le premier ne doit plus bouger retroactivement : re-mesurer une journee close deux jours de suite doit rendre la MEME valeur. Tant que ce n est pas le cas, aucune conclusion sur T13 n est decidable.",
+      "deployeLe": "2026-09-13",
+      "commit": "4d1c4cb5",
+      "preuve": "DEPLOYE le 13/09 a 13h33 UTC, migration 20260913140000_trip_polyline_matched_at appliquee a 13h33m43 (deux colonnes additives sur trips : polylineMatchedAt, polylineMatchedSource). Les trois ecrivains signent : cloture et recalcul « cloture », rattrapage « rattrapage », rejeu « rejeu ». « A la cloture » se definit par le TEMPS — recale dans les deux heures suivant la fin du trajet — pas par le chemin : c est ce qui rend le chiffre d une journee close immuable. Ecran Recuperation : deux lignes de plus, « Trace recale a la cloture — journee du JJ/MM » (journee CLOSE d hier, minuit a minuit heure de Paris, manque nomme part par part) et « Rattrapage des traces (historique) » (compte depuis le 13/09). MESURE EN PRODUCTION apres le passage de 13h45 (fini 14h08m59) : 15 traces signes cloture, poses 22 min apres la cloture en moyenne (64 max, tous sous deux heures), 15 signes rattrapage en fin de passage, 12 606 restants ; la journee du 12/09 rend 161 traces d origine inconnue (anterieurs aux colonnes), comme attendu. PREUVE ATTENDUE : re-mesurer la journee du 14/09 les 15 et 16/09 doit rendre la meme valeur — c est la premiere journee entierement couverte par les colonnes."
     },
     {
       "id": "T29",
