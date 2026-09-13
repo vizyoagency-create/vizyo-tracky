@@ -189,6 +189,7 @@ describe('EngineControlService', () => {
             isEnabled: jest.fn().mockReturnValue(false),
             send: jest.fn(),
             reconcileOutboundStatus: jest.fn(),
+            cancelOutbound: jest.fn().mockResolvedValue({ ok: true, status: 'cancelling' }),
             healthCheck: jest.fn(),
             currentProvider: jest.fn().mockReturnValue('noop'),
             dispatchQueueState: jest.fn().mockReturnValue({ depth: 0, minIntervalMs: 15000, nextDispatchAt: null }),
@@ -1937,6 +1938,109 @@ describe('EngineControlService', () => {
 
       expect(result).toBe(cutActive);
       expect(prisma.engineControlCommand.updateMany).not.toHaveBeenCalled();
+    });
+
+    /**
+     * ══ T41 (contre-expertise du 13/09, P0-2) — validité des SMS CUT, priorité des RESTORE,
+     * annulation du SMS d'une CUT supplantée ═══════════════════════════════════════════════
+     */
+    it('T41 : une CUT partie par SMS porte une validité (ttlSeconds), jamais de priorité', async () => {
+      const sms = testModule.get(SmsGatewayService) as unknown as { isEnabled: jest.Mock; send: jest.Mock };
+      sms.isEnabled.mockReturnValue(true);
+      sms.send.mockResolvedValue({ ok: true, outcome: 'accepted', submittedStatus: 'queued', smsLogId: 'sms-cut' });
+      prisma.tracker.findFirst.mockResolvedValue({ ...trackerWithVehicle, simPhoneNumber: '+33600000000' });
+      prisma.position.findFirst.mockResolvedValue(recentPosition(0));
+      registry.send.mockReturnValue(false);
+
+      await service.requestCommand(TRACKER_ID, EngineAction.CUT, null, fleetAdmin);
+
+      expect(sms.send).toHaveBeenCalledWith(
+        '+33600000000',
+        'stop123456',
+        expect.objectContaining({ ttlSeconds: 900, priority: 'engine_cut' }),
+      );
+      expect(sms.send.mock.calls[0][2]).not.toHaveProperty('smsPriority');
+    });
+
+    it('T41 : une RESTORE partie par SMS porte la priorité maximale (100), jamais de validité', async () => {
+      const sms = testModule.get(SmsGatewayService) as unknown as { isEnabled: jest.Mock; send: jest.Mock };
+      sms.isEnabled.mockReturnValue(true);
+      sms.send.mockResolvedValue({ ok: true, outcome: 'accepted', submittedStatus: 'queued', smsLogId: 'sms-restore' });
+      prisma.tracker.findFirst.mockResolvedValue({ simPhoneNumber: '+33600000000' });
+      prisma.engineControlCommand.findMany
+        .mockResolvedValueOnce([
+          {
+            ...createdCommand({
+              action: EngineAction.RESTORE,
+              status: CommandStatus.SENT,
+              channel: 'TCP',
+              attemptCount: 1,
+              sentAt: new Date(Date.now() - 20_000),
+              nextAttemptAt: new Date(Date.now() - 1_000),
+              dispatchLeaseUntil: null,
+            }),
+            tracker: { imei: trackerWithVehicle.imei, vehicle: trackerWithVehicle.vehicle },
+          },
+        ])
+        .mockResolvedValueOnce([]);
+
+      await service.processPendingRestores();
+
+      expect(sms.send).toHaveBeenCalledWith(
+        '+33600000000',
+        'resume123456',
+        expect.objectContaining({ smsPriority: 100, priority: 'critical_restore' }),
+      );
+      expect(sms.send.mock.calls[0][2]).not.toHaveProperty('ttlSeconds');
+    });
+
+    it('T41 : une RESTORE qui supplante une CUT partie par SMS demande l annulation de son SMS au relais', async () => {
+      const sms = testModule.get(SmsGatewayService) as unknown as { cancelOutbound: jest.Mock };
+      prisma.tracker.findFirst.mockResolvedValue(trackerWithVehicle);
+      // Relecture des CUT visées avant leur clôture : une par SMS, une par TCP (rien à annuler).
+      prisma.engineControlCommand.findMany.mockResolvedValueOnce([
+        { id: 'cut-sms', smsLogId: 'sms-cut', channel: 'SMS' },
+        { id: 'cut-tcp', smsLogId: null, channel: 'TCP' },
+      ]);
+
+      await service.requestCommand(TRACKER_ID, EngineAction.RESTORE, null, fleetAdmin, 'MANUAL');
+      await new Promise((r) => setTimeout(r, 10)); // l'annulation est asynchrone et jamais bloquante
+
+      expect(prisma.engineControlCommand.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ action: EngineAction.CUT, activeKey: { not: null } }),
+          select: { id: true, smsLogId: true, channel: true },
+        }),
+      );
+      expect(sms.cancelOutbound).toHaveBeenCalledTimes(1);
+      expect(sms.cancelOutbound).toHaveBeenCalledWith('sms-cut');
+      // La commande supplantée dit que son SMS a été retiré avant émission.
+      expect(prisma.engineControlCommand.updateMany).toHaveBeenCalledWith({
+        where: { id: 'cut-sms', status: CommandStatus.SENT_UNCONFIRMED },
+        data: { lastError: expect.stringContaining('SMS annulé au relais') },
+      });
+    });
+
+    it('T41 : un refus d annulation (message déjà pris par le téléphone) ne bloque ni ne casse la RESTORE', async () => {
+      const sms = testModule.get(SmsGatewayService) as unknown as { cancelOutbound: jest.Mock };
+      sms.cancelOutbound.mockResolvedValue({ ok: false, reason: 'statut sent : plus annulable' });
+      prisma.tracker.findFirst.mockResolvedValue(trackerWithVehicle);
+      prisma.engineControlCommand.findMany.mockResolvedValueOnce([{ id: 'cut-sms', smsLogId: 'sms-cut', channel: 'SMS' }]);
+
+      await expect(
+        service.requestCommand(TRACKER_ID, EngineAction.RESTORE, null, fleetAdmin, 'MANUAL'),
+      ).resolves.toBeDefined();
+      await new Promise((r) => setTimeout(r, 10));
+
+      // L'intention RESTORE a bien été créée malgré le refus d'annulation.
+      expect(prisma.engineControlCommand.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({ action: EngineAction.RESTORE, status: CommandStatus.PENDING }),
+      });
+      expect(sms.cancelOutbound).toHaveBeenCalledWith('sms-cut');
+      const relabel = prisma.engineControlCommand.updateMany.mock.calls.find(
+        ([arg]) => arg?.where?.id === 'cut-sms' && arg?.where?.status === CommandStatus.SENT_UNCONFIRMED,
+      );
+      expect(relabel).toBeUndefined();
     });
 
     it('reprend un RESTORE TCP sans ACK par le fallback SMS', async () => {

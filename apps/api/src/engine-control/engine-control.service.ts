@@ -97,6 +97,22 @@ const ENGINE_RESTORE_EXPIRY_MS =
   60 *
   1000;
 const ENGINE_RESTORE_REARM_AFTER_MS = 10 * 60 * 1000;
+/**
+ * ══ T41 (contre-expertise du 13/09, P0-2) — UNE COUPURE PAR SMS A UNE DATE DE PÉREMPTION ═════
+ *
+ * Le 11/09, un SMS est resté 1 h 06 dans la file d'un téléphone endormi avant de partir. Une
+ * COUPURE qui subit ce retard peut s'exécuter APRÈS la remise en route du matin : véhicule coupé
+ * au départ, sans que personne ne l'ait demandé. Le relais transmet cette validité au serveur
+ * capcom6 (`ttl`), et c'est le TÉLÉPHONE qui refuse d'émettre un message périmé — le seul endroit
+ * où le retard se mesure. Env `ENGINE_CUT_SMS_TTL_S`, défaut 900 s, plancher 60 s. Une remise en
+ * route, elle, ne périme jamais : elle part avec la priorité maximale (≥ 100 = hors limites et
+ * délais du téléphone).
+ */
+const ENGINE_CUT_SMS_TTL_S = Math.max(
+  60,
+  Number(process.env['ENGINE_CUT_SMS_TTL_S']) || 900,
+);
+const ENGINE_RESTORE_SMS_PRIORITY = 100;
 const ENGINE_STOP_ACK_PATTERN = /imei:\d{15},J/i;
 const ENGINE_RESUME_ACK_PATTERN = /imei:\d{15},K/i;
 
@@ -757,6 +773,20 @@ export class EngineControlService implements OnModuleDestroy {
       // Un ordre de sécurité RESTORE rend toute CUT encore en vol obsolète. Un
       // ACK tardif de cette CUT ne devra plus refaire croire que le véhicule est
       // coupé ; l'état explicite conserve néanmoins la trace de l'incertitude.
+      //
+      // T41 — supplanter en base ne suffit pas : une CUT partie par SMS peut encore attendre
+      // dans la file du téléphone (ou du relais), et partirait APRÈS ce rallumage. On relit
+      // donc les CUT visées AVANT de les clore, pour demander au relais l'annulation de leur
+      // SMS — best-effort, sans retarder la création de l'intention RESTORE.
+      const supplantees = await this.prisma.engineControlCommand.findMany({
+        where: {
+          trackerId,
+          action: EngineAction.CUT,
+          status: { in: [CommandStatus.PENDING, CommandStatus.SENT] },
+          activeKey: { not: null },
+        },
+        select: { id: true, smsLogId: true, channel: true },
+      });
       await this.prisma.engineControlCommand.updateMany({
         where: {
           trackerId,
@@ -773,6 +803,10 @@ export class EngineControlService implements OnModuleDestroy {
           lastError: 'CUT supplantée par une intention RESTORE plus récente',
         },
       });
+      for (const cut of supplantees) {
+        if (!cut.smsLogId) continue;
+        void this.cancelSupersededCutSms(cut.id, cut.smsLogId, tracker.imei);
+      }
     }
     let command: EngineControlCommand;
     try {
@@ -935,6 +969,46 @@ export class EngineControlService implements OnModuleDestroy {
    * Rend `null` si rien n'a été réarmé (commande non éligible, ou modifiée entre-temps par
    * l'ACK ou le worker — `updateMany` conditionnel).
    */
+  /**
+   * T41 — demande au relais l'annulation du SMS d'une CUT supplantée, et le dit sur la commande.
+   * Ne lève jamais : un refus (message déjà pris par le téléphone, relais ancien) est journalisé
+   * et laisse la commande en `SENT_UNCONFIRMED` — l'état qui dit honnêtement « nul ne sait ».
+   */
+  private async cancelSupersededCutSms(
+    commandId: string,
+    smsLogId: string,
+    imei: string,
+  ): Promise<void> {
+    try {
+      const result = await this.sms.cancelOutbound(smsLogId);
+      if (result.ok) {
+        await this.prisma.engineControlCommand
+          .updateMany({
+            where: { id: commandId, status: CommandStatus.SENT_UNCONFIRMED },
+            data: {
+              lastError:
+                'CUT supplantée par une intention RESTORE plus récente — SMS annulé au relais avant émission',
+            },
+          })
+          .catch(() => undefined);
+        this.logger.log(
+          { commandId, smsLogId, imei, status: result.status },
+          'SMS de CUT supplantée annulé au relais (T41)',
+        );
+        return;
+      }
+      this.logger.warn(
+        { commandId, smsLogId, imei, reason: result.reason },
+        'SMS de CUT supplantée NON annulé — la validité (ttl) posée à l’envoi reste la seule garde',
+      );
+    } catch (err) {
+      this.logger.warn(
+        { commandId, smsLogId, error: err instanceof Error ? err.message : String(err) },
+        'Annulation du SMS de CUT supplantée impossible',
+      );
+    }
+  }
+
   private async rearmStaleRestore(
     active: EngineControlCommand,
   ): Promise<EngineControlCommand | null> {
@@ -1879,6 +1953,11 @@ export class EngineControlService implements OnModuleDestroy {
       commandId,
       action,
       priority: action === EngineAction.RESTORE ? 'critical_restore' : 'engine_cut',
+      // T41 — une COUPURE périme (le téléphone n'émet plus un `stop` en retard) ; une remise en
+      // route ne périme jamais et passe devant tout le reste sur le téléphone.
+      ...(action === EngineAction.CUT
+        ? { ttlSeconds: ENGINE_CUT_SMS_TTL_S }
+        : { smsPriority: ENGINE_RESTORE_SMS_PRIORITY }),
       template: 'engine_control_fallback', source: 'engine-control-fallback',
     });
     if (result.ok) {

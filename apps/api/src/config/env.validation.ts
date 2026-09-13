@@ -83,6 +83,8 @@ const envSchema = z.object({
   // P0-1 (contre-expertise du 13/09) : une RESTORE « envoyée » sans preuve libère sa clé
   // d'unicité après cette échéance ; sans borne, la RESTORE du lendemain était avalée.
   ENGINE_RESTORE_EXPIRY_MIN: z.coerce.number().int().positive().default(240),
+  // T41 : validité (s) d'une COUPURE partie par SMS — le téléphone n'émet plus un `stop` en retard.
+  ENGINE_CUT_SMS_TTL_S: z.coerce.number().int().positive().default(900),
 
   // Email Gateway (Resend) — Sprint J. Si RESEND_API_KEY est vide, le module
   // est en mode no-op (les invitations sont creees mais l'email n'est pas envoye,

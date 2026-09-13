@@ -460,3 +460,107 @@ describe('SmsGatewayService — idempotence des webhooks terminaux', () => {
     expect(errorLogger.record).not.toHaveBeenCalled();
   });
 });
+
+/**
+ * ── T41 (contre-expertise du 13/09, P0-2) — validité, priorité et annulation au relais ──────
+ *
+ * Une coupure partie par SMS vers un téléphone endormi partait APRÈS le rallumage du matin.
+ * Deux gardes : le relais reçoit une validité (`ttlSeconds`) que le téléphone applique, et une
+ * CUT supplantée fait annuler son SMS encore en attente.
+ */
+describe('SmsGatewayService — validité, priorité et annulation au relais (T41)', () => {
+  const build = (log: Record<string, unknown> | null = null) => {
+    const prisma = {
+      smsLog: {
+        create: jest.fn().mockImplementation(({ data }) => Promise.resolve({ id: 'log-1', ...data })),
+        findUnique: jest.fn().mockResolvedValue(log),
+        update: jest.fn().mockResolvedValue({}),
+      },
+    };
+    const config = {
+      get: jest.fn(
+        (key: string) =>
+          ({
+            VIZYO_TEXTO_URL: 'https://texto.test',
+            VIZYO_TEXTO_API_KEY: 'secret-key',
+            SMS_MIN_INTERVAL_MS: 0,
+          })[key],
+      ),
+    };
+    const service = new SmsGatewayService(
+      prisma as never,
+      { record: jest.fn().mockResolvedValue('id') } as never,
+      { emit: jest.fn() } as never,
+      { record: jest.fn() } as never,
+      config as never,
+    );
+    return { service, prisma };
+  };
+
+  afterEach(() => jest.restoreAllMocks());
+
+  it('transmet ttlSeconds et priority au premier niveau du corps envoyé au relais', async () => {
+    // Une `Response` ne se lit qu'une fois : une instance NEUVE par appel.
+    const fetchSpy = jest.spyOn(global, 'fetch').mockImplementation(async () =>
+      new Response(JSON.stringify({ id: 'msg-1', status: 'queued', providerId: 'cap-1' }), { status: 202 }),
+    );
+    const { service } = build();
+
+    await service.send('+33600000000', 'stop123456', { template: 'engine_control_fallback', ttlSeconds: 900 });
+    await service.send('+33600000000', 'resume123456', { template: 'engine_control_fallback', smsPriority: 100 });
+    await service.send('+33600000000', 'fix030s***n123456', { template: 'engine_control_fallback' });
+
+    const corps = fetchSpy.mock.calls.map(([, init]) => JSON.parse(String(init?.body)));
+    expect(corps[0]).toMatchObject({ to: '+33600000000', body: 'stop123456', ttlSeconds: 900 });
+    expect(corps[0]).not.toHaveProperty('priority');
+    expect(corps[1]).toMatchObject({ body: 'resume123456', priority: 100 });
+    expect(corps[1]).not.toHaveProperty('ttlSeconds');
+    expect(corps[2]).not.toHaveProperty('ttlSeconds');
+    expect(corps[2]).not.toHaveProperty('priority');
+  });
+
+  it('annule un sortant encore accepté par DELETE /v1/texto/:providerId et note le nouveau statut', async () => {
+    const fetchSpy = jest.spyOn(global, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify({ id: 'msg-1', providerId: 'cap-1', status: 'cancelling', cancelled: true }), {
+        status: 200,
+      }) as never,
+    );
+    const { service, prisma } = build({ id: 'log-1', status: 'queued', direction: 'OUT', twilioSid: 'cap-1' });
+
+    await expect(service.cancelOutbound('log-1')).resolves.toEqual({ ok: true, status: 'cancelling' });
+
+    expect(fetchSpy.mock.calls[0]?.[0]).toBe('https://texto.test/v1/texto/cap-1');
+    expect(fetchSpy.mock.calls[0]?.[1]?.method).toBe('DELETE');
+    expect((fetchSpy.mock.calls[0]?.[1]?.headers as Record<string, string>).Authorization).toBe('Bearer secret-key');
+    expect(prisma.smsLog.update).toHaveBeenCalledWith({
+      where: { id: 'log-1' },
+      data: { status: 'cancelling', statusUpdatedAt: expect.any(Date) },
+    });
+  });
+
+  it('ne réécrit rien quand le relais refuse (message déjà parti, serveur ancien) et ne lève jamais', async () => {
+    jest.spyOn(global, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify({ cancelled: false, status: 'sent', reason: 'statut sent : plus annulable' }), {
+        status: 200,
+      }) as never,
+    );
+    const { service, prisma } = build({ id: 'log-1', status: 'queued', direction: 'OUT', twilioSid: 'cap-1' });
+    await expect(service.cancelOutbound('log-1')).resolves.toMatchObject({ ok: false, reason: expect.stringContaining('plus annulable') });
+    expect(prisma.smsLog.update).not.toHaveBeenCalled();
+
+    jest.spyOn(global, 'fetch').mockRejectedValue(new Error('timeout'));
+    await expect(service.cancelOutbound('log-1')).resolves.toEqual({ ok: false, reason: 'timeout' });
+  });
+
+  it('refuse d annuler sans identifiant fournisseur, un statut terminal ou un entrant — sans appeler le relais', async () => {
+    const fetchSpy = jest.spyOn(global, 'fetch');
+    await expect(build({ id: 'l', status: 'queued', direction: 'OUT', twilioSid: null }).service.cancelOutbound('l'))
+      .resolves.toMatchObject({ ok: false, reason: expect.stringContaining('identifiant') });
+    await expect(build({ id: 'l', status: 'delivered', direction: 'OUT', twilioSid: 'x' }).service.cancelOutbound('l'))
+      .resolves.toMatchObject({ ok: false, reason: expect.stringContaining('plus annulable') });
+    await expect(build({ id: 'l', status: 'received', direction: 'IN', twilioSid: 'x' }).service.cancelOutbound('l'))
+      .resolves.toMatchObject({ ok: false });
+    await expect(build(null).service.cancelOutbound('absent')).resolves.toMatchObject({ ok: false });
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+});

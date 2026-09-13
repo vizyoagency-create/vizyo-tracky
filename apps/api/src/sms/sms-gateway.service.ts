@@ -91,6 +91,17 @@ export interface SmsSendContext {
   imei?: string;
   provisioningId?: string;
   requestedByUserId?: string;
+  /**
+   * T41 (contre-expertise du 13/09, P0-2) — validité transmise au relais, en secondes : passé
+   * ce délai, le TÉLÉPHONE n'émet plus le message. À poser sur une COUPURE moteur, jamais sur
+   * une remise en route. Conservé dans `sms_logs.context` pour relecture.
+   */
+  ttlSeconds?: number;
+  /**
+   * T41 — priorité capcom6 (−128 … 127) transmise au relais ; ≥ 100 contourne les limites et
+   * délais du téléphone. Distinct de `priority` (chaîne), qui ordonne la file LOCALE de Tracky.
+   */
+  smsPriority?: number;
   [k: string]: unknown;
 }
 
@@ -597,6 +608,56 @@ export class SmsGatewayService implements OnModuleInit {
    * Point d'entrée des webhooks de statut sortant. Le poller reste la seconde
    * voie indépendante ; le webhook accélère seulement la vérité terminale.
    */
+  /**
+   * T41 — annule un sortant encore en attente au relais (DELETE /v1/texto/:providerId).
+   *
+   * Le cas : une COUPURE partie par SMS vers un téléphone endormi, puis supplantée par une
+   * remise en route. Best-effort par construction — ne lève JAMAIS, rend ce qui s'est passé :
+   * le relais répond toujours 200 avec `cancelled` et sa raison (message déjà pris par le
+   * téléphone, serveur capcom6 antérieur à v1.45.0). Le `ttlSeconds` posé à l'envoi couvre
+   * ce que l'annulation ne peut pas rattraper.
+   */
+  async cancelOutbound(
+    smsLogId: string,
+  ): Promise<{ ok: boolean; status?: string; reason?: string }> {
+    try {
+      const log = await this.prisma.smsLog.findUnique({
+        where: { id: smsLogId },
+        select: { id: true, status: true, direction: true, twilioSid: true },
+      });
+      if (!log || log.direction !== 'OUT') return { ok: false, reason: 'sortant introuvable' };
+      if (!log.twilioSid) return { ok: false, reason: 'aucun identifiant fournisseur' };
+      if (smsOutcomeFromStatus(log.status) !== 'accepted') {
+        return { ok: false, status: log.status ?? undefined, reason: `statut ${log.status} : plus annulable` };
+      }
+      if (this.provider !== 'vizyo-texto') {
+        return { ok: false, reason: `annulation non supportée par le fournisseur ${this.provider}` };
+      }
+      const res = await fetch(`${this.textoUrl}/v1/texto/${encodeURIComponent(log.twilioSid)}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${this.textoApiKey}` },
+        signal: AbortSignal.timeout(8_000),
+      });
+      if (!res.ok) return { ok: false, reason: `relais HTTP ${res.status}` };
+      const data = (await res.json().catch(() => ({}))) as {
+        cancelled?: boolean;
+        status?: string;
+        reason?: string;
+      };
+      if (!data.cancelled) {
+        return { ok: false, status: data.status, reason: data.reason ?? 'annulation refusée par le relais' };
+      }
+      const status = typeof data.status === 'string' && data.status ? data.status : 'cancelling';
+      await this.prisma.smsLog.update({
+        where: { id: log.id },
+        data: { status, statusUpdatedAt: new Date() },
+      });
+      return { ok: true, status };
+    } catch (err) {
+      return { ok: false, reason: err instanceof Error ? err.message : String(err) };
+    }
+  }
+
   async recordOutboundStatus(input: {
     providerId: string;
     status: string;
@@ -864,7 +925,15 @@ export class SmsGatewayService implements OnModuleInit {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${this.textoApiKey}`,
         },
-        body: JSON.stringify({ to, body, context }),
+        body: JSON.stringify({
+          to,
+          body,
+          context,
+          // T41 — les deux options remontent au premier niveau, là où le relais les valide ;
+          // elles restent aussi dans `context` pour l'audit.
+          ...(Number.isFinite(context.ttlSeconds) ? { ttlSeconds: Math.floor(context.ttlSeconds as number) } : {}),
+          ...(Number.isFinite(context.smsPriority) ? { priority: Math.trunc(context.smsPriority as number) } : {}),
+        }),
         signal: AbortSignal.timeout(10_000),
       });
 

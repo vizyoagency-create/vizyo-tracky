@@ -44,6 +44,7 @@ ENGINE_RESTORE_ACK_TIMEOUT_MS=15000
 ENGINE_RESTORE_ALERT_AFTER_MS=60000
 ENGINE_RESTORE_MAX_SMS_ATTEMPTS=3
 ENGINE_RESTORE_EXPIRY_MIN=240
+ENGINE_CUT_SMS_TTL_S=900
 ```
 
 Le kill-switch reste `false` pendant le déploiement technique, les tests et le canari. Le passer
