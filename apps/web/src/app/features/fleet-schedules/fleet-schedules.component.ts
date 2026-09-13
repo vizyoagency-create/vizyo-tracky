@@ -138,11 +138,14 @@ export class FleetSchedulesComponent implements OnInit, OnDestroy {
   protected readonly previewLoading = signal(false);
   protected readonly applying = signal(false);
   protected readonly pendingDisable = signal(false);
+  protected readonly applyQueueIntervalSec = signal(10);
+  protected readonly applyQueueDurationSec = signal(0);
 
   // Panneau de SUIVI après application (pensé pour des utilisateurs pressés / non-techniques).
   protected readonly applyResults = signal<BulkScheduleApplyItemResult[] | null>(null);
   protected readonly applyCut = computed(() => (this.applyResults() ?? []).filter((r) => r.ok && r.immediate === 'cut'));
-  protected readonly applyPending = computed(() => (this.applyResults() ?? []).filter((r) => r.ok && r.immediate === 'deferred'));
+  protected readonly applyQueued = computed(() => (this.applyResults() ?? []).filter((r) => r.ok && r.immediate === 'queued'));
+  protected readonly applyPending = computed(() => (this.applyResults() ?? []).filter((r) => r.ok && (r.immediate === 'queued' || r.immediate === 'deferred')));
   protected readonly applyNone = computed(() => (this.applyResults() ?? []).filter((r) => r.ok && r.immediate === 'none'));
   protected readonly applyFailed = computed(() => (this.applyResults() ?? []).filter((r) => !r.ok));
   /** Combien de « en attente » ont FINI par être coupés (synchro live) — pour la barre de progression. */
@@ -449,6 +452,8 @@ export class FleetSchedulesComponent implements OnInit, OnDestroy {
         this.toast.success('Automatisation désactivée', `${res.applied} véhicule(s).`);
       } else {
         // Activation : on ouvre le PANNEAU DE SUIVI (explique tout, cartes en attente live).
+        this.applyQueueIntervalSec.set(res.cutQueueIntervalSec);
+        this.applyQueueDurationSec.set(res.estimatedCutQueueDurationSec);
         this.applyResults.set(res.results);
         if (res.failed > 0) {
           this.toast.warning('Appliqué partiellement', `${res.failed} véhicule(s) en échec — voir le détail.`);
@@ -461,6 +466,12 @@ export class FleetSchedulesComponent implements OnInit, OnDestroy {
     } finally {
       this.applying.set(false);
     }
+  }
+
+  protected queueDurationLabel(seconds: number): string {
+    if (seconds < 60) return `${seconds} s`;
+    const min = Math.ceil(seconds / 60);
+    return `${min} min`;
   }
 
   /** Une voiture « en attente » a-t-elle fini par être coupée ? (synchro live via poll + WS coupe) */

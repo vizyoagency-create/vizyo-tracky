@@ -276,16 +276,23 @@
       @if (pendingDisable()) {
         <p>L'automatisation horaire sera <strong>désactivée</strong> sur <strong>{{ pv.total }}</strong> véhicule(s). Les véhicules actuellement coupés par l'horaire seront <strong>rétablis</strong>.</p>
       } @else {
-        <p class="muted small">Effet immédiat estimé de la plage {{ bulkStart() }}–{{ bulkEnd() }} :</p>
+        <p class="muted small">Effet estimé de la plage {{ bulkStart() }}–{{ bulkEnd() }} :</p>
         <ul class="preview-list">
           <li><b>{{ pv.total }}</b> véhicule(s) ciblé(s)</li>
           <li class="ok"><b>{{ pv.inWindowNow }}</b> dans la plage → aucune coupe</li>
-          <li class="cut"><b>{{ pv.wouldCutNow }}</b> à l'arrêt depuis ≥ 10 min → <strong>coupés maintenant</strong></li>
+          <li class="cut"><b>{{ pv.wouldCutNow }}</b> à l'arrêt depuis ≥ 10 min → placés dans la <strong>file de coupe</strong></li>
           @if (pv.wouldDeferDwell > 0) { <li class="warn"><b>{{ pv.wouldDeferDwell }}</b> arrêtés depuis moins de 10 min → coupe différée</li> }
           <li class="warn"><b>{{ pv.wouldDeferMoving }}</b> roulent → coupe différée jusqu'à l'arrêt</li>
           <li class="warn"><b>{{ pv.wouldDeferOffline }}</b> hors ligne → coupe dès reconnexion</li>
           @if (pv.withoutTracker > 0) { <li class="muted"><b>{{ pv.withoutTracker }}</b> sans boîtier → ignorés</li> }
         </ul>
+        @if (pv.outOfWindowNow > 0) {
+          <p class="ap-explain">
+            Protection anti-rafale&nbsp;: au maximum <b>une coupe toutes les {{ pv.cutQueueIntervalSec }} secondes</b>.
+            Pour {{ pv.outOfWindowNow }} véhicule(s), la mise en file prendra au minimum
+            <b>{{ queueDurationLabel(pv.estimatedCutQueueDurationSec) }}</b>. Une reprise moteur reste prioritaire.
+          </p>
+        }
       }
       <div class="modal-actions">
         <button type="button" class="btn ghost" (click)="cancelPreview()" [disabled]="applying()">Annuler</button>
@@ -319,6 +326,11 @@
             <span class="ap-progress">{{ applyPendingDoneCount() }} / {{ applyPending().length }} coupées</span>
           </div>
           <p class="ap-explain">
+            @if (applyQueued().length > 0) {
+              {{ applyQueued().length }} coupe(s) ont été placées dans la file anti-rafale&nbsp;:
+              <b>une au maximum toutes les {{ applyQueueIntervalSec() }} secondes</b>
+              (environ {{ queueDurationLabel(applyQueueDurationSec()) }} minimum).
+            }
             On ne coupe <b>jamais</b> une voiture en marche&nbsp;: c'est pour la sécurité. Chacune se coupera
             <b>toute seule</b> dès qu'elle restera à l'arrêt 10&nbsp;minutes.
             @if (applyPendingOffline() > 0) {
@@ -338,7 +350,7 @@
                   <span class="ap-plate">{{ r.plate }}</span>
                   @switch (pendingKind(r.vehicleId)) {
                     @case ('DRIVING') { <span class="ap-state">roule — en attente d'arrêt…</span> }
-                    @case ('AWAITING_STOP') { <span class="ap-state">à l'arrêt — coupe imminente…</span> }
+                    @case ('AWAITING_STOP') { <span class="ap-state">à l'arrêt — en file de coupe…</span> }
                     @case ('OFFLINE') { <span class="ap-state">hors ligne — dès reconnexion</span> }
                     @default { <span class="ap-state">en attente…</span> }
                   }

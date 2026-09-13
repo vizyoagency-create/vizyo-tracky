@@ -26,6 +26,8 @@ l'intention, montre l'absence de preuve et alerte au lieu d'abandonner silencieu
 - webhook signé pour les statuts sortants, plus polling indépendant si le webhook se perd ;
 - alerte critique après 60 secondes sans confirmation, avec plaque, IMEI, canal et tentative ;
 - file SMS cadencée, priorité RESTORE, FIFO à priorité égale et état de file visible ;
+- bouton Horaires flotte non bloquant : les CUT rejoignent une file récupérable, au plus un départ
+  toutes les 10 secondes, tandis que les RESTORE restent prioritaires ;
 - kill-switch `ENGINE_AUTOMATIC_CUT_ENABLED=false` par défaut ;
 - préflight avant CUT automatique : passerelle joignable, preuve terminale récente et file saine ;
 - état UI « rallumage en cours/non confirmé », sans effacer le statut coupé sur simple HTTP 200 ;
@@ -37,6 +39,7 @@ l'intention, montre l'absence de preuve et alerte au lieu d'abandonner silencieu
 ```text
 ENGINE_AUTOMATIC_CUT_ENABLED=false
 SMS_MIN_INTERVAL_MS=15000
+SCHEDULE_CUT_QUEUE_INTERVAL_MS=10000
 ENGINE_RESTORE_ACK_TIMEOUT_MS=15000
 ENGINE_RESTORE_ALERT_AFTER_MS=60000
 ENGINE_RESTORE_MAX_SMS_ATTEMPTS=3
@@ -98,6 +101,6 @@ de dimanche et la reprise de lundi.
 - schéma Prisma valide et client régénéré ;
 - build API réussi ;
 - build Web réussi (avertissements de budget existants, sans erreur) ;
-- suite API complète : **252 suites, 3 900 tests réussis, 0 échec** ;
+- suite API complète : **253 suites, 3 905 tests réussis, 0 échec** ;
 - tests ciblés couvrant moteur, SMS, webhook, confidentialité démo et véhicules : verts ;
 - `git diff --check` : aucune erreur d'espace ou de patch.

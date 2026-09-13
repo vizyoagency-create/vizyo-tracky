@@ -22,6 +22,7 @@ import { computeNextTransition, computeUpcomingHolidays, evaluateSchedule } from
 import { VehicleSchedulesService } from './vehicle-schedules.service';
 import type { UpsertVehicleScheduleDto } from './dto/upsert-vehicle-schedule.dto';
 import type { BulkScheduleApplyDto } from './dto/bulk-schedule-apply.dto';
+import { AUTOMATIC_CUT_QUEUE_INTERVAL_MS } from './automatic-cut-queue';
 
 /** Même seuil que la coupe auto (engine-control) : véhicule « en mouvement » si vitesse > 5 km/h. */
 const MOVING_SPEED_KMH = 5;
@@ -372,6 +373,8 @@ export class FleetSchedulesService {
       wouldDeferMoving: 0,
       wouldDeferOffline: 0,
       withoutTracker: 0,
+      cutQueueIntervalSec: Math.round(AUTOMATIC_CUT_QUEUE_INTERVAL_MS / 1000),
+      estimatedCutQueueDurationSec: 0,
     };
 
     // Candidats « en ligne + à l'arrêt + hors plage » : la coupe réelle applique la règle des
@@ -433,6 +436,10 @@ export class FleetSchedulesService {
       res.wouldCutNow += dwellCandidates.length;
     }
 
+    // Tous les CUT hors plage passent par la file. Les véhicules en mouvement/hors ligne
+    // peuvent rester plus longtemps en attente ; cette durée est donc un minimum opérationnel.
+    res.estimatedCutQueueDurationSec =
+      Math.max(0, res.outOfWindowNow - 1) * res.cutQueueIntervalSec;
     return res;
   }
 
@@ -443,16 +450,18 @@ export class FleetSchedulesService {
     const requestedBy = this.toRequestedBy(user);
     const results: BulkScheduleApplyResponse['results'] = [];
 
-    // SÉQUENTIEL volontaire (VPS 2 vCPU) : un for-await, pas un Promise.all — évite un burst
-    // de dizaines de commandes moteur / dispatch TCP simultanés lors d'une activation de masse.
+    // La config est écrite séquentiellement (VPS 2 vCPU), mais les CUT hors plage ne sont PLUS
+    // envoyés dans cette requête : ils rejoignent la file durable du cron. Une requête HTTP qui
+    // dort 6 minutes serait fragile (timeout/retry utilisateur) et ne survivrait pas à un deploy.
     for (const t of targets) {
       try {
         const updated = await this.schedules.upsert(
           t.id,
           dto.schedule as unknown as UpsertVehicleScheduleDto,
           requestedBy,
+          { deferImmediateCut: dto.schedule.enabled },
         );
-        results.push({ vehicleId: t.id, plate: t.plate, ok: true, immediate: this.classifyImmediate(updated) });
+        results.push({ vehicleId: t.id, plate: t.plate, ok: true, immediate: this.classifyImmediate(updated, dto.schedule.enabled) });
       } catch (err) {
         this.logger.warn({ vehicleId: t.id, error: (err as Error).message }, 'Bulk schedule apply: vehicle failed');
         results.push({ vehicleId: t.id, plate: t.plate, ok: false, error: (err as Error).message });
@@ -460,7 +469,16 @@ export class FleetSchedulesService {
     }
 
     const applied = results.filter((r) => r.ok).length;
-    return { total: targets.length, applied, failed: results.length - applied, results };
+    const queuedCuts = results.filter((r) => r.ok && r.immediate === 'queued').length;
+    return {
+      total: targets.length,
+      applied,
+      failed: results.length - applied,
+      queuedCuts,
+      cutQueueIntervalSec: Math.round(AUTOMATIC_CUT_QUEUE_INTERVAL_MS / 1000),
+      estimatedCutQueueDurationSec: Math.max(0, queuedCuts - 1) * Math.round(AUTOMATIC_CUT_QUEUE_INTERVAL_MS / 1000),
+      results,
+    };
   }
 
   // ─────────────────────────────────────────── Internes ───────────────────────────────────────────
@@ -533,8 +551,9 @@ export class FleetSchedulesService {
   }
 
   /** Effet immédiat de l'upsert, lu sur l'état fraîchement évalué renvoyé par le service. */
-  private classifyImmediate(updated: VehicleSchedule): 'cut' | 'deferred' | 'none' {
+  private classifyImmediate(updated: VehicleSchedule, queuedBulkCut = false): 'cut' | 'queued' | 'deferred' | 'none' {
     if (!updated.enabled) return 'none';
+    if (queuedBulkCut && evaluateSchedule(updated).state === 'OUT_OF_WINDOW') return 'queued';
     if (updated.lastEvaluatedState === 'OUT_OF_WINDOW') return 'cut'; // coupe immédiate réussie
     if (updated.lastEvaluatedState === 'IN_WINDOW') return 'none'; // dans la plage, rien à couper
     // enabled mais state non avancé → coupe voulue mais différée (véhicule roule / arrêt trop récent).

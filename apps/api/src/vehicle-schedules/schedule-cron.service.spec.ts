@@ -1,5 +1,6 @@
 import { ForbiddenException, ServiceUnavailableException } from '@nestjs/common';
 import { PresumedParkedException } from '../engine-control/engine-control.service';
+import { AutomaticCutQueueGate } from './automatic-cut-queue';
 import { parseKnownCountdown, ScheduleCronService } from './schedule-cron.service';
 import type { VehicleSchedule } from '@prisma/client';
 
@@ -50,6 +51,84 @@ function makeSchedule(overrides: Partial<VehicleSchedule> = {}): VehicleSchedule
     ...overrides,
   };
 }
+
+describe('AutomaticCutQueueGate — anti-rafale flotte', () => {
+  it('n’autorise qu’un départ par créneau et draine 37 véhicules en 6 minutes', () => {
+    const gate = new AutomaticCutQueueGate(10_000);
+    const now = Date.parse('2026-09-13T20:00:00.000Z');
+    expect(Array.from({ length: 37 }, () => gate.tryAcquire(now)).filter(Boolean)).toHaveLength(1);
+    const departures = Array.from({ length: 36 }, (_, i) => gate.tryAcquire(now + (i + 1) * 10_000));
+    expect(departures.every(Boolean)).toBe(true);
+    expect(now + 36 * 10_000 - now).toBe(360_000);
+  });
+
+  it('ne conserve pas une dette de cadence après une période sans coupe', () => {
+    const gate = new AutomaticCutQueueGate(10_000);
+    expect(gate.tryAcquire(1_000)).toBe(true);
+    expect(gate.tryAcquire(31_000)).toBe(true);
+  });
+});
+
+describe('ScheduleCronService — priorité et annulation de la file CUT', () => {
+  it('traite une RESTORE avant une CUT même si la DB renvoie la CUT en premier', async () => {
+    const cut = {
+      ...makeSchedule({
+        id: 's-cut', vehicleId: 'v-cut', lastEvaluatedState: 'IN_WINDOW',
+        mondayEnabled: false, tuesdayEnabled: false, wednesdayEnabled: false,
+        thursdayEnabled: false, fridayEnabled: false, saturdayEnabled: false, sundayEnabled: false,
+      }),
+      vehicle: { id: 'v-cut', fleetId: 'f-1', plate: 'ZZ-999-ZZ', tracker: { id: 't-cut' } },
+    } as any;
+    const restore = {
+      ...makeSchedule({
+        id: 's-restore', vehicleId: 'v-restore', lastEvaluatedState: 'OUT_OF_WINDOW',
+        mondayStart: null, mondayEnd: null, tuesdayStart: null, tuesdayEnd: null,
+        wednesdayStart: null, wednesdayEnd: null, thursdayStart: null, thursdayEnd: null,
+        fridayStart: null, fridayEnd: null, saturdayEnabled: true, saturdayStart: null, saturdayEnd: null,
+        sundayEnabled: true, sundayStart: null, sundayEnd: null,
+      }),
+      vehicle: { id: 'v-restore', fleetId: 'f-1', plate: 'AA-001-AA', tracker: { id: 't-restore' } },
+    } as any;
+    const prisma = { vehicleSchedule: { findMany: jest.fn().mockResolvedValue([cut, restore]) } } as any;
+    const service = new ScheduleCronService(prisma, {} as any, { record: jest.fn() } as any, { emit: jest.fn() } as any);
+    const evaluated: string[] = [];
+    jest.spyOn(service, 'evaluateOne').mockImplementation(async (s: any) => { evaluated.push(s.vehicleId); });
+
+    await (service as any).evaluateAll();
+
+    expect(evaluated).toEqual(['v-restore', 'v-cut']);
+  });
+
+  it('le worker intermédiaire ne traite que les CUT et ne multiplie pas les RESTORE', async () => {
+    const cut = {
+      ...makeSchedule({
+        id: 's-cut', vehicleId: 'v-cut', lastEvaluatedState: 'IN_WINDOW',
+        mondayEnabled: false, tuesdayEnabled: false, wednesdayEnabled: false,
+        thursdayEnabled: false, fridayEnabled: false, saturdayEnabled: false, sundayEnabled: false,
+      }),
+      vehicle: { id: 'v-cut', fleetId: 'f-1', plate: 'ZZ-999-ZZ', tracker: { id: 't-cut' } },
+    } as any;
+    const restore = {
+      ...makeSchedule({
+        id: 's-restore', vehicleId: 'v-restore', lastEvaluatedState: 'OUT_OF_WINDOW',
+        mondayStart: null, mondayEnd: null, tuesdayStart: null, tuesdayEnd: null,
+        wednesdayStart: null, wednesdayEnd: null, thursdayStart: null, thursdayEnd: null,
+        fridayStart: null, fridayEnd: null, saturdayEnabled: true, saturdayStart: null, saturdayEnd: null,
+        sundayEnabled: true, sundayStart: null, sundayEnd: null,
+      }),
+      vehicle: { id: 'v-restore', fleetId: 'f-1', plate: 'AA-001-AA', tracker: { id: 't-restore' } },
+    } as any;
+    const prisma = { vehicleSchedule: { findMany: jest.fn().mockResolvedValue([restore, cut]) } } as any;
+    const service = new ScheduleCronService(prisma, {} as any, { record: jest.fn() } as any, { emit: jest.fn() } as any);
+    const evaluated: string[] = [];
+    jest.spyOn(service, 'evaluateOne').mockImplementation(async (s: any) => { evaluated.push(s.vehicleId); });
+
+    await (service as any).evaluateAll(true);
+
+    expect(evaluated).toEqual(['v-cut']);
+  });
+
+});
 
 describe('ScheduleCronService.computeState', () => {
   let service: ScheduleCronService;

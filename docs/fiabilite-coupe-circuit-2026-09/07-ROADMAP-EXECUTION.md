@@ -29,6 +29,7 @@ Production : **hors périmètre — aucun déploiement ni changement VPS autoris
 - [x] R5.1 — Kill-switch des CUT automatiques, désactivé par défaut.
 - [x] R5.2 — Interlock de santé fail-closed avant CUT automatique.
 - [x] R6.1 — File SMS FIFO et cadence prudente configurable.
+- [x] R6.1b — File CUT automatique du bouton flotte : une coupe/10 s, reprise prioritaire, état récupérable après crash.
 - [ ] R6.2 — Heartbeat/ping, fraîcheur et métriques de passerelle.
 - [x] R6.3 — Procédure du second téléphone documentée (achat différé).
 - [x] R7.1 — Tests unitaires et intégration des scénarios critiques.

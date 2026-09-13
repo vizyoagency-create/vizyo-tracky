@@ -140,8 +140,8 @@ export interface BulkScheduleApplyItemResult {
   vehicleId: string;
   plate: string | null;
   ok: boolean;
-  /** Résumé de l'effet immédiat : 'cut' (coupé maintenant), 'deferred' (report), 'none' (dans la plage / rien). */
-  immediate?: 'cut' | 'deferred' | 'none';
+  /** Résumé : 'queued' = file anti-rafale, 'deferred' = sécurité mouvement/offline. */
+  immediate?: 'cut' | 'queued' | 'deferred' | 'none';
   error?: string;
 }
 
@@ -149,6 +149,10 @@ export interface BulkScheduleApplyResponse {
   total: number;
   applied: number;
   failed: number;
+  /** CUT hors plage confiés au planificateur cadencé (jamais envoyés en rafale par la requête). */
+  queuedCuts: number;
+  cutQueueIntervalSec: number;
+  estimatedCutQueueDurationSec: number;
   results: BulkScheduleApplyItemResult[];
 }
 
@@ -172,4 +176,7 @@ export interface BulkSchedulePreviewResponse {
   wouldDeferOffline: number;
   /** Sans tracker → planning inapplicable. */
   withoutTracker: number;
+  /** Paramètres annoncés de la file anti-rafale CUT. */
+  cutQueueIntervalSec: number;
+  estimatedCutQueueDurationSec: number;
 }
