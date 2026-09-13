@@ -261,7 +261,15 @@ function lancerStatutAuth(env) {
  * Ordre volontaire : l'environnement d'abord (sans lancer quoi que ce soit — une cle presente
  * suffit a refuser), la CLI ensuite. `lancer` et `env` sont injectables pour les tests.
  */
-function verifierAbonnement({ env = process.env, lancer = lancerStatutAuth, journal = console } = {}) {
+/** Un delai sur « auth status » : la CLI n a pas repondu a temps — rien ne dit qu elle n est pas la. */
+const estUnDelai = (e) => !!(e && (e.code === 'ETIMEDOUT' || (e.killed && e.signal === 'SIGTERM')));
+
+/** Attente bloquante et courte entre deux essais — l'agent n'a rien d'autre a faire a ce moment. */
+function patienter(ms) {
+  if (ms > 0) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
+function verifierAbonnement({ env = process.env, lancer = lancerStatutAuth, journal = console, attendreMs = 10_000 } = {}) {
   const interdites = clesInterditesPresentes(env);
   if (interdites.length > 0) {
     const motif = `variable(s) d'environnement interdite(s) : ${interdites.join(', ')} — la CLI basculerait sur l'API facturee`;
@@ -272,9 +280,25 @@ function verifierAbonnement({ env = process.env, lancer = lancerStatutAuth, jour
   try {
     sortie = lancer(envPourCli({}, env));
   } catch (e) {
-    const motif = `« claude auth status » en echec : ${extraireErreurCli(e)}`;
-    journal.error(`[cli-claude] REFUS — ${motif}`);
-    return { ok: false, motif };
+    // Constat du 13/09 a 20h00 UTC : « auth status » a depasse ses 30 s pendant que le poste
+    // compilait et testait ; l agent a conclu « hors abonnement » et perdu son passage. Un delai
+    // n est pas une session absente : UN second essai, sur un delai seulement, apres une pause —
+    // tout autre echec (session, binaire, sortie illisible) est un refus des la premiere fois.
+    if (estUnDelai(e)) {
+      journal.log(`[cli-claude] « claude auth status » n'a pas repondu en ${TIMEOUT_STATUT_MS / 1000} s — second essai dans ${attendreMs / 1000} s.`);
+      patienter(attendreMs);
+      try {
+        sortie = lancer(envPourCli({}, env));
+      } catch (e2) {
+        const motif = `« claude auth status » en echec deux fois : ${extraireErreurCli(e2)}`;
+        journal.error(`[cli-claude] REFUS — ${motif}`);
+        return { ok: false, motif };
+      }
+    } else {
+      const motif = `« claude auth status » en echec : ${extraireErreurCli(e)}`;
+      journal.error(`[cli-claude] REFUS — ${motif}`);
+      return { ok: false, motif };
+    }
   }
   const verdict = analyserStatutAuth(sortie);
   if (verdict.ok) {
