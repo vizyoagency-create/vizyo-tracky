@@ -177,7 +177,8 @@ function main() {
 
   // Les deux chiffres marqués « auto » se calculent, pour qu'ils ne puissent pas vieillir
   // séparément de la liste qu'ils résument.
-  const aTraiter = donnees.toi.length + donnees.decisions.length;
+  // Une décision déjà tranchée (`tranchee` dans contexte.json) n'attend plus personne.
+  const aTraiter = donnees.toi.length + donnees.decisions.filter((d) => !d.tranchee).length;
   donnees.chiffres = donnees.chiffres.map((c) => {
     if (c.v !== 'auto') return c;
     return c.alerte ? { ...c, v: String(aTraiter) } : { ...c, v: String(source.taches.length) };

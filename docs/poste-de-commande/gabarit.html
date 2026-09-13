@@ -132,6 +132,14 @@ a { color: var(--accent); text-underline-offset: 3px; }
 .decision.est-tranchee .decision__ref { color: var(--accent); }
 .decision__sujet { font-size: 16px; font-weight: 600; flex: 1; min-width: 220px; }
 .decision__texte { font-size: 13.5px; color: var(--encre-3); max-width: 76ch; }
+/* Une décision PRISE n'a plus de boutons : le choix devient une pastille dans l'en-tête, les
+   mots du propriétaire une citation, et la suite donnée une ligne fléchée. La pastille peut
+   porter une phrase entière — elle replie donc, contrairement aux autres pastilles. */
+.decision--prise { gap: 8px; }
+.decision--prise .chip { white-space: normal; height: auto; min-height: 22px; padding: 2px 9px; line-height: 1.35; }
+.decision__note { font-size: 13.5px; color: var(--encre-2); font-style: italic; max-width: 76ch; }
+.decision__suite { font-size: 13px; color: var(--encre-3); max-width: 76ch; }
+.decision__suite::before { content: '→ '; color: var(--accent); font-weight: 600; }
 .options { display: flex; gap: 7px; flex-wrap: wrap; }
 .opt {
   display: inline-flex; align-items: center; gap: 8px; height: 33px; padding: 0 13px;
@@ -257,7 +265,17 @@ var LOGO = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAGAAAABiCAYAAACvUNYzAA
   function faite(id) { return !!etat.taches[id]; }
   function reste(liste) { return liste.filter(function (t) { return !faite(t.id); }).length; }
   function decision(id) { etat.decisions[id] = etat.decisions[id] || { choix: '', note: '' }; return etat.decisions[id]; }
-  function decisionsRestantes() { return DECISIONS.filter(function (d) { return !(etat.decisions[d.id] || {}).choix; }).length; }
+  /* La réponse à une décision vient d'abord de la page (le propriétaire vient de cliquer), sinon
+     de contexte.json (`tranchee`, reportée là par la génération suivante) : la page reste juste
+     même si son bloc d'état était perdu. Sans l'une ni l'autre, la question est encore ouverte. */
+  function reponse(d) {
+    var r = etat.decisions[d.id] || {}, t = d.tranchee || {};
+    if (r.choix) return { choix: r.choix, note: r.note || t.note || '' };
+    if (t.choix) return { choix: t.choix, note: t.note || '' };
+    return null;
+  }
+  function libelleChoix(d, v) { var o = d.options.filter(function (o) { return o.v === v; })[0]; return o ? o.l : v; }
+  function decisionsRestantes() { return DECISIONS.filter(function (d) { return !reponse(d); }).length; }
   function totalToi() { return reste(TOI) + decisionsRestantes(); }
 
   var COCHE = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>';
@@ -287,6 +305,7 @@ var LOGO = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAGAAAABiCAYAAACvUNYzAA
     h += '<nav class="sommaire" aria-label="Sections">'
       + '<a href="#toi" class="urgent">Ce qui t’attend <b id="nav-toi">' + totalToi() + '</b></a>'
       + '<a href="#moi">Ce que je code <b id="nav-moi">' + reste(MOI) + '</b></a>'
+      + (DECISIONS.length - decisionsRestantes() > 0 ? '<a href="#decisions">Décisions prises <b>' + (DECISIONS.length - decisionsRestantes()) + '</b></a>' : '')
       + '<a href="#guette">On guette <b>' + GUETTE.length + '</b></a>'
       + '<a href="#vps">Côté VPS <b>' + VPS.length + '</b></a>'
       + '<a href="#faits">Fait et prouvé <b>' + FAITS.length + '</b></a>'
@@ -316,28 +335,55 @@ var LOGO = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAGAAAABiCAYAAACvUNYzAA
     h += '</div></section>';
 
     /* ── Ce qui t'attend ── */
-    h += '<section class="section" id="toi"><div class="section__tete"><h2>Ce qui t’attend</h2><span class="compte" id="compte-toi">' + reste(TOI) + ' gestes · ' + decisionsRestantes() + ' décisions</span></div>';
+    var aTrancher = DECISIONS.filter(function (d) { return !reponse(d); });
+    var prises = DECISIONS.filter(function (d) { return !!reponse(d); });
+    var nA = aTrancher.length;
+    h += '<section class="section" id="toi"><div class="section__tete"><h2>Ce qui t’attend</h2><span class="compte" id="compte-toi">' + reste(TOI) + (reste(TOI) > 1 ? ' gestes' : ' geste') + (nA ? ' · ' + nA + (nA > 1 ? ' décisions' : ' décision') : '') + '</span></div>';
     h += '<p class="intro">' + TOI.length + (TOI.length > 1 ? ' gestes' : ' geste') + ' que le code ne peut pas faire, dans l’ordre où ils débloquent le reste. Les triangles marquent ce qui bloque en amont.</p>';
     h += '<div class="liste">';
     TOI.forEach(function (t) { h += ligne(t, '<span class="chip chip--alerte">toi</span>'); });
     h += '</div>';
 
-    h += '<p class="intro" style="margin-top:6px">Et ' + (decisionsRestantes() > 0 ? decisionsRestantes() + (decisionsRestantes() > 1 ? ' questions à trancher' : ' question à trancher') : 'des questions déjà tranchées') + '. Réponds ici : je lis la page, et ma recommandation est dans chaque texte.</p>';
-    h += '<div class="decisions">';
-    DECISIONS.forEach(function (d) {
-      var r = etat.decisions[d.id] || {};
-      h += '<article class="decision' + (r.choix ? ' est-tranchee' : '') + '">';
-      h += '<div class="decision__tete"><span class="decision__ref">' + d.id + '</span><h3 class="decision__sujet">' + ech(d.sujet) + '</h3></div>';
-      h += '<p class="decision__texte">' + ech(d.texte) + '</p>';
-      h += '<div class="options">';
-      d.options.forEach(function (o) {
-        h += '<button class="opt' + (r.choix === o.v ? ' est-choisie' : '') + '" data-act="decision" data-id="' + d.id + '" data-val="' + o.v + '" aria-pressed="' + (r.choix === o.v) + '"><span class="puce"></span>' + ech(o.l) + '</button>';
+    /* Seules les questions ENCORE OUVERTES restent ici, avec leurs boutons. Une question
+       tranchée quitte cette section — demande du propriétaire (13/09) — et rejoint « Décisions
+       prises », plus bas, où elle se lit sans pouvoir être recliquée par mégarde. */
+    if (nA) {
+      h += '<p class="intro" style="margin-top:6px">Et ' + nA + (nA > 1 ? ' questions à trancher' : ' question à trancher') + '. Réponds ici : je lis la page, et ma recommandation est dans chaque texte.</p>';
+      h += '<div class="decisions">';
+      aTrancher.forEach(function (d) {
+        var r = etat.decisions[d.id] || {};
+        h += '<article class="decision">';
+        h += '<div class="decision__tete"><span class="decision__ref">' + d.id + '</span><h3 class="decision__sujet">' + ech(d.sujet) + '</h3></div>';
+        h += '<p class="decision__texte">' + ech(d.texte) + '</p>';
+        h += '<div class="options">';
+        d.options.forEach(function (o) {
+          h += '<button class="opt" data-act="decision" data-id="' + d.id + '" data-val="' + o.v + '" aria-pressed="false"><span class="puce"></span>' + ech(o.l) + '</button>';
+        });
+        h += '</div>';
+        h += '<textarea data-act="note" data-id="' + d.id + '" aria-label="Votre réponse à ' + d.id + '" placeholder="Ou dis-moi autre chose">' + ech(r.note || '') + '</textarea>';
+        h += '</article>';
       });
       h += '</div>';
-      h += '<textarea data-act="note" data-id="' + d.id + '" aria-label="Votre réponse à ' + d.id + '" placeholder="Ou dis-moi autre chose">' + ech(r.note || '') + '</textarea>';
-      h += '</article>';
-    });
-    h += '</div></section>';
+    } else if (DECISIONS.length) {
+      h += '<p class="intro" style="margin-top:6px">Aucune question en attente — tes décisions sont <a href="#decisions">plus bas</a>.</p>';
+    }
+    h += '</section>';
+
+    /* ── Décisions prises ── */
+    if (prises.length) {
+      h += '<section class="section" id="decisions"><div class="section__tete"><h2>Décisions prises</h2><span class="compte">' + prises.length + ' sur ' + DECISIONS.length + '</span></div>';
+      h += '<p class="intro">Ce que tu as tranché, avec tes mots, et ce que j’en fais. Pour revenir sur l’une d’elles, dis-le moi.</p>';
+      h += '<div class="decisions">';
+      prises.forEach(function (d) {
+        var r = reponse(d), t = d.tranchee || {};
+        h += '<article class="decision est-tranchee decision--prise">';
+        h += '<div class="decision__tete"><span class="decision__ref">' + d.id + (t.le ? ' · ' + ech(t.le) : '') + '</span><h3 class="decision__sujet">' + ech(d.sujet) + '</h3><span class="chip chip--accent">' + ech(libelleChoix(d, r.choix)) + '</span></div>';
+        if (r.note) h += '<p class="decision__note">«&nbsp;' + ech(r.note) + '&nbsp;»</p>';
+        if (t.suite) h += '<p class="decision__suite">' + ech(t.suite) + '</p>';
+        h += '</article>';
+      });
+      h += '</div></section>';
+    }
 
     /* ── Ce que je code ── */
     h += '<section class="section" id="moi"><div class="section__tete"><h2>Ce que je peux coder</h2><span class="compte" id="compte-moi">' + reste(MOI) + ' sur ' + MOI.length + '</span></div>';

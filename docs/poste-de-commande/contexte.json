@@ -53,7 +53,13 @@
           "v": "aide",
           "l": "Le laisser en simple aide"
         }
-      ]
+      ],
+      "tranchee": {
+        "le": "13/09",
+        "choix": "obligatoire",
+        "note": "Ajouter un taches a faire, prendre le temps de bien le faire pour ne pas crée des bugs ! et bloquage.",
+        "suite": "Fait le jour même : T29 et T33 — la garde relue juste avant la recréation, et un déploiement hors script signalé au centre d’alerte 109 s plus tard."
+      }
     },
     {
       "id": "D2",
@@ -68,7 +74,13 @@
           "v": "monter",
           "l": "Monter à 50 — 3× plus vite"
         }
-      ]
+      ],
+      "tranchee": {
+        "le": "13/09",
+        "choix": "garder",
+        "note": "Prendre le temps de bien le travailler, le mettre dans l'ordre :)",
+        "suite": "Rien à changer : quinze par heure, le compteur en haut de page descend seul."
+      }
     },
     {
       "id": "D3",
@@ -87,7 +99,13 @@
           "v": "non",
           "l": "Non : tout attend la remise à zéro"
         }
-      ]
+      ],
+      "tranchee": {
+        "le": "13/09",
+        "choix": "non",
+        "note": "Non alors j'ai fait une erreur j'ai oublié de payé et je suis parti en vacance donc ca à bloqué mais je n'aurai plus d'erreur de ce genre, donc tout prio au agent locaux et ne pas switch sur un solution API !",
+        "suite": "Aucun repli API ne sera codé. T1 n’est plus bloquante : elle ne concerne plus que l’assistance et l’optimiseur."
+      }
     },
     {
       "id": "D4",
@@ -106,7 +124,13 @@
           "v": "3km",
           "l": "Au-delà de trois kilomètres (−27 %)"
         }
-      ]
+      ],
+      "tranchee": {
+        "le": "13/09",
+        "choix": "tous",
+        "note": "Faire le récit tout de le monde, faire le rattrapage car j'ai eu un bug d'agent IA pour 3 jours donc bien faire le récit de tout les trajets !",
+        "suite": "Tous les trajets gardent leur récit. Le rattrapage tourne depuis la remise à zéro : 436 récits écrits le 13/09, 115 restants à 16 h 40 UTC — suivi en T37, et T36 corrige ce qui tuait ses passages."
+      }
     },
     {
       "id": "D5",
@@ -121,7 +145,13 @@
           "v": "non",
           "l": "Non — laisser essayer toutes les deux heures"
         }
-      ]
+      ],
+      "tranchee": {
+        "le": "13/09",
+        "choix": "oui",
+        "note": "Si échoue par exemple 5 heures d'affilé alors stoppé mais par contre bien faire un mails et aussi une page pour tout redémarrer ! (dans admin de tracky et dans les truc automatiser !)",
+        "suite": "À coder : T34 — arrêt dès le message de plafond ou après cinq heures d’échecs, un courriel, et un bouton « Reprendre maintenant » dans /admin."
+      }
     },
     {
       "id": "D6",
@@ -140,7 +170,13 @@
           "v": "sonnet",
           "l": "Sonnet pour les deux"
         }
-      ]
+      ],
+      "tranchee": {
+        "le": "13/09",
+        "choix": "opus",
+        "note": "On reste sur Opus, j'ai eu un bugs pour le budget mais ca ne ce reproduira plus ne t'en fait pas !",
+        "suite": "Inchangé : les deux audits restent en Opus."
+      }
     },
     {
       "id": "D7",
@@ -155,7 +191,13 @@
           "v": "plus-tard",
           "l": "Pas maintenant — d’abord D4, D5, D6"
         }
-      ]
+      ],
+      "tranchee": {
+        "le": "13/09",
+        "choix": "oui",
+        "note": "Tu as raison c'est une bonne solution mais pas pour le moment on va reste sur la solution actuel, par contre cette tache laisse la moi dans les choses a faire pour ne pas oublié !",
+        "suite": "Pas maintenant, par ton choix : T35 le garde dans ce qui t’attend, sans urgence, pour ne pas l’oublier."
+      }
     }
   ],
   "faits": [

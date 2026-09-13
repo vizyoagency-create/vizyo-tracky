@@ -79,12 +79,12 @@
       "partie": "centre-alerte",
       "fiche": "TRK-071",
       "titre": "Recharger au moins UN des deux comptes IA",
-      "detail": "Anthropic ET OpenAI sont vides. Le repli claude vers gpt est deploye, correct, et sans effet tant que c est vrai. Au 13/09 : Anthropic a sec depuis le 03/09 00:13, soit 250 heures et un 11e jour, dernier appel API reussi le 03/09 00:01 ; OpenAI constate vide le 05/09. 🔴 ET LE TROISIEME CANAL S EST REVELE PLAFONNE A SON TOUR : la CLI Claude du poste (executor local), sur laquelle tout le reste s etait replie, a atteint son plafond hebdomadaire du 10/09 04h00 au 13/09 12h00 (Paris) — 80 heures sans AUCUN canal IA ouvert, 36 passages d agents en echec, 7 travaux IA morts, et les deux audits quotidiens arretes (meme CLI). Voir T32. RIEN D AUTRE NE DEBLOQUE QUOI QUE CE SOIT.",
+      "detail": "Anthropic ET OpenAI sont vides. Le repli claude vers gpt est deploye, correct, et sans effet tant que c est vrai. Au 13/09 : Anthropic a sec depuis le 03/09 00:13, soit 250 heures et un 11e jour, dernier appel API reussi le 03/09 00:01 ; OpenAI constate vide le 05/09. 🔴 ET LE TROISIEME CANAL S EST REVELE PLAFONNE A SON TOUR : la CLI Claude du poste (executor local), sur laquelle tout le reste s etait replie, a atteint son plafond hebdomadaire du 10/09 04h00 au 13/09 12h00 (Paris) — 80 heures sans AUCUN canal IA ouvert, 36 passages d agents en echec, 7 travaux IA morts, et les deux audits quotidiens arretes (meme CLI). Voir T32. RIEN D AUTRE NE DEBLOQUE QUOI QUE CE SOIT. — D3 TRANCHEE LE 13/09 (non) : les agents du poste ne basculeront JAMAIS sur l API ; recharger ne rend donc plus rien aux recits, au courrier ni aux audits. La question ne porte plus que sur l assistance et l optimiseur, seuls usages API restants depuis le 05/09 — et sur ton mot : « je n aurai plus d erreur de ce genre ». Plus rien en amont n en depend.",
       "classe": "HUMAIN",
-      "gravite": 1,
+      "gravite": 3,
       "etat": "OUVERT",
       "depuis": "2026-09-03",
-      "phare": true
+      "phare": false
     },
     {
       "id": "T2",
@@ -807,10 +807,12 @@
       "detail": "Trois canaux IA, trois plafonds, zero canal ouvert pendant 80 heures (10/09 04h00 au 13/09 12h00 Paris) : Anthropic a sec depuis le 03/09, OpenAI depuis le 05/09, et la CLI Claude Code du poste — executor local, sur lequel tout s etait replie — a atteint le plafond hebdomadaire de son abonnement. Consequences mesurees : 0 recit de trajet, 0 courrier IA, 7 travaux IA morts (analyse de lieux, jugement d agenda), 10 en attente ; ET les deux audits quotidiens (centre d alerte les 11 et 12/09, VPS du 10 au 13/09) n ont pas tourne, parce qu ils passent par la meme CLI. Rien ne s est casse sur la plateforme : les analyses deterministes ont continue (119 sur 24 h), et la reprise a pris 12 minutes apres la remise a zero (30 recits en quatre minutes). A trancher, ce n est pas du code : (a) quel canal repond quand la CLI est au plafond — recharger un compte API (T1) rend le repli claude vers gpt utile ; (b) faut-il prioriser le quota (les audits avant les recits ? les recits avant le courrier ?) ou espacer les passages qui echouent toutes les deux heures pour rien (25 essais de rattrapage-recits en 72 h) ; (c) faut-il que le poste SACHE qu il est au plafond avant d essayer (la CLI le dit dans son message, avec l heure de remise a zero). — INSTRUITE LE 13/09 (mesures) : un seul abonnement porte tout — les sessions de developpement, les deux audits quotidiens (~35 min chacun, en Opus faute de modele fixe) et les trois agents de la CLI ; le message du 10/09 est « weekly limit » tous modeles, pas la limite Opus. Volume automatise : 7 400 appels de recit en 14 jours (5 365 les 3 et 4/09 pour l historique, puis ~200 par jour en Sonnet), dont 27 pour cent pour des trajets de moins de 3 km et 9 pour cent de moins d un kilometre ; courrier 18 travaux en 14 jours. Cout reel du plafond : 0 recit sur trois jours, 5 analyses de lieux et 2 jugements d agenda morts, deux audits arretes deux jours, et le rapport d activite hebdomadaire du 11/09 toujours pas redige le 13 a 15 h — le seul effet visible d un client. Les travaux du poste n ont aujourd hui AUCUN chemin vers l API : recharger un compte ne suffit pas sans un repli code cote serveur. Les cinq decisions sont posees sur le poste de commande, chacune avec une recommandation : D3 compte API en secours (courrier seul recommande), D4 un recit pour quels trajets (au-dela d un kilometre recommande), D5 le poste sait qu il est au plafond (oui recommande, a coder dans cli-claude.cjs), D6 le modele des audits (Sonnet pour le VPS, Opus pour le centre d alerte recommande), D7 un abonnement a part pour les agents (pas maintenant recommande).",
       "classe": "HUMAIN",
       "gravite": 1,
-      "etat": "OUVERT",
+      "etat": "FAIT",
       "depuis": "2026-09-13",
       "phare": true,
-      "preuveAttendue": "D3 a D7 tranchees sur le poste de commande, puis chaque choix livre (D5 et D4 sont du code, D6 un reglage des taches planifiees, D3 un rechargement plus un repli a coder, D7 un compte a ouvrir). Preuve finale : un plafond hebdomadaire suivant SANS effet visible — rapport d activite livre a l heure, audits tenus, une seule ligne au centre d alerte — ou, mieux, plus de plafond du tout sur une semaine ordinaire."
+      "preuveAttendue": "D3 a D7 tranchees sur le poste de commande, puis chaque choix livre (D5 et D4 sont du code, D6 un reglage des taches planifiees, D3 un rechargement plus un repli a coder, D7 un compte a ouvrir). Preuve finale : un plafond hebdomadaire suivant SANS effet visible — rapport d activite livre a l heure, audits tenus, une seule ligne au centre d alerte — ou, mieux, plus de plafond du tout sur une semaine ordinaire.",
+      "faitLe": "2026-09-13",
+      "preuve": "TRANCHEE PAR LE PROPRIETAIRE LE 13/09 ENTRE 16h28 ET 16h31 UTC, sur le poste de commande — les cinq questions posees, plus les deux precedentes, sept sur sept. D3 : NON, aucun repli API pour les agents (« tout prio aux agents locaux et ne pas switch sur une solution API »). D4 : TOUS les trajets gardent un recit, ET rattraper les trois jours de plafond (115 trajets encore sans recit a 16h40 UTC — T37). D5 : OUI — arret apres ~5 h d echecs d affilee, un courriel, et un bouton pour tout relancer dans /admin (T34). D6 : OPUS pour les deux audits, inchange. D7 : OUI a un second abonnement, mais pas maintenant — garde dans ce qui t attend pour ne pas oublier (T35). Ce que la decision ne regle pas se mesurera au prochain plafond : les agents doivent s arreter seuls et le proprietaire recevoir un courriel — c est la preuve attendue de T34, pas de celle-ci."
     },
     {
       "id": "V28",
@@ -862,6 +864,58 @@
       "deployeLe": "2026-09-13",
       "commit": "18c975ee",
       "preuve": "CHOIX FAIT : detecte, pas empeche. On ne peut pas interdire techniquement un docker compose up tape a la main sans risquer de bloquer un geste d urgence ; on peut faire qu il ne passe jamais inapercu. Chaque deploiement inscrit dans /opt/tracky-deploiements/journal.jsonl (hors de l arbre git, monte :ro dans l API) l identifiant du conteneur qu il a cree ; DeploiementSentinelleService compare au demarrage, 90 s apres le boot, le hostname du conteneur au dernier journalise, et ecrit une ligne ERROR « Deploiement hors script » (une par conteneur). MESURE EN PRODUCTION le 13/09 : recreation a la main a 12h55m25 (apres le passage de 12h45, hors fenetre), ligne ERROR au centre d alerte a 12h57m14 nommant le conteneur f57202bc30c1, le dernier deploiement legitime (18c975ee, 14h37 Paris, root@82.67.153.51) et son conteneur. Ligne close avec une note (test volontaire), journal realigne par le script. Le refus pendant un passage en cours : prouve le 08/09 (code 1) et par le harnais ; la ligne Passage interrompu d un deploiement force : mecanisme intact, prouve le 09/09. Docs (README, DEPLOYMENT-VPS, EXPLOITATION demo, CLAUDE.md) ne proposent plus la commande a la main. 9 tests sur la sentinelle ; suite API 3917/3917."
+    },
+    {
+      "id": "T34",
+      "partie": "centre-alerte",
+      "fiche": "TRK-069 · TRK-071",
+      "titre": "Le poste sait qu il est au plafond : les agents s arretent seuls, un courriel part, un bouton relance tout — decision D5",
+      "detail": "DECISION D5 DU PROPRIETAIRE, 13/09 16h29 UTC (oui), avec cette consigne : « Si echoue par exemple 5 heures d affilee alors stopper, mais par contre bien faire un mail et aussi une page pour tout redemarrer (dans admin de Tracky et dans les trucs automatises) ». Pendant le plafond du 10 au 13/09, les agents ont essaye 36 fois pour rien alors que la CLI annoncait l heure de remise a zero des la premiere reponse. Geste, en quatre pieces : (1) la porte unique vers la CLI (outils/cli-claude.cjs) reconnait la reponse « weekly limit » et son heure de remise a zero, et compte les echecs consecutifs de toute autre cause ; (2) un marqueur de PAUSE vit cote serveur, pas dans un fichier du poste — pose a la premiere reponse plafond avec l heure annoncee, ou apres 5 heures d echecs d affilee sans heure (reprise manuelle) ; chaque agent le lit avant d appeler la CLI et sort aussitot en disant pourquoi, une seule ligne DEGRADATION (T31) ; (3) la pose du marqueur envoie UN courriel au proprietaire (motif, heure de reprise ou « manuelle », agents concernes) ; (4) l ecran /admin des taches de fond montre la pause et porte un bouton « Reprendre maintenant » qui leve le marqueur — et un marqueur perime se leve seul au premier appel qui passe. Prendre le temps : tests de la porte (message plafond avec et sans heure, 5 h d echecs, marqueur perime), tests du service et du bouton, puis verification en production sur un marqueur pose a la main et leve par le bouton.",
+      "classe": "A_CODER",
+      "gravite": 2,
+      "etat": "OUVERT",
+      "depuis": "2026-09-13",
+      "phare": true,
+      "preuveAttendue": "Un marqueur pose a la main en production doit : faire sortir chaque agent en moins d une seconde avec le motif dans son journal, produire UNE ligne DEGRADATION et UN courriel, apparaitre sur /admin, et disparaitre au clic « Reprendre maintenant » — le passage suivant travaille. Puis, au prochain vrai plafond : zero appel a la CLI apres la premiere reponse plafond, et reprise seule a l heure annoncee."
+    },
+    {
+      "id": "T35",
+      "partie": "centre-alerte",
+      "fiche": "TRK-071",
+      "titre": "Ouvrir un second abonnement reserve aux agents du poste — quand tu le decideras (D7)",
+      "detail": "D7 TRANCHEE LE 13/09 (oui, mais pas maintenant) : « c est une bonne solution mais pas pour le moment, on reste sur la solution actuelle ; laisse-la moi dans les choses a faire pour ne pas oublier ». Le jour venu : un compte Pro (~20 $ par mois) connecte a la CLI des agents (recits, courrier — les audits restent sur ton abonnement, ils tournent dans ton application), et une semaine de mesure pour verifier que ses limites tiennent les ~200 recits quotidiens. Le declencheur raisonnable : un second plafond hebdomadaire malgre T34.",
+      "classe": "HUMAIN",
+      "gravite": 3,
+      "etat": "OUVERT",
+      "depuis": "2026-09-13",
+      "phare": false
+    },
+    {
+      "id": "T36",
+      "partie": "centre-alerte",
+      "fiche": "TRK-069",
+      "titre": "Les agents du poste meurent d un Ctrl-C qui ne leur est pas destine — fenetre cachee, CLI isolee, limite corrigee",
+      "detail": "TROUVE LE 13/09 EN VERIFIANT LE RATTRAPAGE DES RECITS (D4). Quatre passages sont morts le jour meme d un Ctrl-C : rattrapage-recits de 10h11 (apres 30 recits), de 12h00 (apres 20), de 16h00 (avant le premier lot) et le courrier de 12h30 (UTC) — la marque ^C dans leur journal, et le code de sortie 0xC000013A (STATUS_CONTROL_C_EXIT) dans le Planificateur. Meme signature les 03, 04 et 09/09 : 33 marques ^C dans les journaux des agents, 23 pour le seul rattrapage. Ce n est ni la CLI ni le reseau : le passage de 14h00 a ecrit 390 recits sans un accroc. Un Ctrl-C n arrive a un processus que par sa CONSOLE : du clavier — les cinq taches VizyoTracky-* sont en ouverture de session interactive avec le .cmd pour action, chaque passage ouvre une fenetre VISIBLE qui prend le focus, et un Ctrl-C tape a ce moment tombe dedans —, ou d un processus qui partage cette console ou s y attache pour l arreter « proprement » : la CLI Claude que l agent lance a chaque lot en partage, et les quatre morts du jour tombent pendant un appel a la CLI, dont une a la seconde ou cette session lancait un serveur de banc (16h02). Geste en trois pieces, qui couvrent les deux origines : (1) un lanceur sans fenetre (outils/lancer-sans-fenetre.js pour wscript.exe, fenetre 0, qui ATTEND la fin pour que l anti-chevauchement et la limite du Planificateur gardent leur sens) et les cinq taches pointees dessus ; (2) dans cli-claude.cjs, la CLI lancee dans SA PROPRE console cachee (detached + windowsHide), de sorte qu un Ctrl-C vise sur elle ne traverse plus jusqu a l agent ; (3) la limite d execution de VizyoTracky-RattrapageRecits portee de 1 h 15 a 1 h 50 — l agent se donne 100 min et le Planificateur le tuait avant (celui de 14h00 s est arrete sans ligne de fin apres 390 recits). Se fait sur le poste du proprietaire, avec lui.",
+      "classe": "A_CODER",
+      "gravite": 2,
+      "etat": "OUVERT",
+      "depuis": "2026-09-13",
+      "phare": false,
+      "preuveAttendue": "Plus aucune marque ^C dans outils/*.log ni code 0xC000013A dans le Planificateur sur sept jours de passages, ET le rattrapage de 100 min se termine par sa propre ligne de fin, pas par le Planificateur."
+    },
+    {
+      "id": "T37",
+      "partie": "centre-alerte",
+      "fiche": "TRK-071",
+      "titre": "Rattraper les recits des trois jours de plafond — tous les trajets, decision D4",
+      "detail": "D4 TRANCHEE LE 13/09 (tous les trajets) : « faire le recit de tout le monde, faire le rattrapage car j ai eu un bug d agent IA pour 3 jours ». Aucun code : le rattrapage existant (toutes les deux heures, 100 min, lots de dix) fait le travail depuis la remise a zero de 10h00 UTC — 436 recits ecrits le 13/09 entre 10h et 16h. Mesure a 16h40 UTC : 115 trajets encore sans recit (98 du 10/09, 8 du 09/09, 9 du 13/09) ; les 11 et 12/09 sont a zero. Il reste un passage plein, a condition qu il ne meure pas d un Ctrl-C (T36).",
+      "classe": "AUTO",
+      "gravite": 3,
+      "etat": "DEPLOYE",
+      "depuis": "2026-09-13",
+      "deployeLe": "2026-09-13",
+      "phare": false,
+      "preuveAttendue": "Zero trajet sans recit entre le 09/09 et le 13/09 (segmentationSource = recompute), constate par l audit ; puis la mesure de chaque nuit : les trajets de la veille ont tous leur recit au matin."
     }
   ]
 }
