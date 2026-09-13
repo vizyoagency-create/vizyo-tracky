@@ -363,6 +363,8 @@ export class AgentsLocauxSentinelleService {
     const libelle = LIBELLE_CAUSE_PAUSE[pause.cause] ?? pause.cause;
     const res = await this.email.send({
       to,
+      // Le modèle est journalisé : c'est lui que le centre e-mails de l'admin compte et prévisualise.
+      template: 'agents_pause',
       subject: `[Tracky] Agents du poste en pause — ${libelle}`,
       html: this.email.buildPauseAgentsEmail({
         cause: pause.cause,

@@ -687,7 +687,7 @@ describe('Sentinelle des agents du poste — la pause (T34)', () => {
     const { svc, prisma, email, dispatch } = construire({ now, pauses: [pause()] });
     await svc.verifier(now);
     expect(email!.send).toHaveBeenCalledTimes(1);
-    expect(email!.send.mock.calls[0][0]).toMatchObject({ to: 'contact@vizyoagency.com' });
+    expect(email!.send.mock.calls[0][0]).toMatchObject({ to: 'contact@vizyoagency.com', template: 'agents_pause' });
     expect(String(email!.send.mock.calls[0][0].subject)).toMatch(/pause/i);
     expect(email!.buildPauseAgentsEmail).toHaveBeenCalledWith(expect.objectContaining({ cause: 'plafond-hebdo', jusqua: pause().jusqua }));
     expect(dispatch!.notifyUsers).toHaveBeenCalledWith(expect.objectContaining({ subjectKey: 'pause:plafond-hebdo' }));
