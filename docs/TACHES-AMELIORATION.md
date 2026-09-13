@@ -1,5 +1,10 @@
 # Tâches d'amélioration — registre accumulateur
 
+> 📁 **Déplacé de la racine du dépôt dans `docs/` le 2026-09-13** (tâche T23 du centre d'alerte,
+> règle du 07/09 : aucun `.md` à la racine). `git mv`, historique conservé. Les fichiers de
+> l'époque cités ci-dessous en toutes lettres (`ETAT-RESTE-A-FAIRE-…`, `DECISIONS-A-TRANCHER-…`)
+> sont encore à la racine en attendant le lot R1 de `REARCHITECTURE-ARBORESCENCE.md`.
+
 > **Créé le 2026-08-23** par l'audit complet multi-agents (9 domaines, 107 constats, les 12
 > constats nouveaux critiques/importants contre-expertisés un par un sur le code).
 > **Ce fichier est l'accumulateur** que l'agent d'audit global (chantier AM-033) maintiendra ;

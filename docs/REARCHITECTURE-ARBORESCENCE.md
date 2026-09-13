@@ -169,7 +169,7 @@ ne recrée un `.md` à la racine. Même règle dans la mémoire de l'agent.
 | `ROADMAP-AGENTS-LOCAUX.md` | 760 | 23/08 |
 | `PERMISSIONS_AUDIT.md` | 426 | 22/08 |
 | `TEST_PLAN.md` | 334 | 22/08 |
-| `TACHES-AMELIORATION.md` | 314 | **05/09 — encore vivant** |
+| ~~`TACHES-AMELIORATION.md`~~ | 314 | **05/09 — encore vivant** → ✅ **déplacé dans `docs/` le 13/09** (T23, `git mv`) |
 | `REPRISE-A3.md` | 292 | 22/08 |
 | `ETAT-RESTE-A-FAIRE-2026-08-22.md` | 241 | 22/08 |
 | `DEPLOY_AUDIT_V1.10.md` | 195 | 22/08 |
@@ -186,10 +186,9 @@ ne recrée un `.md` à la racine. Même règle dans la mémoire de l'agent.
   markdown mort ne lève aucune erreur*.
 - **Vérification obligatoire après coup** : rejouer le comptage et exiger **0 occurrence** pointant
   vers l'ancien chemin.
-- `ROADMAP-AGENTS-LOCAUX.md` ira plutôt dans `docs/roadmaps/`, `TACHES-AMELIORATION.md` est encore
-  actif (touché le 05/09) — **et il est déjà l'objet de la tâche T23** du centre d'alerte
-  (*« créer ou déréférencer `TACHES-AMELIORATION.md` »*). **Traiter T23 avant ou pendant ce lot**,
-  pas après.
+- `ROADMAP-AGENTS-LOCAUX.md` ira plutôt dans `docs/roadmaps/`. ✅ `TACHES-AMELIORATION.md`, encore
+  actif (touché le 05/09), **a été déplacé dans `docs/` le 13/09** (tâche T23 du centre d'alerte,
+  `git mv`, renvois réécrits dans le même commit) : il ne fait plus partie de ce lot.
 
 ---
 

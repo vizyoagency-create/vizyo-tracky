@@ -24,6 +24,7 @@
 | [`REARCHITECTURE-ARBORESCENCE.md`](./REARCHITECTURE-ARBORESCENCE.md) | Le plan de rangement du dépôt. **Écrit, pas exécuté** (tâche R1). |
 | [`chantier-cartes/SUIVI-CARTES-2026-09-07.md`](./chantier-cartes/SUIVI-CARTES-2026-09-07.md) | Le chantier cartes, terminé et prouvé. |
 | [`environnement-demo/`](./environnement-demo/) | La démo en ligne : plan et exploitation. |
+| [`fiabilite-coupe-circuit-2026-09/`](./fiabilite-coupe-circuit-2026-09/) | **Chantier sécurité en cours** : incident du 11/09, défauts prouvés, architecture cible, tests de fiabilité et gates avant réactivation des horaires. |
 
 ---
 
@@ -71,5 +72,5 @@ Chacune porte un bandeau en tête. Elles décrivent des chantiers **terminés** 
 | Fichier | Statut |
 |---|---|
 | `ROADMAP-RAPPORTS-2026-09.md` | Chantier des rapports d'activité, **dépassé le 3 septembre** par le chantier des excès de vitesse. Il le dit lui-même en tête. |
-| `../TACHES-AMELIORATION.md` | **Encore vivant** (touché le 05/09) mais sans propriétaire clair : c'est l'objet de la tâche T23 — le tenir, ou le déréférencer. |
+| [`TACHES-AMELIORATION.md`](./TACHES-AMELIORATION.md) | Registre accumulateur de la dette d'architecture (clés `AM-nnn`, créé le 23/08). **Déplacé ici depuis la racine le 13/09** (T23) : il existait, mais hors de `docs/`, là où personne ne le cherchait. Tenu à la main jusqu'à l'agent d'audit global (AM-033). |
 | `DEPLOYMENT-VPS.md.md` | Double extension, guide d'installation d'avril. À renommer lors du rangement (R1). |
