@@ -2272,6 +2272,12 @@ enum TrackerCommandStatus {
   ACKNOWLEDGED
   FAILED
   CANCELLED
+  /// TRK-062 / T5 (2026-09-13) — partie par SMS, la borne de quatre heures est passée, et NUL NE
+  /// SAIT si elle a abouti. Distinct de FAILED, comme son jumeau CommandStatus.SENT_UNCONFIRMED
+  /// (TRK-018) : « a échoué » et « nul ne sait » ne sont pas la même information. Le canal SMS
+  /// ne guette pas d'accusé (une réponse réelle mesurée à presque quatre heures le 19/08), mais
+  /// sans borne supérieure deux commandes du 1er septembre sont restées « envoyées » 298 heures.
+  SENT_UNCONFIRMED
 }
 
 enum TrackerProvisioningStatus {
@@ -2300,6 +2306,8 @@ model TrackerCommand {
   scheduledAt     DateTime?
   sentAt          DateTime?
   ackedAt         DateTime?
+  /// TRK-062 — instant de clôture par ÉCHÉANCE (statut SENT_UNCONFIRMED). Purement temporel.
+  expiredAt       DateTime?
   ackResponse     String?
   lastError       String?
   // V1.5 (Sprint H3) — observabilite admin enrichie. `expectedResult`/`observedResult`

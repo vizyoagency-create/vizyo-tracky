@@ -153,6 +153,16 @@ const CATALOG: CatalogEntry[] = [
     periodic: { everyMs: 600_000, offsetMs: 0 },
   },
   {
+    // TRK-062 / T5 (2026-09-13) — jumeau de « engine-command-expiry » pour les commandes de
+    // boîtier parties par SMS (paramétrage, surveillance) : borne de quatre heures, la référence
+    // mesurée du canal. Inscrit le jour même du @Cron, pour que le garde d'exhaustivité reste vert.
+    id: 'tracker-command-sms-expiry',
+    source: 'tracker-commands/tracker-commands.service.ts', label: 'Fin de vie des commandes de boîtier parties par SMS', category: 'Maintenance données',
+    kind: 'cron', scheduleHuman: 'toutes les 10 min', criticality: 'basse', antiOverlap: false,
+    purpose: 'Solde les commandes de boîtier parties par SMS et restées « envoyées » plus de quatre heures : elles passent en « envoyée, sans réponse ». Le canal SMS ne guette pas d\'accusé (une réponse réelle mesurée à presque quatre heures) ; sans borne, deux commandes du 1er septembre sont restées ouvertes 298 heures.',
+    periodic: { everyMs: 600_000, offsetMs: 0 },
+  },
+  {
     id: 'trips-timeout',
     source: 'trips/trips.service.ts', label: 'Clôture des trajets en cours', category: 'Sécurité & moteur',
     kind: 'cron', scheduleHuman: 'chaque minute', criticality: 'moyenne', antiOverlap: false,

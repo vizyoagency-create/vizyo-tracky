@@ -6,6 +6,7 @@ import {
   NotFoundException,
   ServiceUnavailableException,
 } from '@nestjs/common';
+import { Cron } from '@nestjs/schedule';
 import { TrackerCommandStatus, UserRole } from '@prisma/client';
 import type { TrackerCommand } from '@prisma/client';
 import {
@@ -38,6 +39,26 @@ interface RequestedBy {
  * TRACKER_CMD reste réservé aux vraies commandes autonomes (fix interval, reboot…).
  */
 const SURVEILLANCE_TEMPLATES = new Set(['sensitivity', 'shock_on', 'shock_off']);
+
+/**
+ * ══ TRK-062 / T5 (2026-09-13) — BORNE SUPÉRIEURE D'UNE COMMANDE PARTIE EN SMS ═══════════════
+ *
+ * Le canal SMS ne guette PAS d'accusé, et c'est juste : une réponse réelle a été mesurée à
+ * presque QUATRE HEURES le 19/08 (« Resume engine Succeed » reçu 3 h 50 après l'envoi), et un
+ * guetteur de quinze secondes ne fabriquerait que de faux échecs sur des commandes qui
+ * aboutissent. Mais entre « quinze secondes » et « jamais », il manquait une borne : deux
+ * commandes `shock_on` / `shock_off` du 1er septembre sont restées `SENT` pendant 298 heures,
+ * +24,0 h par jour, résidentes permanentes de l'écran des commandes en attente.
+ *
+ * Quatre heures = la référence mesurée du canal, pas un chiffre rond. Env
+ * `TRACKER_COMMAND_SMS_EXPIRY_MIN` pour la déplacer sans redéployer.
+ *
+ * ⚠️ Jumeau de TRK-018 (`CommandStatus.SENT_UNCONFIRMED`, commandes moteur, 30 min) : l'échéance
+ * est purement temporelle, on ne conclut RIEN sur l'issue, `lastError` reste vide — « nul ne
+ * sait » n'est pas « a échoué ». Et `ackedAt` n'est jamais écrit par ce chemin.
+ */
+export const TRACKER_COMMAND_SMS_EXPIRY_MS =
+  Math.max(1, Number(process.env.TRACKER_COMMAND_SMS_EXPIRY_MIN) || 240) * 60 * 1000;
 
 @Injectable()
 export class TrackerCommandsService {
@@ -463,6 +484,38 @@ export class TrackerCommandsService {
         triggeredByUserId: command.requestedBy,
         meta: { commandId: command.id, canal: 'SMS' },
       });
+    }
+  }
+
+  /**
+   * TRK-062 — toutes les 10 min : une commande partie par SMS depuis plus de quatre heures sans
+   * réponse passe en `SENT_UNCONFIRMED`, datée. Le `where` ne regarde QUE l'horloge, le canal et
+   * le statut (leçon de TRK-007 : conditionner la clôture à l'état du boîtier ferait attendre une
+   * confirmation qui n'arrive jamais). Un balayage qui échoue est journalisé, jamais propagé.
+   */
+  @Cron('0 */10 * * * *')
+  async cloturerCommandesSmsSansReponse(nowMs = Date.now()): Promise<number> {
+    try {
+      const { count } = await this.prisma.trackerCommand.updateMany({
+        where: {
+          status: TrackerCommandStatus.SENT,
+          channel: 'SMS',
+          ackedAt: null,
+          sentAt: { lt: new Date(nowMs - TRACKER_COMMAND_SMS_EXPIRY_MS) },
+        },
+        data: { status: TrackerCommandStatus.SENT_UNCONFIRMED, expiredAt: new Date(nowMs) },
+      });
+      if (count > 0) {
+        this.logger.log(
+          `TRK-062 : ${count} commande(s) de boîtier parties par SMS close(s) en SENT_UNCONFIRMED (échéance ${TRACKER_COMMAND_SMS_EXPIRY_MS / 60000} min).`,
+        );
+      }
+      return count;
+    } catch (err) {
+      this.logger.warn(
+        `TRK-062 : clôture des commandes SMS sans réponse impossible — ${err instanceof Error ? err.message : String(err)}`,
+      );
+      return 0;
     }
   }
 

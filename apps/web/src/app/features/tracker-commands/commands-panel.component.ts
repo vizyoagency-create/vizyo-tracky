@@ -40,6 +40,7 @@ const CATEGORY_LABELS: Record<string, string> = {
 const CLASSE_PAR_TON: Record<string, string> = {
   succes: 'bg-tracky/10 text-tracky-light',
   mesure: 'bg-amber-500/10 text-amber-400',
+  inconnu: 'bg-amber-500/10 text-amber-400',
   echec: 'bg-red-600/10 text-red-400',
   attente: 'bg-bg-tertiary text-fg-tertiary',
   planifie: 'bg-sky-500/10 text-sky-400',

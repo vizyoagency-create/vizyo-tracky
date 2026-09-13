@@ -53,4 +53,12 @@ describe('libellé et ton d un statut de commande (TRK-055)', () => {
   it('ne peint plus « envoyée » comme un succès', () => {
     expect(tonStatutCommande({ status: 'SENT', ackResponse: null })).toBe('attente');
   });
+
+  // TRK-062 — « nul ne sait » : un mot qui dit le doute, un ton ambre, ni échec ni attente.
+  it('dit « envoyée, sans réponse » pour une commande SMS close par échéance, en ambre', () => {
+    expect(libelleStatutCommande({ status: 'SENT_UNCONFIRMED', ackResponse: null })).toBe('Envoyée, sans réponse');
+    expect(tonStatutCommande({ status: 'SENT_UNCONFIRMED', ackResponse: null })).toBe('inconnu');
+    // Une vraie réponse du boîtier, arrivée tard, prime sur l'échéance : le libellé matériel gagne.
+    expect(libelleStatutCommande({ status: 'SENT_UNCONFIRMED', ackResponse: 'Resume engine Succeed' })).toBe('Acquittée (boîtier)');
+  });
 });

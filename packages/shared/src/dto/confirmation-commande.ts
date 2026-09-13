@@ -89,6 +89,9 @@ export function libelleStatutCommande(commande: {
       PENDING: 'En attente',
       SCHEDULED: 'Planifiée',
       SENT: 'Envoyée',
+      // TRK-062 — partie par SMS, échéance passée, nul ne sait : ni « envoyée » (elle n'attend
+      // plus), ni « échouée » (elle est bel et bien partie).
+      SENT_UNCONFIRMED: 'Envoyée, sans réponse',
       FAILED: 'Échouée',
       CANCELLED: 'Annulée',
     }[commande.status] ?? commande.status
@@ -105,7 +108,7 @@ export function libelleStatutCommande(commande: {
  *
  * Rend un ton abstrait et non une classe CSS : la palette appartient à chaque application.
  */
-export type TonStatutCommande = 'succes' | 'mesure' | 'echec' | 'attente' | 'planifie' | 'neutre';
+export type TonStatutCommande = 'succes' | 'mesure' | 'echec' | 'attente' | 'planifie' | 'inconnu' | 'neutre';
 
 export function tonStatutCommande(commande: {
   status: string;
@@ -115,6 +118,9 @@ export function tonStatutCommande(commande: {
   if (confirmation === 'BOITIER') return 'succes';
   if (confirmation === 'MESURE') return 'mesure';
   if (commande.status === 'FAILED') return 'echec';
+  // TRK-062 — « nul ne sait » : un doute, à rendre en AMBRE comme la cible mesurée — jamais en
+  // rouge (rien n'a échoué) ni en gris (elle n'attend plus).
+  if (commande.status === 'SENT_UNCONFIRMED') return 'inconnu';
   if (commande.status === 'SENT' || commande.status === 'PENDING') return 'attente';
   if (commande.status === 'SCHEDULED') return 'planifie';
   return 'neutre';
