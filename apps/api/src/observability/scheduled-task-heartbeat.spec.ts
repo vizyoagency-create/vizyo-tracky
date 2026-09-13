@@ -56,10 +56,12 @@ describe('ScheduledTaskHeartbeatService', () => {
       // sonde journalise alors une erreur de lecture — ce qui ajoutait un appel parasite à
       // chacun des tests ci-dessous. Toute tâche ajoutée à la sonde doit apparaître ici.
       fleetReportSchedule: rows('hebdo'),
+      // TRK-074 — les lignes ouvertes au centre d'alerte, que la sonde referme d'elle-même.
+      errorLog: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
     } as never;
     const recordBackground = jest.fn();
     const svc = new ScheduledTaskHeartbeatService(prisma, { recordBackground } as never);
-    return { svc, recordBackground };
+    return { svc, recordBackground, updateMany: (prisma as { errorLog: { updateMany: jest.Mock } }).errorLog.updateMany };
   }
 
   it('signale une tâche ACTIVÉE et muette au-delà du seuil', async () => {
@@ -237,6 +239,7 @@ describe('ScheduledTaskHeartbeatService', () => {
       activityReportSchedule: { findFirst: jest.fn().mockResolvedValue(null) },
       placeAutomationSettings: { findFirst: jest.fn().mockResolvedValue(null) },
       fleetReportSchedule: { findFirst: jest.fn().mockResolvedValue(null) },
+      errorLog: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
     } as never;
     const recordBackground = jest.fn();
     const svc = new ScheduledTaskHeartbeatService(prisma, { recordBackground } as never);
@@ -249,6 +252,103 @@ describe('ScheduledTaskHeartbeatService', () => {
     // Pas CRITICAL : une lecture ratée est un incident d'observabilité, pas une panne
     // de production.
     expect(severity).toBeUndefined();
+  });
+
+  /**
+   * ── TRK-074 / T25 — LE TÉMOIN DOIT SAVOIR SE TAIRE, PAS SEULEMENT CRIER ────────────────
+   *
+   * Quatre CRITICAL du 6 septembre sont restées ouvertes 160 heures alors que la tâche avait
+   * repassé le soir même : cette sonde savait ouvrir une ligne, pas la refermer. Sa jumelle
+   * (la sentinelle des agents du poste) ouvre ET referme les siennes toute seule — le 09/09,
+   * trois nées et trois closes dans la journée, pendant que quatre restaient immobiles ici.
+   *
+   * Le geste : quand la tâche a repassé, les lignes ouvertes ANTÉRIEURES à ce passage décrivent
+   * un épisode clos. On les archive — filtre par le NOM DE TÂCHE structuré (`context.task`),
+   * jamais par le texte du message —, avec une note qui dit pourquoi. Et une tâche réellement
+   * à l'arrêt doit CONTINUER d'en produire : si plus rien n'apparaît, on a éteint le témoin.
+   */
+  describe('TRK-074 — résolution automatique', () => {
+    it('⚠️ la tâche a repassé : les lignes ouvertes ANTÉRIEURES à son dernier passage s’archivent', async () => {
+      const passage = ilYA(0.7);
+      const { svc, updateMany, recordBackground } = setup({
+        trip: { enabled: true, lastRunAt: passage, frequency: 'hourly' },
+      });
+      await svc.check(NOW);
+
+      expect(recordBackground).not.toHaveBeenCalled();
+      const appel = updateMany.mock.calls.find((c: [{ where: { context?: { equals?: string } } }]) => c[0].where.context?.equals === 'Automatisation des trajets');
+      expect(appel).toBeDefined();
+      expect(appel![0]).toEqual({
+        where: {
+          source: 'scheduled-task-heartbeat',
+          resolvedAt: null,
+          // La borne qui rend l'archivage juste : une ligne écrite APRÈS le passage reste ouverte.
+          createdAt: { lt: passage },
+          // Chemin JSON, jamais `message contains` : « Rapport d’activité » est contenu dans
+          // d'autres libellés, et le texte d'un message change.
+          context: { path: ['task'], equals: 'Automatisation des trajets' },
+        },
+        data: {
+          resolvedAt: new Date(NOW),
+          resolvedNote: expect.stringContaining('résolution automatique'),
+        },
+      });
+      expect(appel![0].data.resolvedNote).toContain('repassée');
+    });
+
+    it('⚠️ DOUBLE CONDITION : une tâche encore à l’arrêt CONTINUE de produire sa ligne', async () => {
+      const { svc, updateMany, recordBackground } = setup({
+        trip: { enabled: true, lastRunAt: ilYA(120), frequency: 'hourly' },
+      });
+      await svc.check(NOW);
+
+      // Le témoin crie toujours…
+      expect(recordBackground).toHaveBeenCalledTimes(1);
+      // …et n'archive que ce qui est antérieur au dernier passage — donc rien de l'épisode
+      // en cours, dont la première ligne est postérieure à ce passage vieux de 120 h.
+      const appel = updateMany.mock.calls.find((c: [{ where: { context?: { equals?: string } } }]) => c[0].where.context?.equals === 'Automatisation des trajets');
+      expect(appel).toBeDefined();
+      expect(appel![0].where.createdAt).toEqual({ lt: ilYA(120) });
+    });
+
+    it('jamais un filtre sur le texte du message', async () => {
+      const { svc, updateMany } = setup({ trip: { enabled: true, lastRunAt: ilYA(0.7), frequency: 'hourly' } });
+      await svc.check(NOW);
+      for (const [args] of updateMany.mock.calls) expect(args.where).not.toHaveProperty('message');
+    });
+
+    it('une tâche volontairement COUPÉE referme ses lignes : « activée mais ne tourne plus » n’est plus vrai', async () => {
+      const { svc, updateMany } = setup({ trip: { enabled: false, lastRunAt: ilYA(500), frequency: 'hourly' } });
+      await svc.check(NOW);
+
+      const appel = updateMany.mock.calls.find((c: [{ where: { context?: { equals?: string } } }]) => c[0].where.context?.equals === 'Automatisation des trajets');
+      expect(appel).toBeDefined();
+      // Toutes les lignes ouvertes de la tâche, pas seulement celles d'avant un passage.
+      expect(appel![0].where).not.toHaveProperty('createdAt');
+      expect(appel![0].data.resolvedNote).toContain('désactivée');
+    });
+
+    it('une tâche activée qui n’a JAMAIS tourné n’archive rien : il n’y a aucun passage pour clore quoi que ce soit', async () => {
+      const { svc, updateMany } = setup({ report: { enabled: true, lastRunAt: null, frequency: 'weekly' } });
+      await svc.check(NOW);
+      expect(updateMany).not.toHaveBeenCalled();
+    });
+
+    it('une tâche non configurée n’archive rien', async () => {
+      const { svc, updateMany } = setup({});
+      await svc.check(NOW);
+      expect(updateMany).not.toHaveBeenCalled();
+    });
+
+    it('un archivage qui échoue n’empêche ni le jugement de la tâche ni les suivantes', async () => {
+      const { svc, updateMany, recordBackground } = setup({
+        trip: { enabled: true, lastRunAt: ilYA(120), frequency: 'hourly' },
+        report: { enabled: true, lastRunAt: ilYA(400), frequency: 'daily' },
+      });
+      updateMany.mockRejectedValue(new Error('base injoignable'));
+      await expect(svc.check(NOW)).resolves.toBeUndefined();
+      expect(recordBackground.mock.calls.filter((c: unknown[]) => c[3] === 'CRITICAL')).toHaveLength(2);
+    });
   });
 
   it('l’automatisation des lieux, sans colonne de cadence, est jugée quotidienne', async () => {

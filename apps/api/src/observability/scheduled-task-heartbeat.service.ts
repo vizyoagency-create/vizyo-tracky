@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
+import { formatFleetDateTime } from '../common/utils/datetime';
 import { ErrorLogger } from './error-logger.service';
 import { PrismaService } from '../prisma/prisma.service';
 
@@ -185,8 +186,20 @@ export class ScheduledTaskHeartbeatService {
         continue;
       }
 
-      // Tâche jamais configurée, ou volontairement coupée : ce n'est pas une panne.
-      if (!state || !state.enabled) continue;
+      // Tâche jamais configurée : rien à juger, rien à refermer.
+      if (!state) continue;
+
+      // Volontairement coupée : ce n'est pas une panne — et « activée mais ne tourne plus »
+      // n'est plus vrai non plus, donc les lignes ouvertes se referment (TRK-074).
+      if (!state.enabled) {
+        await this.resoudre(task.name, null, now);
+        continue;
+      }
+
+      // TRK-074 — la tâche a un dernier passage : tout ce qui a été écrit AVANT lui décrit
+      // un épisode clos. On le referme avant de juger le présent — une tâche à nouveau
+      // muette produira sa nouvelle ligne juste après, postérieure au passage, donc ouverte.
+      if (state.lastRunAt) await this.resoudre(task.name, state.lastRunAt, now);
 
       const maxSilenceHours = toleranceHours(state.periodHours);
 
@@ -256,5 +269,45 @@ export class ScheduledTaskHeartbeatService {
       'CRITICAL',
     );
     this.logger.error(`Tâche planifiée à l'arrêt : ${name} (${depuis}).`);
+  }
+
+  /**
+   * ── TRK-074 (2026-09-13) — LE TÉMOIN SAIT SE TAIRE ──────────────────────────────────────
+   *
+   * Quatre CRITICAL du 6 septembre sont restées ouvertes cent soixante heures alors que la
+   * tâche avait repassé le soir même : cette sonde savait ouvrir une ligne, pas la refermer.
+   * Sa jumelle — la sentinelle des agents du poste — ouvre ET referme les siennes toute seule ;
+   * le 09/09, trois nées et trois closes dans la journée, pendant que quatre restaient
+   * immobiles ici. Le comportement est porté tel quel.
+   *
+   * `borne` = le dernier passage : une ligne écrite AVANT lui décrit un épisode clos, une
+   * ligne écrite APRÈS reste ouverte. `null` = la tâche est coupée, la condition « activée
+   * mais ne tourne plus » n'est plus vraie, tout se referme.
+   *
+   * Filtre par CHEMIN JSON (`context.task`), jamais par `message contains` : le libellé d'une
+   * tâche peut être contenu dans un autre, et le texte d'un message change. Jamais effacé —
+   * archivé, avec une note qui dit pourquoi (règle du centre d'alerte depuis TRK-035). Et si la
+   * base refuse, le jugement continue : un archivage raté ne doit pas faire taire le témoin.
+   */
+  private async resoudre(name: string, borne: Date | null, now: number): Promise<void> {
+    try {
+      const { count } = await this.prisma.errorLog.updateMany({
+        where: {
+          source: 'scheduled-task-heartbeat',
+          resolvedAt: null,
+          ...(borne ? { createdAt: { lt: borne } } : {}),
+          context: { path: ['task'], equals: name },
+        },
+        data: {
+          resolvedAt: new Date(now),
+          resolvedNote: borne
+            ? `Tâche repassée le ${formatFleetDateTime(borne)} (résolution automatique)`
+            : 'Tâche désactivée par un réglage (résolution automatique)',
+        },
+      });
+      if (count > 0) this.logger.log(`${name} : ${count} ligne(s) du centre d'alerte archivée(s).`);
+    } catch (e) {
+      this.logger.warn(`${name} : archivage des lignes impossible (${e instanceof Error ? e.message : String(e)}).`);
+    }
   }
 }
