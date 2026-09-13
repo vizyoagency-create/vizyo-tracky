@@ -50,7 +50,7 @@ L'ordre ci-dessous est une dépendance technique, pas une préférence. On comme
 | R2 | P0 | CC-001, 005, 008, 009, 010, 021 | Plus aucun faux état « restauré » | `queued/sent` ne nettoie jamais l'état coupé |
 | R3 | P0 | CC-016 à 020 | Une intention unique malgré clics concurrents | Tests multi-onglets et multi-utilisateurs verts |
 | R4 | P0 | CC-002, 003, 007, 027 | RESTORE durable et rejouable | Crash, socket absente et ACK perdu sont récupérés |
-| R5 | P0 | CC-006, 014, 026 | Interlock fail-open avant CUT | Une panne volontaire du secours bloque la CUT |
+| R5 | P0 | CC-006, 014, 026 | Interlock fail-closed avant CUT | Une panne volontaire du secours bloque la CUT |
 | R6 | P1 | CC-011, 012, 015, 024, 029, 031 | Passerelle SMS régulée et redondante | Vague de 22 RESTORE dans le SLO sans rafale |
 | R7 | validation | CC-022, 023 et ensemble du registre | Canari puis réactivation progressive | Critères terrain signés, rollback testé |
 
@@ -159,7 +159,7 @@ SLO initial à mesurer puis ajuster : 95 % des RESTORE prouvés en moins de 60 s
 
 Test de sortie : tuer l'API entre la création et le dispatch, couper la socket, perdre l'ACK puis reconnecter le boîtier. L'intention survit, se rejoue et ne devient jamais faussement `CONFIRMED`.
 
-## R5 — interlock fail-open avant toute CUT
+## R5 — interlock fail-closed avant toute CUT
 
 Calculer un verdict par flotte :
 
@@ -227,11 +227,11 @@ Un bug n'est pas clos quand le code est fusionné. Il est clos quand : test auto
 
 ## Contre-vérification du 13 septembre 2026
 
-- 252 suites API / 3 900 tests : succès, zéro échec ;
-- tests ciblés moteur + SMS : 111 succès ;
+- suite API complète : succès, zéro échec (les nombres exacts sont relevés dans chaque rapport de campagne) ;
+- tests ciblés moteur + SMS : succès, zéro échec ;
 - builds API, package partagé et Web : succès ;
 - schéma Prisma : valide ; migration SQL et contraintes relues ;
 - `git diff --check` : aucun défaut d'espacement ;
 - production non modifiée : travail limité à `codex/tracky-cutoff-reliability-2026-09-12`.
 
-Le code n'est pas déclaré prêt production tant que R3.2, R6.2, R7.2 et R7.4 restent décochés. Ces points exigent notamment le relais/téléphone réel, une vague contrôlée de 22 RESTORE, un test de crash/reprise sur une base de test et un canari véhicule avec présence terrain.
+Le code n'est pas déclaré prêt production tant que R6.2, R7.2 et R7.4 restent décochés. Ces points exigent notamment le relais/téléphone réel, une vague contrôlée de 22 RESTORE, un test de crash/reprise sur une base de test et un canari véhicule avec présence terrain.

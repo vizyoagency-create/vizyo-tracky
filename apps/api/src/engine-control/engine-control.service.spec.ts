@@ -1594,6 +1594,63 @@ describe('EngineControlService', () => {
       );
 
       expect(result.id).toBe(replay.id);
+      expect(prisma.engineControlCommand.findFirst).toHaveBeenLastCalledWith({
+        where: { idempotencyKey: 'same-click', trackerId: TRACKER_ID },
+      });
+      expect(registry.send).not.toHaveBeenCalled();
+    });
+
+    it("refuse de rejouer une même clé pour l'action opposée", async () => {
+      const previousCut = createdCommand({ idempotencyKey: 'reused-click' });
+      prisma.tracker.findFirst.mockResolvedValue(trackerWithVehicle);
+      prisma.engineControlCommand.findFirst.mockResolvedValueOnce(previousCut);
+
+      await expect(service.requestCommand(
+        TRACKER_ID,
+        EngineAction.RESTORE,
+        null,
+        fleetAdmin,
+        'MANUAL',
+        false,
+        false,
+        'reused-click',
+      )).rejects.toThrow('autre action');
+
+      expect(prisma.engineControlCommand.create).not.toHaveBeenCalled();
+      expect(registry.send).not.toHaveBeenCalled();
+    });
+
+    it("refuse une collision idempotente appartenant à un autre boîtier", async () => {
+      const foreign = createdCommand({
+        trackerId: '00000000-0000-0000-0000-000000000099',
+        action: EngineAction.RESTORE,
+        idempotencyKey: 'foreign-click',
+      });
+      prisma.tracker.findFirst.mockResolvedValue(trackerWithVehicle);
+      prisma.engineControlCommand.findFirst
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(foreign)
+        .mockResolvedValueOnce(null);
+      prisma.engineControlCommand.create.mockRejectedValueOnce({ code: 'P2002' });
+
+      await expect(service.requestCommand(
+        TRACKER_ID,
+        EngineAction.RESTORE,
+        null,
+        fleetAdmin,
+        'MANUAL',
+        false,
+        false,
+        'foreign-click',
+      )).rejects.toThrow(ConflictException);
+
+      expect(prisma.engineControlCommand.findFirst).toHaveBeenNthCalledWith(2, {
+        where: { idempotencyKey: 'foreign-click', trackerId: TRACKER_ID },
+      });
+      expect(prisma.engineControlCommand.findFirst).toHaveBeenNthCalledWith(3, {
+        where: { activeKey: `${TRACKER_ID}:${EngineAction.RESTORE}`, trackerId: TRACKER_ID },
+        orderBy: { createdAt: 'desc' },
+      });
       expect(registry.send).not.toHaveBeenCalled();
     });
 

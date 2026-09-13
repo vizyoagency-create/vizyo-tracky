@@ -2,7 +2,8 @@
 
 ## Verdict de départ à 06 h 30
 
-- production actuelle : `main` / `e4749302` ;
+- référence de production observée à relever de nouveau juste avant le déploiement
+  (le hash historique saisi au début de l'incident ne doit pas servir au rollback) ;
 - `tracky-api` sain depuis trois jours ; PostgreSQL et Redis sains ;
 - relais `texto-relay` démarré, mais son état Android/SIM n'est pas prouvé par ce seul constat ;
 - CDEF31 : 30 plannings présents, 0 actif ;

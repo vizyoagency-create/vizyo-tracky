@@ -46,6 +46,8 @@ Les traitements CUT et RESTORE sont volontairement asymétriques :
 13. [Implémentation isolée, déploiement, rollback et Go/No-Go](./13-IMPLEMENTATION-ET-GO-NO-GO.md)
 14. [Campagne contrôlée du dimanche et surveillance lundi matin](./14-CAMPAGNE-CONTROLEE-DIMANCHE.md)
 15. [File anti-rafale du bouton Horaires flotte](./15-FILE-ANTI-RAFALE-HORAIRES-FLOTTE.md)
+16. [Actions manuelles, horaires et confirmation par glissement](./16-ACTIONS-MANUELLES-ET-HORAIRES.md)
+17. [Revue finale du candidat et décision Go/No-Go](./17-REVUE-FINALE-GO-NO-GO.md)
 
 ## Document directeur du week-end
 

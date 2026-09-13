@@ -73,6 +73,9 @@ const envSchema = z.object({
   ENGINE_AUTOMATIC_CUT_ENABLED: z.string().default('false'),
   // Cadence serveur vers la passerelle Android (rafale du 11/09 : 10 SMS/6 s).
   SMS_MIN_INTERVAL_MS: z.coerce.number().int().nonnegative().default(15000),
+  // Cadence des CUT automatiques dans l'unique instance API de production.
+  // Elle est ensuite arrondie par créneaux de 10 s et bornée à 10–60 s.
+  SCHEDULE_CUT_QUEUE_INTERVAL_MS: z.coerce.number().int().positive().default(10000),
   // Worker RESTORE durable : délais et plafond d'essais SMS avant escalade.
   ENGINE_RESTORE_ACK_TIMEOUT_MS: z.coerce.number().int().positive().default(15000),
   ENGINE_RESTORE_ALERT_AFTER_MS: z.coerce.number().int().positive().default(60000),

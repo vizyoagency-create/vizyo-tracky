@@ -48,7 +48,7 @@ ENGINE_RESTORE_MAX_SMS_ATTEMPTS=3
 Le kill-switch reste `false` pendant le déploiement technique, les tests et le canari. Le passer
 à `true` n'est permis qu'après le Go terrain. Les horaires CDEF et MH Cars restent désactivés.
 
-## Ordre de déploiement proposé pour dimanche
+## Ordre proposé pour la fenêtre de validation
 
 1. sauvegarder la base et noter l'image/version actuellement déployée ;
 2. vérifier que les plannings CDEF et MH Cars sont toujours désactivés ;
@@ -94,13 +94,13 @@ Si un seul point échoue : **No-Go**, horaires toujours désactivés.
 - canari puis réactivation progressive.
 
 Ces éléments ne peuvent pas être cochés par des tests locaux. Ils conditionnent la décision finale
-de dimanche et la reprise de lundi.
+de mise en production et la reprise des horaires automatiques.
 
 ## Validation locale obtenue
 
 - schéma Prisma valide et client régénéré ;
 - build API réussi ;
 - build Web réussi (avertissements de budget existants, sans erreur) ;
-- suite API complète : **253 suites, 3 905 tests réussis, 0 échec** ;
+- suite API complète : succès, zéro échec (relever les nombres dans le rapport de la campagne courante) ;
 - tests ciblés couvrant moteur, SMS, webhook, confidentialité démo et véhicules : verts ;
 - `git diff --check` : aucune erreur d'espace ou de patch.

@@ -352,7 +352,7 @@ export class EngineControlService implements OnModuleDestroy {
 
     const fleetId = tracker.vehicle.fleetId;
 
-    // Kill-switch fail-open : en production, une variable absente ou mal
+    // Kill-switch fail-closed : en production, une variable absente ou mal
     // orthographiée BLOQUE les coupures automatiques. RESTORE et actions manuelles
     // restent disponibles. La réactivation est une décision Go explicite.
     if (
@@ -385,7 +385,12 @@ export class EngineControlService implements OnModuleDestroy {
       const replay = await this.prisma.engineControlCommand.findFirst({
         where: { idempotencyKey, trackerId },
       });
-      if (replay) return replay;
+      if (replay) {
+        if (replay.action !== action) {
+          throw new ConflictException('Clé de commande déjà utilisée pour une autre action');
+        }
+        return replay;
+      }
     }
 
     // ── COUPE AUTOMATIQUE sur boîtier DORMANT : on ne tente pas ──────────────
@@ -732,17 +737,28 @@ export class EngineControlService implements OnModuleDestroy {
       // La contrainte unique est l'arbitre réel des clics concurrents entre
       // plusieurs instances API. Une collision renvoie l'intention déjà active.
       if ((err as { code?: string })?.code !== 'P2002') throw err;
-      const existing = await this.prisma.engineControlCommand.findFirst({
-        where: {
-          OR: [
-            ...(idempotencyKey ? [{ idempotencyKey }] : []),
-            { activeKey },
-          ],
-        },
+      // Ne jamais relire une commande d'un autre boîtier : idempotencyKey est
+      // globalement unique et peut être fournie par le client. Une collision
+      // inter-véhicule ne doit donc ni divulguer ni réutiliser cette commande.
+      if (idempotencyKey) {
+        const replay = await this.prisma.engineControlCommand.findFirst({
+          where: { idempotencyKey, trackerId },
+        });
+        if (replay?.trackerId === trackerId) {
+          if (replay.action !== action) {
+            throw new ConflictException('Clé de commande déjà utilisée pour une autre action');
+          }
+          return replay;
+        }
+      }
+
+      const active = await this.prisma.engineControlCommand.findFirst({
+        where: { activeKey, trackerId },
         orderBy: { createdAt: 'desc' },
       });
-      if (!existing) throw err;
-      return existing;
+      if (active?.trackerId === trackerId) return active;
+
+      throw new ConflictException('Clé de commande déjà utilisée');
     }
 
     if (command.status === CommandStatus.PENDING) {
@@ -840,7 +856,7 @@ export class EngineControlService implements OnModuleDestroy {
     }).engineDeliveryAttempt;
   }
 
-  /** Deuxième étage du fail-open, évalué seulement quand le kill-switch est armé. */
+  /** Deuxième étage fail-closed, évalué seulement quand le kill-switch est armé. */
   private async assertAutomaticCutSafe(trackerId: string, imei: string, fleetId: string): Promise<void> {
     const now = Date.now();
     if (!this.automaticCutHealthCache || this.automaticCutHealthCache.expiresAt <= now) {
