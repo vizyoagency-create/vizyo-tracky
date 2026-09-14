@@ -70,6 +70,7 @@ Les traitements CUT et RESTORE sont volontairement asymétriques :
 32. [Relecture des promesses documentaires (T56) — ce que les documents disent, ce que le code tient](./32-RELECTURE-DES-PROMESSES-DOCUMENTAIRES-2026-09-14.md)
 33. [Journée S21 du 14/09 — diagnostic, configuration du téléphone, tests SMS (T43, T61)](./33-JOURNEE-S21-DIAGNOSTIC-ET-CONFIGURATION-2026-09-14.md)
 34. [Fiche de fusion — les 28 + 5 commits, dans l'ordre, et comment les relire](./34-FICHE-DE-FUSION-2026-09-14.md)
+35. [Correctif T62 — une SIM injoignable par SMS met le véhicule en « TCP seul » ; pourquoi deux boîtiers sur dix restent sourds](./35-CORRECTIF-SIM-INJOIGNABLE-TCP-SEUL-2026-09-14.md)
 
 ## État du chantier au 14 septembre 2026 (07 h)
 

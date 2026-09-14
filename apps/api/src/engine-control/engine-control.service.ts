@@ -283,6 +283,48 @@ const ENGINE_RESTORE_SMS_STUCK_MS = 60 * 60_000;
 const manualResponseBudgetMs = (): number =>
   Math.max(1_000, Number(process.env['ENGINE_MANUAL_RESPONSE_BUDGET_MS']) || 20_000);
 
+/**
+ * ══ T62 (14/09/2026) — UNE SIM INJOIGNABLE PAR SMS MET LE VÉHICULE EN « TCP SEUL » ═══════════
+ *
+ * Mesuré le 14/09 : deux SIM de boîtiers (HD-584-BF, BP-434-RD) refusent tout SMS au départ
+ * (`RESULT_ERROR_GENERIC_FAILURE`), à quelques secondes d'envois réussis vers leurs voisines,
+ * boîtiers en ligne, SIM activées chez le fournisseur. Pour elles, le secours SMS n'existe pas ;
+ * la seule voie de remise en route est le TCP. Le système doit le SAVOIR et en tirer trois
+ * conséquences, plutôt que de le découvrir un matin à 07:00 :
+ *
+ *   1. une COUPURE automatique n'est émise que si le boîtier est vivant en TCP à cet instant
+ *      (socket présente, trame récente) — sinon elle est reportée, comme pour un boîtier muet ;
+ *   2. une RESTORE est relancée en TCP toutes les ENGINE_TCP_ONLY_RETRY_MS (5 min, pas 30) et
+ *      à chaque reconnexion (T42), sans consommer de SMS ;
+ *   3. un SMS-SONDE au plus toutes les ENGINE_SMS_PROBE_INTERVAL_MS (6 h) : si la voie SMS
+ *      revient (c'est arrivé le 14/09 pour huit SIM), la série d'échecs se rompt et tout
+ *      redevient normal. Coût borné : quatre SMS par jour et par véhicule bloqué, au pire.
+ *
+ * Le verdict vient de `sms_logs` : les ENGINE_SMS_UNREACHABLE_STREAK derniers sortants à issue
+ * connue vers ce numéro sont tous `failed`. Les `queued` (issue inconnue) ne comptent pas.
+ * Une ligne DÉGRADATION par véhicule et par jour dit « TCP seul » au centre d'alerte.
+ */
+const ENGINE_SMS_UNREACHABLE_STREAK = Math.max(
+  2,
+  Number(process.env['ENGINE_SMS_UNREACHABLE_STREAK']) || 3,
+);
+const ENGINE_SMS_REACHABILITY_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
+const ENGINE_SMS_REACHABILITY_CACHE_MS = 60_000;
+const ENGINE_SMS_PROBE_INTERVAL_MS = 6 * 60 * 60 * 1000;
+const ENGINE_TCP_ONLY_RETRY_MS =
+  Math.max(1, Number(process.env['ENGINE_TCP_ONLY_RETRY_MIN']) || 5) * 60 * 1000;
+/** Une trame TCP de moins de 5 min ET une socket présente : le boîtier est joignable maintenant. */
+const ENGINE_TCP_LIVE_MS = 5 * 60 * 1000;
+const ENGINE_TCP_ONLY_ALERT_SPACING_MS = 24 * 60 * 60 * 1000;
+
+export interface SmsReachability {
+  /** Les N derniers sortants à issue connue ont tous échoué. */
+  unreachable: boolean;
+  /** Longueur de la série d'échecs consécutifs (0 si le dernier sortant connu est passé). */
+  streak: number;
+  lastFailureAt: Date | null;
+}
+
 @Injectable()
 export class EngineControlService implements OnModuleDestroy {
   private readonly logger = new Logger(EngineControlService.name);
@@ -293,6 +335,9 @@ export class EngineControlService implements OnModuleDestroy {
     string,
     { lastAt: number; refusals: number; vehicles: Set<string> }
   >();
+  /** T62 — verdict de joignabilité SMS par numéro (60 s) et dernière ligne « TCP seul » par boîtier. */
+  private readonly smsReachabilityCache = new Map<string, { expiresAt: number; verdict: SmsReachability }>();
+  private readonly tcpOnlyAlertedAt = new Map<string, number>();
 
   /**
    * Timers armés par la sentinelle « coupure non confirmée ». SUIVIS pour pouvoir les annuler à
@@ -739,6 +784,9 @@ export class EngineControlService implements OnModuleDestroy {
           `Coupe auto suspendue : boîtier muet depuis ${formatSilenceLabel(tracker.lastSeenAt)}`,
         );
       }
+      // T62 — SIM injoignable par SMS : on ne coupe que si le TCP est vivant MAINTENANT, parce
+      // que la remise en route n'aura que lui. Sinon report (même palier que « boîtier muet »).
+      await this.assertTcpOnlyCutSafe({ ...tracker, vehicle: tracker.vehicle });
     }
 
     // Sprint 2 (Obj 1 + revue) — verrou « une coupure en vol » : rejet d'une NOUVELLE
@@ -1317,7 +1365,7 @@ export class EngineControlService implements OnModuleDestroy {
     fleetId: string,
     source: 'MANUAL' | 'SCHEDULER',
   ): Promise<EngineControlCommand> {
-    const dispatched = this.dispatchCommand(imei, command, action, fleetId);
+    const dispatched = this.dispatchCommand(imei, command, action, fleetId, false, source);
     if (source !== 'MANUAL') return dispatched;
 
     let timer: NodeJS.Timeout | undefined;
@@ -1351,6 +1399,102 @@ export class EngineControlService implements OnModuleDestroy {
       'Réponse rendue avant la fin du dispatch : intention persistée, envoi en cours (T51)',
     );
     return command;
+  }
+
+  /**
+   * T62 — les N derniers sortants à issue connue vers ce numéro ont-ils tous échoué ?
+   * `queued` (issue inconnue) est ignoré ; `sent`, `delivered`, `received` rompent la série.
+   * Sans numéro : joignable par défaut (l'envoi échouera de lui-même, comme avant). Ne lève
+   * jamais : une base illisible rend « joignable » — le silence n'est pas un défaut sûr ici,
+   * mais bloquer toutes les coupes sur une panne de lecture ne l'est pas non plus.
+   */
+  async smsReachability(toNumber: string | null): Promise<SmsReachability> {
+    const joignable: SmsReachability = { unreachable: false, streak: 0, lastFailureAt: null };
+    if (!toNumber) return joignable;
+    const cached = this.smsReachabilityCache.get(toNumber);
+    if (cached && cached.expiresAt > Date.now()) return cached.verdict;
+    try {
+      const rows = await this.prisma.smsLog.findMany({
+        where: {
+          direction: 'OUT',
+          toNumber,
+          createdAt: { gte: new Date(Date.now() - ENGINE_SMS_REACHABILITY_WINDOW_MS) },
+          status: { in: ['failed', 'undelivered', 'sent', 'delivered', 'received'] },
+        },
+        orderBy: { createdAt: 'desc' },
+        take: ENGINE_SMS_UNREACHABLE_STREAK,
+        select: { status: true, createdAt: true },
+      });
+      let streak = 0;
+      for (const r of rows) {
+        if (r.status === 'failed' || r.status === 'undelivered') streak += 1;
+        else break;
+      }
+      const verdict: SmsReachability = {
+        unreachable: rows.length >= ENGINE_SMS_UNREACHABLE_STREAK && streak >= ENGINE_SMS_UNREACHABLE_STREAK,
+        streak,
+        lastFailureAt: rows[0] && (rows[0].status === 'failed' || rows[0].status === 'undelivered') ? rows[0].createdAt : null,
+      };
+      this.smsReachabilityCache.set(toNumber, { expiresAt: Date.now() + ENGINE_SMS_REACHABILITY_CACHE_MS, verdict });
+      return verdict;
+    } catch (err) {
+      this.logger.warn(
+        { toNumber, error: err instanceof Error ? err.message : String(err) },
+        'Joignabilité SMS illisible — considérée joignable (T62)',
+      );
+      return joignable;
+    }
+  }
+
+  /** T62 — une sonde SMS est due quand le dernier échec date de plus de ENGINE_SMS_PROBE_INTERVAL_MS. */
+  private smsProbeDue(reach: SmsReachability): boolean {
+    if (!reach.lastFailureAt) return true;
+    return Date.now() - reach.lastFailureAt.getTime() >= ENGINE_SMS_PROBE_INTERVAL_MS;
+  }
+
+  /**
+   * T62 — coupe automatique sur une SIM injoignable par SMS : seulement si le boîtier est vivant
+   * en TCP maintenant (socket présente ET trame de moins de ENGINE_TCP_LIVE_MS). Sinon report.
+   */
+  private async assertTcpOnlyCutSafe(
+    tracker: { id: string; imei: string; simPhoneNumber: string | null; lastSeenAt: Date | null; vehicle: { id: string; fleetId: string; plate: string | null } },
+  ): Promise<void> {
+    const reach = await this.smsReachability(tracker.simPhoneNumber);
+    if (!reach.unreachable) return;
+    await this.signalTcpOnly(tracker, reach);
+    const silentMs = trackerSilenceMs(tracker.lastSeenAt);
+    const live = this.sessionRegistry.get(tracker.imei) !== undefined && silentMs != null && silentMs <= ENGINE_TCP_LIVE_MS;
+    if (live) return;
+    throw new ForbiddenException(
+      `Coupe auto suspendue : SIM injoignable par SMS (${reach.streak} échecs consécutifs) et boîtier hors TCP — véhicule en TCP seul, la coupe partira quand il sera connecté`,
+    );
+  }
+
+  /** T62 — une ligne DÉGRADATION par boîtier et par jour : « ce véhicule est en TCP seul ». */
+  private async signalTcpOnly(
+    tracker: { id: string; imei: string; simPhoneNumber: string | null; vehicle: { id: string; fleetId: string; plate: string | null } },
+    reach: SmsReachability,
+  ): Promise<void> {
+    const last = this.tcpOnlyAlertedAt.get(tracker.id) ?? 0;
+    if (Date.now() - last < ENGINE_TCP_ONLY_ALERT_SPACING_MS) return;
+    this.tcpOnlyAlertedAt.set(tracker.id, Date.now());
+    await this.errorLogger.record(
+      `Véhicule ${tracker.vehicle.plate ?? tracker.imei} en TCP seul : sa SIM est injoignable par SMS (${reach.streak} échecs consécutifs, dernier ${reach.lastFailureAt?.toISOString() ?? 'inconnu'}). ` +
+        'La coupe automatique n’est émise que boîtier connecté ; la remise en route repart en TCP toutes les 5 min et à chaque reconnexion ; un SMS-sonde par 6 h. ' +
+        'À traiter : test depuis un autre opérateur, ticket WhereverSIM, ou remplacement de la SIM.',
+      'engine-control-tcp-only',
+      {
+        trackerId: tracker.id,
+        imei: tracker.imei,
+        fleetId: tracker.vehicle.fleetId,
+        vehicleId: tracker.vehicle.id,
+        plate: tracker.vehicle.plate ?? undefined,
+        toNumber: tracker.simPhoneNumber ?? undefined,
+        streak: reach.streak,
+        lastFailureAt: reach.lastFailureAt?.toISOString() ?? null,
+      },
+      NIVEAU_DEGRADATION,
+    ).catch(() => undefined);
   }
 
   /** T48 — PENDING, hors bail, plus vieille que le bail : personne ne la dispatche plus. */
@@ -1611,6 +1755,7 @@ export class EngineControlService implements OnModuleDestroy {
     action: EngineAction,
     fleetId: string,
     allowSmsOnOfflineRestore = false,
+    source?: 'MANUAL' | 'SCHEDULER',
   ): Promise<EngineControlCommand> {
     const cobanCmd: CobanCommand =
       action === EngineAction.CUT
@@ -1652,7 +1797,7 @@ export class EngineControlService implements OnModuleDestroy {
       const smsAttemptNumber = Number(
         (command as EngineControlCommand & { smsAttemptCount?: number }).smsAttemptCount ?? 0,
       ) + 1;
-      const smsSent = await this.trySmsFallback(imei, action, command.id);
+      const smsSent = await this.trySmsFallback(imei, action, command.id, source);
       if (smsSent.ok) {
         await this.finishAttempt(
           attempt.id,
@@ -2085,6 +2230,24 @@ export class EngineControlService implements OnModuleDestroy {
           continue;
         }
 
+        // T62 — SIM injoignable par SMS et aucun SMS en vol : TCP toutes les 5 min, et un
+        // SMS-sonde au plus toutes les 6 h (s'il passe, la série d'échecs est rompue).
+        if (!command.smsLogId) {
+          const reach = await this.smsReachability(command.tracker.simPhoneNumber ?? null);
+          if (reach.unreachable && !this.smsProbeDue(reach)) {
+            await this.retryTcpOnly(
+              command.tracker.imei,
+              command,
+              fleetId,
+              ENGINE_TCP_ONLY_RETRY_MS,
+              `SIM injoignable par SMS (${reach.streak} échecs consécutifs) — TCP seul, prochaine sonde SMS dans ${Math.round(
+                Math.max(0, ENGINE_SMS_PROBE_INTERVAL_MS - (Date.now() - (reach.lastFailureAt?.getTime() ?? 0))) / 60_000,
+              )} min`,
+            );
+            continue;
+          }
+        }
+
         if (command.status === CommandStatus.PENDING) {
           await this.dispatchCommand(
             command.tracker.imei,
@@ -2249,8 +2412,10 @@ export class EngineControlService implements OnModuleDestroy {
     imei: string,
     command: EngineControlCommand,
     fleetId: string,
+    retryMs: number = ENGINE_RESTORE_TCP_RETRY_MS,
+    motif = 'Secours SMS épuisé',
   ): Promise<void> {
-    const retryAt = new Date(Date.now() + ENGINE_RESTORE_TCP_RETRY_MS);
+    const retryAt = new Date(Date.now() + retryMs);
     const payload = encodeCommand(imei, { type: 'engine_resume' });
     const sent = this.sessionRegistry.send(imei, payload);
     if (!sent) {
@@ -2260,8 +2425,7 @@ export class EngineControlService implements OnModuleDestroy {
           status: CommandStatus.SENT,
           nextAttemptAt: retryAt,
           dispatchLeaseUntil: null,
-          lastError:
-            'Secours SMS épuisé et boîtier hors ligne — K sera renvoyée dès sa reconnexion ou au prochain créneau',
+          lastError: `${motif} et boîtier hors ligne — K sera renvoyée dès sa reconnexion ou au prochain créneau`,
         },
       });
       this.emitUpdate(waiting, fleetId);
@@ -2285,11 +2449,11 @@ export class EngineControlService implements OnModuleDestroy {
         lastAttemptAt: writtenAt,
         nextAttemptAt: retryAt,
         dispatchLeaseUntil: null,
-        lastError: 'Secours SMS épuisé — K renvoyée en TCP, en attente d’ACK',
+        lastError: `${motif} — K renvoyée en TCP, en attente d’ACK`,
       },
     });
     this.emitUpdate(updated, fleetId);
-    this.logger.log({ commandId: command.id, attemptId: attempt.id, imei }, 'RESTORE relancée en TCP seul (T42)');
+    this.logger.log({ commandId: command.id, attemptId: attempt.id, imei, motif }, 'RESTORE relancée en TCP seul (T42/T62)');
 
     this.ackWaiter
       .waitForAck(imei, ENGINE_RESUME_ACK_PATTERN, ENGINE_ACK_TIMEOUT_MS, command.id, ENGINE_ACK_PRIORITY)
@@ -2585,6 +2749,7 @@ export class EngineControlService implements OnModuleDestroy {
     imei: string,
     action: EngineAction,
     commandId: string,
+    source?: 'MANUAL' | 'SCHEDULER',
   ): Promise<
     | {
         ok: true;
@@ -2604,6 +2769,18 @@ export class EngineControlService implements OnModuleDestroy {
     });
     if (!tracker?.simPhoneNumber) {
       return { ok: false, reason: 'aucun numéro SIM enregistré pour ce boîtier' };
+    }
+    // T62 — une COUPURE automatique ne dépense pas un SMS vers une SIM que rien n'atteint : la
+    // coupe est reportée ou échoue proprement. Une action MANUELLE (antivol) tente sa chance —
+    // et, si elle passe, rompt la série d'échecs.
+    if (action === EngineAction.CUT && source === 'SCHEDULER') {
+      const reach = await this.smsReachability(tracker.simPhoneNumber);
+      if (reach.unreachable) {
+        return {
+          ok: false,
+          reason: `SIM injoignable par SMS (${reach.streak} échecs consécutifs) — aucun SMS envoyé, véhicule en TCP seul`,
+        };
+      }
     }
     const smsPayload = action === EngineAction.CUT ? 'stop123456' : 'resume123456';
     const result = await this.sms.send(tracker.simPhoneNumber, smsPayload, {

@@ -192,6 +192,7 @@ describe('EngineControlService', () => {
     position: { findFirst: jest.Mock; count: jest.Mock };
     engineControlCommand: { create: jest.Mock; update: jest.Mock; updateMany: jest.Mock; findMany: jest.Mock; findUnique: jest.Mock; findFirst: jest.Mock };
     engineDeliveryAttempt: ReturnType<typeof faussesTentatives>;
+    smsLog: { findMany: jest.Mock };
     vehicleSchedule: { updateMany: jest.Mock; findFirst: jest.Mock };
   };
   let registry: { get: jest.Mock; send: jest.Mock };
@@ -214,6 +215,8 @@ describe('EngineControlService', () => {
       // T53 — présent dans TOUS les tests : chaque dispatch écrit ses tentatives et se heurte
       // aux contraintes de la migration.
       engineDeliveryAttempt: faussesTentatives(),
+      // T62 — joignabilité SMS lue dans sms_logs ; par défaut aucun historique = joignable.
+      smsLog: { findMany: jest.fn().mockResolvedValue([]) },
       vehicleSchedule: {
         updateMany: jest.fn().mockResolvedValue({ count: 0 }),
         findFirst: jest.fn().mockResolvedValue(null),
@@ -2945,6 +2948,166 @@ describe('EngineControlService', () => {
       release([]);
       await first;
       expect(prisma.engineControlCommand.findMany).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  /**
+   * ── T62 (14/09) — une SIM injoignable par SMS met le véhicule en « TCP seul » ──────────────
+   * Mesuré le 14/09 : HD-584-BF et BP-434-RD refusent tout SMS au départ, boîtiers en ligne.
+   */
+  describe('T62 — SIM injoignable par SMS = TCP seul', () => {
+    const SIM = '+345901030621099';
+    const trackerTcpSeul = { ...trackerWithVehicle, simPhoneNumber: SIM, lastSeenAt: new Date() };
+    const echecs = (n: number, ageMs = 60_000) =>
+      Array.from({ length: n }, (_, i) => ({ status: 'failed', createdAt: new Date(Date.now() - ageMs - i * 60_000) }));
+
+    it('smsReachability : trois échecs consécutifs = injoignable ; un succès rompt la série ; les queued ne comptent pas', async () => {
+      prisma.smsLog.findMany.mockResolvedValueOnce(echecs(3));
+      await expect(service.smsReachability(SIM)).resolves.toMatchObject({ unreachable: true, streak: 3 });
+      // Les `queued` ne sont pas demandés à la base (issue inconnue) : le filtre le dit.
+      expect(prisma.smsLog.findMany).toHaveBeenCalledWith(expect.objectContaining({
+        where: expect.objectContaining({ direction: 'OUT', toNumber: SIM, status: { in: ['failed', 'undelivered', 'sent', 'delivered', 'received'] } }),
+        take: 3,
+      }));
+      prisma.smsLog.findMany.mockResolvedValueOnce([{ status: 'failed', createdAt: new Date() }, { status: 'delivered', createdAt: new Date() }, { status: 'failed', createdAt: new Date() }]);
+      await expect(service.smsReachability('+345901030621101')).resolves.toMatchObject({ unreachable: false, streak: 1 });
+      prisma.smsLog.findMany.mockResolvedValueOnce(echecs(2));
+      await expect(service.smsReachability('+345901030621103')).resolves.toMatchObject({ unreachable: false, streak: 2 });
+      await expect(service.smsReachability(null)).resolves.toMatchObject({ unreachable: false, streak: 0 });
+    });
+
+    it('🔴 coupe AUTOMATIQUE, SIM injoignable, boîtier hors TCP → reportée (ForbiddenException), rien de persisté, UNE ligne DÉGRADATION par jour', async () => {
+      prisma.tracker.findFirst.mockResolvedValue(trackerTcpSeul);
+      prisma.position.findFirst.mockResolvedValue(recentPosition(0));
+      prisma.smsLog.findMany.mockResolvedValue(echecs(3));
+      registry.get.mockReturnValue(undefined);
+
+      await expect(service.requestCommand(TRACKER_ID, EngineAction.CUT, null, superAdmin, 'SCHEDULER'))
+        .rejects.toThrow(/TCP seul/);
+      expect(prisma.engineControlCommand.create).not.toHaveBeenCalled();
+      expect(errorLogger.record).toHaveBeenCalledWith(
+        expect.stringContaining('en TCP seul'),
+        'engine-control-tcp-only',
+        expect.objectContaining({ plate: 'AB-123-CD', toNumber: SIM, streak: 3 }),
+        'DEGRADATION',
+      );
+      errorLogger.record.mockClear();
+      await expect(service.requestCommand(TRACKER_ID, EngineAction.CUT, null, superAdmin, 'SCHEDULER')).rejects.toThrow(/TCP seul/);
+      expect(errorLogger.record).not.toHaveBeenCalled();
+    });
+
+    it('coupe AUTOMATIQUE, SIM injoignable, boîtier VIVANT en TCP → la coupe part en TCP, sans SMS', async () => {
+      prisma.tracker.findFirst.mockResolvedValue(trackerTcpSeul);
+      // Dernière position à l'arrêt, puis « aucune trame en mouvement dans la fenêtre » (garé).
+      prisma.position.findFirst.mockResolvedValueOnce(recentPosition(0)).mockResolvedValue(null);
+      prisma.smsLog.findMany.mockResolvedValue(echecs(3));
+      registry.get.mockReturnValue({ socket: {} });
+      registry.send.mockReturnValue(true);
+      const sms = testModule.get(SmsGatewayService) as unknown as { isEnabled: jest.Mock; send: jest.Mock };
+      sms.isEnabled.mockReturnValue(true);
+
+      const result = await service.requestCommand(TRACKER_ID, EngineAction.CUT, null, superAdmin, 'SCHEDULER');
+
+      expect(registry.send).toHaveBeenCalledWith(trackerTcpSeul.imei, expect.stringContaining(',J;'));
+      expect(sms.send).not.toHaveBeenCalled();
+      expect(result.status).toBe(CommandStatus.SENT);
+    });
+
+    it('coupe AUTOMATIQUE, SIM injoignable, socket disparue entre la garde et l envoi → FAILED proprement, aucun SMS dépensé', async () => {
+      prisma.tracker.findFirst.mockResolvedValue(trackerTcpSeul);
+      prisma.position.findFirst.mockResolvedValueOnce(recentPosition(0)).mockResolvedValue(null);
+      prisma.smsLog.findMany.mockResolvedValue(echecs(3));
+      registry.get.mockReturnValue({ socket: {} });
+      registry.send.mockReturnValue(false);
+      const sms = testModule.get(SmsGatewayService) as unknown as { isEnabled: jest.Mock; send: jest.Mock };
+      sms.isEnabled.mockReturnValue(true);
+
+      // Le cron reçoit une ServiceUnavailableException (report, pas d'avance d'état) ; la ligne
+      // est FAILED avec la raison, et pas un SMS n'est parti.
+      await expect(service.requestCommand(TRACKER_ID, EngineAction.CUT, null, superAdmin, 'SCHEDULER'))
+        .rejects.toThrow(ServiceUnavailableException);
+      expect(sms.send).not.toHaveBeenCalled();
+      const failed = prisma.engineControlCommand.update.mock.calls.map(([a]) => a.data).find((d) => d?.status === CommandStatus.FAILED);
+      expect(failed?.lastError).toContain('SIM injoignable par SMS');
+    });
+
+    it('une coupe MANUELLE (antivol) tente quand même le SMS : elle peut rompre la série', async () => {
+      prisma.tracker.findFirst.mockResolvedValue(trackerTcpSeul);
+      prisma.position.findFirst.mockResolvedValue(recentPosition(0));
+      prisma.smsLog.findMany.mockResolvedValue(echecs(3));
+      registry.send.mockReturnValue(false);
+      const sms = testModule.get(SmsGatewayService) as unknown as { isEnabled: jest.Mock; send: jest.Mock };
+      sms.isEnabled.mockReturnValue(true);
+      sms.send.mockResolvedValue({ ok: true, outcome: 'accepted', submittedStatus: 'queued', smsLogId: 'sms-manuel' });
+
+      const result = await service.requestCommand(TRACKER_ID, EngineAction.CUT, null, fleetAdmin, 'MANUAL');
+
+      expect(sms.send).toHaveBeenCalled();
+      expect(result.status).toBe(CommandStatus.SENT);
+    });
+
+    it('worker : une RESTORE en attente sur une SIM injoignable repart en TCP toutes les 5 min, sans SMS', async () => {
+      prisma.smsLog.findMany.mockResolvedValue(echecs(3));
+      registry.send.mockReturnValue(false);
+      const sms = testModule.get(SmsGatewayService) as unknown as { isEnabled: jest.Mock; send: jest.Mock };
+      sms.isEnabled.mockReturnValue(true);
+      prisma.engineControlCommand.findMany
+        .mockResolvedValueOnce([{
+          ...createdCommand({ action: EngineAction.RESTORE, status: CommandStatus.PENDING, channel: 'TCP', attemptCount: 1, smsAttemptCount: 0, smsLogId: null, sentAt: null, nextAttemptAt: new Date(Date.now() - 1_000), dispatchLeaseUntil: null, createdAt: new Date(Date.now() - 20_000) }),
+          tracker: { imei: trackerTcpSeul.imei, simPhoneNumber: SIM, vehicle: trackerTcpSeul.vehicle },
+        }])
+        .mockResolvedValue([]);
+
+      await service.processPendingRestores();
+
+      expect(sms.send).not.toHaveBeenCalled();
+      const maj = prisma.engineControlCommand.update.mock.calls.map(([a]) => a.data).find((d) => typeof d?.lastError === 'string' && d.lastError.includes('TCP seul'));
+      expect(maj).toBeDefined();
+      const dans = maj!.nextAttemptAt.getTime() - Date.now();
+      expect(dans).toBeGreaterThan(4 * 60_000);
+      expect(dans).toBeLessThanOrEqual(5 * 60_000);
+    });
+
+    it('worker : boîtier revenu en TCP → K part en TCP tout de suite, toujours sans SMS', async () => {
+      prisma.smsLog.findMany.mockResolvedValue(echecs(3));
+      registry.send.mockReturnValue(true);
+      const sms = testModule.get(SmsGatewayService) as unknown as { isEnabled: jest.Mock; send: jest.Mock };
+      sms.isEnabled.mockReturnValue(true);
+      prisma.engineControlCommand.findMany
+        .mockResolvedValueOnce([{
+          ...createdCommand({ action: EngineAction.RESTORE, status: CommandStatus.PENDING, channel: 'TCP', attemptCount: 1, smsAttemptCount: 0, smsLogId: null, sentAt: null, nextAttemptAt: new Date(Date.now() - 1_000), dispatchLeaseUntil: null, createdAt: new Date(Date.now() - 20_000) }),
+          tracker: { imei: trackerTcpSeul.imei, simPhoneNumber: SIM, vehicle: trackerTcpSeul.vehicle },
+        }])
+        .mockResolvedValue([]);
+
+      await service.processPendingRestores();
+
+      expect(registry.send).toHaveBeenCalledWith(trackerTcpSeul.imei, expect.stringContaining(',K;'));
+      expect(sms.send).not.toHaveBeenCalled();
+    });
+
+    it('worker : après 6 h sans nouvel échec, UN SMS-sonde est tenté (la voie SMS peut être revenue)', async () => {
+      prisma.smsLog.findMany.mockResolvedValue(echecs(3, 7 * 60 * 60_000));
+      registry.send.mockReturnValue(false);
+      prisma.tracker.findFirst.mockResolvedValue({ simPhoneNumber: SIM });
+      const sms = testModule.get(SmsGatewayService) as unknown as { isEnabled: jest.Mock; send: jest.Mock };
+      sms.isEnabled.mockReturnValue(true);
+      sms.send.mockResolvedValue({ ok: true, outcome: 'accepted', submittedStatus: 'queued', smsLogId: 'sms-sonde' });
+      prisma.engineControlCommand.findMany
+        .mockResolvedValueOnce([{
+          ...createdCommand({ action: EngineAction.RESTORE, status: CommandStatus.PENDING, channel: 'TCP', attemptCount: 1, smsAttemptCount: 0, smsLogId: null, sentAt: null, nextAttemptAt: new Date(Date.now() - 1_000), dispatchLeaseUntil: null, createdAt: new Date(Date.now() - 20_000) }),
+          tracker: { imei: trackerTcpSeul.imei, simPhoneNumber: SIM, vehicle: trackerTcpSeul.vehicle },
+        }])
+        .mockResolvedValue([]);
+
+      await service.processPendingRestores();
+
+      expect(sms.send).toHaveBeenCalledTimes(1);
+    });
+
+    it('base sms_logs illisible → considérée joignable : une panne de lecture ne bloque pas les coupes', async () => {
+      prisma.smsLog.findMany.mockRejectedValueOnce(new Error('DB down'));
+      await expect(service.smsReachability('+345901030621100')).resolves.toMatchObject({ unreachable: false });
     });
   });
 

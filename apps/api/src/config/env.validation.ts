@@ -90,6 +90,10 @@ const envSchema = z.object({
   ENGINE_RESTORE_TCP_RETRY_MIN: z.coerce.number().int().positive().default(30),
   // T51 : un clic manuel répond au plus tard après ce budget (ms) avec l'intention persistée — l'envoi finit derrière.
   ENGINE_MANUAL_RESPONSE_BUDGET_MS: z.coerce.number().int().positive().default(20000),
+  // T62 : N échecs SMS consécutifs vers une SIM = véhicule « TCP seul » (coupe auto seulement boîtier connecté,
+  // RESTORE relancée en TCP toutes les ENGINE_TCP_ONLY_RETRY_MIN, un SMS-sonde par 6 h).
+  ENGINE_SMS_UNREACHABLE_STREAK: z.coerce.number().int().min(2).default(3),
+  ENGINE_TCP_ONLY_RETRY_MIN: z.coerce.number().int().positive().default(5),
   // P0-1 (contre-expertise du 13/09) : une RESTORE « envoyée » sans preuve libère sa clé
   // d'unicité après cette échéance ; sans borne, la RESTORE du lendemain était avalée.
   ENGINE_RESTORE_EXPIRY_MIN: z.coerce.number().int().positive().default(240),
