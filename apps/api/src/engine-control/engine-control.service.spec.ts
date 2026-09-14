@@ -18,6 +18,63 @@ import { SmsGatewayService } from '../sms/sms-gateway.service';
 import { AutomaticCutWithheldException, EngineControlService, PresumedParkedException } from './engine-control.service';
 import { SystemActivityService } from '../system-activity/system-activity.service';
 import { computeNextTransition } from '../vehicle-schedules/schedule-evaluator';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+
+/**
+ * ══ T53 (contre-expertise du 13/09, P2-10) — LE JOURNAL DES TENTATIVES EST EXERCÉ ═══════════
+ *
+ * Le service lit le délégué `engineDeliveryAttempt` en duck-typing : absent du harnais, il
+ * rendait `beginAttempt`/`finishAttempt` INERTES — la suite était verte sans jamais écrire une
+ * tentative, et ni le CHECK des statuts ni l'unicité (commandId, attemptNumber) posés par la
+ * migration n'avaient tourné une seule fois. Le faux délégué ci-dessous rejoue les DEUX
+ * contraintes, lues dans le SQL de la migration lui-même : un statut inventé dans le code
+ * fait échouer un test ici avant d'échouer en production.
+ */
+const MIGRATION_TENTATIVES = readFileSync(
+  join(__dirname, '../../prisma/migrations/20260912110000_engine_delivery_reliability/migration.sql'),
+  'utf8',
+);
+function valeursDuCheck(contrainte: string): string[] {
+  const m = new RegExp(`CONSTRAINT "${contrainte}" CHECK \\(\\s*"\\w+" IN \\(([^)]*)\\)`).exec(MIGRATION_TENTATIVES);
+  if (!m) throw new Error(`contrainte ${contrainte} introuvable dans la migration`);
+  return [...m[1]!.matchAll(/'([A-Z_]+)'/g)].map((x) => x[1]!);
+}
+const ATTEMPT_CHANNELS = valeursDuCheck('engine_delivery_attempts_channel_check');
+const ATTEMPT_STATUSES = valeursDuCheck('engine_delivery_attempts_status_check');
+
+type LigneTentative = { id: string; commandId: string; attemptNumber: number; channel: string; status: string; finishedAt: Date | null } & Record<string, unknown>;
+
+function faussesTentatives() {
+  const rows: LigneTentative[] = [];
+  const violation = (code: string, message: string) => Object.assign(new Error(message), { code });
+  const verifier = (data: Record<string, unknown>) => {
+    if ('channel' in data && !ATTEMPT_CHANNELS.includes(String(data['channel']))) {
+      throw violation('23514', `engine_delivery_attempts_channel_check violée : ${String(data['channel'])}`);
+    }
+    if ('status' in data && !ATTEMPT_STATUSES.includes(String(data['status']))) {
+      throw violation('23514', `engine_delivery_attempts_status_check violée : ${String(data['status'])}`);
+    }
+  };
+  return {
+    rows,
+    create: jest.fn(async ({ data }: { data: Record<string, unknown> }) => {
+      verifier(data);
+      if (rows.some((r) => r.commandId === data['commandId'] && r.attemptNumber === data['attemptNumber'])) {
+        throw violation('P2002', `engine_delivery_attempts_commandId_attemptNumber_key violée : ${String(data['commandId'])}#${String(data['attemptNumber'])}`);
+      }
+      const row = { id: `attempt-${rows.length + 1}`, startedAt: new Date(), finishedAt: null, ...data } as unknown as LigneTentative;
+      rows.push(row);
+      return { id: row.id };
+    }),
+    updateMany: jest.fn(async ({ where, data }: { where: { id: string }; data: Record<string, unknown> }) => {
+      verifier(data);
+      const hits = rows.filter((r) => r.id === where.id);
+      for (const r of hits) Object.assign(r, data);
+      return { count: hits.length };
+    }),
+  };
+}
 
 const TRACKER_ID = '00000000-0000-0000-0000-000000000010';
 const VEHICLE_ID = '00000000-0000-0000-0000-000000000020';
@@ -130,6 +187,7 @@ describe('EngineControlService', () => {
     tracker: { findUnique: jest.Mock; findFirst: jest.Mock; findMany: jest.Mock };
     position: { findFirst: jest.Mock; count: jest.Mock };
     engineControlCommand: { create: jest.Mock; update: jest.Mock; updateMany: jest.Mock; findMany: jest.Mock; findUnique: jest.Mock; findFirst: jest.Mock };
+    engineDeliveryAttempt: ReturnType<typeof faussesTentatives>;
     vehicleSchedule: { updateMany: jest.Mock; findFirst: jest.Mock };
   };
   let registry: { get: jest.Mock; send: jest.Mock };
@@ -149,6 +207,9 @@ describe('EngineControlService', () => {
         findUnique: jest.fn(),
         findFirst: jest.fn(),
       },
+      // T53 — présent dans TOUS les tests : chaque dispatch écrit ses tentatives et se heurte
+      // aux contraintes de la migration.
+      engineDeliveryAttempt: faussesTentatives(),
       vehicleSchedule: {
         updateMany: jest.fn().mockResolvedValue({ count: 0 }),
         findFirst: jest.fn().mockResolvedValue(null),
@@ -2880,6 +2941,118 @@ describe('EngineControlService', () => {
       release([]);
       await first;
       expect(prisma.engineControlCommand.findMany).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  /**
+   * ── T53 (contre-expertise du 13/09, P2-10) — le journal des tentatives, enfin exercé ────────
+   * Voir `faussesTentatives` en tête de fichier : le CHECK et l'unicité de la migration sont
+   * rejoués à chaque écriture, dans TOUTE la suite. Ces tests fixent en plus ce que le service
+   * écrit réellement sur ses trois chemins (TCP acquitté, TCP absent, secours SMS).
+   */
+  describe('T53 — journal des tentatives exercé, contraintes de la migration rejouées', () => {
+    it('la migration porte bien un CHECK sur channel et sur status (les listes sont lues dans le SQL, pas recopiées)', () => {
+      expect(ATTEMPT_CHANNELS).toEqual(['TCP', 'SMS']);
+      expect(ATTEMPT_STATUSES).toEqual(expect.arrayContaining(['QUEUED', 'UNAVAILABLE', 'WRITTEN', 'ACCEPTED', 'DELIVERED', 'ACKNOWLEDGED', 'FAILED', 'TIMED_OUT']));
+      expect(ATTEMPT_STATUSES).toHaveLength(8);
+    });
+
+    it('le faux délégué REFUSE un statut hors CHECK et un doublon (commandId, attemptNumber) — la suite peut donc échouer sur une dérive', async () => {
+      const journal = prisma.engineDeliveryAttempt;
+      await expect(journal.create({ data: { commandId: 'c1', attemptNumber: 1, channel: 'TCP', status: 'INVENTE' } }))
+        .rejects.toThrow('engine_delivery_attempts_status_check');
+      await expect(journal.create({ data: { commandId: 'c1', attemptNumber: 1, channel: 'FAX', status: 'QUEUED' } }))
+        .rejects.toThrow('engine_delivery_attempts_channel_check');
+      const { id } = await journal.create({ data: { commandId: 'c1', attemptNumber: 1, channel: 'SMS', status: 'QUEUED' } });
+      await expect(journal.create({ data: { commandId: 'c1', attemptNumber: 1, channel: 'TCP', status: 'WRITTEN' } }))
+        .rejects.toMatchObject({ code: 'P2002' });
+      await expect(journal.updateMany({ where: { id }, data: { status: 'BIDON', finishedAt: new Date() } }))
+        .rejects.toThrow('engine_delivery_attempts_status_check');
+      await expect(journal.updateMany({ where: { id }, data: { status: 'ACCEPTED', finishedAt: new Date() } })).resolves.toEqual({ count: 1 });
+    });
+
+    it('garde anti-dérive : chaque statut littéral que le service passe à beginAttempt/finishAttempt figure dans le CHECK de la migration', () => {
+      const source = readFileSync(join(__dirname, 'engine-control.service.ts'), 'utf8');
+      const appels = [...source.matchAll(/(?:beginAttempt|finishAttempt)\(([^)]*)\)/g)].map((m) => m[1]!);
+      expect(appels.length).toBeGreaterThanOrEqual(10);
+      const statuts = new Set<string>();
+      for (const args of appels) {
+        for (const lit of args.matchAll(/'([A-Z][A-Z_]{3,})'/g)) {
+          if (!ATTEMPT_CHANNELS.includes(lit[1]!)) statuts.add(lit[1]!);
+        }
+      }
+      expect([...statuts].sort()).toEqual(['ACCEPTED', 'ACKNOWLEDGED', 'DELIVERED', 'FAILED', 'QUEUED', 'TIMED_OUT', 'UNAVAILABLE', 'WRITTEN']);
+      for (const s of statuts) expect(ATTEMPT_STATUSES).toContain(s);
+    });
+
+    it('une CUT transmise en TCP et acquittée laisse UNE tentative n°1 TCP : WRITTEN puis ACKNOWLEDGED, avec l écho brut', async () => {
+      prisma.tracker.findFirst.mockResolvedValue(trackerWithVehicle);
+      prisma.position.findFirst.mockResolvedValue(recentPosition(0));
+      registry.send.mockReturnValue(true);
+
+      await service.requestCommand(TRACKER_ID, EngineAction.CUT, null, fleetAdmin, 'MANUAL');
+      await new Promise((r) => setTimeout(r, 10));
+
+      const rows = prisma.engineDeliveryAttempt.rows;
+      expect(rows).toHaveLength(1);
+      expect(rows[0]).toMatchObject({ commandId: expect.any(String), attemptNumber: 1, channel: 'TCP', status: 'ACKNOWLEDGED', rawCode: 'ack-frame' });
+      expect(rows[0]!.finishedAt).toBeInstanceOf(Date);
+      // La création portait bien WRITTEN (l'écriture socket a réussi) avant l'acquittement.
+      expect(prisma.engineDeliveryAttempt.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ channel: 'TCP', status: 'WRITTEN' }) }));
+    });
+
+    it('une RESTORE sans socket au premier dispatch journalise une tentative TCP UNAVAILABLE — un statut que la migration accepte', async () => {
+      prisma.tracker.findFirst.mockResolvedValue(trackerWithVehicle);
+      registry.send.mockReturnValue(false);
+
+      const result = await service.requestCommand(TRACKER_ID, EngineAction.RESTORE, null, fleetAdmin, 'MANUAL');
+
+      expect(result.status).toBe(CommandStatus.PENDING);
+      expect(prisma.engineDeliveryAttempt.rows).toEqual([
+        expect.objectContaining({ attemptNumber: 1, channel: 'TCP', status: 'UNAVAILABLE', errorMessage: 'Socket TCP absente au premier dispatch' }),
+      ]);
+      expect(prisma.engineDeliveryAttempt.rows[0]!.finishedAt).toBeInstanceOf(Date);
+    });
+
+    it('une CUT sans socket part en SMS : tentative n°1 SMS, QUEUED puis ACCEPTED, corrélée au smsLogId et au providerId', async () => {
+      const sms = testModule.get(SmsGatewayService) as unknown as { isEnabled: jest.Mock; send: jest.Mock };
+      sms.isEnabled.mockReturnValue(true);
+      sms.send.mockResolvedValue({ ok: true, outcome: 'accepted', submittedStatus: 'queued', smsLogId: 'sms-42', twilioSid: 'prov-1' });
+      prisma.tracker.findFirst.mockResolvedValue({ ...trackerWithVehicle, simPhoneNumber: '+33600000000' });
+      prisma.position.findFirst.mockResolvedValue(recentPosition(0));
+      registry.send.mockReturnValue(false);
+
+      const result = await service.requestCommand(TRACKER_ID, EngineAction.CUT, null, fleetAdmin, 'MANUAL');
+
+      expect(result.status).toBe(CommandStatus.SENT);
+      expect(prisma.engineDeliveryAttempt.rows).toEqual([
+        expect.objectContaining({ attemptNumber: 1, channel: 'SMS', status: 'ACCEPTED', smsLogId: 'sms-42', providerId: 'prov-1', rawCode: 'queued' }),
+      ]);
+    });
+
+    it('la seconde tentative d une même intention porte le n°2 : la tentative TCP absente (n°1) et le secours SMS du worker ne collisionnent pas', async () => {
+      const sms = testModule.get(SmsGatewayService) as unknown as { isEnabled: jest.Mock; send: jest.Mock };
+      sms.isEnabled.mockReturnValue(true);
+      sms.send.mockResolvedValue({ ok: true, outcome: 'accepted', submittedStatus: 'queued', smsLogId: 'sms-43' });
+      prisma.tracker.findFirst.mockResolvedValue({ ...trackerWithVehicle, simPhoneNumber: '+33600000000' });
+      registry.send.mockReturnValue(false);
+      // Tentative n°1 : le clic manuel, socket absente.
+      const attente = await service.requestCommand(TRACKER_ID, EngineAction.RESTORE, null, fleetAdmin, 'MANUAL');
+      expect(attente.attemptCount).toBe(1);
+      // Tentative n°2 : le worker relit l'intention (attemptCount = 1) et passe au secours SMS.
+      prisma.engineControlCommand.findMany
+        .mockResolvedValueOnce([{
+          ...createdCommand({ action: EngineAction.RESTORE, status: CommandStatus.PENDING, channel: 'TCP', attemptCount: 1, smsAttemptCount: 0, smsLogId: null, sentAt: null, lastAttemptAt: new Date(Date.now() - 20_000), nextAttemptAt: new Date(Date.now() - 1_000), dispatchLeaseUntil: null, createdAt: new Date(Date.now() - 20_000) }),
+          tracker: { imei: trackerWithVehicle.imei, vehicle: trackerWithVehicle.vehicle },
+        }])
+        .mockResolvedValue([]);
+
+      await service.processPendingRestores();
+
+      const numeros = prisma.engineDeliveryAttempt.rows.map((r) => `${r.attemptNumber}:${r.channel}:${r.status}`);
+      expect(numeros[0]).toBe('1:TCP:UNAVAILABLE');
+      expect(numeros.length).toBeGreaterThanOrEqual(2);
+      expect(new Set(prisma.engineDeliveryAttempt.rows.map((r) => r.attemptNumber)).size).toBe(prisma.engineDeliveryAttempt.rows.length);
     });
   });
 });
