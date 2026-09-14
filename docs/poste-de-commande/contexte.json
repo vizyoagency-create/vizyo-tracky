@@ -1,7 +1,7 @@
 {
   "_comment": "Ce que le POSTE DE COMMANDE montre en plus des tâches. Les tâches, elles, viennent de docs/centre-alerte/app/taches.json et ne se recopient JAMAIS ici — voir generer.mjs. Ce fichier ne porte que ce qu'aucune tâche ne décrit : les mesures de tête, les mécaniques qui tournent seules, les décisions posées au propriétaire, et ce qui est prouvé.",
   "version": 1,
-  "releve": "14 septembre 2026, 08:05 UTC",
+  "releve": "14 septembre 2026, 09:05 UTC",
   "machines": [
     {
       "nom": "Rattrapage du recalage des tracés",
@@ -21,11 +21,11 @@
     },
     {
       "nom": "Coupe-circuit automatique — À L’ARRÊT",
-      "texte": "37 plannings coupés par toi le 11/09 à 20 h 49, après la reprise matinale manquée de 12 véhicules sur 26. Contre-expertise du 13/09 : NO-GO en l'état. Au 14/09 09:40 : TOUT le code faisable seul est committé dans les branches (T40 à T53, T56 — 24 commits, suites vertes), la procédure est écrite (T47) et le TÉLÉPHONE est configuré (T43 : ping 60 s prouvé, FIFO, délais, limite, veille OFF). Les tests SMS du matin ont rendu 8 SIM sur 10 « injoignables » à la vie ; 2 restent KO (HD-584-BF, BP-434-RD) : TCP seul pour elles. Restent ce qui n'avance que par toi : relecture et fusion, la fenêtre de déploiement ensemble (doc 25), 24 h de preuve, la recette T54, ta décision T38. Production toujours sans les correctifs.",
+      "texte": "37 plannings coupés par toi le 11/09 à 20 h 49. Contre-expertise du 13/09 : NO-GO en l'état. Au 14/09 11:00 : TOUT est corrigé, testé et FUSIONNÉ sur main (Tracky #138, relais #9) — y compris T62, qui met un véhicule à SIM injoignable en « TCP seul » — et le téléphone est configuré (ping 60 s prouvé). Rien n'est déployé : la production tourne sur 9afdf52a (ton chantier rdv de ce matin), sans le coupe-circuit. Restent, ensemble : les prérequis J-1 (T63), la fenêtre de déploiement (T47, checklist en 12 points), 24 h de preuve lues par la routine (T65), la recette T54, puis ta décision T38.",
       "fait": null,
       "total": null,
       "pied": "0 planning actif sur 37",
-      "pied2": "réactivation sur ta décision (T38), après fusion → fenêtre doc 25 → T54"
+      "pied2": "réactivation sur ta décision (T38), après T63 → T47 → T65 → T54"
     }
   ],
   "chiffres": [
@@ -284,6 +284,11 @@
     }
   ],
   "faits": [
+    {
+      "d": "14/09",
+      "quoi": "Fusionné : le chantier coupe-circuit est sur main (Tracky #138, relais #9), avec T62 « SIM injoignable = TCP seul » — il ne reste que la fenêtre de déploiement, ensemble",
+      "preuve": "Fusions en merge commit après <code>pnpm verify</code> sur la branche puis sur la branche fusionnée avec <code>origin/main</code> : typecheck vert, smoke 5/5, partagé 423, API <b>262 suites / 4 145 tests</b>, web 740 ; relais 7/55. T62 (doc 35) répond à la question du jour : on ne sait pas encore <i>où</i> deux SIM sont refusées (Free, le fournisseur ou la carte — un SMS depuis un autre opérateur tranche), mais le système le SAIT désormais : coupe automatique seulement boîtier connecté, remise en route en TCP toutes les 5 min et à chaque reconnexion, un SMS-sonde par 6 h, une ligne par jour. La routine du centre d'alerte lira les 24 h de preuve (six verdicts, T65). Production inchangée : <code>9afdf52a</code>."
+    },
     {
       "d": "14/09",
       "quoi": "Plus rien à coder sans toi : T58, T59, T60 committés sur main, la copie périmée retirée, la fiche de fusion écrite",

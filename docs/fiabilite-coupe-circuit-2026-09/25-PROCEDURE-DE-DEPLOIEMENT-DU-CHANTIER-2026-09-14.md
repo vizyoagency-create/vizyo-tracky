@@ -32,7 +32,7 @@ Vérifié le 14/09 : `main` a avancé de trois commits depuis la base (`8f1a6c3e
 `111ead09` — outils et audits) et **aucun fichier n'est touché des deux côtés** : la fusion est
 sans conflit. Le rebase se refait au moment de fusionner, avec la suite complète derrière.
 
-Production au 14/09 : Tracky `main` `66d286f5` ; relais `origin/main` `5199f1f` ; serveur capcom6
+Production au 14/09 (08:20 UTC, chantier rdv déployé par le propriétaire) : Tracky `main` `9afdf52a` (sans le chantier coupe-circuit, fusionné ensuite en `08c5fc2d`) ; relais `origin/main` `5199f1f` ; serveur capcom6
 **v1.43.0** (`ghcr.io/android-sms-gateway/server`, étiquette `latest` non épinglée — corrigé dans
 ce commit, voir §4.3).
 
@@ -92,7 +92,7 @@ ls -la /var/backups/ | tail -n 6            # trois fichiers récents, tailles p
 
 ```bash
 # ce qui tourne (à conserver dans les notes de la fenêtre) :
-cd /opt/vizyo-tracky && git status --short && git log --oneline -1          # propre, 66d286f5 attendu
+cd /opt/vizyo-tracky && git status --short && git log --oneline -1          # propre, 9afdf52a attendu (ou le sha déployé depuis — journal.jsonl fait foi)
 docker images --format '{{.Repository}}:{{.Tag}} {{.ID}}' | grep -E 'tracky-(api|web)|sms-gateway/server|vizyo-texto'
 curl -s -H "Authorization: Bearer $VIZYO_TEXTO_API_KEY" https://<texto>/v1/texto/health | python3 -m json.tool   # provider.version = 1.43.0 attendu
 
@@ -265,7 +265,7 @@ production.
 bash /opt/vizyo-tracky/deploy/vps/deploy.sh            # refuse si un passage tourne ou de HH:42 à HH:46 ; --attendre patiente
 ```
 
-Le script pose les repères `avant-<horodatage>-66d286f5` (noter l'étiquette affichée : c'est
+Le script pose les repères `avant-<horodatage>-<sha déployé, 9afdf52a au 14/09>` (noter l'étiquette affichée : c'est
 la commande de repli), reconstruit (cache : rapide), relit la garde, recrée `api` et `web`. La
 migration s'applique **au démarrage du conteneur** (`prisma migrate deploy && node dist/main.js`).
 
@@ -295,7 +295,7 @@ Puis dans l'application (super-admin) :
   relais, ou écho). Un `INDETERMINE` ici veut dire que les statuts n'arrivent pas : vérifier P4 et
   la livraison `webhook_deliveries` côté relais.
 
-Rollback (à tout moment de 6.3/6.4) : `bash deploy.sh --repli avant-<horodatage>-66d286f5`. La
+Rollback (à tout moment de 6.3/6.4) : `bash deploy.sh --repli avant-<horodatage>-<sha déployé, 9afdf52a au 14/09>`. La
 migration **reste** : elle est additive (colonnes nullables ou avec défaut, table neuve), l'ancien
 client Prisma ignore les colonnes qu'il ne connaît pas. Ne jamais vider `engine_control_commands`.
 
@@ -326,7 +326,7 @@ réactivation par groupes de 3 à 5, surveillance 04:45–05:30 et 06:45–07:30
 
 | Couche | Geste | Ce qui reste |
 |---|---|---|
-| Tracky | `deploy.sh --repli avant-<horodatage>-66d286f5` ; `ENGINE_AUTOMATIC_CUT_ENABLED=false` ; plannings off | migration conservée (additive) ; `engine_control_commands` jamais vidée |
+| Tracky | `deploy.sh --repli avant-<horodatage>-<sha déployé, 9afdf52a au 14/09>` ; `ENGINE_AUTOMATIC_CUT_ENABLED=false` ; plannings off | migration conservée (additive) ; `engine_control_commands` jamais vidée |
 | Relais | `git checkout 5199f1f`, `build relay`, `up -d relay` | base inchangée (aucune migration) |
 | capcom6 | `CAPCOM6_SERVER_TAG=v1.43.0` + **restauration du dump MariaDB** + `up -d capcom6 capcom6-worker` | le téléphone se reconnecte seul |
 | Téléphone | rien à défaire (les réglages T43 sont sans risque) | — |

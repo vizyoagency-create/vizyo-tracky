@@ -5,6 +5,37 @@
 
 ---
 
+## 🔴 À PARTIR DU DÉPLOIEMENT DU CHANTIER COUPE-CIRCUIT — LES 24 H DE PREUVE, À CHAQUE PASSAGE
+
+> Ajouté le 14/09/2026 (T65). Le chantier `docs/fiabilite-coupe-circuit-2026-09/` est fusionné sur `main` ; il
+> sera déployé dans une fenêtre décidée avec le propriétaire (doc 25). **Tant que `deploy.sh` n'a pas déployé un
+> `main` postérieur à la fusion, cette section ne s'applique pas** — le vérifier d'abord :
+> `tail -1 /opt/tracky-deploiements/journal.jsonl` (le `sha` déployé) contre `git log --oneline -1 origin/main`.
+> Dès qu'il s'applique, **chaque passage** doit rendre les six verdicts ci-dessous, avec l'heure de lecture. Un
+> verdict manquant est un verdict « non prouvé », jamais un verdict « OK par défaut » (règle VPS-M94 : ne pas comparer
+> une valeur à elle-même, ne pas conclure d'un silence).
+
+Tout se lit **sans rien écrire** — SQL sur `tracky-postgres`, GET sur le relais depuis le conteneur `texto-relay`.
+
+| # | Ce qu'on vérifie | Comment (lecture seule) | Verdict OK | Sinon |
+|---|---|---|---|---|
+| 1 | **La preuve SMS quotidienne** est partie à 04:30 et 06:30 (Paris) et vérifiée OK à +15 min | `SELECT to_char("createdAt",'DD HH24:MI') AS h, level, left(message,110) FROM error_logs WHERE source='sms-daily-proof' AND "createdAt" > now()-interval '36 hours' ORDER BY "createdAt";` — **et** le journal du conteneur : `docker logs --since 36h tracky-api 2>&1 \| grep -a "Preuve SMS quotidienne" \| tail -6` (sous `timeout 20`, VPS-041) | deux passages « acceptée » et deux `verdict=OK` par jour, **aucune** ligne `sms-daily-proof` au centre d'alerte | une ligne `INDETERMINE` = on ne sait pas si les SMS partent ; `ECHEC`/`NON_EMIS` = les coupes du soir seront refusées par l'interlock — le dire en 🔴, nommer l'heure |
+| 2 | **La sentinelle Android** s'est tue | `SELECT count(*), min("createdAt"), max("createdAt") FROM error_logs WHERE source='sms-gateway-watchdog' AND "createdAt" > now()-interval '24 hours';` | **0 ligne** sur 24 h | une ligne = un épisode STALE/OFFLINE du téléphone : lire `error`/`state` dans `context`, corréler avec le point 3 |
+| 3 | **Le téléphone ping** toutes les 60 s | `docker exec texto-relay sh -c 'AUTH=$(printf "%s:%s" "$CAPCOM6_USERNAME" "$CAPCOM6_PASSWORD" \| base64 \| tr -d "\n"); wget -qO- --timeout=8 --header="Authorization: Basic $AUTH" "$CAPCOM6_API_URL/3rdparty/v1/devices"' \| grep -o '"lastSeen":"[^"]*"' ; date -u` — **ne jamais afficher** username/password | `lastSeen` vieux de **moins de 240 s** ; deux lectures à 90 s d'écart donnent deux valeurs | > 240 s = le S21 ne pingue plus (écran, batterie, app tuée) : 🔴, prévenir le propriétaire (doc 33 §6) |
+| 4 | **Les conditions exactes de l'interlock** | `GET /api/admin/sms/status` (avec le jeton super-admin de l'agent — jamais dans le rapport) : `lastTerminalSuccessAt` < 24 h, `gateway.operational: true`, `device.state: ONLINE`, `queue.depth` < 10 | les quatre à la fois | sinon l'interlock refuse toute coupe automatique le soir même — le rapport doit le dire AVANT 19:30 |
+| 5 | **Aucune RESTORE non prouvée** qui traîne | `SELECT c.status, c.channel, c."smsAttemptCount", to_char(c."createdAt",'DD HH24:MI') AS cree, coalesce(v.plate,t.imei) AS vehicule, left(c."lastError",80) FROM engine_control_commands c JOIN trackers t ON t.id=c."trackerId" LEFT JOIN vehicles v ON v.id=t."vehicleId" WHERE c.action='RESTORE' AND c."ackedAt" IS NULL AND c.status IN ('PENDING','SENT','FAILED') AND c."createdAt" > now()-interval '24 hours' ORDER BY c."createdAt";` | **0 ligne** (ou des lignes de moins de 15 min) | chaque ligne = un véhicule peut-être immobilisé : plaque, canal, depuis quand ; les lignes `engine-control-restore` du centre d'alerte doivent se rappeler toutes les 15 min (T51) — si elles ne le font pas, c'est un défaut à ouvrir |
+| 6 | **Les véhicules « TCP seul »** (SIM injoignable par SMS, T62) | `SELECT to_char("createdAt",'DD HH24:MI'), context->>'plate', context->>'streak' FROM error_logs WHERE source='engine-control-tcp-only' AND "createdAt" > now()-interval '24 hours';` | la liste est connue et **n'a pas grossi** (au 14/09 : HD-584-BF, BP-434-RD) | un véhicule nouveau = sa SIM vient de tomber : 🔴, il n'a plus de secours SMS ; un véhicule disparu de la liste = sa SIM répond à nouveau (le dire aussi) |
+
+Et pendant la **réactivation progressive** (T38, après la recette T54), deux fenêtres de plus, **à lire chaque
+matin** : 04:45–05:30 et 06:45–07:30 (Paris) — la liste **nominative** des véhicules dont la RESTORE du matin n'est pas
+prouvée à 05:10 et à 07:10 (requête du point 5 bornée à `createdAt > now()-interval '2 hours'`), et les lignes
+`engine-control-interlock` de la veille au soir (une coupe **retenue** par le kill-switch ou l'interlock n'est pas une
+panne par véhicule — T49 : une ligne par cause, avec le compte et les plaques).
+
+Le rapport reprend ces six verdicts dans une section « Coupe-circuit — 24 h de preuve » placée **avant** « Chiffres ».
+
+---
+
 ## 🟢 PASSAGE DU 2026-09-05 — CONSIGNE PARTICULIÈRE, À LIRE AVANT LA COLLECTE
 
 **La journée du 04/09 est CLOSE.** Audit du matin **+ une passe de correction** demandée par le
