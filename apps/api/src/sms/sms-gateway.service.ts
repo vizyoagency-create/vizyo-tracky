@@ -9,6 +9,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { toE164 } from '../common/utils/phone';
 import type { SmsTemplateId } from '../communications/communications.catalog';
 import { SystemActivityService } from '../system-activity/system-activity.service';
+import { AllowlistService } from './allowlist.service';
 
 /**
  * V1.5 (Sprint I) — SMS Gateway via Twilio.
@@ -259,6 +260,11 @@ export class SmsGatewayService implements OnModuleInit {
     private readonly eventEmitter: EventEmitter2,
     private readonly systemActivity: SystemActivityService,
     @Optional() @Inject(ConfigService) private readonly config?: ConfigService<Env, true>,
+    /**
+     * T52 (contre-expertise du 13/09, P2-9) — l'allowlist du relais ne doit pas rester sur le
+     * chemin d'une remise en route. Facultatif : les specs construisent le service sans lui.
+     */
+    @Optional() @Inject(AllowlistService) private readonly allowlist?: AllowlistService,
   ) {
     this.textoUrl = (this.config?.get('VIZYO_TEXTO_URL', { infer: true }) ?? '').replace(/\/+$/, '');
     this.textoApiKey = this.config?.get('VIZYO_TEXTO_API_KEY', { infer: true }) ?? '';
@@ -939,6 +945,7 @@ export class SmsGatewayService implements OnModuleInit {
     to: string,
     body: string,
     context: SmsSendContext,
+    retriedAfterAllowlist = false,
   ): Promise<SendSmsResult> {
     try {
       // B1 — timeout 10s pour ne pas rester pendu si le relay hang.
@@ -981,6 +988,35 @@ export class SmsGatewayService implements OnModuleInit {
       // A2 — HTTP non-2xx : log dans ErrorLog.
       if (!res.ok) {
         const errorMessage = data.message ?? data.error ?? `HTTP ${res.status}`;
+        // ══ T52 — L'ALLOWLIST NE BLOQUE PAS UNE REMISE EN ROUTE ═══════════════════════════════
+        // Un 403 « hors allowlist » comptait comme un refus de soumission, trois fois, puis plus
+        // aucun SMS : la garde anti-spam du relais restait sur le chemin de la restauration. Le
+        // relais garde sa garde ; c'est Tracky — seul détenteur de la clé d'allowlist — qui
+        // répare la sienne : le numéro du boîtier est ajouté à la volée, l'envoi est retenté
+        // UNE fois, et une ligne dit que l'allowlist avait dérivé (la synchro a manqué un SIM).
+        if (
+          !retriedAfterAllowlist &&
+          res.status === 403 &&
+          /allowlist/i.test(errorMessage) &&
+          context['priority'] === 'critical_restore' &&
+          this.allowlist
+        ) {
+          try {
+            await this.allowlist.add(to, `RESTORE ${context.imei ?? ''} — ajout automatique (T52)`.trim());
+            this.errorLogger.record(
+              `Allowlist du relais incomplète : ${to} ajouté à la volée pour une remise en route (la synchronisation avait manqué ce boîtier)`,
+              'sms-gateway',
+              { imei: context?.imei, toNumber: to, provider: 'vizyo-texto', phase: 'allowlist-self-heal' },
+            ).catch(() => undefined);
+            this.logger.warn(`T52 : ${to} ajouté à l'allowlist du relais, nouvel essai d'envoi (RESTORE)`);
+            return this.sendViaVizyoTexto(to, body, context, true);
+          } catch (addErr) {
+            this.logger.error(
+              `T52 : ajout de ${to} à l'allowlist impossible — ${addErr instanceof Error ? addErr.message : String(addErr)}`,
+            );
+            // On retombe sur le traitement d'échec ordinaire ci-dessous.
+          }
+        }
         await this.prisma.smsLog.create({
           data: {
             direction: 'OUT',

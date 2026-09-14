@@ -497,6 +497,86 @@ describe('SmsGatewayService — idempotence des webhooks terminaux', () => {
  * Deux gardes : le relais reçoit une validité (`ttlSeconds`) que le téléphone applique, et une
  * CUT supplantée fait annuler son SMS encore en attente.
  */
+/**
+ * ── T52 (contre-expertise du 13/09, P2-9) — l'allowlist ne bloque pas une remise en route ──
+ * Un 403 « hors allowlist » comptait comme un refus, trois fois, puis plus de SMS. Tracky répare
+ * l'allowlist du relais à la volée pour une RESTORE, et retente une fois.
+ */
+describe('SmsGatewayService — allowlist non bloquante pour une RESTORE (T52)', () => {
+  const build = (allowlist?: { add: jest.Mock }) => {
+    const prisma = {
+      smsLog: {
+        create: jest.fn().mockImplementation(({ data }) => Promise.resolve({ id: 'log-1', ...data })),
+        findUnique: jest.fn().mockResolvedValue(null),
+        update: jest.fn().mockResolvedValue({}),
+      },
+    };
+    const errorLogger = { record: jest.fn().mockResolvedValue('id') };
+    const config = { get: jest.fn((key: string) => ({ VIZYO_TEXTO_URL: 'https://texto.test', VIZYO_TEXTO_API_KEY: 'secret-key', SMS_MIN_INTERVAL_MS: 0 })[key]) };
+    const service = new SmsGatewayService(prisma as never, errorLogger as never, { emit: jest.fn() } as never, { record: jest.fn() } as never, config as never, allowlist as never);
+    return { service, prisma, errorLogger };
+  };
+  const refus403 = () => new Response(JSON.stringify({ message: 'Destinataire +33600000000 hors allowlist du tenant "Tracky"' }), { status: 403 });
+  const accepte = () => new Response(JSON.stringify({ id: 'msg-2', status: 'queued', providerId: 'cap-2' }), { status: 202 });
+
+  afterEach(() => jest.restoreAllMocks());
+
+  it('🔴 un 403 « hors allowlist » sur une RESTORE : le numéro est ajouté, l envoi retenté UNE fois, une ligne dit la dérive', async () => {
+    const fetchSpy = jest.spyOn(global, 'fetch').mockImplementationOnce(async () => refus403()).mockImplementationOnce(async () => accepte());
+    const allowlist = { add: jest.fn().mockResolvedValue({ phone: '+33600000000' }) };
+    const { service, prisma, errorLogger } = build(allowlist);
+
+    const res = await service.send('+33600000000', 'resume123456', { template: 'engine_control_fallback', priority: 'critical_restore', imei: '123456789012345' });
+
+    expect(allowlist.add).toHaveBeenCalledWith('+33600000000', expect.stringContaining('T52'));
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    expect(res).toMatchObject({ ok: true, outcome: 'accepted', twilioSid: 'cap-2' });
+    // Pas de ligne « failed » pour le 403 réparé : la seule ligne d'audit est l'envoi accepté.
+    const failed = prisma.smsLog.create.mock.calls.filter(([arg]) => arg?.data?.status === 'failed');
+    expect(failed).toHaveLength(0);
+    expect(errorLogger.record).toHaveBeenCalledWith(expect.stringContaining('Allowlist du relais incomplète'), 'sms-gateway', expect.objectContaining({ phase: 'allowlist-self-heal', imei: '123456789012345' }));
+  });
+
+  it('une COUPURE (engine_cut) hors allowlist reste refusée : la garde du relais ne se contourne que pour une remise en route', async () => {
+    const fetchSpy = jest.spyOn(global, 'fetch').mockImplementation(async () => refus403());
+    const allowlist = { add: jest.fn() };
+    const { service, prisma } = build(allowlist);
+
+    const res = await service.send('+33600000000', 'stop123456', { template: 'engine_control_fallback', priority: 'engine_cut' });
+
+    expect(allowlist.add).not.toHaveBeenCalled();
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(res).toMatchObject({ ok: false, outcome: 'failed' });
+    expect(prisma.smsLog.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ status: 'failed' }) }));
+  });
+
+  it('si le second essai est encore refusé, on ne boucle pas : échec ordinaire, une seule réparation', async () => {
+    const fetchSpy = jest.spyOn(global, 'fetch').mockImplementation(async () => refus403());
+    const allowlist = { add: jest.fn().mockResolvedValue({}) };
+    const { service } = build(allowlist);
+
+    const res = await service.send('+33600000000', 'resume123456', { template: 'engine_control_fallback', priority: 'critical_restore' });
+
+    expect(allowlist.add).toHaveBeenCalledTimes(1);
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    expect(res.ok).toBe(false);
+  });
+
+  it('un ajout impossible (relais injoignable pour l allowlist) retombe sur l échec ordinaire, sans lever', async () => {
+    jest.spyOn(global, 'fetch').mockImplementation(async () => refus403());
+    const allowlist = { add: jest.fn().mockRejectedValue(new Error('allowlist HTTP 503')) };
+    const { service } = build(allowlist);
+    await expect(service.send('+33600000000', 'resume123456', { template: 'engine_control_fallback', priority: 'critical_restore' })).resolves.toMatchObject({ ok: false });
+  });
+
+  it('sans AllowlistService injecté (specs, outils) : comportement d avant', async () => {
+    const fetchSpy = jest.spyOn(global, 'fetch').mockImplementation(async () => refus403());
+    const { service } = build(undefined);
+    await expect(service.send('+33600000000', 'resume123456', { template: 'engine_control_fallback', priority: 'critical_restore' })).resolves.toMatchObject({ ok: false });
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe('SmsGatewayService — validité, priorité et annulation au relais (T41)', () => {
   const build = (log: Record<string, unknown> | null = null) => {
     const prisma = {
