@@ -30,7 +30,7 @@ distinguent que par un test que Tracky ne peut pas faire seul :
 3. **Un défaut de ces deux cartes** (ou de leur inscription réseau) qui ne se voit ni dans la session data ni côté
    TCP — la carte échange des données mais n'est pas joignable pour un SMS.
 
-Le premier test qui tranche coûte **un SMS** : `check123456` vers `+345901030621099` depuis une SIM d'un **autre
+Le premier test qui tranche coûte **un SMS** : `check123456` vers la SIM de HD-584-BF (numéro dans Tracky, fiche du boîtier) depuis une SIM d'un **autre
 opérateur** (Orange, SFR, Bouygues). S'il est remis, c'est Free (2) ; s'il échoue aussi, c'est la carte ou son
 provisionnement (1 ou 3) → ticket WhereverSIM avec les deux ICCID, ou remplacement des deux SIM par deux cartes du
 stock (24 « Prête à activer » dans Tracky) et mise à jour du numéro sur les deux boîtiers.
