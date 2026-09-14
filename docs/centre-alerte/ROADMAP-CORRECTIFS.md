@@ -247,9 +247,9 @@ d'une section à l'autre sans le dire, ou cocher `[x]` sur la foi d'une fiche pl
 | ☑ | **T31** | TRK-069 | Une cause commune = **UNE** ligne `DEGRADATION`, levée au premier succès — **et `13471c53` : cinq contrôles sans rechute** sur l'échec ancien (14/09) | ✅ **FAIT ET PROUVÉ** `a8f9575e` |
 | ☑ | **T32** | TRK-071 · 069 | Parade au plafond de la CLI — **D3 à D7 tranchées le 13/09** (pas d'API pour les agents, tous les trajets narrés, le poste sait qu'il est au plafond = T34, Opus pour les audits, second abonnement plus tard = T35) | ✅ **FAIT** *(décisions)* |
 | ☑ | **T33** | TRK-077 | **`deploy.sh` rendu INCONTOURNABLE — détecté, pas empêché** : journal des déploiements + sentinelle « déploiement hors script », **exercée volontairement** le 13/09 12:55 → ligne 12:57 | ✅ **FAIT** `18c975ee` |
-| ☐ | **T58** | TRK-069 | 🆕 **La clé de refroidissement de la sentinelle des agents doit porter la CAUSE** — l'échec `SyntaxError` de `courrier-ia` (13/09 17:52) est muet sous la clé consommée par « weekly limit » ; et `courrier-ia` doit lire le **premier objet JSON équilibré** *(test daté 14/09 03:50 UTC)* | 🔧 À CODER |
-| ☐ | **T59** | TRK-079 | 🆕 **Ne plus remonter les `fetch` avortés par la fermeture de page sur le canal anonyme** — 4 lignes de deux robots EC2, bruit | 🔧 À CODER |
-| ☐ | **T60** | main · 152883ec | 🆕 **`fenetre-utile.spec.ts` (trajets) tient à la milliseconde** — deux `Date.now()` distincts, rouge sous charge (vu le 14/09 en suite complète, vert relancé seul) — à figer, sur `main` | 🔧 À CODER |
+| ~ | **T58** | TRK-069 | La clé de refroidissement d'un échec porte l'empreinte de sa cause ; `courrier-ia` lit le premier objet JSON équilibré | ~ **COMMITÉ** `22ec4c1f` sur `main` — *à déployer* |
+| ~ | **T59** | TRK-079 | Un fetch avorté par la fermeture de la page ne remonte plus ; le canal anonyme ne remonte que les bugs JS | ~ **COMMITÉ** `25fa2af9` sur `main` — *à déployer* |
+| ~ | **T60** | main · 152883ec | `fenetre-utile.spec.ts` lit une seule horloge (figée) | ~ **COMMITÉ** `c8fd9be8` sur `main` |
 | ☐ | **T61** | TRK-066 · S21 · doc 10 | 🆕 **Deux SIM restent injoignables par SMS depuis le S21** (HD-584-BF, BP-434-RD — `failed` au départ le 14/09 09:34, boîtiers en ligne) ; les 8 autres sont revenues après remise en état du téléphone (…621085 : delivered en 8 s) ; TCP seul pour ces deux-là ; 1 SMS depuis un autre opérateur ou ticket WhereverSIM | 🤝 HUMAIN |
 
 #### Chantier coupe-circuit — contre-expertise du 13/09 *(T40 → T57, nées le 13/09 au soir ; T34 → T39 vivent dans `app/taches.json`)*

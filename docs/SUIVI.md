@@ -14,7 +14,7 @@
 > `centre-alerte/app/taches.json` + `poste-de-commande/contexte.json`. Ce fichier-ci est rendu des mêmes sources ;
 > quand ils divergent, **`taches.json` fait foi**.
 
-*Dernière mise à jour : 2026-09-14 (relevé du 14 septembre 2026, 07:40 UTC) · dépôt sur `main`*
+*Dernière mise à jour : 2026-09-14 (relevé du 14 septembre 2026, 08:05 UTC) · dépôt sur `main`*
 
 ---
 
@@ -53,9 +53,9 @@ puis le téléphone (T43), la procédure (T47), la recette sur boîtier et les c
 | ☐ | **T55** | Second téléphone + seconde SIM (autre opérateur) — après T52, jamais sous le même deviceId | TRK-066 · doc 12 · doc 19 P2-8 | 🤝 humain |
 | ~ | **T56** | Corriger les promesses des documents du chantier qui dépassent le code — COMMITTÉ, en attente de fusion | TRK-066 · doc 19 §15 | 🧹 dette doc `0677cd05` |
 | ☐ | **T57** | Dépendances : lot séparé après stabilisation (maplibre critique, socket.io/ws, axios via twilio, multer) | TRK-066 · doc 19 §14 | 🔧 à coder |
-| ☐ | **T58** | La cle de refroidissement de la sentinelle des agents doit porter la CAUSE — et courrier-ia doit lire le premier objet JSON equilibre | TRK-069 | 🔧 à coder |
-| ☐ | **T59** | Ne plus remonter au centre d alerte les appels avortes par la fermeture de la page sur le canal anonyme (robots) | TRK-079 | 🔧 à coder |
-| ☐ | **T60** | Test fenetre-utile.spec.ts (trajets, sur main) tient à la milliseconde : deux Date.now() distincts — à figer | main · 152883ec | 🔧 à coder |
+| ~ | **T58** | La cle de refroidissement de la sentinelle des agents doit porter la CAUSE — et courrier-ia doit lire le premier objet JSON equilibre — COMMITTÉ sur main, à déployer | TRK-069 | 🔧 à coder `22ec4c1f` |
+| ~ | **T59** | Ne plus remonter au centre d alerte les appels avortes par la fermeture de la page sur le canal anonyme (robots) — COMMITTÉ sur main, à déployer | TRK-079 | 🔧 à coder `25fa2af9` |
+| ~ | **T60** | Test fenetre-utile.spec.ts (trajets, sur main) tient à la milliseconde : deux Date.now() distincts — à figer — COMMITTÉ sur main, à déployer | main · 152883ec | 🔧 à coder `c8fd9be8` |
 | ☐ | **T61** | Deux SIM de boîtiers (HD-584-BF, BP-434-RD) restent INJOIGNABLES par SMS depuis le S21 après remise en état ; les huit autres sont revenues — test depuis un autre opérateur ou ticket WhereverSIM | TRK-066 · S21 · doc 10 test B/C | 🤝 humain |
 
 ---
@@ -111,11 +111,11 @@ puis le téléphone (T43), la procédure (T47), la recette sur boîtier et les c
 | ~ | **T51** | Rappeler une RESTORE qui traîne (toutes les 15 min) et ne pas suspendre le clic manuel derrière la file SMS — COMMITTÉ, en attente de fusion | TRK-066 · doc 19 P2-5 · P2-6 | 🔧 à coder `b582fbf6` |
 | ~ | **T52** | Santé par appareil (deviceId, simCards) et allowlist non bloquante pour une RESTORE — COMMITTÉ, en attente de fusion | TRK-066 · doc 19 P2-8 · P2-9 | 🔧 à coder `428d1f39` |
 | ~ | **T53** | Tests : exercer la table des tentatives, index dans schema.prisma, migration rejouée sur PostgreSQL réel, changement d'heure du 25/10 — COMMITTÉ (partie faisable seul), en attente de fusion | TRK-066 · doc 19 P2-10 | 🔧 à coder `b407481a` |
-| ☐ | **T58** | La cle de refroidissement de la sentinelle des agents doit porter la CAUSE — et courrier-ia doit lire le premier objet JSON equilibre | TRK-069 | 🔧 à coder |
+| ~ | **T58** | La cle de refroidissement de la sentinelle des agents doit porter la CAUSE — et courrier-ia doit lire le premier objet JSON equilibre — COMMITTÉ sur main, à déployer | TRK-069 | 🔧 à coder `22ec4c1f` |
 | ~ | **T56** | Corriger les promesses des documents du chantier qui dépassent le code — COMMITTÉ, en attente de fusion | TRK-066 · doc 19 §15 | 🧹 dette doc `0677cd05` |
 | ☐ | **T57** | Dépendances : lot séparé après stabilisation (maplibre critique, socket.io/ws, axios via twilio, multer) | TRK-066 · doc 19 §14 | 🔧 à coder |
-| ☐ | **T59** | Ne plus remonter au centre d alerte les appels avortes par la fermeture de la page sur le canal anonyme (robots) | TRK-079 | 🔧 à coder |
-| ☐ | **T60** | Test fenetre-utile.spec.ts (trajets, sur main) tient à la milliseconde : deux Date.now() distincts — à figer | main · 152883ec | 🔧 à coder |
+| ~ | **T59** | Ne plus remonter au centre d alerte les appels avortes par la fermeture de la page sur le canal anonyme (robots) — COMMITTÉ sur main, à déployer | TRK-079 | 🔧 à coder `25fa2af9` |
+| ~ | **T60** | Test fenetre-utile.spec.ts (trajets, sur main) tient à la milliseconde : deux Date.now() distincts — à figer — COMMITTÉ sur main, à déployer | main · 152883ec | 🔧 à coder `c8fd9be8` |
 
 ---
 
@@ -200,6 +200,7 @@ puis le téléphone (T43), la procédure (T47), la recette sur boîtier et les c
 
 | Date | Quoi | La preuve |
 |---|---|---|
+| 14/09 | **Plus rien à coder sans toi : T58, T59, T60 committés sur main, la copie périmée retirée, la fiche de fusion écrite** | Sur `main` (local, non poussé) : `22ec4c1f` (T58 — la sentinelle des agents refroidit PAR CAUSE, et courrier-ia lit le premier objet JSON équilibré ; 56 + 7 tests), `25fa2af9` (T59 — un fetch avorté par la fermeture de la page ne remonte plus, le canal anonyme ne remonte que les bugs JS ; 8 tests, suite web 729), `c8fd9be8` (T60 — horloge figée). La branche du chantier fusionne proprement sur `origin/main` (`merge-tree` sans conflit, aucun fichier commun) ; la copie non suivie qui aurait masqué les vrais documents à la fusion est retirée. Doc 34 : les 27 commits Tracky et les 5 du relais, l'ordre de relecture en 2 h. |
 | 14/09 | **Le S21 est configuré et le prouve : un ping par minute — et les tests SMS renversent la conclusion du matin (T43, T61)** | Sur le téléphone, avec ton accord : ping `60 s`, FIFO, délais 10/15 s, limite 60/h, Local server OFF, veille des applis OFF ; `lastSeen` avance de 60 s en 60 s depuis 09:23 (lu sur le serveur). Puis 13 SMS de statut `check123456` (facturés sur ta ligne — arrêtés à ta demande) : par le relais, `8 des 10 SIM` que rien n'atteignait depuis des semaines répondent en quelques secondes (…621085, 36 échecs depuis juin : `delivered en 8 s`) ; `2 restent en échec` au départ, HD-584-BF et BP-434-RD, boîtiers pourtant en ligne, SIM activées, IMEI concordants. Le défaut du 11/09 tenait donc surtout à l'état du téléphone (pas de ping, app jamais redémarrée) ; pour ces deux véhicules, il reste un test « autre opérateur », à 1 SMS. |
 | 14/09 | **Le S21 diagnostiqué de l'intérieur : le bug du 11/09 a DEUX causes, et la seconde n'est pas dans le téléphone (T43, T61)** | Mobile connecté, lecture seule, 08:40–08:58. (1) Le téléphone ne relève les ordres que toutes les 15 min faute de ping : les 10 RESTORE de 07:00 sont partis à `07:07`, et celui de 20:49 à `21:55` parce que le S21 redémarrait (uptime 60 h = dernier redémarrage le 11/09 vers 20:45) — réglages de l'app tous au défaut (ping vide, LIFO, ni délai ni limite), veille des applis inutilisées ON sans protection, téléphone personnel sur batterie. (2) Les 5 échecs de 07:07 et toutes les reprises du jour sont « RESULT_ERROR_GENERIC_FAILURE » vers `les mêmes numéros` : dix SIM de boîtiers n'ont `jamais` reçu un SMS du S21 depuis juin (…621085 : 36 échecs) alors que leurs voisines livrent à 100 % dans la même seconde, que le fournisseur les dit activées, qu'elles sont en session data, en TCP, et qu'elles émettent des SMS. Ni débit, ni veille, ni batterie : la destination. Test décisif à faire (T61) : un SMS neutre vers …621085 depuis un autre opérateur. Vérifié aussi : le S21 se remet ses propres SMS (preuves hebdo), les 4 webhooks sont en place. |
 | 14/09 | **Le S21 est relevé avant d'y toucher : aucun réglage, pull toutes les 15 min, quatre webhooks bien en place (T43)** | Lecture seule depuis le conteneur du relais, 06:33 UTC : serveur capcom6 `1.43.0` sain ; un seul appareil, `lastSeen` vieux de `10 min` (le pull de secours, faute de ping) ; `GET /3rdparty/v1/settings` rend `{}` — tout au défaut, comme le diagnostic du 12/09 ; les quatre webhooks `sms:received/sent/delivered/failed` pointent bien sur le relais (le point P4 du doc 25 est vérifié). Les gestes exacts sur le téléphone sont dans la fiche T43 ; la preuve sera `lastSeen` qui avance toutes les 60 s, écran éteint, pendant 30 min. |

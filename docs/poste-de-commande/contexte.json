@@ -1,7 +1,7 @@
 {
   "_comment": "Ce que le POSTE DE COMMANDE montre en plus des tâches. Les tâches, elles, viennent de docs/centre-alerte/app/taches.json et ne se recopient JAMAIS ici — voir generer.mjs. Ce fichier ne porte que ce qu'aucune tâche ne décrit : les mesures de tête, les mécaniques qui tournent seules, les décisions posées au propriétaire, et ce qui est prouvé.",
   "version": 1,
-  "releve": "14 septembre 2026, 07:40 UTC",
+  "releve": "14 septembre 2026, 08:05 UTC",
   "machines": [
     {
       "nom": "Rattrapage du recalage des tracés",
@@ -284,6 +284,11 @@
     }
   ],
   "faits": [
+    {
+      "d": "14/09",
+      "quoi": "Plus rien à coder sans toi : T58, T59, T60 committés sur main, la copie périmée retirée, la fiche de fusion écrite",
+      "preuve": "Sur <code>main</code> (local, non poussé) : <code>22ec4c1f</code> (T58 — la sentinelle des agents refroidit PAR CAUSE, et courrier-ia lit le premier objet JSON équilibré ; 56 + 7 tests), <code>25fa2af9</code> (T59 — un fetch avorté par la fermeture de la page ne remonte plus, le canal anonyme ne remonte que les bugs JS ; 8 tests, suite web 729), <code>c8fd9be8</code> (T60 — horloge figée). La branche du chantier fusionne proprement sur <code>origin/main</code> (<code>merge-tree</code> sans conflit, aucun fichier commun) ; la copie non suivie qui aurait masqué les vrais documents à la fusion est retirée. Doc 34 : les 27 commits Tracky et les 5 du relais, l'ordre de relecture en 2 h."
+    },
     {
       "d": "14/09",
       "quoi": "Le S21 est configuré et le prouve : un ping par minute — et les tests SMS renversent la conclusion du matin (T43, T61)",
