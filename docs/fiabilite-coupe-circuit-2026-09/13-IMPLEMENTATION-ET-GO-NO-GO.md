@@ -66,11 +66,19 @@ Le kill-switch reste `false` pendant le déploiement technique, les tests et le 
 
 ## Ordre proposé pour la fenêtre de validation
 
-1. sauvegarder la base et noter l'image/version actuellement déployée ;
+> ⚠️ **Corrigé le 14/09 (T47, contre-expertise du 13/09).** Les étapes 3 à 5 décrivaient une
+> migration et un déploiement « à la main », contraires à la décision D1 du 13/09 : la production
+> se déploie par `deploy/vps/deploy.sh` et par rien d'autre, la migration s'applique au démarrage
+> du conteneur, et elle est d'abord **rejouée sur une copie** de la base. La procédure complète —
+> téléphone → relais → Tracky, sauvegardes des trois bases, variables, version du serveur capcom6,
+> vérifications, 24 h de preuve, rollback — est le **[document 25](./25-PROCEDURE-DE-DEPLOIEMENT-DU-CHANTIER-2026-09-14.md)**.
+> Les étapes ci-dessous sont conservées comme sommaire ; en cas d'écart, le document 25 fait foi.
+
+1. sauvegarder les **trois** bases (Tracky, relais, MariaDB capcom6) et noter les images/versions déployées ;
 2. vérifier que les plannings CDEF et MH Cars sont toujours désactivés ;
-3. appliquer la migration additive `20260912110000_engine_delivery_reliability` ;
-4. déployer l'API avec `ENGINE_AUTOMATIC_CUT_ENABLED=false` ;
-5. déployer le Web ;
+3. **rejouer** la migration additive `20260912110000_engine_delivery_reliability` sur une copie de la production (`tracky_copie`), jamais directement ;
+4. déployer par `bash deploy/vps/deploy.sh` (API et Web ensemble, migration au démarrage) avec `ENGINE_AUTOMATIC_CUT_ENABLED=false` — après le téléphone (T43) et le relais ;
+5. vérifier l'artefact **dans le conteneur**, `_prisma_migrations`, le journal des déploiements ;
 6. vérifier le statut SMS, la file, la dernière preuve terminale et le centre d'alertes ;
 7. réaliser un RESTORE TCP sur boîtier de test, puis un RESTORE avec socket coupée ;
 8. vérifier : intention, TCP, timeout, SMS cadencé, statut terminal, ACK/ignition ;

@@ -3253,6 +3253,10 @@ model EngineControlCommand {
   attempts             EngineDeliveryAttempt[]
 
   @@index([trackerId, status])
+  // T47/T53 (contre-expertise du 13/09, P2-10) — la migration 20260912110000 crée cet index
+  // pour le worker RESTORE ; absent du schéma, le prochain `migrate dev` aurait proposé de le
+  // supprimer. `map` reprend le nom exact posé par la migration.
+  @@index([action, status, nextAttemptAt, dispatchLeaseUntil], map: "engine_control_commands_restore_worker_idx")
   // V1.10 (Sprint 2 perf) — vehicles.snapshot et positions.service appellent
   // findFirst({trackerId, ...}, orderBy:{createdAt:'desc'}) tres souvent pour
   // verifier le dernier CUT/RESTORE. L'index [trackerId, status] ne couvre pas
