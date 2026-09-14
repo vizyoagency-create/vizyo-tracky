@@ -69,7 +69,7 @@ Les traitements CUT et RESTORE sont volontairement asymétriques :
 31. [Correctif P2-10 (T53) — le journal des tentatives est exercé, le changement d'heure couvert](./31-CORRECTIF-P2-JOURNAL-DES-TENTATIVES-EXERCE-2026-09-14.md)
 32. [Relecture des promesses documentaires (T56) — ce que les documents disent, ce que le code tient](./32-RELECTURE-DES-PROMESSES-DOCUMENTAIRES-2026-09-14.md)
 
-## État du chantier au 14 septembre 2026 (soir)
+## État du chantier au 14 septembre 2026 (07 h)
 
 - `main` **a bougé** pendant le chantier (27 commits, 3 migrations, production redéployée le 13/09
   à 22:25) ; la branche est rebasée dessus (T46) et sa migration, antérieure aux leurs, s'applique
@@ -80,7 +80,7 @@ Les traitements CUT et RESTORE sont volontairement asymétriques :
 - Restent au propriétaire : T43 (`CAPCOM6_SIM_NUMBER` et prérequis téléphone), revue et fusion,
   déploiement selon le document 25, T54 (mesures après déploiement), T38 ; hors chantier : T57
   (dépendances), T58/T59 (sur `main`).
-- Suites au 14/09 (soir) : typecheck vert, smoke DI 5/5, API 260 suites / 4 081 tests (une suite de
+- Suites au 14/09 (07 h) : typecheck vert, smoke DI 5/5, API 260 suites / 4 081 tests (une suite de
   `main`, `trip-analysis/fenetre-utile`, tient à la milliseconde et a dû être relancée seule),
   web 732 tests, relais 7 suites / 55 tests.
 

@@ -3,7 +3,7 @@
 Date : 14 septembre 2026
 Branche : Tracky `codex/tracky-cutoff-reliability-2026-09-12`
 Objet : le document 19 (§15) listait les phrases des documents 01–18 que le code ne tenait pas.
-Chaque ligne est reprise ici avec son état **au 14 septembre au soir**, et la phrase d'origine a
+Chaque ligne est reprise ici avec son état **au 14 septembre à 07 h**, et la phrase d'origine a
 été corrigée **dans le document concerné** (le texte historique reste lisible via `git`).
 
 ## Le tableau du document 19, ligne par ligne
