@@ -16,6 +16,7 @@ import {
   EngineControlService,
   type EngineControlCommandDto,
 } from '../../core/services/engine-control.service';
+import { EngineCommandLockService } from '../../core/services/engine-command-lock.service';
 import { PermissionsService } from '../../core/services/permissions.service';
 import { RealtimeService } from '../../core/services/realtime.service';
 import { VehicleSchedulesApiService } from '../../core/services/vehicle-schedules.service';
@@ -111,8 +112,8 @@ const CONFIRM_WINDOW_MS = 90_000;
             Ne considérez pas le véhicule comme immobilisé tant que ce n'est pas vérifié.
           </p>
           <div class="ec-nc-sorties">
-            <button type="button" class="ec-sortie" (click)="renvoyer()" [disabled]="loading()">
-              {{ loading() ? 'Envoi…' : 'Renvoyer la commande' }}
+            <button type="button" class="ec-sortie" (click)="renvoyer()" [disabled]="commandLocked()">
+              {{ commandLocked() ? 'Envoi…' : 'Renvoyer la commande' }}
             </button>
             <a class="ec-sortie" routerLink="/fleet-admin/activity">Voir l'historique</a>
             <button type="button" class="ec-sortie" (click)="verifieSurPlace.set(true)">
@@ -137,9 +138,8 @@ const CONFIRM_WINDOW_MS = 90_000;
         en un clic depuis une liste. Rallumer ne fait que deblocker : c'est reversible, et
         ca reste une confirmation standard. C'est la meme asymetrie que le mode veilleur,
         qui peut rallumer mais pas couper.
-        La plaque a retaper n'est pas une formalite : elle force a LIRE quelle ligne on a
-        ouverte. Le kit compare sans casse ni espaces — on verifie qu'on a lu, pas qu'on
-        sait taper.
+        Le glissement complet n'est pas une formalite : il impose un geste continu et volontaire,
+        identique au doigt sur la fiche et sur la carte, sans faire apparaître le clavier.
       -->
       <app-confirm-modal
         [open]="isOpen() === 'cut'"
@@ -151,14 +151,15 @@ const CONFIRM_WINDOW_MS = 90_000;
         [danger]="true"
         [critique]="true"
         [etat]="etatVehicule()"
-        [confirmationAttendue]="vehiclePlate()"
-        [loading]="loading()"
+        [slideToConfirm]="true"
+        slideLabel="Glissez pour couper le moteur"
+        [loading]="commandLocked()"
         (confirmed)="onConfirm('CUT')"
         (cancelled)="isOpen.set(null)"
       >
         <!--
           ENVIRONNEMENT DE DÉMONSTRATION (2026-09). Le geste est le même qu'en production, et
-          c'est voulu : le prospect doit voir la vraie modale, la vraie plaque à retaper, les vrais
+          c'est voulu : le prospect doit voir la vraie modale, le vrai glissement, les vrais
           états. Mais il doit lire, AVANT de cliquer, qu'aucun véhicule n'est concerné — et ce qui
           se passerait sur un vrai boîtier. Le texte dit la réalité du produit : un Coban exécute
           la commande en silence, la preuve est la chute du contact sur la trame suivante.
@@ -187,7 +188,7 @@ const CONFIRM_WINDOW_MS = 90_000;
                  text-fg-primary placeholder:text-fg-tertiary resize-none
                  focus:outline-none focus:border-tracky"
         ></textarea>
-        @if (scheduleEnabled()) {
+        @if (scheduleEnabled() && canDisableSchedule()) {
           <label class="flex items-start gap-2 mt-3 text-xs text-fg-secondary cursor-pointer">
             <input
               type="checkbox"
@@ -211,7 +212,9 @@ const CONFIRM_WINDOW_MS = 90_000;
         confirmLabel="Oui, rallumer"
         cancelLabel="Annuler"
         [danger]="false"
-        [loading]="loading()"
+        [slideToConfirm]="true"
+        slideLabel="Glissez pour rallumer le moteur"
+        [loading]="commandLocked()"
         (confirmed)="onConfirm('RESTORE')"
         (cancelled)="isOpen.set(null)"
       >
@@ -331,18 +334,27 @@ export class EngineControlButtonComponent implements OnInit {
   protected readonly recentCommands = signal<EngineControlCommandDto[]>([]);
   private readonly _scheduleEnabled = signal(false);
   protected readonly scheduleEnabled = computed(() => this.scheduleEnabledInput() || this._scheduleEnabled());
+  /** Sortir durablement un véhicule du planning exige le droit de gérer SES horaires. */
+  protected readonly canDisableSchedule = computed(() => {
+    const vehicleId = this.effectiveVehicleId();
+    return !!vehicleId && this.perms.can('schedules_manage', vehicleId);
+  });
 
   protected readonly Power = Power;
   protected readonly PowerOff = PowerOff;
 
   private readonly authService = inject(AuthService);
   private readonly engineControl = inject(EngineControlService);
+  private readonly commandLocks = inject(EngineCommandLockService);
   private readonly perms = inject(PermissionsService);
   private readonly toast = inject(ToastService);
   private readonly realtime = inject(RealtimeService);
   private readonly schedulesApi = inject(VehicleSchedulesApiService);
   /** Environnement de démonstration : encarts des confirmations, toast et pastille « simulation ». */
   protected readonly demo = inject(DemoModeService);
+  protected readonly commandLocked = computed(
+    () => this.loading() || this.commandLocks.isLocked(this.trackerId()),
+  );
 
   /**
    * V1.11 Phase 1 — VehicleId effectif : prend l'input si fourni, sinon resout
@@ -378,12 +390,10 @@ export class EngineControlButtonComponent implements OnInit {
     // chute d'ignition). Une coupure seulement SENT (pas encore confirmee) NE compte
     // PAS : l'etat ne bascule qu'a la preuve reelle — jamais de faux succes.
     const lastCut = cmds.find((c) => c.action === 'CUT' && c.status === 'ACKNOWLEDGED');
-    // Revue #1 — un RESTORE nettoie l'etat des l'ENVOI (SENT||ACK) : rallumer est
-    // toujours sur, on ne requiert PAS de preuve device pour CESSER d'afficher
-    // "coupe". Sinon le bouton resterait colle sur « Rallumer » (un RESTORE app
-    // n'atteint jamais ACKNOWLEDGED : seul un CUT est confirme par la chute d'ignition).
+    // Un RESTORE seulement SENT ne nettoie jamais l'état : la soumission au
+    // transport n'est pas une preuve d'exécution par le boîtier.
     const lastRestore = cmds.find(
-      (c) => c.action === 'RESTORE' && (c.status === 'SENT' || c.status === 'ACKNOWLEDGED'),
+      (c) => c.action === 'RESTORE' && c.status === 'ACKNOWLEDGED',
     );
     if (!lastCut) return false;
     if (!lastRestore) return true;
@@ -497,6 +507,18 @@ export class EngineControlButtonComponent implements OnInit {
       };
     }
     // status === 'SENT'
+    if (c.action === 'RESTORE') {
+      const ageMs = this._now() - new Date(c.sentAt ?? c.createdAt).getTime();
+      const late = ageMs >= 60_000;
+      return {
+        short: late ? 'Rallumage non confirmé' : 'Rallumage en cours',
+        label: late
+          ? 'Le rallumage n’est toujours pas confirmé. Vérifiez l’alerte et le véhicule.'
+          : 'RESTORE enregistré : TCP puis secours SMS seront suivis jusqu’au statut final.',
+        textClass: late ? 'ec-alerte' : 'ec-attente',
+        dotClass: late ? 'ec-point-alerte' : 'ec-point-attente',
+      };
+    }
     if (c.confirmationExpected === false) {
       return {
         short: 'Envoyée',
@@ -527,7 +549,10 @@ export class EngineControlButtonComponent implements OnInit {
 
   /** L'etat NON CONFIRME est-il a l'ecran ? Il ouvre alors ses trois sorties. */
   protected readonly nonConfirmee = computed<boolean>(
-    () => this.commandStateBrut()?.short === 'Non confirmée',
+    () => {
+      const short = this.commandStateBrut()?.short;
+      return short === 'Non confirmée' || short === 'Rallumage non confirmé';
+    },
   );
   /**
    * Sortie n° 3 : « j'ai verifie sur place ».
@@ -545,7 +570,7 @@ export class EngineControlButtonComponent implements OnInit {
   /** Sortie n° 1 : rejouer exactement la meme commande, sans repasser par la confirmation. */
   protected renvoyer(): void {
     const c = this.lastAppCommand();
-    if (!c || this.loading()) return;
+    if (!c || this.commandLocked()) return;
     this.verifieSurPlace.set(false);
     void this.onConfirm(c.action);
   }
@@ -704,12 +729,16 @@ export class EngineControlButtonComponent implements OnInit {
   });
 
   protected readonly cutDescription = computed(
-    () =>
-      `Vous êtes sur le point d'immobiliser le véhicule <strong>${this.vehiclePlate()}</strong>.<br><br>` +
-      `Le conducteur sera impacté immédiatement et le véhicule deviendra inutilisable ` +
-      `jusqu'à réactivation manuelle.<br><br>` +
-      `<span class="text-fg-secondary text-xs">Cette action sera enregistrée dans l'audit trail.</span>` +
-      this.dormantConfirmNotice(),
+    () => {
+      const duree = this.scheduleEnabled() && !this.durableImmobilize()
+        ? `Le mode horaire reste actif : le véhicule sera de nouveau libéré à sa prochaine ` +
+          `plage autorisée, sans devoir réactiver ses horaires.`
+        : `Le conducteur sera impacté immédiatement et le véhicule deviendra inutilisable ` +
+          `jusqu'à réactivation manuelle.`;
+      return `Vous êtes sur le point d'immobiliser le véhicule <strong>${this.vehiclePlate()}</strong>.<br><br>` +
+        duree + `<br><br><span class="text-fg-secondary text-xs">Cette action sera enregistrée dans l'audit trail.</span>` +
+        this.dormantConfirmNotice();
+    },
   );
 
   /**
@@ -718,16 +747,26 @@ export class EngineControlButtonComponent implements OnInit {
    * Le kit exige que la conséquence soit nommée à part du reste : c'est elle qu'on lit
    * quand on hésite.
    *
-   * Le niveau CRITIQUE de la modale (liseré rouge, état rappelé, plaque à retaper) est
+   * Le niveau CRITIQUE de la modale (liseré rouge, état rappelé, glissement complet) est
    * spécifié pour cet écran par `B1-PAGES.md` § F « Coupure moteur ». Il se branche au
-   * lot B-pages : ajouter une saisie à un geste d'urgence est une décision d'écran, pas
+   * lot B-pages : ajouter un geste continu à une commande d'urgence est une décision d'écran, pas
    * une décision de kit.
    */
   protected readonly cutConsequences = computed(
-    () =>
-      `Le véhicule ${this.vehiclePlate()} ne redémarrera plus tant que personne ne l'aura `
-      + 'réactivé depuis Tracky. Le conducteur en cours de trajet est concerné dès la '
-      + 'prochaine coupure du contact.',
+    () => {
+      if (this.scheduleEnabled() && !this.durableImmobilize()) {
+        return `Les horaires de ${this.vehiclePlate()} restent activés. La coupure manuelle `
+          + `ne supprime pas le planning : celui-ci reprendra automatiquement et enverra le `
+          + `rallumage à la prochaine plage autorisée.`;
+      }
+      if (this.scheduleEnabled() && this.durableImmobilize()) {
+        return `${this.vehiclePlate()} sortira du planning horaire. Un rallumage manuel le rendra `
+          + `utilisable, mais ses horaires devront être réactivés séparément.`;
+      }
+      return `Le véhicule ${this.vehiclePlate()} ne redémarrera plus tant que personne ne l'aura `
+        + 'réactivé depuis Tracky. Le conducteur en cours de trajet est concerné dès la '
+        + 'prochaine coupure du contact.';
+    },
   );
 
   protected readonly restoreDescription = computed(() => {
@@ -765,13 +804,16 @@ export class EngineControlButtonComponent implements OnInit {
   }
 
   protected async onConfirm(action: 'CUT' | 'RESTORE'): Promise<void> {
-    if (this.loading()) return; // Protection double-clic
+    const trackerId = this.trackerId();
+    if (this.commandLocked() || !this.commandLocks.acquire(trackerId)) return;
     this.loading.set(true);
     const reasonText = action === 'CUT' ? this.reason() || undefined : undefined;
     // « Immobilisation durable » (case optionnelle, CUT uniquement) → désactive le planning (sortie
     // du mode horaire, cas anti-vol). Sinon l'action suspend juste le planning jusqu'à la prochaine
     // bascule côté backend (le mode reste actif).
-    const durable = action === 'CUT' && this.durableImmobilize();
+    // Double garde UI : même si le DOM était manipulé, un utilisateur sans droit horaires
+    // ne peut jamais fabriquer `disableSchedule:true` depuis ce composant.
+    const durable = action === 'CUT' && this.durableImmobilize() && this.canDisableSchedule();
     // Fermer la modal DÈS la soumission (avant l'attente réseau), succès comme erreur/409 :
     // sinon elle reste ouverte par-dessus et masque le toast + la pastille. Cf smoke prod 2026-06-18.
     this.isOpen.set(null);
@@ -790,6 +832,28 @@ export class EngineControlButtonComponent implements OnInit {
       // Boîtier muet : « en attente de confirmation » deviendrait mensonger — il n'y aura
       // PAS de confirmation. On le dit dans le toast, dernière chose lue avant de partir.
       const dormant = this.dormantWarning();
+      // P0-1 (contre-expertise du 13/09) — le serveur peut rendre une intention ANTÉRIEURE au
+      // clic : une RESTORE déjà en cours est réarmée (TCP puis SMS), une CUT en attente est
+      // rendue telle quelle. Dire « enregistrée » avec un identifiant d'hier ferait croire à
+      // une commande neuve. On nomme l'heure de l'intention et ce qui vient de lui arriver.
+      const ageMs = Date.now() - new Date(cmd.createdAt).getTime();
+      if (!this.demo.enabled() && Number.isFinite(ageMs) && ageMs > 60_000) {
+        const depuis = new Date(cmd.createdAt).toLocaleTimeString('fr-FR', {
+          hour: '2-digit',
+          minute: '2-digit',
+        });
+        this.toast.show({
+          kind: 'info',
+          title: action === 'CUT' ? 'Coupure déjà en cours' : 'Rallumage déjà en cours',
+          message:
+            action === 'CUT'
+              ? `Commande ${cmd.id.slice(0, 8)} créée à ${depuis} — toujours en attente de confirmation du boîtier.`
+              : `Commande ${cmd.id.slice(0, 8)} créée à ${depuis} — réarmée à l’instant : TCP d’abord, puis secours SMS, surveillée jusqu’à confirmation.`,
+          duration: 9000,
+        });
+        await this.loadRecentCommands();
+        return;
+      }
       if (this.demo.enabled()) {
         // Démonstration : la dernière chose lue avant de partir doit redire qu'aucun véhicule
         // n'est concerné — et annoncer ce que l'écran va montrer, pour que ce soit compris
@@ -805,14 +869,16 @@ export class EngineControlButtonComponent implements OnInit {
           duration: 9000,
         });
       } else {
-        this.toast.success(
-          action === 'CUT' ? 'Coupure envoyée' : 'Rallumage envoyé',
-          dormant
-            ? `Commande ${cmd.id.slice(0, 8)} — boîtier muet depuis ${dormant.silence} : aucune confirmation à attendre, à vérifier physiquement.`
+        this.toast.show({
+          kind: 'info',
+          title: action === 'CUT' ? 'Coupure en cours' : 'Rallumage en cours',
+          message: dormant
+            ? `Commande ${cmd.id.slice(0, 8)} — boîtier muet depuis ${dormant.silence} : vérification physique requise.`
             : action === 'CUT'
               ? `Commande ${cmd.id.slice(0, 8)} — en attente de confirmation du boîtier…`
-              : `Commande ${cmd.id.slice(0, 8)} transmise au véhicule.`,
-        );
+              : `Commande ${cmd.id.slice(0, 8)} enregistrée — elle reste surveillée jusqu’à confirmation.`,
+          duration: 8000,
+        });
       }
       await this.loadRecentCommands();
     } catch (err) {
@@ -830,6 +896,7 @@ export class EngineControlButtonComponent implements OnInit {
       }
     } finally {
       this.loading.set(false);
+      this.commandLocks.release(trackerId);
     }
   }
 

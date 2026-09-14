@@ -9,6 +9,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { toE164 } from '../common/utils/phone';
 import type { SmsTemplateId } from '../communications/communications.catalog';
 import { SystemActivityService } from '../system-activity/system-activity.service';
+import { AllowlistService } from './allowlist.service';
 
 /**
  * V1.5 (Sprint I) — SMS Gateway via Twilio.
@@ -25,7 +26,7 @@ import { SystemActivityService } from '../system-activity/system-activity.servic
  * Statut de SOUMISSION d'un SMS sortant, tel que la passerelle le rend dans la même
  * seconde. Ce sont les valeurs jamais réécrites par personne (cf. TRK-026).
  */
-export const SMS_SUBMISSION_STATUSES = ['queued', 'accepted', 'sending', 'noop'] as const;
+export const SMS_SUBMISSION_STATUSES = ['queued', 'accepted', 'sending', 'sent', 'noop'] as const;
 /** Statuts terminaux d'ÉCHEC connus (fournisseur). */
 export const SMS_FAILED_STATUSES = [
   'failed',
@@ -36,7 +37,7 @@ export const SMS_FAILED_STATUSES = [
   'canceled',
 ] as const;
 /** Statuts terminaux de SUCCÈS — les seuls qui prouvent une remise. */
-export const SMS_DELIVERED_STATUSES = ['delivered', 'sent', 'received'] as const;
+export const SMS_DELIVERED_STATUSES = ['delivered', 'received'] as const;
 
 /**
  * Issue d'un envoi, à trois états — TRK-026 (2026-08-17).
@@ -91,6 +92,17 @@ export interface SmsSendContext {
   imei?: string;
   provisioningId?: string;
   requestedByUserId?: string;
+  /**
+   * T41 (contre-expertise du 13/09, P0-2) — validité transmise au relais, en secondes : passé
+   * ce délai, le TÉLÉPHONE n'émet plus le message. À poser sur une COUPURE moteur, jamais sur
+   * une remise en route. Conservé dans `sms_logs.context` pour relecture.
+   */
+  ttlSeconds?: number;
+  /**
+   * T41 — priorité capcom6 (−128 … 127) transmise au relais ; ≥ 100 contourne les limites et
+   * délais du téléphone. Distinct de `priority` (chaîne), qui ordonne la file LOCALE de Tracky.
+   */
+  smsPriority?: number;
   [k: string]: unknown;
 }
 
@@ -106,6 +118,64 @@ export interface SmsInboundEvent {
   toNumber: string;
   body: string;
   receivedAt: string;
+}
+
+export interface TextoGatewayHealth {
+  observedAt: string;
+  operational: boolean;
+  provider: {
+    status: string;
+    version: string | null;
+    releaseId: string | null;
+  };
+  device: {
+    count: number;
+    /** Dernier ping de l'appareil du verdict (nom historique conservé). */
+    freshestLastSeenAt: string | null;
+    ageSeconds: number | null;
+    fresh: boolean;
+    staleAfterSeconds: number;
+    // T44 — facultatifs : un relais antérieur ne les envoie pas, et `fresh` suffit au verdict.
+    /** ONLINE / STALE / OFFLINE / UNKNOWN — voir le relais (README, « santé »). */
+    state?: 'ONLINE' | 'STALE' | 'OFFLINE' | 'UNKNOWN';
+    selectedId?: string | null;
+    selectedName?: string | null;
+    selection?: 'configured' | 'single' | 'none' | 'ambiguous' | 'missing';
+    offlineAfterSeconds?: number;
+  };
+  sim: {
+    configuredNumber: number | null;
+    cards?: Array<{ simNumber: number | null; phoneNumber: string | null; carrierName: string | null }>;
+    configuredPresent?: boolean | null;
+  };
+  queue: {
+    pending: number;
+    oldestPendingAt: string | null;
+    oldestAgeSeconds: number | null;
+    failed24h: number;
+  };
+  telemetry: { batteryAvailable: boolean; chargingAvailable: boolean };
+  error?: string;
+}
+
+export interface SmsGatewayHealth {
+  enabled: boolean;
+  reachable: boolean;
+  error?: string;
+  errorCode?: string;
+  fromNumber?: string;
+  recentFailures24h?: number;
+  lastFailure?: {
+    at: string;
+    toNumber: string | null;
+    errorCode?: string;
+    errorMessage?: string;
+  } | null;
+  deliveryProofAvailable: boolean;
+  pendingWithoutReceipt: number;
+  oldestPendingAt: string | null;
+  lastTerminalSuccessAt: string | null;
+  gateway?: TextoGatewayHealth;
 }
 
 /**
@@ -150,6 +220,29 @@ export function decrireEchecRelaisSms(motif: string, destinataire: string): stri
 export class SmsGatewayService implements OnModuleInit {
   private readonly logger = new Logger(SmsGatewayService.name);
 
+  /**
+   * File FIFO locale devant la passerelle Android. Elle ne remplace pas la file
+   * persistante du téléphone : elle empêche Tracky de lui injecter une rafale
+   * (10 messages en 6 s lors de l'incident du 11/09).
+   *
+   * Les RESTORE restent, eux, rejouables depuis la base par EngineControlService :
+   * un redémarrage API ne peut donc pas les perdre avec cette file mémoire.
+   */
+  private smsDispatchQueue: Array<{
+    sequence: number;
+    priority: number;
+    to: string;
+    body: string;
+    context: SmsSendContext;
+    resolve: (result: SendSmsResult) => void;
+    reject: (reason: unknown) => void;
+  }> = [];
+  private smsDispatchSequence = 0;
+  private smsDispatchProcessing = false;
+  private queuedForDispatch = 0;
+  private nextDispatchAt = 0;
+  private readonly minIntervalMs: number;
+
   // Provider actif : vizyo-texto (passerelle SMS maison) > twilio (legacy/fallback) > noop.
   private readonly provider: 'vizyo-texto' | 'twilio' | 'noop';
 
@@ -167,6 +260,11 @@ export class SmsGatewayService implements OnModuleInit {
     private readonly eventEmitter: EventEmitter2,
     private readonly systemActivity: SystemActivityService,
     @Optional() @Inject(ConfigService) private readonly config?: ConfigService<Env, true>,
+    /**
+     * T52 (contre-expertise du 13/09, P2-9) — l'allowlist du relais ne doit pas rester sur le
+     * chemin d'une remise en route. Facultatif : les specs construisent le service sans lui.
+     */
+    @Optional() @Inject(AllowlistService) private readonly allowlist?: AllowlistService,
   ) {
     this.textoUrl = (this.config?.get('VIZYO_TEXTO_URL', { infer: true }) ?? '').replace(/\/+$/, '');
     this.textoApiKey = this.config?.get('VIZYO_TEXTO_API_KEY', { infer: true }) ?? '';
@@ -174,6 +272,15 @@ export class SmsGatewayService implements OnModuleInit {
     const sid = this.config?.get('TWILIO_ACCOUNT_SID', { infer: true }) ?? '';
     const token = this.config?.get('TWILIO_AUTH_TOKEN', { infer: true }) ?? '';
     this.fromNumber = this.config?.get('TWILIO_PHONE_NUMBER', { infer: true }) ?? '';
+    const configuredInterval = this.config?.get('SMS_MIN_INTERVAL_MS', { infer: true });
+    this.minIntervalMs = Math.max(
+      0,
+      Number.isFinite(Number(configuredInterval))
+        ? Number(configuredInterval)
+        : process.env['NODE_ENV'] === 'production'
+          ? 15_000
+          : 0,
+    );
 
     if (this.textoUrl && this.textoApiKey) {
       this.provider = 'vizyo-texto';
@@ -211,6 +318,15 @@ export class SmsGatewayService implements OnModuleInit {
     return this.provider;
   }
 
+  /** Mesures sans effet de bord pour les sentinelles et l'interface admin. */
+  dispatchQueueState(): { depth: number; minIntervalMs: number; nextDispatchAt: string | null } {
+    return {
+      depth: this.queuedForDispatch,
+      minIntervalMs: this.minIntervalMs,
+      nextDispatchAt: this.nextDispatchAt > Date.now() ? new Date(this.nextDispatchAt).toISOString() : null,
+    };
+  }
+
   /**
    * V1.13 — Health check Twilio reel (auth ping + audit recents echecs).
    *
@@ -228,14 +344,7 @@ export class SmsGatewayService implements OnModuleInit {
    * Le ping est non-bloquant : si Twilio est down/timeout, on retourne
    * unreachable avec l'erreur — pas d'exception propagee.
    */
-  async healthCheck(): Promise<{
-    enabled: boolean;
-    reachable: boolean;
-    error?: string;
-    errorCode?: string;
-    fromNumber?: string;
-    recentFailures24h?: number;
-    lastFailure?: { at: string; toNumber: string | null; errorCode?: string; errorMessage?: string } | null;
+  async healthCheck(): Promise<SmsGatewayHealth> {
     /**
      * 🔴 TRK-026 — **`recentFailures24h` n'est PAS un indicateur de santé**, et l'écran ne
      * doit plus le présenter comme tel. Il compte les lignes `status='failed'`, or aucun
@@ -247,22 +356,16 @@ export class SmsGatewayService implements OnModuleInit {
      * `deliveryProofAvailable` dit la vérité : tant qu'il vaut `false`, AUCUN compteur de
      * cette réponse ne peut affirmer que la chaîne fonctionne.
      */
-    deliveryProofAvailable: boolean;
-    /** Sortants jamais sortis de leur statut de soumission — le vrai chiffre à afficher. */
-    pendingWithoutReceipt: number;
-    /** Date du plus ancien sortant sans accusé de remise (null si aucun). */
-    oldestPendingAt: string | null;
-  }> {
     // Compte les SMS OUT en echec dans les 24h (utile meme en mode noop).
     const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
     const submission = [...SMS_SUBMISSION_STATUSES];
-    const [recentFailures24h, lastFailureRow, pendingWithoutReceipt, oldestPending, everDelivered] =
+    const [recentFailures24h, lastFailureRow, pendingWithoutReceipt, oldestPending, everDelivered, lastDelivered] =
       await Promise.all([
         this.prisma.smsLog.count({
-          where: { direction: 'OUT', status: 'failed', createdAt: { gte: since } },
+          where: { direction: 'OUT', status: { in: [...SMS_FAILED_STATUSES] }, createdAt: { gte: since } },
         }),
         this.prisma.smsLog.findFirst({
-          where: { direction: 'OUT', status: 'failed' },
+          where: { direction: 'OUT', status: { in: [...SMS_FAILED_STATUSES] } },
           orderBy: { createdAt: 'desc' },
           select: { createdAt: true, toNumber: true, errorCode: true, errorMessage: true },
         }),
@@ -280,6 +383,14 @@ export class SmsGatewayService implements OnModuleInit {
         this.prisma.smsLog.count({
           where: { direction: 'OUT', status: { in: [...SMS_DELIVERED_STATUSES] } },
         }),
+        this.prisma.smsLog.findFirst({
+          where: { direction: 'OUT', status: { in: [...SMS_DELIVERED_STATUSES] } },
+          orderBy: [
+            { statusUpdatedAt: { sort: 'desc', nulls: 'last' } },
+            { createdAt: 'desc' },
+          ],
+          select: { createdAt: true, statusUpdatedAt: true },
+        }),
       ]);
 
     const lastFailure = lastFailureRow
@@ -292,21 +403,52 @@ export class SmsGatewayService implements OnModuleInit {
       : null;
     const deliveryProofAvailable = everDelivered > 0;
     const oldestPendingAt = oldestPending ? oldestPending.createdAt.toISOString() : null;
+    const lastTerminalSuccessAt = lastDelivered
+      ? (lastDelivered.statusUpdatedAt ?? lastDelivered.createdAt).toISOString()
+      : null;
 
-    // vizyo-texto : ping le /health du relay (cout = 1 GET, pas de SMS).
+    // vizyo-texto : santé authentifiée BOUT-EN-BOUT. `/health` ne prouvait que
+    // le processus Node ; `/v1/texto/health` prouve aussi que le téléphone ping.
     if (this.provider === 'vizyo-texto') {
       try {
-        const res = await fetch(`${this.textoUrl}/health`, { signal: AbortSignal.timeout(5_000) });
+        const res = await fetch(`${this.textoUrl}/v1/texto/health`, {
+          headers: { Authorization: `Bearer ${this.textoApiKey}` },
+          signal: AbortSignal.timeout(5_000),
+        });
+        if (!res.ok) {
+          return {
+            enabled: true,
+            reachable: false,
+            error: `Télémétrie Android indisponible (HTTP ${res.status})`,
+            fromNumber: this.textoUrl,
+            recentFailures24h,
+            lastFailure,
+            deliveryProofAvailable,
+            pendingWithoutReceipt,
+            oldestPendingAt,
+            lastTerminalSuccessAt,
+          };
+        }
+        const gateway = (await res.json()) as TextoGatewayHealth;
+        const valid =
+          typeof gateway?.operational === 'boolean' &&
+          typeof gateway?.device?.fresh === 'boolean' &&
+          typeof gateway?.provider?.status === 'string';
+        if (!valid) throw new Error('réponse de télémétrie Android invalide');
         return {
           enabled: true,
-          reachable: res.ok,
-          error: res.ok ? undefined : `HTTP ${res.status}`,
+          reachable: true,
+          error: gateway.operational
+            ? undefined
+            : (gateway.error ?? 'téléphone Android absent ou périmé'),
           fromNumber: this.textoUrl,
           recentFailures24h,
           lastFailure,
           deliveryProofAvailable,
           pendingWithoutReceipt,
           oldestPendingAt,
+          lastTerminalSuccessAt,
+          gateway,
         };
       } catch (err) {
         return {
@@ -319,6 +461,7 @@ export class SmsGatewayService implements OnModuleInit {
           deliveryProofAvailable,
           pendingWithoutReceipt,
           oldestPendingAt,
+          lastTerminalSuccessAt,
         };
       }
     }
@@ -333,6 +476,7 @@ export class SmsGatewayService implements OnModuleInit {
         deliveryProofAvailable,
         pendingWithoutReceipt,
         oldestPendingAt,
+        lastTerminalSuccessAt,
       };
     }
 
@@ -349,6 +493,7 @@ export class SmsGatewayService implements OnModuleInit {
         deliveryProofAvailable,
         pendingWithoutReceipt,
         oldestPendingAt,
+        lastTerminalSuccessAt,
       };
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : String(err);
@@ -364,6 +509,7 @@ export class SmsGatewayService implements OnModuleInit {
         deliveryProofAvailable,
         pendingWithoutReceipt,
         oldestPendingAt,
+        lastTerminalSuccessAt,
       };
     }
   }
@@ -423,7 +569,7 @@ export class SmsGatewayService implements OnModuleInit {
   async reconcileOutboundStatus(
     smsLogId: string,
     providerStatus?: string | null,
-  ): Promise<{ outcome: SmsOutcome; status: string | null } | null> {
+  ): Promise<{ outcome: SmsOutcome; status: string | null; changed: boolean } | null> {
     const log = await this.prisma.smsLog.findUnique({
       where: { id: smsLogId },
       select: { id: true, status: true, direction: true, twilioSid: true },
@@ -433,7 +579,7 @@ export class SmsGatewayService implements OnModuleInit {
     // Un statut déjà terminal n'est JAMAIS réécrit — une preuve de remise ne se dégrade pas.
     const current = smsOutcomeFromStatus(log.status);
     if (current !== 'accepted') {
-      return { outcome: current, status: log.status };
+      return { outcome: current, status: log.status, changed: false };
     }
 
     // ══ TRK-026 (2026-08-24) — ON VA CHERCHER L'ACCUSÉ AU LIEU DE L'ATTENDRE ═══════════
@@ -460,20 +606,126 @@ export class SmsGatewayService implements OnModuleInit {
       statutFournisseur = await this.lireStatutPasserelle(log.twilioSid);
     }
     if (!statutFournisseur) {
-      return { outcome: current, status: log.status };
+      return { outcome: current, status: log.status, changed: false };
     }
 
     const next = String(statutFournisseur).toLowerCase();
     if (smsOutcomeFromStatus(next) === 'accepted') {
       // Le fournisseur répond encore un statut de soumission → toujours aucune preuve.
-      return { outcome: 'accepted', status: log.status };
+      return { outcome: 'accepted', status: log.status, changed: false };
     }
     const updated = await this.prisma.smsLog.update({
       where: { id: log.id },
-      data: { status: next },
+      data: { status: next, statusUpdatedAt: new Date() },
       select: { status: true },
     });
-    return { outcome: smsOutcomeFromStatus(updated.status), status: updated.status };
+    return { outcome: smsOutcomeFromStatus(updated.status), status: updated.status, changed: true };
+  }
+
+  /**
+   * Point d'entrée des webhooks de statut sortant. Le poller reste la seconde
+   * voie indépendante ; le webhook accélère seulement la vérité terminale.
+   */
+  /**
+   * T41 — annule un sortant encore en attente au relais (DELETE /v1/texto/:providerId).
+   *
+   * Le cas : une COUPURE partie par SMS vers un téléphone endormi, puis supplantée par une
+   * remise en route. Best-effort par construction — ne lève JAMAIS, rend ce qui s'est passé :
+   * le relais répond toujours 200 avec `cancelled` et sa raison (message déjà pris par le
+   * téléphone, serveur capcom6 antérieur à v1.45.0). Le `ttlSeconds` posé à l'envoi couvre
+   * ce que l'annulation ne peut pas rattraper.
+   */
+  async cancelOutbound(
+    smsLogId: string,
+  ): Promise<{ ok: boolean; status?: string; reason?: string }> {
+    try {
+      const log = await this.prisma.smsLog.findUnique({
+        where: { id: smsLogId },
+        select: { id: true, status: true, direction: true, twilioSid: true },
+      });
+      if (!log || log.direction !== 'OUT') return { ok: false, reason: 'sortant introuvable' };
+      if (!log.twilioSid) return { ok: false, reason: 'aucun identifiant fournisseur' };
+      if (smsOutcomeFromStatus(log.status) !== 'accepted') {
+        return { ok: false, status: log.status ?? undefined, reason: `statut ${log.status} : plus annulable` };
+      }
+      if (this.provider !== 'vizyo-texto') {
+        return { ok: false, reason: `annulation non supportée par le fournisseur ${this.provider}` };
+      }
+      const res = await fetch(`${this.textoUrl}/v1/texto/${encodeURIComponent(log.twilioSid)}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${this.textoApiKey}` },
+        signal: AbortSignal.timeout(8_000),
+      });
+      if (!res.ok) return { ok: false, reason: `relais HTTP ${res.status}` };
+      const data = (await res.json().catch(() => ({}))) as {
+        cancelled?: boolean;
+        status?: string;
+        reason?: string;
+      };
+      if (!data.cancelled) {
+        return { ok: false, status: data.status, reason: data.reason ?? 'annulation refusée par le relais' };
+      }
+      const status = typeof data.status === 'string' && data.status ? data.status : 'cancelling';
+      await this.prisma.smsLog.update({
+        where: { id: log.id },
+        data: { status, statusUpdatedAt: new Date() },
+      });
+      return { ok: true, status };
+    } catch (err) {
+      return { ok: false, reason: err instanceof Error ? err.message : String(err) };
+    }
+  }
+
+  async recordOutboundStatus(input: {
+    providerId: string;
+    status: string;
+    errorCode?: string;
+    errorMessage?: string;
+  }): Promise<{ found: boolean; smsLogId?: string; outcome?: SmsOutcome }> {
+    const log = await this.prisma.smsLog.findFirst({
+      where: { direction: 'OUT', twilioSid: input.providerId },
+      orderBy: { createdAt: 'desc' },
+      select: { id: true, imei: true, status: true },
+    });
+    if (!log) return { found: false };
+
+    // T45 — le relais pousse désormais `cancelled` (serveur capcom6 ≥ v1.45.0). Une annulation
+    // que NOUS avons demandée (T41 : CUT supplantée, ligne déjà `cancelling`) n'est pas une panne
+    // : le statut terminal est écrit, mais aucune alerte n'est levée.
+    const annulationVoulue =
+      String(log.status ?? '').toLowerCase() === 'cancelling' &&
+      ['cancelled', 'canceled'].includes(String(input.status).toLowerCase());
+
+    const rec = await this.reconcileOutboundStatus(log.id, input.status);
+    if (!rec) return { found: false };
+    if (rec.outcome === 'failed' && annulationVoulue) {
+      this.logger.log({ smsLogId: log.id, providerId: input.providerId }, 'SMS annulé au relais comme demandé (T41)');
+      return { found: true, smsLogId: log.id, outcome: rec.outcome };
+    }
+    if (rec.outcome === 'failed') {
+      await this.prisma.smsLog.update({
+        where: { id: log.id },
+        data: {
+          errorCode: input.errorCode ?? undefined,
+          errorMessage: input.errorMessage ?? undefined,
+        },
+      });
+      if (rec.changed) {
+        this.errorLogger.record(
+          `SMS en échec terminal (${rec.status ?? input.status})`,
+          'sms-gateway-status',
+          {
+            smsLogId: log.id,
+            providerId: input.providerId,
+            imei: log.imei ?? undefined,
+            errorCode: input.errorCode,
+            errorMessage: input.errorMessage,
+          },
+          'CRITICAL',
+        ).catch(() => undefined);
+      }
+    }
+    return { found: true, smsLogId: log.id, outcome: rec.outcome };
   }
 
   /**
@@ -494,10 +746,63 @@ export class SmsGatewayService implements OnModuleInit {
     // On NORMALISE ici plutôt que de rejeter : si un autre chemin écrit un numéro brut un jour, le
     // SMS partira quand même. `toE164` reste prudent (un numéro national n'est jamais préfixé).
     const normalized = toE164(to) ?? to;
-    const result = await this.performSend(normalized, body, context);
-    const safeTo = normalized.trim();
-    if (safeTo) this.recordSystemActivity(safeTo, body, context, result);
-    return result;
+    const priority = context['priority'] === 'critical_restore'
+      ? 100
+      : context.template === 'engine_control_fallback'
+        ? 50
+        : 0;
+    this.queuedForDispatch += 1;
+    return new Promise<SendSmsResult>((resolve, reject) => {
+      this.smsDispatchQueue.push({
+        sequence: this.smsDispatchSequence++,
+        priority,
+        to: normalized,
+        body,
+        context,
+        resolve,
+        reject,
+      });
+      // Le drain est unique. Une RESTORE peut dépasser les SMS ordinaires encore en
+      // attente, tout en conservant le FIFO entre commandes de même priorité.
+      void this.drainDispatchQueue();
+    });
+  }
+
+  private async drainDispatchQueue(): Promise<void> {
+    if (this.smsDispatchProcessing) return;
+    this.smsDispatchProcessing = true;
+    try {
+      while (this.smsDispatchQueue.length > 0) {
+        this.smsDispatchQueue.sort((a, b) => b.priority - a.priority || a.sequence - b.sequence);
+        const job = this.smsDispatchQueue.shift();
+        if (!job) continue;
+        try {
+      const waitMs = Math.max(0, this.nextDispatchAt - Date.now());
+      if (waitMs > 0) {
+        await new Promise<void>((resolve) => {
+          const timer = setTimeout(resolve, waitMs);
+          // Le timer doit garder le processus vivant tant qu'un appel HTTP attend sa
+          // place : contrairement aux sentinelles de fond, cet envoi a un appelant.
+          if (typeof timer.ref === 'function') timer.ref();
+        });
+      }
+
+          const result = await this.performSend(job.to, job.body, job.context);
+      this.nextDispatchAt = Date.now() + this.minIntervalMs;
+          const safeTo = job.to.trim();
+          if (safeTo) this.recordSystemActivity(safeTo, job.body, job.context, result);
+          job.resolve(result);
+        } catch (err) {
+          job.reject(err);
+        } finally {
+          this.queuedForDispatch = Math.max(0, this.queuedForDispatch - 1);
+        }
+      }
+    } finally {
+      this.smsDispatchProcessing = false;
+      // Couvre une insertion arrivée exactement entre la fin de la boucle et le finally.
+      if (this.smsDispatchQueue.length > 0) void this.drainDispatchQueue();
+    }
   }
 
   private async performSend(
@@ -610,14 +915,20 @@ export class SmsGatewayService implements OnModuleInit {
     this.systemActivity.record({
       category: 'SMS',
       action: source ? `sms_${source}`.replace(/[^a-z0-9_-]/gi, '_').slice(0, 60) : 'sms_sent',
-      status: result.ok ? 'SUCCESS' : 'FAILURE',
+      // « accepted » signifie seulement que la passerelle a pris la demande. Le journal
+      // global ne doit plus transformer cette soumission en fausse preuve de remise.
+      status: result.outcome === 'delivered' ? 'SUCCESS' : result.outcome === 'failed' ? 'FAILURE' : 'SKIPPED',
       actor: 'system',
       target: maskPhone(to),
-      detail: source ? `SMS (${source})` : redactSmsBody(body),
+      detail:
+        result.outcome === 'accepted'
+          ? `${source ? `SMS (${source})` : redactSmsBody(body)} — soumis, remise non prouvée`
+          : source ? `SMS (${source})` : redactSmsBody(body),
       triggeredByUserId,
       meta: {
         imei: typeof context?.imei === 'string' ? context.imei : undefined,
         provider: this.provider,
+        outcome: result.outcome,
         error: result.error,
       },
     });
@@ -634,6 +945,7 @@ export class SmsGatewayService implements OnModuleInit {
     to: string,
     body: string,
     context: SmsSendContext,
+    retriedAfterAllowlist = false,
   ): Promise<SendSmsResult> {
     try {
       // B1 — timeout 10s pour ne pas rester pendu si le relay hang.
@@ -643,7 +955,15 @@ export class SmsGatewayService implements OnModuleInit {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${this.textoApiKey}`,
         },
-        body: JSON.stringify({ to, body, context }),
+        body: JSON.stringify({
+          to,
+          body,
+          context,
+          // T41 — les deux options remontent au premier niveau, là où le relais les valide ;
+          // elles restent aussi dans `context` pour l'audit.
+          ...(Number.isFinite(context.ttlSeconds) ? { ttlSeconds: Math.floor(context.ttlSeconds as number) } : {}),
+          ...(Number.isFinite(context.smsPriority) ? { priority: Math.trunc(context.smsPriority as number) } : {}),
+        }),
         signal: AbortSignal.timeout(10_000),
       });
 
@@ -668,6 +988,35 @@ export class SmsGatewayService implements OnModuleInit {
       // A2 — HTTP non-2xx : log dans ErrorLog.
       if (!res.ok) {
         const errorMessage = data.message ?? data.error ?? `HTTP ${res.status}`;
+        // ══ T52 — L'ALLOWLIST NE BLOQUE PAS UNE REMISE EN ROUTE ═══════════════════════════════
+        // Un 403 « hors allowlist » comptait comme un refus de soumission, trois fois, puis plus
+        // aucun SMS : la garde anti-spam du relais restait sur le chemin de la restauration. Le
+        // relais garde sa garde ; c'est Tracky — seul détenteur de la clé d'allowlist — qui
+        // répare la sienne : le numéro du boîtier est ajouté à la volée, l'envoi est retenté
+        // UNE fois, et une ligne dit que l'allowlist avait dérivé (la synchro a manqué un SIM).
+        if (
+          !retriedAfterAllowlist &&
+          res.status === 403 &&
+          /allowlist/i.test(errorMessage) &&
+          context['priority'] === 'critical_restore' &&
+          this.allowlist
+        ) {
+          try {
+            await this.allowlist.add(to, `RESTORE ${context.imei ?? ''} — ajout automatique (T52)`.trim());
+            this.errorLogger.record(
+              `Allowlist du relais incomplète : ${to} ajouté à la volée pour une remise en route (la synchronisation avait manqué ce boîtier)`,
+              'sms-gateway',
+              { imei: context?.imei, toNumber: to, provider: 'vizyo-texto', phase: 'allowlist-self-heal' },
+            ).catch(() => undefined);
+            this.logger.warn(`T52 : ${to} ajouté à l'allowlist du relais, nouvel essai d'envoi (RESTORE)`);
+            return this.sendViaVizyoTexto(to, body, context, true);
+          } catch (addErr) {
+            this.logger.error(
+              `T52 : ajout de ${to} à l'allowlist impossible — ${addErr instanceof Error ? addErr.message : String(addErr)}`,
+            );
+            // On retombe sur le traitement d'échec ordinaire ci-dessous.
+          }
+        }
         await this.prisma.smsLog.create({
           data: {
             direction: 'OUT',

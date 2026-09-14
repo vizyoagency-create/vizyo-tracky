@@ -14,4 +14,10 @@ export class RequestEngineCommandDto {
   @IsOptional()
   @IsBoolean()
   disableSchedule?: boolean;
+
+  /** Clé stable d'un clic métier : les retries HTTP renvoient la même intention. */
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  idempotencyKey?: string;
 }

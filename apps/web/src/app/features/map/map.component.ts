@@ -3,7 +3,6 @@ import {
   AfterViewInit,
   Component,
   computed,
-  DestroyRef,
   effect,
   ElementRef,
   HostListener,
@@ -14,7 +13,6 @@ import {
   untracked,
   viewChild,
 } from '@angular/core';
-import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { DecimalPipe, NgTemplateOutlet } from '@angular/common';
 import { HttpClient } from '@angular/common/http';
 import { ActivatedRoute, Router } from '@angular/router';
@@ -70,10 +68,9 @@ import {
 } from '../../core/services/preferences.service';
 import { VehiclesApiService, type VehicleDetailDto } from '../../core/services/vehicles.service';
 import { AuthService } from '../../core/services/auth.service';
-import { EngineControlService } from '../../core/services/engine-control.service';
 import { VisibilityService } from '../../core/services/visibility.service';
 import { ToastService } from '../../shared/ui/toast/toast.service';
-import { ConfirmModalComponent } from '../../shared/ui/confirm-modal/confirm-modal.component';
+import { EngineControlButtonComponent } from '../engine-control/engine-control-button.component';
 import { MapService } from '../../core/services/map.service';
 import { MapBridgeService } from '../../core/services/map-bridge.service';
 import { MapStyleService, type MapStyleId } from '../../core/services/map-style.service';
@@ -262,7 +259,7 @@ const RESYNC_RADIUS_M = 150;
 @Component({
   selector: 'app-map',
   standalone: true,
-  imports: [DecimalPipe, NgTemplateOutlet, FormsModule, ConfirmModalComponent, SaFleetBadgeComponent, GroupBadgeComponent, ConnectivityBadgeComponent, TrackClickDirective, BottomSheetComponent, ZoneComponent, LegendeVitesseComponent],
+  imports: [DecimalPipe, NgTemplateOutlet, FormsModule, EngineControlButtonComponent, SaFleetBadgeComponent, GroupBadgeComponent, ConnectivityBadgeComponent, TrackClickDirective, BottomSheetComponent, ZoneComponent, LegendeVitesseComponent],
   template: `
     <div #mapContainer style="position:absolute;top:0;left:0;width:100%;height:100%"></div>
 
@@ -1435,39 +1432,21 @@ const RESYNC_RADIUS_M = 150;
                a la permission engine_control sur ce véhicule (comme le bouton partagé, qui
                se masque sinon). Griser « Couper » quand la coupe est interdite (mouvement /
                fix invalide) au lieu d'afficher une action dangereuse toujours active. -->
-          @if (canEngineControl(baanoolCard()!.vehicleId)) {
-            @if (baanoolCard()!.cutActive) {
-              <button class="bn-vcard-act bn-vcard-act--restore" (click)="baanoolCardAction('restore')">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><line x1="12" y1="2" x2="12" y2="12"/></svg>
-                <span>Rallumer</span>
-              </button>
-            } @else {
-              <button class="bn-vcard-act bn-vcard-act--danger"
-                      [disabled]="cutBlockedReason() !== null"
-                      [title]="cutBlockedReason() ?? ''"
-                      (click)="cutBlockedReason() === null ? baanoolCardAction('cut') : null">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><line x1="12" y1="2" x2="12" y2="12"/></svg>
-                <span>Couper</span>
-              </button>
-            }
-          }
+          <app-engine-control-button
+            [trackLabel]="'Carte ' + baanoolCard()!.plate"
+            [trackerId]="baanoolCard()!.trackerId"
+            [vehicleId]="baanoolCard()!.vehicleId"
+            [vehiclePlate]="baanoolCard()!.plate"
+            [currentSpeedKmh]="baanoolCard()!.speedKmh"
+            [validFix]="cardValidFix()"
+            [positionAge]="cardPositionAgeSeconds()"
+            [ignition]="baanoolCard()!.ignition"
+            [trackerLastSeenAt]="baanoolCard()!.lastSeenAt"
+            [scheduleEnabled]="cardScheduleEnabled()"
+          />
         </div>
       </div>
     }
-
-    <!-- Modal confirmation CUT/RESTORE (remplace window.confirm) -->
-    <app-confirm-modal
-      [open]="engineModalOpen() !== null"
-      [title]="engineModalOpen() === 'cut' ? 'Couper le moteur ?' : 'Rallumer le moteur ?'"
-      [description]="engineModalDescription()"
-      [consequences]="engineModalConsequences()"
-      [confirmLabel]="engineModalConfirmLabel()"
-      cancelLabel="Annuler"
-      [danger]="engineModalOpen() === 'cut'"
-      [loading]="engineModalLoading()"
-      (confirmed)="onEngineModalConfirm()"
-      (cancelled)="engineModalOpen.set(null)"
-    />
   `,
   styles: [`
     /* ── CARTE INTERROMPUE (perte du contexte WebGL) ────────────────────────────────
@@ -2845,38 +2824,6 @@ export class MapComponent implements AfterViewInit, OnDestroy {
   );
   private readonly perms = inject(PermissionsService);
 
-  /**
-   * Fix cohérence coupe-circuit (carte) — la carte a son PROPRE bouton « Couper »
-   * (pas le composant partagé `<app-engine-control-button>`). Il faut donc y reproduire
-   * les mêmes gardes que le backend / le bouton partagé, sinon la carte affiche une
-   * action dangereuse comme disponible (même piège que le bug veilleur, mais sans AUCUNE
-   * garde) : bouton « Couper » rouge/actif pour un rôle sans droit ou sur un véhicule en
-   * pleine vitesse.
-   */
-  protected canEngineControl(vehicleId: string | undefined): boolean {
-    return !!vehicleId && this.perms.can('engine_control', vehicleId);
-  }
-
-  /**
-   * Raison de blocage de la coupe depuis la carte (null = coupe autorisée), alignée sur
-   * le garde backend non-veilleur (engine-control.service) : vitesse > 20 km/h refusée,
-   * fix GPS invalide refusé, position trop ancienne (>60s) si le véhicule roulait. Le
-   * serveur reste le rempart final ; ceci ne fait que griser le bouton pour ne pas
-   * proposer une action qui échouera / serait dangereuse.
-   */
-  protected readonly cutBlockedReason = computed<string | null>(() => {
-    const card = this.baanoolCard();
-    if (!card) return null;
-    const pos = this.realtime.positions().get(card.trackerId);
-    const speed = pos?.speedKmh ?? card.speedKmh;
-    const valid = pos?.valid ?? true;
-    const ageS = pos ? (Date.now() - new Date(pos.timestamp).getTime()) / 1000 : undefined;
-    const atRest = speed <= 5; // REST_SPEED_KMH backend
-    if (!atRest && ageS !== undefined && ageS > 60) return `Position trop ancienne (${Math.round(ageS)}s)`;
-    if (!valid) return 'Fix GPS invalide';
-    if (speed > 20) return `Vitesse trop élevée (${speed.toFixed(0)} km/h) — coupure impossible en mouvement`;
-    return null;
-  });
   protected readonly styles = inject(MapStyleService);
   private readonly zone = inject(NgZone);
   private readonly auth = inject(AuthService);
@@ -2890,13 +2837,8 @@ export class MapComponent implements AfterViewInit, OnDestroy {
   private readonly preferences = inject(PreferencesService);
   private readonly mapSvc = inject(MapService);
   private readonly mapBridge = inject(MapBridgeService);
-  private readonly engineControl = inject(EngineControlService);
   private readonly visibility = inject(VisibilityService);
   private readonly toast = inject(ToastService);
-  // V1.10 (Sprint 5 stabilite) — DestroyRef pour brancher takeUntilDestroyed
-  // sur les subscribe() qui sortent du cycle de vie automatique (ex: callbacks
-  // imperatifs comme onEngineModalConfirm).
-  private readonly destroyRef = inject(DestroyRef);
   private readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute);
   private readonly http = inject(HttpClient);
@@ -2938,47 +2880,6 @@ export class MapComponent implements AfterViewInit, OnDestroy {
   private activePopupTrackerId: string | null = null;
   private activePopupVehicleId: string | null = null;
 
-  // Modal engine CUT/RESTORE (remplace window.confirm)
-  protected readonly engineModalOpen = signal<'cut' | 'restore' | null>(null);
-  protected readonly engineModalLoading = signal(false);
-  private engineModalTrackerId: string | null = null;
-  private engineModalHasSchedule = false;
-
-  protected readonly engineModalDescription = computed(() => {
-    const action = this.engineModalOpen();
-    if (this.engineModalHasSchedule) {
-      const verb = action === 'cut' ? 'immobiliser' : 'rallumer';
-      return `Vous êtes sur le point de ${verb} ce véhicule.<br><br>` +
-        `<strong>Le mode horaire reste actif.</strong> ` +
-        `Cette action tient jusqu'à la prochaine bascule programmée, puis le planning reprend ` +
-        `automatiquement.<br><br>` +
-        `<span class="text-fg-tertiary text-xs">Cette action sera enregistrée dans l'audit trail.</span>`;
-    }
-    return action === 'cut'
-      ? `Le véhicule sera immobilisé immédiatement.<br><br>` +
-        `<span class="text-fg-tertiary text-xs">Cette action sera enregistrée dans l'audit trail.</span>`
-      : `Le véhicule sera à nouveau utilisable.<br><br>` +
-        `<span class="text-fg-tertiary text-xs">Cette action sera enregistrée dans l'audit trail.</span>`;
-  });
-
-  protected readonly engineModalConfirmLabel = computed(() => {
-    const action = this.engineModalOpen();
-    return action === 'cut' ? 'Couper le moteur' : 'Rallumer le moteur';
-  });
-
-  /**
-   * Ce que la coupure coûte, dit à part du geste — règle du kit. Le cas « mode horaire
-   * actif » est le plus traître : la coupure n'y tient QUE jusqu'à la prochaine bascule,
-   * et croire l'inverse fait rouler un véhicule qu'on pensait immobilisé.
-   */
-  protected readonly engineModalConsequences = computed(() => {
-    if (this.engineModalOpen() !== 'cut') return '';
-    return this.engineModalHasSchedule
-      ? 'Le planning horaire reprend la main à la prochaine bascule : le véhicule redémarrera '
-        + 'sans intervention. Pour une immobilisation qui tient, désactivez d\'abord le mode horaire.'
-      : 'Le véhicule ne redémarrera plus tant que personne ne l\'aura réactivé depuis Tracky. '
-        + 'Le conducteur en cours de trajet est concerné dès la prochaine coupure du contact.';
-  });
 
   /** Etat de mouvement par trackerId : extrapolation speed/heading + lissage display. */
   private motion = new Map<string, MotionState>();
@@ -6422,64 +6323,6 @@ export class MapComponent implements AfterViewInit, OnDestroy {
     }
   }
 
-  private requestEngine(trackerId: string, action: 'CUT' | 'RESTORE'): void {
-    const vehicleId = this.activePopupVehicleId;
-    const snap = vehicleId ? this.realtime.snapshot().find((v) => v.vehicleId === vehicleId) : null;
-    this.engineModalHasSchedule = !!(snap && (snap as any).scheduleEnabled);
-    this.engineModalTrackerId = trackerId;
-    this.engineModalOpen.set(action === 'CUT' ? 'cut' : 'restore');
-  }
-
-  protected onEngineModalConfirm(): void {
-    const trackerId = this.engineModalTrackerId;
-    const action = this.engineModalOpen() === 'cut' ? 'CUT' as const : 'RESTORE' as const;
-    if (!trackerId) return;
-
-    this.engineModalLoading.set(true);
-    // V1.10 (Sprint 5 stabilite) — takeUntilDestroyed annule la souscription
-    // si le composant est detruit avant la reponse (cas user qui change de
-    // page entre le click et l'ack reseau). Evite le warning "callback on
-    // destroyed component".
-    // Refonte planning : une action manuelle NE désactive plus le mode horaire (elle le suspend
-    // jusqu'à la prochaine bascule côté backend). On n'envoie donc plus `disableSchedule`.
-    this.engineControl.requestCommand(trackerId, action, 'depuis carte').pipe(
-      takeUntilDestroyed(this.destroyRef),
-    ).subscribe({
-      next: () => {
-        // Sprint 2 (revue #4) — PAS de faux succès : la commande est ENVOYÉE, pas
-        // confirmée. L'état « coupé » ne basculera qu'à la chute d'ignition (le badge
-        // carte est piloté par le WS). Toast neutre « envoyée » + attente de confirmation.
-        this.toast.show({
-          kind: 'info',
-          title: action === 'CUT' ? 'Coupure envoyée' : 'Rallumage envoyé',
-          message: action === 'CUT'
-            ? 'En attente de confirmation du boîtier (chute d\'ignition)…'
-            : 'Commande transmise au véhicule.',
-          duration: 4000,
-        });
-        this.engineModalOpen.set(null);
-        this.engineModalLoading.set(false);
-        this.closePopup();
-      },
-      error: (err) => {
-        // Sprint 2 (revue #4) — 409 = une coupure est déjà en attente (verrou anti
-        // multi-clic). Message dédié, pas un « échec » générique trompeur.
-        const is409 = err?.status === 409;
-        this.toast.show({
-          kind: 'error',
-          title: is409 ? 'Commande déjà en cours' : 'Échec commande moteur',
-          message: is409
-            ? 'Une coupure est déjà en attente de confirmation sur ce véhicule.'
-            : (err?.error?.error?.message ?? err?.error?.message ?? 'Erreur inconnue'),
-          duration: 6000,
-        });
-        // Fermer la modal aussi sur erreur/409 (sinon elle reste ouverte et masque le toast). Cf smoke prod 2026-06-18.
-        this.engineModalOpen.set(null);
-        this.engineModalLoading.set(false);
-      },
-    });
-  }
-
   private closePopup(): void {
     this.currentPopup?.remove();
     this.currentPopup = null;
@@ -6495,6 +6338,26 @@ export class MapComponent implements AfterViewInit, OnDestroy {
     this.deadZoneHint.set(null);
     this.activePopupTrackerId = null;
     this.activePopupVehicleId = null;
+  }
+
+  /** Faits frais transmis au composant unique fiche/carte de commande moteur. */
+  protected cardValidFix(): boolean {
+    const card = this.baanoolCard();
+    if (!card) return false;
+    return this.realtime.positions().get(card.trackerId)?.valid ?? false;
+  }
+
+  protected cardPositionAgeSeconds(): number | undefined {
+    const card = this.baanoolCard();
+    if (!card?.lastPositionAt) return undefined;
+    const age = (Date.now() - new Date(card.lastPositionAt).getTime()) / 1000;
+    return Number.isFinite(age) ? Math.max(0, age) : undefined;
+  }
+
+  protected cardScheduleEnabled(): boolean {
+    const vehicleId = this.baanoolCard()?.vehicleId;
+    if (!vehicleId) return false;
+    return !!this.realtime.snapshot().find((v) => v.vehicleId === vehicleId)?.scheduleEnabled;
   }
 
   protected baanoolCardAction(action: string): void {
@@ -6519,12 +6382,6 @@ export class MapComponent implements AfterViewInit, OnDestroy {
         break;
       case 'gmaps':
         window.open(`https://www.google.com/maps?q=${card.lat},${card.lng}`, '_blank');
-        break;
-      case 'cut':
-        this.requestEngine(card.trackerId, 'CUT');
-        break;
-      case 'restore':
-        this.requestEngine(card.trackerId, 'RESTORE');
         break;
     }
   }

@@ -22,6 +22,7 @@ const EVERY_SMS: Record<SmsTemplateId, true> = {
   alert_whatsapp: true,
   tracker_provisioning: true,
   gateway_heartbeat: true,
+  gateway_daily_proof: true,
   admin_test_fallback: true,
   admin_manual: true,
   engine_control_fallback: true,

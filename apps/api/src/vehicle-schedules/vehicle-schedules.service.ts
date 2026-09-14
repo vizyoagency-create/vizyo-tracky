@@ -20,6 +20,15 @@ interface RequestedBy {
   fleetId: string | null;
 }
 
+export interface ScheduleUpsertOptions {
+  /**
+   * Une activation de masse ne doit jamais envoyer les CUT dans la requête HTTP.
+   * Le planning reste volontairement désynchronisé en DB et le cron le reprend :
+   * c'est notre file durable (un redémarrage API ne perd donc aucun véhicule).
+   */
+  deferImmediateCut?: boolean;
+}
+
 @Injectable()
 export class VehicleSchedulesService {
   private readonly logger = new Logger(VehicleSchedulesService.name);
@@ -39,6 +48,7 @@ export class VehicleSchedulesService {
     vehicleId: string,
     dto: UpsertVehicleScheduleDto,
     requestedBy: RequestedBy,
+    options: ScheduleUpsertOptions = {},
   ): Promise<VehicleSchedule> {
     await this.assertAccess(vehicleId, requestedBy);
 
@@ -162,6 +172,15 @@ export class VehicleSchedulesService {
         this.logger.log(
           { vehicleId, overrideUntil: updated.overrideUntil },
           'Schedule enabled out-of-window but manual override active — deferring cut to cron',
+        );
+      } else if (options.deferImmediateCut) {
+        // Bulk flotte : NE PAS bloquer la requête plusieurs minutes et surtout ne pas créer
+        // une rafale de commandes. `lastEvaluatedState` reste différent de OUT_OF_WINDOW
+        // (null après une réactivation, ou l'ancien état) : le cron persistant reprendra le
+        // véhicule, même après un crash/redeploy, et appliquera son cadenceur anti-rafale.
+        this.logger.log(
+          { vehicleId, state },
+          'Schedule enabled out-of-window — CUT queued for paced scheduler dispatch',
         );
       } else {
         // Hors fenetre → CUT immediat

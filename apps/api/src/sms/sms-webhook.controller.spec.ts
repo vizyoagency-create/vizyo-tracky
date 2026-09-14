@@ -6,7 +6,10 @@ import { SmsWebhookController } from './sms-webhook.controller';
  * Avec secret : signature invalide → rejet (logique HMAC existante, inchangée).
  */
 function makeController(opts: { secret?: string; prod?: boolean } = {}) {
-  const sms = { recordInbound: jest.fn().mockResolvedValue(undefined) };
+  const sms = {
+    recordInbound: jest.fn().mockResolvedValue(undefined),
+    recordOutboundStatus: jest.fn().mockResolvedValue({ found: true }),
+  };
   const errorLogger = { record: jest.fn().mockResolvedValue(undefined) };
   const config = {
     get: (key: string) => {
@@ -55,5 +58,35 @@ describe('SmsWebhookController — D4 fail-closed', () => {
     const { ctrl, errorLogger } = makeController({ secret: 's3cr3t', prod: true });
     ctrl.onModuleInit();
     expect(errorLogger.record).not.toHaveBeenCalled();
+  });
+
+  it('statut sortant dev : persiste la preuve terminale', async () => {
+    const { ctrl, sms } = makeController({ prod: false });
+    const res = await ctrl.handleOutboundStatus(reqNoRaw, undefined, undefined, {
+      providerId: 'cap-1',
+      status: 'failed',
+      errorCode: 'RADIO_OFF',
+    });
+    expect(res).toEqual({ ok: true, found: true });
+    expect(sms.recordOutboundStatus).toHaveBeenCalledWith(
+      expect.objectContaining({ providerId: 'cap-1', status: 'failed' }),
+    );
+  });
+
+  it('statut sortant production sans secret : rejet fail-closed', async () => {
+    const { ctrl, sms } = makeController({ prod: true });
+    await expect(ctrl.handleOutboundStatus(reqNoRaw, undefined, undefined, {
+      providerId: 'cap-1', status: 'delivered',
+    })).resolves.toEqual({ ok: false });
+    expect(sms.recordOutboundStatus).not.toHaveBeenCalled();
+  });
+
+  it('statut sortant incomplet : refus et sentinelle', async () => {
+    const { ctrl, sms, errorLogger } = makeController({ prod: false });
+    await expect(ctrl.handleOutboundStatus(reqNoRaw, undefined, undefined, {
+      providerId: 'cap-1',
+    })).resolves.toEqual({ ok: false });
+    expect(sms.recordOutboundStatus).not.toHaveBeenCalled();
+    expect(errorLogger.record).toHaveBeenCalled();
   });
 });

@@ -469,9 +469,8 @@ export class RealtimeService {
       //  - CUT ACKNOWLEDGED    -> 'coupe' confirme (ignition tombee / DEVICE_OBSERVED)
       //  - CUT SENT            -> 'en attente' (commande, pas encore confirmee)
       //  - CUT FAILED/REJECTED -> efface (echec d'envoi)
-      //  - RESTORE SENT||ACK   -> efface des l'envoi : rallumer est toujours sur, on
-      //    ne requiert pas de preuve device pour CESSER d'afficher "coupe" (sinon
-      //    l'etat resterait colle, un RESTORE app n'etant jamais ACKNOWLEDGED).
+      //  - RESTORE ACK         -> efface l'état coupé ; SENT reste une tentative
+      //    visible et ne fabrique jamais un véhicule restauré.
       const active = new Set(this._cutActiveTrackerIds());
       const pending = new Set(this._cutPendingTrackerIds());
       const tid = event.trackerId;
@@ -488,7 +487,7 @@ export class RealtimeService {
           pending.delete(tid);
         }
       } else if (event.action === 'RESTORE') {
-        if (event.status === 'SENT' || event.status === 'ACKNOWLEDGED') {
+        if (event.status === 'ACKNOWLEDGED') {
           active.delete(tid);
           pending.delete(tid);
         }

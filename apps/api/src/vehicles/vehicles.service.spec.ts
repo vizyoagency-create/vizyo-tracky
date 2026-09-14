@@ -293,7 +293,7 @@ describe('VehiclesService', () => {
   });
 
   // Sprint 2 (revue #1/#2) — snapshot() expose un etat coupe TRI-ETAT par tracker.
-  it('snapshot derives tri-state engineCutState (cut / pending / normal-after-RESTORE)', async () => {
+  it('snapshot derives tri-state engineCutState without treating RESTORE SENT as success', async () => {
     const A = 'tracker-a';
     const B = 'tracker-b';
     const C = 'tracker-c';
@@ -343,9 +343,9 @@ describe('VehiclesService', () => {
     // B : coupure seulement envoyee (non confirmee par ignition) -> 'pending', PAS coupe
     expect(byTracker.get(B)?.engineCutState).toBe('pending');
     expect(byTracker.get(B)?.engineCutActive).toBe(false);
-    // C : RESTORE plus recent qu'un CUT confirme -> 'normal' (revue #1 : sinon "coupe" colle a jamais)
-    expect(byTracker.get(C)?.engineCutState).toBe('normal');
-    expect(byTracker.get(C)?.engineCutActive).toBe(false);
+    // C : RESTORE seulement SENT -> la coupure reste affichée jusqu'à preuve.
+    expect(byTracker.get(C)?.engineCutState).toBe('cut');
+    expect(byTracker.get(C)?.engineCutActive).toBe(true);
   });
 
   // --- Sprint 10 (Synchro véhicule ↔ planning d'installation) ---

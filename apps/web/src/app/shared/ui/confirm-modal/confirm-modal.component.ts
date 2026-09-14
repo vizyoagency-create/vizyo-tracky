@@ -23,13 +23,13 @@ import { LucideAngularModule, AlertTriangle, Info } from 'lucide-angular';
  *   · normal    — pictogramme d'information, bouton d'accent.
  *   · danger    — pictogramme d'alerte, bouton rouge, conséquences exigées.
  *   · critique  — trois marqueurs de plus : liseré rouge en tête, état de l'objet
- *                 rappelé, et SAISIE d'un mot de confirmation. Un geste qui
+ *                 rappelé, et geste explicite (saisie ou glissement). Un geste qui
  *                 immobilise un bien ne se fait pas en un clic.
  *
  * SUR MOBILE, C'EST UNE FEUILLE, PAS UNE BOÎTE CENTRÉE
  * « Jamais une modale centrée sur un téléphone : elle atterrit sous le clavier. »
- * Le cas critique le prouve — il demande une saisie, donc ouvre le clavier. La
- * bascule est en CSS : même composant, même DOM, géométrie de feuille sous 640 px,
+ * La variante avec saisie ouvre le clavier ; la variante moteur utilise un glissement.
+ * La bascule est en CSS : même composant, même DOM, géométrie de feuille sous 640 px,
  * avec le rayon et la poignée de la plateforme (jetons posés au lot A3).
  */
 @Component({
@@ -79,7 +79,7 @@ import { LucideAngularModule, AlertTriangle, Info } from 'lucide-angular';
 
           <ng-content />
 
-          @if (critique() && confirmationAttendue()) {
+          @if (critique() && confirmationAttendue() && !slideToConfirm()) {
             <label class="cm-saisie">
               <span class="cm-saisie-l">Tapez {{ confirmationAttendue() }} pour confirmer</span>
               <input
@@ -94,23 +94,45 @@ import { LucideAngularModule, AlertTriangle, Info } from 'lucide-angular';
             </label>
           }
 
-          <div class="cm-actions">
+          @if (slideToConfirm()) {
+            <label class="cm-slide" [class.cm-slide--danger]="danger() || critique()">
+              <span class="cm-slide-l">{{ slideLabel() }}</span>
+              <input
+                class="cm-slide-i"
+                type="range"
+                min="0"
+                max="100"
+                step="1"
+                [disabled]="loading()"
+                [value]="glissement()"
+                (input)="onSlideEvent($event)"
+                (change)="onSlideRelease($event)"
+                (keydown)="onSlideKeydown($event)"
+                [attr.aria-label]="slideLabel()"
+                [attr.aria-description]="'Faites glisser jusqu’au bout, ou maintenez la flèche droite ; les touches Fin et Page suivante sont sans effet.'" />
+              <span class="cm-slide-hint" aria-hidden="true">{{ loading() ? 'Envoi…' : 'Faites glisser jusqu’au bout →' }}</span>
+            </label>
+          }
+
+          <div class="cm-actions" [class.cm-actions--slide]="slideToConfirm()">
             <button type="button" class="cm-btn cm-btn--sec" (click)="onCancel()" [disabled]="loading()">
               {{ cancelLabel() }}
             </button>
-            <button
-              type="button"
-              class="cm-btn"
-              [class.cm-btn--danger]="danger() || critique()"
-              [class.cm-btn--accent]="!danger() && !critique()"
-              [disabled]="loading() || !confirmationOk()"
-              [attr.title]="motifBlocage()"
-              (click)="onConfirm()">
-              @if (loading()) {
-                <span class="cm-rond" aria-hidden="true"></span>
-              }
-              {{ confirmLabel() }}
-            </button>
+            @if (!slideToConfirm()) {
+              <button
+                type="button"
+                class="cm-btn"
+                [class.cm-btn--danger]="danger() || critique()"
+                [class.cm-btn--accent]="!danger() && !critique()"
+                [disabled]="loading() || !confirmationOk()"
+                [attr.title]="motifBlocage()"
+                (click)="onConfirm()">
+                @if (loading()) {
+                  <span class="cm-rond" aria-hidden="true"></span>
+                }
+                {{ confirmLabel() }}
+              </button>
+            }
           </div>
         </div>
       </div>
@@ -167,7 +189,27 @@ import { LucideAngularModule, AlertTriangle, Info } from 'lucide-angular';
     }
     .cm-saisie-i:focus-visible { outline: 2px solid var(--texte-alerte); outline-offset: 1px; }
 
+    /* Confirmation gestuelle : le range natif conserve le drag tactile, la souris et le clavier.
+       Le geste doit atteindre 98 %, puis revient à zéro s'il est relâché avant la fin. */
+    .cm-slide {
+      display: block; margin-top: 18px; padding: 12px;
+      border: 1px solid color-mix(in srgb, var(--color-tracky-light) 38%, var(--border-subtle));
+      border-radius: 14px; background: color-mix(in srgb, var(--color-tracky-light) 8%, var(--bg-tertiary));
+    }
+    .cm-slide--danger {
+      border-color: color-mix(in srgb, var(--danger) 45%, var(--border-subtle));
+      background: color-mix(in srgb, var(--danger) 8%, var(--bg-tertiary));
+    }
+    .cm-slide-l { display: block; font-size: .84rem; font-weight: 750; color: var(--fg-primary); text-align: center; }
+    .cm-slide-i { width: 100%; min-height: 44px; margin: 6px 0 0; cursor: grab; accent-color: var(--color-tracky-light); touch-action: pan-x; }
+    .cm-slide-i:active { cursor: grabbing; }
+    .cm-slide--danger .cm-slide-i { accent-color: var(--danger); }
+    .cm-slide-i:focus-visible { outline: 2px solid var(--color-tracky-light); outline-offset: 2px; border-radius: 10px; }
+    .cm-slide--danger .cm-slide-i:focus-visible { outline-color: var(--danger); }
+    .cm-slide-hint { display: block; margin-top: -5px; font-size: .72rem; color: var(--fg-secondary); text-align: center; }
+
     .cm-actions { display: flex; align-items: center; justify-content: flex-end; gap: 12px; margin-top: 24px; }
+    .cm-actions--slide { margin-top: 12px; }
     .cm-btn {
       display: inline-flex; align-items: center; gap: 8px;
       min-height: 44px; padding: 10px 16px;
@@ -242,7 +284,7 @@ export class ConfirmModalComponent {
   readonly confirmLabel = input('Confirmer');
   readonly cancelLabel = input('Annuler');
   readonly danger = input(false);
-  /** Niveau critique : liseré rouge, état rappelé, saisie de confirmation. */
+  /** Niveau critique : liseré rouge, état rappelé, geste explicite de confirmation. */
   readonly critique = input(false);
   /**
    * Le mot à retaper pour débloquer la confirmation — la plaque, en général.
@@ -250,6 +292,9 @@ export class ConfirmModalComponent {
    * espaces : on vérifie que la personne a LU la plaque, pas qu'elle sait taper.
    */
   readonly confirmationAttendue = input<string>();
+  /** Confirmation tactile/accessible par glissement, utilisée pour les commandes moteur. */
+  readonly slideToConfirm = input(false);
+  readonly slideLabel = input('Glissez pour confirmer');
   readonly loading = input(false);
 
   readonly confirmed = output<void>();
@@ -261,6 +306,24 @@ export class ConfirmModalComponent {
   protected readonly uid = Math.random().toString(36).slice(2, 9);
 
   protected readonly saisie = signal('');
+  protected readonly glissement = signal(0);
+  /**
+   * ══ T50 (contre-expertise du 13/09, P2-3) — UN GLISSEMENT, PAS UN CLIC ═════════════════════
+   *
+   * Un `<input type="range">` natif saute au point cliqué : un clic en bout de piste, ou la
+   * touche Fin, produisait `change` à 100 → confirmation d'une coupure moteur sans le moindre
+   * geste continu. L'exigence « impossible de déclencher accidentellement » n'était pas tenue.
+   *
+   * La confirmation exige désormais un geste PROGRESSIF : au moins SLIDE_MIN_SAMPLES valeurs
+   * strictement croissantes, la première sous SLIDE_START_MAX, la dernière au bout. Un doigt qui
+   * glisse en produit des dizaines ; une flèche droite maintenue aussi (chaque répétition est un
+   * événement `input`) — le clavier reste donc possible. Un clic, un `Fin`, un `Page suivante`
+   * n'en produisent qu'un : rien ne part, le curseur revient au départ.
+   */
+  private static readonly SLIDE_MIN_SAMPLES = 8;
+  private static readonly SLIDE_START_MAX = 10;
+  private static readonly SLIDE_END_MIN = 98;
+  private slideSamples: number[] = [];
 
   /** Le mot est-il correctement retapé ? Vrai d'office hors mode critique. */
   protected readonly confirmationOk = computed(() => {
@@ -284,12 +347,61 @@ export class ConfirmModalComponent {
 
   onConfirm() {
     if (!this.confirmationOk() || this.loading()) return;
+    this.glissement.set(0);
     this.confirmed.emit();
+  }
+
+  onSlide(value: number | string) {
+    const next = Math.max(0, Math.min(100, Number(value) || 0));
+    // T50 — on ne retient que les progressions : un retour en arrière n'efface rien (le pouce
+    // tremble), mais ne compte pas non plus. Un premier échantillon déjà loin du départ (clic en
+    // bout de piste) disqualifie le geste : il n'a pas d'échantillon « de départ ».
+    const last = this.slideSamples[this.slideSamples.length - 1];
+    if (last === undefined || next > last) this.slideSamples.push(next);
+    this.glissement.set(next);
+  }
+
+  onSlideEvent(event: Event) {
+    this.onSlide((event.target as HTMLInputElement).value);
+  }
+
+  /** T50 — un geste continu : assez d'échantillons croissants, partis du début, arrivés au bout. */
+  protected gesteVolontaire(): boolean {
+    const samples = this.slideSamples;
+    const first = samples[0];
+    const last = samples[samples.length - 1];
+    return (
+      samples.length >= ConfirmModalComponent.SLIDE_MIN_SAMPLES &&
+      first !== undefined && first < ConfirmModalComponent.SLIDE_START_MAX &&
+      last !== undefined && last >= ConfirmModalComponent.SLIDE_END_MIN
+    );
+  }
+
+  onSlideRelease(event?: Event) {
+    const volontaire = this.gesteVolontaire();
+    this.slideSamples = [];
+    if (volontaire && this.glissement() >= ConfirmModalComponent.SLIDE_END_MIN && !this.loading()) {
+      // La commande part au RELÂCHEMENT au bout, jamais au simple passage du pouce près de la fin.
+      this.onConfirm();
+    } else {
+      this.glissement.set(0);
+      // Le DOM d'un range est modifié directement par le navigateur. Comme la valeur finale
+      // du signal redevient identique à l'ancienne (0), Angular peut légitimement ne pas
+      // réécrire la propriété : on remet donc aussi le contrôle natif au départ.
+      if (event?.target instanceof HTMLInputElement) event.target.value = '0';
+    }
+  }
+
+  /** T50 — Fin, Début, Page suivante/précédente sauteraient au bout d'un seul coup : sans effet. */
+  onSlideKeydown(event: KeyboardEvent) {
+    if (['End', 'Home', 'PageUp', 'PageDown'].includes(event.key)) event.preventDefault();
   }
 
   onCancel() {
     if (this.loading()) return;
     this.saisie.set('');
+    this.glissement.set(0);
+    this.slideSamples = [];
     this.cancelled.emit();
   }
 }

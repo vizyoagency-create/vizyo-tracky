@@ -1101,9 +1101,8 @@ export class VehiclesService {
     //               = coupure SMS/externe detectee par chute d'ignition)
     //   'pending' = coupure COMMANDEE non encore confirmee (SENT) — ex. vehicule a
     //               l'arret (non verifiable par ignition) : a verifier, PAS "normal"
-    //   sinon      = normal. Un RESTORE (SENT||ACK) plus recent nettoie l'etat : le
-    //   rallumage est toujours sur et ne requiert pas de confirmation (sinon l'etat
-    //   "coupe" resterait colle, le RESTORE app n'etant jamais ACKNOWLEDGED).
+    //   sinon      = normal. Seul un RESTORE ACKNOWLEDGED plus récent nettoie
+    //   l'état. Un RESTORE SENT/queued est une tentative, pas une exécution.
     const trackerIds = vehicles.map((v) => v.tracker?.id).filter(Boolean) as string[];
     const cutStateByTracker = new Map<string, 'cut' | 'pending'>();
 
@@ -1126,16 +1125,22 @@ export class VehiclesService {
         distinct: ['trackerId', 'action'],
         select: { trackerId: true, action: true, status: true, createdAt: true },
       });
-      const perTracker = new Map<string, { cut?: { status: CommandStatus; createdAt: Date }; restoreAt?: Date }>();
+      const perTracker = new Map<string, {
+        cut?: { status: CommandStatus; createdAt: Date };
+        restore?: { status: CommandStatus; createdAt: Date };
+      }>();
       for (const cmd of lastCmds) {
         const e = perTracker.get(cmd.trackerId) ?? {};
         if (cmd.action === EngineAction.CUT) e.cut = { status: cmd.status, createdAt: cmd.createdAt };
-        else e.restoreAt = cmd.createdAt;
+        else e.restore = { status: cmd.status, createdAt: cmd.createdAt };
         perTracker.set(cmd.trackerId, e);
       }
       for (const [tid, e] of perTracker) {
         if (!e.cut) continue;
-        if (e.restoreAt && e.restoreAt > e.cut.createdAt) continue; // rallumage plus recent -> normal
+        if (
+          e.restore?.status === CommandStatus.ACKNOWLEDGED &&
+          e.restore.createdAt > e.cut.createdAt
+        ) continue;
         cutStateByTracker.set(tid, e.cut.status === CommandStatus.ACKNOWLEDGED ? 'cut' : 'pending');
       }
     }

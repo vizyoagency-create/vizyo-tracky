@@ -114,6 +114,80 @@ type Tab = 'status' | 'logs' | 'allowlist' | 'backup';
                   }
                 </div>
               }
+              @if (status()?.deliveryProofAvailable === false) {
+                <div class="mt-2 text-xs text-rose-300">
+                  <lucide-icon [img]="AlertTriangle" [size]="12" class="inline-block align-[-2px]"></lucide-icon>
+                  Aucune preuve de remise disponible : la passerelle est joignable, mais la chaîne SMS n’est pas validée.
+                </div>
+              }
+              @if ((status()?.pendingWithoutReceipt ?? 0) > 0) {
+                <div class="mt-2 text-xs text-amber-300">
+                  {{ status()?.pendingWithoutReceipt }} SMS sans statut terminal
+                  @if (status()?.oldestPendingAt) { · plus ancien {{ status()?.oldestPendingAt | date: 'dd/MM HH:mm' }} }
+                </div>
+              }
+              @if (status()?.dispatchQueue; as q) {
+                <div class="mt-1 text-xs text-fg-tertiary">
+                  File Tracky : {{ q.depth }} · cadence minimale {{ q.minIntervalMs / 1000 }} s
+                </div>
+              }
+              @if (status()?.gateway; as gw) {
+                <div
+                  class="mt-2 rounded border p-2 text-xs"
+                  [class]="
+                    gw.operational
+                      ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-200'
+                      : 'border-rose-500/30 bg-rose-500/10 text-rose-200'
+                  "
+                >
+                  <div class="font-semibold">
+                    Téléphone Android :
+                    {{ libelleEtatAndroid(gw.device) }}
+                  </div>
+                  <div>
+                    {{ gw.device.count }} appareil(s)
+                    @if (gw.device.selectedId) {
+                      · verdict sur {{ gw.device.selectedName || gw.device.selectedId }}
+                      ({{ gw.device.selection === 'configured' ? 'CAPCOM6_DEVICE_ID' : 'seul enrôlé' }})
+                    }
+                    @if (gw.device.freshestLastSeenAt) {
+                      · dernier ping
+                      {{
+                        gw.device.freshestLastSeenAt | date: 'dd/MM HH:mm:ss'
+                      }}
+                      ({{ gw.device.ageSeconds }} s, périmé au-delà de {{ gw.device.staleAfterSeconds }} s)
+                    }
+                  </div>
+                  @if (gw.sim.configuredPresent === false) {
+                    <div class="font-semibold">
+                      ⚠️ SIM {{ gw.sim.configuredNumber }} configurée absente du téléphone
+                    </div>
+                  }
+                  <div>
+                    Serveur {{ gw.provider.status }}
+                    @if (gw.provider.version) {
+                      · v{{ gw.provider.version }}
+                    }
+                    · SIM {{ gw.sim.configuredNumber ?? 'auto' }}
+                  </div>
+                  <div>
+                    File relais : {{ gw.queue.pending }} en attente
+                    @if (gw.queue.oldestAgeSeconds !== null) {
+                      · plus ancien {{ gw.queue.oldestAgeSeconds }} s
+                    }
+                    · {{ gw.queue.failed24h }} échec(s)/24 h
+                  </div>
+                  <div class="mt-1 text-fg-tertiary">
+                    Batterie/charge : non fournies par l’API Android actuelle.
+                    La fraîcheur du ping et les preuves de remise font foi.
+                  </div>
+                </div>
+              }
+              @if (status()?.lastTerminalSuccessAt) {
+                <div class="mt-1 text-xs text-fg-tertiary">
+                  Dernière remise terminale : {{ status()?.lastTerminalSuccessAt | date: 'dd/MM HH:mm:ss' }}
+                </div>
+              }
               @if (status()?.fromNumber) {
                 <div class="mt-1 text-xs font-mono text-fg-tertiary">From : {{ status()?.fromNumber }}</div>
               }
@@ -167,14 +241,22 @@ type Tab = 'status' | 'logs' | 'allowlist' | 'backup';
           </div>
           <p class="text-xs text-fg-tertiary">
             Envoie un SMS de test aux numéros <code>SMS_HEARTBEAT_RECIPIENTS</code> via la gateway
-            active. Le cron automatique tourne chaque lundi 09h00 (Europe/Paris) ; si la chaine SMS
-            est cassee (SIM down), un ErrorLog CRITICAL est cree.
+            active. Une soumission acceptée ne prouve pas la remise : utilisez ensuite
+            « Vérifier la remise » après quelques minutes. Le cron automatique effectue ces deux
+            phases chaque lundi à 09h00 puis 09h20 (Europe/Paris).
           </p>
-          <button (click)="runHeartbeat()" [disabled]="heartbeatRunning()"
-                  class="px-3 py-2 bg-tracky text-white rounded-lg text-sm font-medium hover:bg-tracky-dark cursor-pointer disabled:opacity-50 self-start flex items-center gap-2">
-            <lucide-icon [img]="Activity" [size]="14"></lucide-icon>
-            {{ heartbeatRunning() ? 'Envoi...' : 'Tester le heartbeat maintenant' }}
-          </button>
+          <div class="flex flex-wrap gap-2">
+            <button (click)="runHeartbeat()" [disabled]="heartbeatRunning() || heartbeatVerifying()"
+                    class="px-3 py-2 bg-tracky text-white rounded-lg text-sm font-medium hover:bg-tracky-dark cursor-pointer disabled:opacity-50 flex items-center gap-2">
+              <lucide-icon [img]="Activity" [size]="14"></lucide-icon>
+              {{ heartbeatRunning() ? 'Soumission...' : 'Envoyer le test' }}
+            </button>
+            <button (click)="verifyHeartbeat()" [disabled]="heartbeatRunning() || heartbeatVerifying()"
+                    class="px-3 py-2 bg-bg-tertiary border border-border-subtle text-fg-secondary rounded-lg text-sm font-medium cursor-pointer disabled:opacity-50 flex items-center gap-2">
+              <lucide-icon [img]="CheckCircle" [size]="14"></lucide-icon>
+              {{ heartbeatVerifying() ? 'Vérification...' : 'Vérifier la remise' }}
+            </button>
+          </div>
         </div>
 
       }
@@ -358,6 +440,31 @@ type Tab = 'status' | 'logs' | 'allowlist' | 'backup';
   `,
 })
 export class AdminSmsComponent implements OnInit, OnDestroy {
+  /**
+   * T44 — l'état du téléphone en quatre valeurs quand le relais les envoie, `fresh` sinon
+   * (relais antérieur). Le libellé dit POURQUOI la chaîne est indisponible, pas seulement qu'elle l'est.
+   */
+  protected libelleEtatAndroid(device: NonNullable<SmsStatus['gateway']>['device']): string {
+    switch (device.state) {
+      case 'ONLINE':
+        return 'vu récemment';
+      case 'STALE':
+        return 'ping périmé — le téléphone ne contacte plus le serveur dans le délai';
+      case 'OFFLINE':
+        return 'hors ligne — plus aucun contact, même son pull de secours';
+      case 'UNKNOWN':
+        return device.selection === 'ambiguous'
+          ? 'plusieurs appareils enrôlés, aucun désigné (CAPCOM6_DEVICE_ID)'
+          : device.selection === 'missing'
+            ? 'appareil désigné introuvable (CAPCOM6_DEVICE_ID)'
+            : device.selection === 'none'
+              ? 'aucun téléphone enrôlé'
+              : 'dernier ping inconnu';
+      default:
+        return device.fresh ? 'vu récemment' : 'absent ou ping périmé';
+    }
+  }
+
   private readonly api = inject(AdminSmsService);
   private readonly simsApi = inject(SimsApiService);
   private readonly trackersApi = inject(TrackersApiService);
@@ -390,6 +497,7 @@ export class AdminSmsComponent implements OnInit, OnDestroy {
   readonly backupHealth = signal<BackupHealthResponse | null>(null);
   // V1.15 — heartbeat "preuve de vie" SMS en cours (bouton run-now).
   readonly heartbeatRunning = signal(false);
+  readonly heartbeatVerifying = signal(false);
   readonly activeTab = signal<Tab>('status');
 
   readonly tabs: { key: Tab; label: string }[] = [
@@ -447,7 +555,13 @@ export class AdminSmsComponent implements OnInit, OnDestroy {
   // V1.13 — Verdict reel SMS Gateway (utilise dans card status).
   private modeOk(): boolean {
     const m = this.status()?.mode;
-    return m === 'twilio' || m === 'vizyo-texto';
+    const gatewayOk =
+      m !== 'vizyo-texto' || this.status()?.gateway?.operational === true;
+    return (
+      (m === 'twilio' || m === 'vizyo-texto') &&
+      gatewayOk &&
+      this.status()?.deliveryProofAvailable === true
+    );
   }
   private modeBroken(): boolean {
     const m = this.status()?.mode;
@@ -470,7 +584,15 @@ export class AdminSmsComponent implements OnInit, OnDestroy {
   }
   protected cardTitleText(): string {
     const m = this.status()?.mode;
+    if ((m === 'vizyo-texto' || m === 'twilio') && this.status()?.deliveryProofAvailable !== true) {
+      return 'Passerelle joignable · remise non prouvée';
+    }
+    if (m === 'vizyo-texto' && this.status()?.gateway?.operational !== true) {
+      return 'Téléphone Android/SIM indisponible';
+    }
     if (m === 'vizyo-texto') return 'vizyo-texto actif';
+    if (m === 'vizyo-texto-broken' && this.status()?.gateway)
+      return 'Téléphone Android/SIM indisponible';
     if (m === 'vizyo-texto-broken') return 'vizyo-texto injoignable';
     if (m === 'twilio') return 'Twilio actif';
     if (m === 'twilio-broken') return 'Twilio configure mais auth KO';
@@ -478,10 +600,19 @@ export class AdminSmsComponent implements OnInit, OnDestroy {
   }
   protected cardSubText(): string {
     const m = this.status()?.mode;
-    if (m === 'vizyo-texto') return 'Les SMS partent via la passerelle maison vizyo-texto.';
+    if (m === 'vizyo-texto' && this.status()?.deliveryProofAvailable !== true)
+      return 'Le relais répond, mais aucun statut terminal positif ne prouve encore la chaîne Android/SIM.';
+    if (m === 'vizyo-texto' && this.status()?.gateway?.operational !== true)
+      return 'Le relais répond, mais aucun téléphone Android frais n’est démontré. Les coupes automatiques restent bloquées.';
+    if (m === 'vizyo-texto')
+      return 'Relais, téléphone Android et preuve de remise contrôlés.';
+    if (m === 'vizyo-texto-broken' && this.status()?.gateway)
+      return 'Le relais répond, mais le serveur Android ou le dernier ping téléphone est en défaut. Les coupes automatiques restent bloquées.';
     if (m === 'vizyo-texto-broken')
       return 'vizyo-texto est configure mais injoignable — verifier le relay (texto.vizyoagency.com).';
-    if (m === 'twilio') return 'Les SMS sont reellement envoyes (Twilio).';
+    if (m === 'twilio' && this.status()?.deliveryProofAvailable !== true)
+      return 'Twilio répond, mais aucune remise terminale n’est actuellement prouvée.';
+    if (m === 'twilio') return 'Twilio joignable et au moins une remise terminale observée.';
     if (m === 'twilio-broken')
       return 'Les credentials TWILIO_* sont presents mais Twilio refuse l\'authentification — verifier sid/token.';
     return 'Les SMS sont simules — aucune gateway configuree.';
@@ -514,8 +645,12 @@ export class AdminSmsComponent implements OnInit, OnDestroy {
   async sendAdhoc(): Promise<void> {
     try {
       const result = await firstValueFrom(this.api.send(this.adhocTo, this.adhocBody));
-      if (result.ok) {
-        this.toast.success('SMS envoyé');
+      if (result.outcome === 'delivered') {
+        this.toast.success('Remise SMS confirmée');
+        this.adhocBody = '';
+        this.reload();
+      } else if (result.outcome === 'accepted') {
+        this.toast.info('SMS soumis', 'La passerelle l’a accepté ; la remise n’est pas encore prouvée.');
         this.adhocBody = '';
         this.reload();
       } else {
@@ -535,7 +670,10 @@ export class AdminSmsComponent implements OnInit, OnDestroy {
       if (r.skipped) {
         this.toast.error('Heartbeat ignoré — aucun numéro (SMS_HEARTBEAT_RECIPIENTS vide)');
       } else if (r.failed === 0) {
-        this.toast.success(`Heartbeat OK — ${r.sent}/${r.recipients} SMS via ${r.provider}`);
+        this.toast.info(
+          `Test soumis — ${r.sent}/${r.recipients} SMS via ${r.provider}`,
+          'La remise n’est pas encore prouvée. Attendez quelques minutes puis cliquez sur « Vérifier la remise ».',
+        );
       } else {
         this.toast.error(`Heartbeat : ${r.failed}/${r.recipients} échec(s) via ${r.provider} — voir ErrorLogs`);
       }
@@ -545,6 +683,33 @@ export class AdminSmsComponent implements OnInit, OnDestroy {
       this.toast.error('Échec du heartbeat (accès SUPER_ADMIN requis)');
     } finally {
       this.heartbeatRunning.set(false);
+    }
+  }
+
+  async verifyHeartbeat(): Promise<void> {
+    this.heartbeatVerifying.set(true);
+    try {
+      const v = await firstValueFrom(this.api.verifyHeartbeat());
+      if (v.verdict === 'OK') {
+        this.toast.success(`Remise SMS prouvée — ${v.delivered}/${v.checked}`);
+      } else if (v.verdict === 'INDETERMINE') {
+        this.toast.warning(
+          'Remise SMS non prouvée',
+          `${v.indeterminate}/${v.checked} message(s) restent sans statut terminal.`,
+        );
+      } else if (v.verdict === 'SANS_OBJET') {
+        this.toast.warning('Heartbeat non configuré', 'SMS_HEARTBEAT_RECIPIENTS est vide.');
+      } else if (v.verdict === 'NON_EMIS') {
+        this.toast.error('Aucun heartbeat récent trouvé — le test n’a pas été émis.');
+      } else {
+        this.toast.error(`Chaîne SMS en échec — ${v.failed}/${v.checked} message(s) refusé(s).`);
+      }
+      this.reload();
+    } catch (err) {
+      swallow('admin-sms:verifyHeartbeat', err);
+      this.toast.error('Impossible de vérifier la remise du heartbeat');
+    } finally {
+      this.heartbeatVerifying.set(false);
     }
   }
 

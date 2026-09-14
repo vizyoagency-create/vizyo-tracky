@@ -1,4 +1,11 @@
-import { SmsGatewayService } from './sms-gateway.service';
+import { SmsGatewayService, smsOutcomeFromStatus } from './sms-gateway.service';
+
+describe('smsOutcomeFromStatus — aucune fausse preuve de remise', () => {
+  it('considère sent comme accepté, et seulement delivered comme remis', () => {
+    expect(smsOutcomeFromStatus('sent')).toBe('accepted');
+    expect(smsOutcomeFromStatus('delivered')).toBe('delivered');
+  });
+});
 
 /**
  * ── TRK-036 : DE QUEL BOÎTIER VIENT CE SMS ENTRANT ? ────────────────────────────────
@@ -150,9 +157,11 @@ describe('SmsGatewayService — réconciliation du sortant (TRK-026)', () => {
 
     const out = await service.reconcileOutboundStatus('log-1');
 
-    expect(out).toEqual({ outcome: 'delivered', status: 'delivered' });
+    expect(out).toEqual({ outcome: 'delivered', status: 'delivered', changed: true });
     expect(update).toHaveBeenCalledWith(
-      expect.objectContaining({ data: { status: 'delivered' } }),
+      expect.objectContaining({
+        data: expect.objectContaining({ status: 'delivered', statusUpdatedAt: expect.any(Date) }),
+      }),
     );
   });
 
@@ -164,7 +173,7 @@ describe('SmsGatewayService — réconciliation du sortant (TRK-026)', () => {
 
     const out = await service.reconcileOutboundStatus('log-1');
 
-    expect(out).toEqual({ outcome: 'accepted', status: 'queued' });
+    expect(out).toEqual({ outcome: 'accepted', status: 'queued', changed: false });
     expect(update).not.toHaveBeenCalled();
   });
 
@@ -174,7 +183,7 @@ describe('SmsGatewayService — réconciliation du sortant (TRK-026)', () => {
 
     const out = await service.reconcileOutboundStatus('log-1');
 
-    expect(out).toEqual({ outcome: 'accepted', status: 'queued' });
+    expect(out).toEqual({ outcome: 'accepted', status: 'queued', changed: false });
     expect(update).not.toHaveBeenCalled();
   });
 
@@ -197,7 +206,7 @@ describe('SmsGatewayService — réconciliation du sortant (TRK-026)', () => {
 
     const out = await service.reconcileOutboundStatus('log-1');
 
-    expect(out).toEqual({ outcome: 'delivered', status: 'delivered' });
+    expect(out).toEqual({ outcome: 'delivered', status: 'delivered', changed: false });
     expect(spy).not.toHaveBeenCalled();
     expect(update).not.toHaveBeenCalled();
   });
@@ -219,7 +228,448 @@ describe('SmsGatewayService — réconciliation du sortant (TRK-026)', () => {
 
     const out = await service.reconcileOutboundStatus('log-1');
 
-    expect(out).toEqual({ outcome: 'accepted', status: 'queued' });
+    expect(out).toEqual({ outcome: 'accepted', status: 'queued', changed: false });
     expect(spy).not.toHaveBeenCalled();
+  });
+});
+
+describe('SmsGatewayService — file de protection de la passerelle', () => {
+  const build = (intervalMs = 0, create?: jest.Mock) => {
+    const smsCreate = create ?? jest.fn().mockImplementation(({ data }) =>
+      Promise.resolve({ id: `log-${data.body}`, ...data }),
+    );
+    const prisma = { smsLog: { create: smsCreate } };
+    const config = {
+      get: (key: string) => key === 'SMS_MIN_INTERVAL_MS' ? intervalMs : undefined,
+    };
+    const service = new SmsGatewayService(
+      prisma as never,
+      { record: jest.fn() } as never,
+      { emit: jest.fn() } as never,
+      { record: jest.fn() } as never,
+      config as never,
+    );
+    return { service, smsCreate };
+  };
+
+  it('cadence deux soumissions au lieu de les envoyer en rafale', async () => {
+    const instants: number[] = [];
+    const create = jest.fn().mockImplementation(({ data }) => {
+      instants.push(Date.now());
+      return Promise.resolve({ id: `log-${data.body}`, ...data });
+    });
+    const { service } = build(30, create);
+
+    await Promise.all([
+      service.send('+33600000001', 'a', { template: 'engine_control_fallback' }),
+      service.send('+33600000002', 'b', { template: 'engine_control_fallback' }),
+    ]);
+
+    expect(instants).toHaveLength(2);
+    expect(instants[1] - instants[0]).toBeGreaterThanOrEqual(20);
+  });
+
+  it('fait passer un RESTORE critique avant les SMS ordinaires encore en attente', async () => {
+    let releaseFirst!: () => void;
+    const firstBlocked = new Promise<void>((resolve) => { releaseFirst = resolve; });
+    let call = 0;
+    const create = jest.fn().mockImplementation(async ({ data }) => {
+      call += 1;
+      if (call === 1) await firstBlocked;
+      return { id: `log-${data.body}`, ...data };
+    });
+    const { service, smsCreate } = build(0, create);
+
+    const first = service.send('+33600000001', 'ordinaire-1', { template: 'generic' as never });
+    const second = service.send('+33600000002', 'ordinaire-2', { template: 'generic' as never });
+    const restore = service.send('+33600000003', 'resume123456', {
+      template: 'engine_control_fallback', priority: 'critical_restore',
+    });
+    releaseFirst();
+    await Promise.all([first, second, restore]);
+
+    expect(smsCreate.mock.calls.map(([arg]) => arg.data.body)).toEqual([
+      'ordinaire-1', 'resume123456', 'ordinaire-2',
+    ]);
+  });
+
+  it('absorbe une vague de 22 RESTORE sans perte, doublon ni rafale', async () => {
+    const instants: number[] = [];
+    const create = jest.fn().mockImplementation(({ data }) => {
+      instants.push(Date.now());
+      return Promise.resolve({ id: `log-${data.body}`, ...data });
+    });
+    // Intervalle court pour garder le test rapide ; la production utilise 15 000 ms.
+    const { service, smsCreate } = build(5, create);
+    const messages = Array.from({ length: 22 }, (_, i) => `resume-${String(i).padStart(2, '0')}`);
+
+    await Promise.all(messages.map((body, i) => service.send(
+      `+3360000${String(i).padStart(4, '0')}`,
+      body,
+      { template: 'engine_control_fallback', priority: 'critical_restore' },
+    )));
+
+    expect(smsCreate).toHaveBeenCalledTimes(22);
+    expect(smsCreate.mock.calls.map(([arg]) => arg.data.body)).toEqual(messages);
+    expect(new Set(smsCreate.mock.calls.map(([arg]) => arg.data.body)).size).toBe(22);
+    expect(instants).toHaveLength(22);
+    for (let i = 1; i < instants.length; i++) {
+      expect(instants[i]! - instants[i - 1]!).toBeGreaterThanOrEqual(3);
+    }
+    expect(service.dispatchQueueState().depth).toBe(0);
+  });
+});
+
+describe('SmsGatewayService — fraîcheur de la preuve terminale', () => {
+  it('utilise la date de réception du statut, pas la date ancienne de soumission', async () => {
+    const submittedAt = new Date('2026-09-01T07:00:00.000Z');
+    const deliveredAt = new Date('2026-09-13T00:00:00.000Z');
+    const prisma = {
+      smsLog: {
+        count: jest.fn().mockResolvedValue(1),
+        findFirst: jest.fn()
+          .mockResolvedValueOnce(null)
+          .mockResolvedValueOnce(null)
+          .mockResolvedValueOnce({ createdAt: submittedAt, statusUpdatedAt: deliveredAt }),
+      },
+    };
+    const service = new SmsGatewayService(
+      prisma as never,
+      { record: jest.fn() } as never,
+      { emit: jest.fn() } as never,
+      { record: jest.fn() } as never,
+      { get: jest.fn().mockReturnValue(undefined) } as never,
+    );
+
+    const health = await service.healthCheck();
+
+    expect(health.lastTerminalSuccessAt).toBe(deliveredAt.toISOString());
+  });
+});
+
+describe('SmsGatewayService — santé Android bout-en-bout', () => {
+  const build = () => {
+    const prisma = {
+      smsLog: {
+        count: jest
+          .fn()
+          .mockResolvedValueOnce(0)
+          .mockResolvedValueOnce(0)
+          .mockResolvedValueOnce(1),
+        findFirst: jest
+          .fn()
+          .mockResolvedValueOnce(null)
+          .mockResolvedValueOnce(null)
+          .mockResolvedValueOnce({
+            createdAt: new Date(),
+            statusUpdatedAt: new Date(),
+          }),
+      },
+    };
+    const config = {
+      get: jest.fn(
+        (key: string) =>
+          ({
+            VIZYO_TEXTO_URL: 'https://texto.test',
+            VIZYO_TEXTO_API_KEY: 'secret-key',
+            SMS_MIN_INTERVAL_MS: 0,
+          })[key],
+      ),
+    };
+    return new SmsGatewayService(
+      prisma as never,
+      { record: jest.fn() } as never,
+      { emit: jest.fn() } as never,
+      { record: jest.fn() } as never,
+      config as never,
+    );
+  };
+
+  afterEach(() => jest.restoreAllMocks());
+
+  it('authentifie le contrôle et expose un téléphone frais', async () => {
+    const gateway = {
+      observedAt: new Date().toISOString(),
+      operational: true,
+      provider: { status: 'pass', version: '1.0', releaseId: 'r1' },
+      device: {
+        count: 1,
+        freshestLastSeenAt: new Date().toISOString(),
+        ageSeconds: 12,
+        fresh: true,
+        staleAfterSeconds: 120,
+      },
+      sim: { configuredNumber: 1 },
+      queue: {
+        pending: 0,
+        oldestPendingAt: null,
+        oldestAgeSeconds: null,
+        failed24h: 0,
+      },
+      telemetry: { batteryAvailable: false, chargingAvailable: false },
+    };
+    const fetchSpy = jest.spyOn(global, 'fetch').mockResolvedValue({
+      ok: true,
+      json: jest.fn().mockResolvedValue(gateway),
+    } as never);
+
+    const health = await build().healthCheck();
+
+    expect(fetchSpy).toHaveBeenCalledWith(
+      'https://texto.test/v1/texto/health',
+      expect.objectContaining({
+        headers: { Authorization: 'Bearer secret-key' },
+      }),
+    );
+    expect(health.reachable).toBe(true);
+    expect(health.gateway?.operational).toBe(true);
+  });
+
+  it('échoue fermé si un ancien relais ne fournit pas la télémétrie', async () => {
+    jest
+      .spyOn(global, 'fetch')
+      .mockResolvedValue({ ok: false, status: 404 } as never);
+    const health = await build().healthCheck();
+    expect(health.reachable).toBe(false);
+    expect(health.error).toContain('Télémétrie Android indisponible');
+  });
+});
+
+describe('SmsGatewayService — annulation voulue poussée par le relais (T41 + T45)', () => {
+  const build = (status: string) => {
+    const prisma = {
+      smsLog: {
+        findFirst: jest.fn().mockResolvedValue({ id: 'log-1', imei: 'imei-1', status }),
+        findUnique: jest.fn().mockResolvedValue({ id: 'log-1', direction: 'OUT', status, twilioSid: 'cap-1' }),
+        update: jest.fn().mockResolvedValue({ status: 'cancelled' }),
+      },
+    };
+    const errorLogger = { record: jest.fn().mockResolvedValue(undefined) };
+    const service = new SmsGatewayService(prisma as never, errorLogger as never, { emit: jest.fn() } as never, { record: jest.fn() } as never);
+    return { service, prisma, errorLogger };
+  };
+
+  it('un `cancelled` reçu sur une ligne que NOUS avons mise en `cancelling` écrit le terminal sans alerte', async () => {
+    const { service, prisma, errorLogger } = build('cancelling');
+    const res = await service.recordOutboundStatus({ providerId: 'cap-1', status: 'cancelled' });
+    expect(res).toMatchObject({ found: true, outcome: 'failed' });
+    expect(prisma.smsLog.update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ status: 'cancelled' }) }));
+    expect(errorLogger.record).not.toHaveBeenCalled();
+  });
+
+  it('un `cancelled` que personne n a demandé (ligne encore queued) reste un échec terminal alerté', async () => {
+    const { service, errorLogger } = build('queued');
+    await service.recordOutboundStatus({ providerId: 'cap-1', status: 'cancelled' });
+    expect(errorLogger.record).toHaveBeenCalledWith(expect.stringContaining('échec terminal'), 'sms-gateway-status', expect.anything(), 'CRITICAL');
+  });
+});
+
+describe('SmsGatewayService — idempotence des webhooks terminaux', () => {
+  it('ne crée pas une seconde alerte pour le même échec déjà enregistré', async () => {
+    const prisma = {
+      smsLog: {
+        findFirst: jest.fn().mockResolvedValue({ id: 'log-1', imei: 'imei-1' }),
+        findUnique: jest.fn().mockResolvedValue({
+          id: 'log-1', direction: 'OUT', status: 'failed', twilioSid: 'cap-1',
+        }),
+        update: jest.fn().mockResolvedValue({ status: 'failed' }),
+      },
+    };
+    const errorLogger = { record: jest.fn().mockResolvedValue(undefined) };
+    const service = new SmsGatewayService(
+      prisma as never,
+      errorLogger as never,
+      { emit: jest.fn() } as never,
+      { record: jest.fn() } as never,
+    );
+
+    await service.recordOutboundStatus({ providerId: 'cap-1', status: 'failed' });
+
+    expect(prisma.smsLog.update).toHaveBeenCalled();
+    expect(errorLogger.record).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * ── T41 (contre-expertise du 13/09, P0-2) — validité, priorité et annulation au relais ──────
+ *
+ * Une coupure partie par SMS vers un téléphone endormi partait APRÈS le rallumage du matin.
+ * Deux gardes : le relais reçoit une validité (`ttlSeconds`) que le téléphone applique, et une
+ * CUT supplantée fait annuler son SMS encore en attente.
+ */
+/**
+ * ── T52 (contre-expertise du 13/09, P2-9) — l'allowlist ne bloque pas une remise en route ──
+ * Un 403 « hors allowlist » comptait comme un refus, trois fois, puis plus de SMS. Tracky répare
+ * l'allowlist du relais à la volée pour une RESTORE, et retente une fois.
+ */
+describe('SmsGatewayService — allowlist non bloquante pour une RESTORE (T52)', () => {
+  const build = (allowlist?: { add: jest.Mock }) => {
+    const prisma = {
+      smsLog: {
+        create: jest.fn().mockImplementation(({ data }) => Promise.resolve({ id: 'log-1', ...data })),
+        findUnique: jest.fn().mockResolvedValue(null),
+        update: jest.fn().mockResolvedValue({}),
+      },
+    };
+    const errorLogger = { record: jest.fn().mockResolvedValue('id') };
+    const config = { get: jest.fn((key: string) => ({ VIZYO_TEXTO_URL: 'https://texto.test', VIZYO_TEXTO_API_KEY: 'secret-key', SMS_MIN_INTERVAL_MS: 0 })[key]) };
+    const service = new SmsGatewayService(prisma as never, errorLogger as never, { emit: jest.fn() } as never, { record: jest.fn() } as never, config as never, allowlist as never);
+    return { service, prisma, errorLogger };
+  };
+  const refus403 = () => new Response(JSON.stringify({ message: 'Destinataire +33600000000 hors allowlist du tenant "Tracky"' }), { status: 403 });
+  const accepte = () => new Response(JSON.stringify({ id: 'msg-2', status: 'queued', providerId: 'cap-2' }), { status: 202 });
+
+  afterEach(() => jest.restoreAllMocks());
+
+  it('🔴 un 403 « hors allowlist » sur une RESTORE : le numéro est ajouté, l envoi retenté UNE fois, une ligne dit la dérive', async () => {
+    const fetchSpy = jest.spyOn(global, 'fetch').mockImplementationOnce(async () => refus403()).mockImplementationOnce(async () => accepte());
+    const allowlist = { add: jest.fn().mockResolvedValue({ phone: '+33600000000' }) };
+    const { service, prisma, errorLogger } = build(allowlist);
+
+    const res = await service.send('+33600000000', 'resume123456', { template: 'engine_control_fallback', priority: 'critical_restore', imei: '123456789012345' });
+
+    expect(allowlist.add).toHaveBeenCalledWith('+33600000000', expect.stringContaining('T52'));
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    expect(res).toMatchObject({ ok: true, outcome: 'accepted', twilioSid: 'cap-2' });
+    // Pas de ligne « failed » pour le 403 réparé : la seule ligne d'audit est l'envoi accepté.
+    const failed = prisma.smsLog.create.mock.calls.filter(([arg]) => arg?.data?.status === 'failed');
+    expect(failed).toHaveLength(0);
+    expect(errorLogger.record).toHaveBeenCalledWith(expect.stringContaining('Allowlist du relais incomplète'), 'sms-gateway', expect.objectContaining({ phase: 'allowlist-self-heal', imei: '123456789012345' }));
+  });
+
+  it('une COUPURE (engine_cut) hors allowlist reste refusée : la garde du relais ne se contourne que pour une remise en route', async () => {
+    const fetchSpy = jest.spyOn(global, 'fetch').mockImplementation(async () => refus403());
+    const allowlist = { add: jest.fn() };
+    const { service, prisma } = build(allowlist);
+
+    const res = await service.send('+33600000000', 'stop123456', { template: 'engine_control_fallback', priority: 'engine_cut' });
+
+    expect(allowlist.add).not.toHaveBeenCalled();
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(res).toMatchObject({ ok: false, outcome: 'failed' });
+    expect(prisma.smsLog.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ status: 'failed' }) }));
+  });
+
+  it('si le second essai est encore refusé, on ne boucle pas : échec ordinaire, une seule réparation', async () => {
+    const fetchSpy = jest.spyOn(global, 'fetch').mockImplementation(async () => refus403());
+    const allowlist = { add: jest.fn().mockResolvedValue({}) };
+    const { service } = build(allowlist);
+
+    const res = await service.send('+33600000000', 'resume123456', { template: 'engine_control_fallback', priority: 'critical_restore' });
+
+    expect(allowlist.add).toHaveBeenCalledTimes(1);
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    expect(res.ok).toBe(false);
+  });
+
+  it('un ajout impossible (relais injoignable pour l allowlist) retombe sur l échec ordinaire, sans lever', async () => {
+    jest.spyOn(global, 'fetch').mockImplementation(async () => refus403());
+    const allowlist = { add: jest.fn().mockRejectedValue(new Error('allowlist HTTP 503')) };
+    const { service } = build(allowlist);
+    await expect(service.send('+33600000000', 'resume123456', { template: 'engine_control_fallback', priority: 'critical_restore' })).resolves.toMatchObject({ ok: false });
+  });
+
+  it('sans AllowlistService injecté (specs, outils) : comportement d avant', async () => {
+    const fetchSpy = jest.spyOn(global, 'fetch').mockImplementation(async () => refus403());
+    const { service } = build(undefined);
+    await expect(service.send('+33600000000', 'resume123456', { template: 'engine_control_fallback', priority: 'critical_restore' })).resolves.toMatchObject({ ok: false });
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('SmsGatewayService — validité, priorité et annulation au relais (T41)', () => {
+  const build = (log: Record<string, unknown> | null = null) => {
+    const prisma = {
+      smsLog: {
+        create: jest.fn().mockImplementation(({ data }) => Promise.resolve({ id: 'log-1', ...data })),
+        findUnique: jest.fn().mockResolvedValue(log),
+        update: jest.fn().mockResolvedValue({}),
+      },
+    };
+    const config = {
+      get: jest.fn(
+        (key: string) =>
+          ({
+            VIZYO_TEXTO_URL: 'https://texto.test',
+            VIZYO_TEXTO_API_KEY: 'secret-key',
+            SMS_MIN_INTERVAL_MS: 0,
+          })[key],
+      ),
+    };
+    const service = new SmsGatewayService(
+      prisma as never,
+      { record: jest.fn().mockResolvedValue('id') } as never,
+      { emit: jest.fn() } as never,
+      { record: jest.fn() } as never,
+      config as never,
+    );
+    return { service, prisma };
+  };
+
+  afterEach(() => jest.restoreAllMocks());
+
+  it('transmet ttlSeconds et priority au premier niveau du corps envoyé au relais', async () => {
+    // Une `Response` ne se lit qu'une fois : une instance NEUVE par appel.
+    const fetchSpy = jest.spyOn(global, 'fetch').mockImplementation(async () =>
+      new Response(JSON.stringify({ id: 'msg-1', status: 'queued', providerId: 'cap-1' }), { status: 202 }),
+    );
+    const { service } = build();
+
+    await service.send('+33600000000', 'stop123456', { template: 'engine_control_fallback', ttlSeconds: 900 });
+    await service.send('+33600000000', 'resume123456', { template: 'engine_control_fallback', smsPriority: 100 });
+    await service.send('+33600000000', 'fix030s***n123456', { template: 'engine_control_fallback' });
+
+    const corps = fetchSpy.mock.calls.map(([, init]) => JSON.parse(String(init?.body)));
+    expect(corps[0]).toMatchObject({ to: '+33600000000', body: 'stop123456', ttlSeconds: 900 });
+    expect(corps[0]).not.toHaveProperty('priority');
+    expect(corps[1]).toMatchObject({ body: 'resume123456', priority: 100 });
+    expect(corps[1]).not.toHaveProperty('ttlSeconds');
+    expect(corps[2]).not.toHaveProperty('ttlSeconds');
+    expect(corps[2]).not.toHaveProperty('priority');
+  });
+
+  it('annule un sortant encore accepté par DELETE /v1/texto/:providerId et note le nouveau statut', async () => {
+    const fetchSpy = jest.spyOn(global, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify({ id: 'msg-1', providerId: 'cap-1', status: 'cancelling', cancelled: true }), {
+        status: 200,
+      }) as never,
+    );
+    const { service, prisma } = build({ id: 'log-1', status: 'queued', direction: 'OUT', twilioSid: 'cap-1' });
+
+    await expect(service.cancelOutbound('log-1')).resolves.toEqual({ ok: true, status: 'cancelling' });
+
+    expect(fetchSpy.mock.calls[0]?.[0]).toBe('https://texto.test/v1/texto/cap-1');
+    expect(fetchSpy.mock.calls[0]?.[1]?.method).toBe('DELETE');
+    expect((fetchSpy.mock.calls[0]?.[1]?.headers as Record<string, string>).Authorization).toBe('Bearer secret-key');
+    expect(prisma.smsLog.update).toHaveBeenCalledWith({
+      where: { id: 'log-1' },
+      data: { status: 'cancelling', statusUpdatedAt: expect.any(Date) },
+    });
+  });
+
+  it('ne réécrit rien quand le relais refuse (message déjà parti, serveur ancien) et ne lève jamais', async () => {
+    jest.spyOn(global, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify({ cancelled: false, status: 'sent', reason: 'statut sent : plus annulable' }), {
+        status: 200,
+      }) as never,
+    );
+    const { service, prisma } = build({ id: 'log-1', status: 'queued', direction: 'OUT', twilioSid: 'cap-1' });
+    await expect(service.cancelOutbound('log-1')).resolves.toMatchObject({ ok: false, reason: expect.stringContaining('plus annulable') });
+    expect(prisma.smsLog.update).not.toHaveBeenCalled();
+
+    jest.spyOn(global, 'fetch').mockRejectedValue(new Error('timeout'));
+    await expect(service.cancelOutbound('log-1')).resolves.toEqual({ ok: false, reason: 'timeout' });
+  });
+
+  it('refuse d annuler sans identifiant fournisseur, un statut terminal ou un entrant — sans appeler le relais', async () => {
+    const fetchSpy = jest.spyOn(global, 'fetch');
+    await expect(build({ id: 'l', status: 'queued', direction: 'OUT', twilioSid: null }).service.cancelOutbound('l'))
+      .resolves.toMatchObject({ ok: false, reason: expect.stringContaining('identifiant') });
+    await expect(build({ id: 'l', status: 'delivered', direction: 'OUT', twilioSid: 'x' }).service.cancelOutbound('l'))
+      .resolves.toMatchObject({ ok: false, reason: expect.stringContaining('plus annulable') });
+    await expect(build({ id: 'l', status: 'received', direction: 'IN', twilioSid: 'x' }).service.cancelOutbound('l'))
+      .resolves.toMatchObject({ ok: false });
+    await expect(build(null).service.cancelOutbound('absent')).resolves.toMatchObject({ ok: false });
+    expect(fetchSpy).not.toHaveBeenCalled();
   });
 });

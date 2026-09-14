@@ -29,6 +29,16 @@ import { PositionSamplingService } from './position-sampling.service';
 
 /** Only consider app CUT commands within this window for ignition confirmation. */
 const CUT_DETECTION_WINDOW_MS = 5 * 60 * 1000;
+// Un RESTORE peut passer par la file SMS cadencée et ses retries. Sa preuve ignition
+// peut donc arriver bien après les cinq minutes adaptées au chemin TCP d'une CUT.
+//
+// Contre-expertise du 13/09 (doc 19, P0-1) : trente minutes ne suffisaient pas. Une remise en
+// route de 07:00 partie par SMS n'est prouvée que si le conducteur démarre avant 07:30 ; passé
+// ce délai, la commande restait « envoyée » à vie et sa clé d'unicité avalait la RESTORE du
+// lendemain. Une remontée d'ignition prouve que le moteur DÉMARRE, quel que soit le délai —
+// à une condition, vérifiée dans `handleIgnitionTransition` : qu'aucune coupure n'ait été
+// demandée depuis (sinon l'ignition parlerait d'un autre épisode).
+const RESTORE_DETECTION_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 interface RequestedBy {
   role: UserRole | string;
@@ -822,27 +832,59 @@ export class PositionsService {
     previousIgnition: boolean,
     currentIgnition: boolean,
   ): Promise<void> {
-    // On ne réagit qu'à une transition contact ON -> OFF (chute d'ignition).
-    if (previousIgnition !== true || currentIgnition !== false) return;
+    const action = previousIgnition === true && currentIgnition === false
+      ? EngineAction.CUT
+      : previousIgnition === false && currentIgnition === true
+        ? EngineAction.RESTORE
+        : null;
+    if (!action) return;
 
-    const recentCut = await this.prisma.engineControlCommand.findFirst({
+    const recentCommand = await this.prisma.engineControlCommand.findFirst({
       where: {
         trackerId: tracker.id,
-        action: EngineAction.CUT,
+        action,
         // Coupure APP uniquement (jamais une observation device) + encore non confirmée.
         source: { not: 'DEVICE_OBSERVED' },
         status: CommandStatus.SENT,
-        confirmationExpected: true,
-        createdAt: { gte: new Date(Date.now() - CUT_DETECTION_WINDOW_MS) },
+        ...(action === EngineAction.CUT ? { confirmationExpected: true } : {}),
+        createdAt: {
+          gte: new Date(
+            Date.now() - (action === EngineAction.RESTORE
+              ? RESTORE_DETECTION_WINDOW_MS
+              : CUT_DETECTION_WINDOW_MS),
+          ),
+        },
       },
       orderBy: { createdAt: 'desc' },
     });
-    if (!recentCut) return;
+    if (!recentCommand) return;
+
+    // P0-1 — la fenêtre RESTORE est longue (24 h) : on exige donc qu'aucune COUPURE n'ait été
+    // demandée après cette remise en route. Sinon l'ignition qui remonte raconte un autre
+    // épisode (coupure ratée, rallumage par un autre chemin) et ne prouve rien sur celle-ci.
+    if (action === EngineAction.RESTORE) {
+      const cutSince = await this.prisma.engineControlCommand.findFirst({
+        where: {
+          trackerId: tracker.id,
+          action: EngineAction.CUT,
+          status: { not: CommandStatus.REJECTED_SPEED },
+          createdAt: { gt: recentCommand.createdAt },
+        },
+        select: { id: true },
+      });
+      if (cutSince) return;
+    }
 
     try {
       const confirmed = await this.prisma.engineControlCommand.update({
-        where: { id: recentCut.id },
-        data: { status: CommandStatus.ACKNOWLEDGED, ackedAt: new Date() },
+        where: { id: recentCommand.id },
+        data: {
+          status: CommandStatus.ACKNOWLEDGED,
+          ackedAt: new Date(),
+          activeKey: null,
+          nextAttemptAt: null,
+          dispatchLeaseUntil: null,
+        },
       });
       this.gateway.emitEngineCommandUpdate(tracker.vehicle.fleetId, {
         commandId: confirmed.id,
@@ -854,10 +896,15 @@ export class PositionsService {
         sentAt: confirmed.sentAt ? confirmed.sentAt.toISOString() : null,
         ackedAt: confirmed.ackedAt ? confirmed.ackedAt.toISOString() : null,
         source: confirmed.source as 'MANUAL' | 'SCHEDULER' | 'DEVICE_OBSERVED',
+        channel: confirmed.channel,
+        attemptCount: confirmed.attemptCount,
+        nextAttemptAt: confirmed.nextAttemptAt?.toISOString() ?? null,
       });
       this.logger.log(
         { trackerId: tracker.id, commandId: confirmed.id },
-        'Engine CUT confirmee par chute d\'ignition',
+        action === EngineAction.CUT
+          ? 'Engine CUT confirmée par chute d\'ignition'
+          : 'Engine RESTORE confirmé par remontée d\'ignition',
       );
     } catch (err) {
       this.logger.error(

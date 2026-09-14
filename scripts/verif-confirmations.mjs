@@ -18,7 +18,7 @@
  * Trois vérifications :
  *   1. `[danger]` ou `[critique]` sans `[consequences]` → refusé.
  *   2. un `confirmLabel` vide de verbe (« OK », « Oui », « Valider ») → refusé.
- *   3. `[critique]` sans `[confirmationAttendue]` → refusé (le 3ᵉ marqueur manque).
+ *   3. `[critique]` sans saisie NI glissement de confirmation → refusé (le 3ᵉ marqueur manque).
  *
  *   node scripts/verif-confirmations.mjs
  */
@@ -63,8 +63,8 @@ for (const f of fichiers) {
     if ((dangerPose || critiquePose) && !a('consequences')) {
       anomalies.push({ rel, l, quoi: 'danger sans [consequences] — « ce qui est perdu » n\'est pas nommé' });
     }
-    if (critiquePose && !a('confirmationAttendue')) {
-      anomalies.push({ rel, l, quoi: 'critique sans [confirmationAttendue] — le 3ᵉ marqueur manque' });
+    if (critiquePose && !a('confirmationAttendue') && !a('slideToConfirm')) {
+      anomalies.push({ rel, l, quoi: 'critique sans [confirmationAttendue] ni [slideToConfirm] — le 3ᵉ marqueur manque' });
     }
     const lab = attrs.match(/confirmLabel\]?\s*=\s*"'?([^"']+)'?"/);
     if (lab && SANS_VERBE.includes(lab[1].trim().toLowerCase())) {

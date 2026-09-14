@@ -119,6 +119,9 @@ export interface EngineCommandUpdatedEvent {
   ackedAt?: string | null;
   /** Sprint 2 — origine, pour distinguer une détection device d'une commande app. */
   source?: 'MANUAL' | 'SCHEDULER' | 'DEVICE_OBSERVED';
+  channel?: string | null;
+  attemptCount?: number;
+  nextAttemptAt?: string | null;
 }
 
 /**

@@ -67,6 +67,38 @@ const envSchema = z.object({
   // CRITICAL est cree. Vide => le cron skip (no-op safe en dev). Cf.
   // SmsHeartbeatService.
   SMS_HEARTBEAT_RECIPIENTS: z.string().default(''),
+  // T45 — preuve SMS QUOTIDIENNE (04:30 et 06:30 Europe/Paris, vérifiée à +15 min) vers UN numéro
+  // E.164 neutre — recommandé : la SIM du téléphone passerelle lui-même (l'écho entrant prouve
+  // émission, réception et webhook). Vide => pas de preuve quotidienne, et l'interlock des coupes
+  // automatiques n'a que la preuve de vie du lundi (refus six jours sur sept). Le numéro doit être
+  // dans l'allowlist du tenant Tracky côté relais.
+  SMS_DAILY_PROOF_RECIPIENT: z.string().default(''),
+
+  // Coupe-circuit : une variable absente ne doit jamais réactiver les CUT
+  // automatiques. L'activation est une décision Go explicite.
+  ENGINE_AUTOMATIC_CUT_ENABLED: z.string().default('false'),
+  // Cadence serveur vers la passerelle Android (rafale du 11/09 : 10 SMS/6 s).
+  SMS_MIN_INTERVAL_MS: z.coerce.number().int().nonnegative().default(15000),
+  // Cadence des CUT automatiques dans l'unique instance API de production.
+  // Elle est ensuite arrondie par créneaux de 10 s et bornée à 10–60 s.
+  SCHEDULE_CUT_QUEUE_INTERVAL_MS: z.coerce.number().int().positive().default(10000),
+  // Worker RESTORE durable : délais et plafond d'essais SMS avant escalade.
+  ENGINE_RESTORE_ACK_TIMEOUT_MS: z.coerce.number().int().positive().default(15000),
+  ENGINE_RESTORE_ALERT_AFTER_MS: z.coerce.number().int().positive().default(60000),
+  ENGINE_RESTORE_MAX_SMS_ATTEMPTS: z.coerce.number().int().positive().default(3),
+  // T42 : secours SMS épuisé → K renvoyée en TCP seule, toutes les N minutes et à chaque reconnexion.
+  ENGINE_RESTORE_TCP_RETRY_MIN: z.coerce.number().int().positive().default(30),
+  // T51 : un clic manuel répond au plus tard après ce budget (ms) avec l'intention persistée — l'envoi finit derrière.
+  ENGINE_MANUAL_RESPONSE_BUDGET_MS: z.coerce.number().int().positive().default(20000),
+  // T62 : N échecs SMS consécutifs vers une SIM = véhicule « TCP seul » (coupe auto seulement boîtier connecté,
+  // RESTORE relancée en TCP toutes les ENGINE_TCP_ONLY_RETRY_MIN, un SMS-sonde par 6 h).
+  ENGINE_SMS_UNREACHABLE_STREAK: z.coerce.number().int().min(2).default(3),
+  ENGINE_TCP_ONLY_RETRY_MIN: z.coerce.number().int().positive().default(5),
+  // P0-1 (contre-expertise du 13/09) : une RESTORE « envoyée » sans preuve libère sa clé
+  // d'unicité après cette échéance ; sans borne, la RESTORE du lendemain était avalée.
+  ENGINE_RESTORE_EXPIRY_MIN: z.coerce.number().int().positive().default(240),
+  // T41 : validité (s) d'une COUPURE partie par SMS — le téléphone n'émet plus un `stop` en retard.
+  ENGINE_CUT_SMS_TTL_S: z.coerce.number().int().positive().default(900),
 
   // Email Gateway (Resend) — Sprint J. Si RESEND_API_KEY est vide, le module
   // est en mode no-op (les invitations sont creees mais l'email n'est pas envoye,

@@ -23,6 +23,50 @@ export interface SmsStatus {
     errorCode?: string;
     errorMessage?: string;
   } | null;
+  deliveryProofAvailable?: boolean;
+  pendingWithoutReceipt?: number;
+  oldestPendingAt?: string | null;
+  lastTerminalSuccessAt?: string | null;
+  gateway?: {
+    observedAt: string;
+    operational: boolean;
+    provider: {
+      status: string;
+      version: string | null;
+      releaseId: string | null;
+    };
+    device: {
+      count: number;
+      freshestLastSeenAt: string | null;
+      ageSeconds: number | null;
+      fresh: boolean;
+      staleAfterSeconds: number;
+      // T44 — facultatifs : un relais antérieur ne les envoie pas.
+      state?: 'ONLINE' | 'STALE' | 'OFFLINE' | 'UNKNOWN';
+      selectedId?: string | null;
+      selectedName?: string | null;
+      selection?: 'configured' | 'single' | 'none' | 'ambiguous' | 'missing';
+      offlineAfterSeconds?: number;
+    };
+    sim: {
+      configuredNumber: number | null;
+      cards?: Array<{ simNumber: number | null; phoneNumber: string | null; carrierName: string | null }>;
+      configuredPresent?: boolean | null;
+    };
+    queue: {
+      pending: number;
+      oldestPendingAt: string | null;
+      oldestAgeSeconds: number | null;
+      failed24h: number;
+    };
+    telemetry: { batteryAvailable: boolean; chargingAvailable: boolean };
+    error?: string;
+  };
+  dispatchQueue?: {
+    depth: number;
+    minIntervalMs: number;
+    nextDispatchAt: string | null;
+  };
 }
 
 export interface SmsTestFallbackResult {
@@ -39,7 +83,16 @@ export interface SmsHeartbeatResult {
   sent: number;
   failed: number;
   skipped: boolean;
-  results: { to: string; ok: boolean; error?: string }[];
+  results: { to: string; ok: boolean; outcome: 'accepted' | 'delivered' | 'failed'; error?: string }[];
+}
+
+export interface SmsHeartbeatVerdict {
+  verdict: 'OK' | 'ECHEC' | 'INDETERMINE' | 'NON_EMIS' | 'SANS_OBJET';
+  checked: number;
+  delivered: number;
+  failed: number;
+  indeterminate: number;
+  oldestAgeMin: number | null;
 }
 
 export interface SmsLogDto {
@@ -164,7 +217,13 @@ export class AdminSmsService {
   }
 
   send(to: string, message: string) {
-    return this.http.post<{ ok: boolean; twilioSid?: string; error?: string }>(
+    return this.http.post<{
+      ok: boolean;
+      outcome: 'accepted' | 'delivered' | 'failed';
+      twilioSid?: string;
+      smsLogId?: string;
+      error?: string;
+    }>(
       '/api/admin/sms/send',
       { to, message },
     );
@@ -181,6 +240,11 @@ export class AdminSmsService {
   /** V1.15 — Force un heartbeat "preuve de vie" SMS maintenant (sinon cron hebdo). */
   runHeartbeat() {
     return this.http.post<SmsHeartbeatResult>('/api/admin/sms/heartbeat/run-now', {});
+  }
+
+  /** Relit les statuts terminaux ; contrairement à runHeartbeat(), cette route prononce un verdict. */
+  verifyHeartbeat() {
+    return this.http.post<SmsHeartbeatVerdict>('/api/admin/sms/heartbeat/verify', {});
   }
 
   /**

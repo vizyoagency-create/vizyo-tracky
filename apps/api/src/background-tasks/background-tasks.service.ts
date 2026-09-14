@@ -149,7 +149,7 @@ const CATALOG: CatalogEntry[] = [
     id: 'engine-command-expiry',
     source: 'engine-control/engine-control.service.ts', label: 'Fin de vie des commandes moteur', category: 'Sécurité & moteur',
     kind: 'cron', scheduleHuman: 'toutes les 10 min', criticality: 'moyenne', antiOverlap: false,
-    purpose: 'Solde les coupures/rétablissements moteur restés « envoyés » sans accusé au-delà de 30 min : ils passent en « envoyée, non confirmée ». Sans lui, la file ne se vide jamais (313 commandes ouvertes mesurées le 24/08) et l\'écran ne distingue plus « a échoué » de « nul ne sait ».',
+    purpose: "Solde les coupures moteur restées « envoyées » sans accusé au-delà de 30 min, et les rétablissements sans preuve au-delà de 4 h (ENGINE_RESTORE_EXPIRY_MIN) : ils passent en « envoyée, non confirmée » et libèrent leur clé d'unicité. Sans lui, la file ne se vide jamais (313 commandes ouvertes mesurées le 24/08), l'écran ne distingue plus « a échoué » de « nul ne sait », et une RESTORE d'hier avalerait celle du lendemain (P0-1, contre-expertise du 13/09).",
     periodic: { everyMs: 600_000, offsetMs: 0 },
   },
   {
@@ -176,6 +176,20 @@ const CATALOG: CatalogEntry[] = [
     kind: 'cron', scheduleHuman: 'toutes les 10 min', criticality: 'moyenne', antiOverlap: true,
     purpose: "Prévient par e-mail quand plus de 5 erreurs sont enregistrées sur l'heure glissante, ou dès UNE erreur critique (2026-09-08) — 1 e-mail/h max, quelle que soit la vigie qui parle.",
     periodic: { everyMs: 600_000, offsetMs: 0 },
+  },
+  {
+    id: 'sms-gateway-watchdog',
+    source: 'sms/sms-gateway-watchdog.service.ts',
+    label: 'Sonde du téléphone passerelle SMS',
+    category: 'Sécurité & moteur',
+    kind: 'cron',
+    scheduleHuman: 'chaque minute',
+    criticality: 'haute',
+    antiOverlap: true,
+    purpose:
+      'Vérifie sans envoyer de SMS que le relais, le serveur Android et le dernier ping téléphone sont frais ; une panne bloque les coupes automatiques.',
+    note: 'Alerte dédupliquée avec rappel toutes les 15 min tant que la chaîne reste indisponible.',
+    periodic: { everyMs: 60_000, offsetMs: 0 },
   },
 
   // ───────── IA & rapports ─────────
@@ -631,6 +645,22 @@ const CATALOG: CatalogEntry[] = [
     settingsRoute: '/admin/trip-automation',
     // Heures PAIRES de Paris, pile — 02:00 Paris = 00:00 UTC, heure epoch paire, d'ou offset 0.
     periodic: { everyMs: 7_200_000, offsetMs: 0 },
+  },
+  {
+    id: 'sms-daily-proof', label: 'Preuve SMS quotidienne (avant les fenêtres de remise en route)',
+    source: 'sms/sms-heartbeat.service.ts', category: 'Notifications',
+    kind: 'cron', scheduleHuman: 'chaque jour à 04:30 et 06:30 (Europe/Paris)', criticality: 'haute', antiOverlap: false,
+    note: "T45 (contre-expertise du 13/09, P1-3). Troisième @Cron du même fichier que la preuve de vie du lundi. Destinataire : SMS_DAILY_PROOF_RECIPIENT (vide = aucun envoi, et l'interlock des coupes automatiques n'a que la preuve du lundi).",
+    purpose: "Envoie un SMS de preuve vers un numéro neutre 30 min avant les fenêtres de remise en route de 05:00 et 07:00 : c'est la remise prouvée (< 24 h) que l'interlock exige avant toute coupure automatique du soir. Sans elle, les coupes sont refusées six jours sur sept.",
+    fire: { tz: PARIS, matcher: (w) => (w.getHours() === 4 || w.getHours() === 6) && w.getMinutes() === 30 },
+  },
+  {
+    id: 'sms-daily-proof-verify', label: 'Verdict de la preuve SMS quotidienne',
+    source: 'sms/sms-heartbeat.service.ts', category: 'Notifications',
+    kind: 'cron', scheduleHuman: 'chaque jour à 04:45 et 06:45 (Europe/Paris)', criticality: 'haute', antiOverlap: false,
+    note: 'T45. Quatrième @Cron du même fichier. Relit les preuves des 30 dernières minutes, réconcilie leur statut au relais, reconnaît l’écho entrant (preuve envoyée à la SIM du téléphone lui-même) et alerte : ECHEC en CRITICAL, INDETERMINE en ERROR, NON_EMIS en CRITICAL.',
+    purpose: "Prononce le verdict de remise de la preuve quotidienne quinze minutes après l'envoi, avant l'heure de départ des véhicules — pour qu'un humain puisse agir avant, pas après.",
+    fire: { tz: PARIS, matcher: (w) => (w.getHours() === 4 || w.getHours() === 6) && w.getMinutes() === 45 },
   },
   {
     id: 'sms-heartbeat-verify', label: 'Verification de la preuve de vie SMS',
