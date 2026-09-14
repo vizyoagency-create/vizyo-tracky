@@ -63,10 +63,28 @@ d'une section à l'autre sans le dire, ou cocher `[x]` sur la foi d'une fiche pl
 
 ---
 
-## 🗂️ Tableau de bord — 64 tâches, l'avancement d'un coup d'œil
+## 🗂️ Tableau de bord — 90 tâches, l'avancement d'un coup d'œil
 
-**Au 2026-09-13 (après les DEUX routines, rattrapées ensemble à 12 h 06 Paris, puis la décision D1 du propriétaire à 12 h 48) : 10 faites ·
-2 déployées, preuve attendue · 0 commitée · 52 ouvertes.**
+**Au 2026-09-14 (audit du centre d'alerte, 01 h 12 UTC — premier passage après les huit déploiements du 13/09) : 22 faites ·
+8 déployées, preuve attendue · 2 commitées · 58 ouvertes** *(dont 7 en gravité 1, 3 au-delà de 7 j)*.
+
+> ✅ **LE FAIT DU 14/09 : LA BAISSE DU CENTRE D'ALERTE VIENT, POUR LA PREMIÈRE FOIS, DE CORRECTIFS QUI
+> REFERMENT SEULS.** 202 → 198 actives : les 4 `CRITICAL` du témoin des tâches se sont archivées
+> d'elles-mêmes à 13:35 après 165 h (**T25 · TRK-074 → 🟢**), les deux commandes SMS de 298 h portent
+> `SENT_UNCONFIRMED` depuis le premier balayage de 20:30 et `commandes_en_attente` rend **0 ligne** pour
+> la première fois (**T5 · TRK-062 → 🟢**), et **T31 tient sur cinq contrôles sans rechute** sur la
+> condition exacte que `13471c53` ferme — la cause « plafond » avait été rouverte à 18:50 sur un échec
+> ancien, une heure après sa levée, *avant* ce déploiement de 20:02. **T28** : première journée close
+> mesurée « à la clôture » — **86 / 86 / 66 / 20 / 0**, à retrouver telle quelle les 15 et 16/09 ;
+> rattrapage **180 = 12 × 15**. **T30** : 0 doublon, 0 excès — *indécidable un dimanche*.
+> 🆕 **T58** *(TRK-069)* : l'échec `SyntaxError` de `courrier-ia` (17:52) est **muet** au centre d'alerte —
+> la clé de refroidissement (agent, motif) avait été consommée à 02:50 par une **autre** cause ; test daté
+> à 03:50 UTC. 🆕 **T59** *(TRK-079)* : deux robots EC2 à agent iPhone falsifié, deux appels avortés par
+> la fermeture de page rapportés en `keepalive` comme des pannes de réseau — bruit, 4 lignes.
+> 🔴 **T9 / T14** : les trois « Retour LLD » ont été **renommés** le 13/09 à 11:34–11:37 (HM-733-GA,
+> HM-769-GA, HM-779-GA) **sans que la déclaration « boîtier débranché » soit levée** — trois véhicules
+> neufs roulent sans alerte. 🔴🔴 **V28 : le client Docker du 13/09 04:34 est TOUJOURS là**, `dockerd` à
+> **101 % d'un cœur** mesuré dans `/proc`, **20 h 47** après — *rien n'a changé, sinon seize heures de plus.*
 
 > 🔴 **LE FAIT VPS DU 13/09 : LA 5ᵉ OCCURRENCE DE VPS-016 EST NOMMÉE À LA SECONDE — ET LA CAUSE DE
 > LA CLASSE EST ENFIN MESURABLE.** Le client bloqué (`docker logs --tail 60 texto-relay`) vient d'un
@@ -173,23 +191,23 @@ d'une section à l'autre sans le dire, ou cocher `[x]` sur la foi d'une fiche pl
 
 > 🖥️ **Le même état, en visuel : [`TABLEAU-DE-BORD.html`](./TABLEAU-DE-BORD.html)** — un fichier autonome, regénéré à chaque passage des deux routines quotidiennes, qui se filtre par gravité, par partie et par état. *Il ne remplace pas ce fichier-ci : il en donne l'état, jamais le pourquoi.*
 
-### Partie I — centre d'alerte *(33 tâches)*
+### Partie I — centre d'alerte *(35 tâches dans ce tableau ; T34 → T39 vivent dans `app/taches.json`)*
 
 | | ID | Fiche | La tâche | État |
 |:--:|:--:|---|---|---|
 | ☐ | **T1** | TRK-071 | 🔴🔴 Recharger **au moins un** des deux comptes IA | 🤝 HUMAIN |
 | ☑ | **T2** | TRK-069 | 🔵 ~~Rallumer le poste~~ — **le poste a repris SEUL le 06/09 à 06:08** | ✅ **FAIT** |
 | ☐ | **T3** | TRK-066 | 🔴 Trancher les **trois questions** du coupe-circuit | 🤝 HUMAIN |
-| ☐ | **T4** | TRK-072 | Calibrer les notifications d'excès de vitesse | 🤝 HUMAIN |
-| ☐ | **T5** | TRK-062 | Autoriser la migration `SENT_UNCONFIRMED` | 🤝 HUMAIN |
-| ☐ | **T6** | TRK-065 | Prévenir `tyger.bcn@gmail.com` *(21 notifications perdues)* | 🤝 HUMAIN |
+| ☑ | **T4** | TRK-072 | Calibrer les notifications d'excès de vitesse — **D9 tranchée le 13/09 : « ne rien changer »**, seuils et destinataires conservés | ✅ **FAIT** *(décision)* |
+| ☑ | **T5** | TRK-062 | `SENT_UNCONFIRMED` pour les commandes de boîtier — **migration `20260913200000`, les 2 résidentes de 298 h closes au premier balayage de 20:30**, `commandes_en_attente` à **0** le 14/09 | ✅ **FAIT ET PROUVÉ** `66d286f5` |
+| ☑ | **T6** | TRK-065 | Prévenir `tyger.bcn@gmail.com` — **voulu** (notifications en phase de test) ; `PUSH_ROLLOUT=SUPER_ADMIN_ONLY`, **4 remises 100 % super-admin après 20:25** (14/09, un point) | ✅ **FAIT** *(décision + réglage)* |
 | ☐ | **T7** | TRK-035 | Ouvrir la fenêtre de maintenance *(rôle non-superutilisateur)* | 🤝 HUMAIN |
 | ☐ | **T8** | TRK-001 · 027 | 🔵 Contrôler les antennes *(3 véhicules)* | 🤝 HUMAIN |
 | ☐ | **T9** | — | 🔵 Déclarer ou dépanner `GLA•KC•31` et `FG-669-DQ` | 🤝 HUMAIN |
 | `»` | **T10** | TRK-070 | Le niveau de l'escalade suit la **cause**, pas la gravité | 🗓️ **DÉPLOYÉ** `2112e9ae` |
 | ☑ | **T11** | TRK-068 | ✅ **EXERCÉE le 12/09 00:00:23** — 503, `ERROR`, « Vizyo Auth est injoignable … Motif technique : aucune reponse en 8 s » ; `http CRITICAL` reste à 2 | ✅ **FAIT ET PROUVÉ** `c80632ba` |
-| ☐ | **T12** | TRK-022 | Déduplication **générique** des alarmes du boîtier | 🔧 À CODER |
-| ☐ | **T13** | TRK-016 | Recalage — **flux neuf réparé (0 %)**, mais **la mesure ne mesure plus** et 8 882 trajets d'historique restent | 🔧 CHANTIER |
+| ☑ | **T12** | TRK-022 | Déduplication **générique** des alarmes du boîtier — **livrée le 19/08**, entrée périmée close sur la mesure (14 j : 2 alertes max par type et par véhicule et par jour) | ✅ **FAIT** |
+| `»` | **T13** | TRK-016 | Recalage — flux neuf réparé, **mesure redéfinie (T28)**, historique en rattrapage **15 par passage** (6 586 restants sur 2–60 j au 14/09) | 🗓️ **DÉPLOYÉ** `4d1c4cb5` |
 | ☐ | **T14** | TRK-053 | **REQUALIFIER** — occasion venue **à moitié** : 3 « Retour LLD » revenus, 0 alarme, 0 alerte ; **3 déclarations périmées** à lever *(5 j de dépassement)* | 🗓️ test daté |
 | ☐ | **T15** | TRK-060 | Guetter : « Un point de mesure système… » | 🗓️ NON EXERCÉ |
 | ☑ | **T16** | TRK-064 | ✅ **CLOSE** — la sentinelle **désigne des véhicules** (`vehiculesHorsNorme`) **et sait se taire** : « cdef31 » 0 ligne le 09/09 | ✅ **FAIT ET PROUVÉ** `8fa14cb4` |
@@ -198,18 +216,43 @@ d'une section à l'autre sans le dire, ou cocher `[x]` sur la foi d'une fiche pl
 | ☐ | **T19** | TRK-032 | **REQUALIFIER** — **20 j** d'attente | 🗓️ test daté |
 | ☐ | **T20** | TRK-051 | Confier à un humain — **16 j**, **30 s** pour qui a l'écran | 🗓️ test daté |
 | ☐ | **T21** | TRK-018 | Accusé de remise de la passerelle SMS | ⛔ BLOQUÉ |
-| ☐ | **T22** | TRK-014 | Rectifier son `quoiFaire` *(renvoie à TRK-012, clos)* | 🧹 dette doc |
-| ☐ | **T23** | — | Créer ou déréférencer `TACHES-AMELIORATION.md` | 🧹 dette doc |
+| ☑ | **T22** | TRK-014 | Rectifier son `quoiFaire` — fait le 13/09, republié | ✅ **FAIT** |
+| ☑ | **T23** | — | `TACHES-AMELIORATION.md` — il était **à la racine** : déplacé dans `docs/` par `git mv`, renvois réécrits | ✅ **FAIT** |
 | ☑ | **T24** | TRK-073 | ✅ **La ligne au DÉPART** — *24/24 le 08/09, **dont 1 marquée `interrupted`***, la consigne écrite d'avance est tombée au mot près | ✅ **FAIT ET PROUVÉ** `dae97b03` |
-| ☐ | **T25** | TRK-074 | Donner une **résolution automatique** au témoin des tâches — **4ᵉ vérif. négative**, 4 `CRITICAL` de **76,6 h** pendant que sa jumelle en ouvre **et referme trois** le même jour | 🔧 À CODER |
+| ☑ | **T25** | TRK-074 | Résolution automatique du témoin des tâches — **les 4 `CRITICAL` du 06/09 archivées seules le 13/09 à 13:35, après 165 h** ; 0 active le 14/09 | ✅ **FAIT ET PROUVÉ** `171857fc` |
 | ☑ | **T26** | TRK-075 | ✅ **PROUVÉ** — **33,3 h et 32 passages sans une ligne** ; ⚠️ la seconde moitié n'a pas bougé et **ce n'est pas une purge** : *ce sont les mêmes 4 analyses, vieillies d'un jour* | ✅ **FAIT ET PROUVÉ** `dc35f1a3` |
 | `»` | **T27** | TRK-076 | La carte **survit à une perte de contexte WebGL** — **0 ligne depuis le 07/09 13:04** *(60,1 h ; 48,2 h depuis le déploiement)*, échéance 15/09 | 🗓️ **DÉPLOYÉ** `09d04e2b` |
-| ☐ | **T28** | TRK-016 | 🔴 **Redéfinir la mesure du recalage** : à la clôture, sur une fenêtre **fermée** — *sans ça, T13 est indécidable*. **3ᵉ jour de réécriture du passé** : 04/09 168 → 102, 05/09 132 → 0, 06/09 82 → 0 | 🔧 À CODER |
-| ☐ | **T29** | TRK-077 | 🔴 **Relire la garde du déploiement au moment où elle va TUER**, pas au moment où l'on décide de construire — *elle protège de tout sauf du cas le plus probable* | 🔧 À CODER |
-| ☐ | **T30** | TRK-078 | 🆕 🔴 **Dédupliquer l'alerte de vitesse sur l'EXCÈS, pas sur le `tripId`** — 11 doublons sur 55 en 14 j : le recalcul réécrit l'identité du trajet | 🔧 À CODER |
-| ☐ | **T31** | TRK-069 | 🆕 **Une cause commune aux agents du poste = UNE ligne `DEGRADATION`**, pas 25 `CRITICAL` | 🔧 À CODER |
-| ☐ | **T32** | TRK-071 · 069 | 🆕 🔴🔴 **Décider la parade au plafond hebdomadaire de la CLI** — trois canaux IA, trois plafonds, 80 h sans aucun ouvert, audits compris | 🤝 HUMAIN |
-| ☐ | **T33** | TRK-077 | 🆕 **Rendre `deploy.sh` INCONTOURNABLE** — *décision D1 du propriétaire, 13/09 10:48 : « le rendre incontournable … prendre le temps de bien le faire, et blocage »*. Avec T29, pas avant | 🔧 À CODER |
+| `»` | **T28** | TRK-016 | Mesure du recalage **à la clôture, sur la journée close** — **première mesure le 14/09 : journée du 13/09 = 86 / 86 / 66 / 20 / 0**, à retrouver les 15 et 16/09 | 🗓️ **DÉPLOYÉ** `4d1c4cb5` |
+| `»` | **T29** | TRK-077 | Garde du déploiement **jouée deux fois**, refus HH:42–HH:46, repères de repli — 8 déploiements le 13/09, **0 passage interrompu** ; le refus en fenêtre n'est pas encore exercé sur un vrai déploiement | 🗓️ **DÉPLOYÉ** `18c975ee` |
+| `»` | **T30** | TRK-078 | Déduplication de l'alerte de vitesse sur l'**excès** + rattachement des alertes au trajet recalculé — **0 doublon et 0 excès depuis (dimanche) : indécidable**, verdict au premier jour ouvré | 🗓️ **DÉPLOYÉ** `229b7861` |
+| ☑ | **T31** | TRK-069 | Une cause commune = **UNE** ligne `DEGRADATION`, levée au premier succès — **et `13471c53` : cinq contrôles sans rechute** sur l'échec ancien (14/09) | ✅ **FAIT ET PROUVÉ** `a8f9575e` |
+| ☑ | **T32** | TRK-071 · 069 | Parade au plafond de la CLI — **D3 à D7 tranchées le 13/09** (pas d'API pour les agents, tous les trajets narrés, le poste sait qu'il est au plafond = T34, Opus pour les audits, second abonnement plus tard = T35) | ✅ **FAIT** *(décisions)* |
+| ☑ | **T33** | TRK-077 | **`deploy.sh` rendu INCONTOURNABLE — détecté, pas empêché** : journal des déploiements + sentinelle « déploiement hors script », **exercée volontairement** le 13/09 12:55 → ligne 12:57 | ✅ **FAIT** `18c975ee` |
+| ☐ | **T58** | TRK-069 | 🆕 **La clé de refroidissement de la sentinelle des agents doit porter la CAUSE** — l'échec `SyntaxError` de `courrier-ia` (13/09 17:52) est muet sous la clé consommée par « weekly limit » ; et `courrier-ia` doit lire le **premier objet JSON équilibré** *(test daté 14/09 03:50 UTC)* | 🔧 À CODER |
+| ☐ | **T59** | TRK-079 | 🆕 **Ne plus remonter les `fetch` avortés par la fermeture de page sur le canal anonyme** — 4 lignes de deux robots EC2, bruit | 🔧 À CODER |
+
+#### Chantier coupe-circuit — contre-expertise du 13/09 *(T40 → T57, nées le 13/09 au soir ; T34 → T39 vivent dans `app/taches.json`)*
+
+| | ID | Fiche | La tâche | État |
+|:--:|:--:|---|---|---|
+| ~ | **T40** | TRK-066 · doc 19 P0-1 | 🔴🔴 P0 — La clé d'unicité RESTORE ne doit plus vivre pour toujours (RESTORE du lendemain avalée) — COMMITTÉ d5c19a17, en attente de fusion | ~ **COMMITÉ** `d5c19a17` — *pas encore fusionné* |
+| ~ | **T41** | TRK-066 · doc 19 P0-2 | 🔴🔴 P0 — Donner une validité aux SMS CUT (ttl), une priorité aux RESTORE, un appareil explicite, et annuler le SMS CUT supplanté | ~ **COMMITÉ** `8ab1d08e` (relais `2536ea4`) — *pas encore fusionné* |
+| ☐ | **T42** | TRK-066 · doc 19 P1-1 | 🔴 Relancer une RESTORE non prouvée à la reconnexion TCP du boîtier — et ne plus la rendre terminale après trois SMS | 🔧 À CODER |
+| ☐ | **T43** | TRK-066 · doc 19 P1-2 | 🔴 Configurer le téléphone passerelle (ping 60 s, FIFO, délais, SIM 1) et l'environnement du relais — AVANT tout déploiement | 🔵 TERRAIN |
+| ☐ | **T44** | TRK-066 · doc 19 P1-2 | 🔴 Sentinelle Android : hystérésis, bornes d'environnement, fraîcheur par appareil, délai d'envoi séparé du délai de santé | 🔧 À CODER |
+| ☐ | **T45** | TRK-066 · doc 19 P1-3 | 🔴 Preuve SMS quotidienne réconciliée (T-30 min avant chaque fenêtre) — sans elle l'interlock refuse les coupes six jours sur sept | 🔧 À CODER |
+| ☑ | **T46** | TRK-066 · doc 19 P1-4 | 🔴 Nettoyer le diff du chantier (reformatage prettier), rebaser sur main, résoudre le conflit — la production est déjà sur 66d286f5 | ✅ **FAIT** `d5c19a17` |
+| ☐ | **T47** | TRK-066 · doc 19 P1-5 | 🔴 Procédure de déploiement du chantier : deploy.sh, migration rejouée sur copie PostgreSQL, ordre téléphone → Texto → Tracky, kill-switch false | 🟡 PRÉPARÉ |
+| ☐ | **T48** | TRK-066 · doc 19 P2-1 · P2-4 | Course ACK/SMS : ne jamais rétrograder ACKNOWLEDGED en SENT ; dispatcher une CUT PENDING orpheline au lieu de la rendre telle quelle | 🔧 À CODER |
+| ☐ | **T49** | TRK-066 · doc 19 P2-2 | Kill-switch et interlock : une ligne par véhicule et par heure, pas un CRITICAL par appel | 🔧 À CODER |
+| ☐ | **T50** | TRK-066 · doc 19 P2-3 | Glissement de confirmation réellement volontaire : ni un clic en bout de piste, ni la touche End | 🔧 À CODER |
+| ☐ | **T51** | TRK-066 · doc 19 P2-5 · P2-6 | Rappeler une RESTORE qui traîne (toutes les 15 min) et ne pas suspendre le clic manuel derrière la file SMS | 🔧 À CODER |
+| ☐ | **T52** | TRK-066 · doc 19 P2-8 · P2-9 | Santé par appareil (deviceId, simCards) et allowlist non bloquante pour une RESTORE | 🔧 À CODER |
+| ☐ | **T53** | TRK-066 · doc 19 P2-10 | Tests : exercer la table des tentatives, index dans schema.prisma, migration rejouée sur PostgreSQL réel, changement d'heure du 25/10 | 🔧 À CODER |
+| ☐ | **T54** | TRK-066 · doc 19 §3 phase 5 | 🔴 Recette réelle : boîtier de banc, puis un canari MH Cars, puis un CDEF31 — un à la fois, présence physique, jamais les 37 | 🔵 TERRAIN |
+| ☐ | **T55** | TRK-066 · doc 12 · doc 19 P2-8 | Second téléphone + seconde SIM (autre opérateur) — après T52, jamais sous le même deviceId | 🤝 HUMAIN |
+| ☐ | **T56** | TRK-066 · doc 19 §15 | Corriger les promesses des documents du chantier qui dépassent le code | 🧹 dette doc |
+| ☐ | **T57** | TRK-066 · doc 19 §14 | Dépendances : lot séparé après stabilisation (maplibre critique, socket.io/ws, axios via twilio, multer) | 🔧 À CODER |
 
 ### Partie II — VPS *(31 tâches)*
 
@@ -295,6 +338,7 @@ d'une section à l'autre sans le dire, ou cocher `[x]` sur la foi d'une fiche pl
 | **09/09** | **138** | **Une preuve écrite d'avance tombe au mot près** — 24 passages sur 24 dont **1 marqué `interrupted`** *(T24 ✅)*, le trajet du 8 juillet se tait *(T26 `»`)*, et **le seul chiffre qui ment est celui du recalage : le passé a été réécrit** *(🆕 T28)* |
 | **13/09** *(couvre 11→13)* | **202** | **Un troisième canal IA à sec, et c'est le seul qui coupe aussi les audits** — la CLI du poste au plafond hebdomadaire pendant 80 h : 31 des 63 lignes nées, 0 casse, et **les audits des 11-12/09 n'ont pas eu lieu**. Pendant le silence, **T11 et T17 se prouvent seules** ; 🆕 **TRK-078** : 1 alerte de vitesse sur 5 est un doublon, le recalcul réécrit la clé *(T30, T31, T32)* |
 | **10/09** | **145** | **Les trois tests datés de la veille sont franchis** — 33 h sans « Analyse impossible » *(T26 ✅)*, le rattrapage porte **+433 trajets recalés** *(T13)*, et la sentinelle de vitesse livre sa forme neuve **un jour en avance, en se taisant sur la flotte qui n'avait rien à dire** *(T16 ✅)*. 🆕 **T29** : la garde du déploiement est **présente, correcte, et ne protège de rien** — lue au moment où l'on décide de construire, pas au moment où l'on va tuer |
+| **14/09** | **198** | **Premier passage après les huit déploiements du 13/09, et la baisse vient de correctifs qui referment seuls** — 4 `CRITICAL` du témoin des tâches archivées d'elles-mêmes après 165 h *(T25 ✅)*, les 2 commandes SMS de 298 h closes au premier balayage et **0 commande en attente** *(T5 ✅)*, T31 tient sur cinq contrôles ; 🆕 **TRK-079** : deux robots EC2 rapportent en `keepalive` des appels avortés par la fermeture de page *(T59)* ; 🆕 **T58** : un échec `courrier-ia` muet sous une clé de refroidissement consommée par une autre cause ; les trois « Retour LLD » **renommés sans lever la déclaration** ; **V28 toujours là, 20 h 47** |
 
 **Ce que la série raconte** — les actives passent de 26 à 82 en six jours, et **ce n'est pas une
 dégradation de la plateforme** : **48 des 82** sont des `DEGRADATION` (Overpass, dépendance tierce
@@ -369,6 +413,26 @@ vous** :
 ---
 
 # 🔧 À CODER — cause connue, correctif spécifié, personne ne l'a écrit
+
+## ⚖️ Contre-expertise du chantier coupe-circuit — 13/09 au soir
+
+> Lecture indépendante des deux branches du chantier (Tracky `codex/tracky-cutoff-reliability-2026-09-12`,
+> Texto `codex/gateway-health-reliability-2026-09-13`) : [`docs/fiabilite-coupe-circuit-2026-09/19-CONTRE-EXPERTISE-INDEPENDANTE-2026-09-13.md`](../fiabilite-coupe-circuit-2026-09/19-CONTRE-EXPERTISE-INDEPENDANTE-2026-09-13.md).
+> Verdict **NO-GO** en l'état, 53/100. Ce que la revue a établi, dans l'ordre de gravité :
+>
+> 1. **P0-1 (T40)** — la clé d'unicité `activeKey` d'une RESTORE partie par SMS et jamais acquittée n'était **jamais libérée** :
+>    la RESTORE du lendemain (planning ou clic) était dédupliquée vers elle, rien n'était envoyé, le cron avançait son état.
+>    Prouvé par test contre le service réel ; base : au moins une RESTORE SMS sans accusé presque chaque jour sur 30 jours.
+>    **Corrigé et committé le 14/09** (`d5c19a17`, [doc 20](../fiabilite-coupe-circuit-2026-09/20-CORRECTIF-P0-CLE-RESTORE-2026-09-13.md)).
+> 2. **P0-2 (T41)** — les SMS CUT partent sans validité (`ttl`) ni priorité ; une coupure retardée d'une heure s'exécute après le rallumage du matin.
+> 3. **P1 (T42 → T47)** — pas de relance TCP à la reconnexion ; téléphone sans ping (`lastSeen` figé 552 s au repos) contre un seuil de 120 s ;
+>    l'interlock exige une remise SMS de moins de 24 h alors que la seule preuve régulière est hebdomadaire **et que le relais ne pousse aucun statut** ;
+>    branche en conflit avec `main` à cause d'un reformatage (nettoyé le 14/09, T46) ; procédure de déploiement sans `deploy.sh` ni prérequis téléphone.
+> 4. **P2 (T48 → T53)** — course ACK/SMS, alertes en tempête, glissement confirmable d'un clic, RESTORE en `queued` alertée une seule fois, santé multi-appareils ambiguë, tentatives jamais testées.
+>
+> 🔑 **Ce que cette revue apprend, au-delà des tâches :** des suites vertes (3 920 tests) ne voyaient pas une régression qui se joue
+> sur **deux matins consécutifs** — *un test d'un seul cycle ne peut pas trouver un défaut de cycle.* Et `/health` du serveur SMS
+> ne teste que sa base : *une santé qui répond « pass » ne dit rien du téléphone qu'elle est censée surveiller.*
 
 ## P0 — nuit à la production maintenant
 
@@ -966,6 +1030,16 @@ feront perdre une heure le jour où quelqu'un les suivra.*
 
 | Date | ID | Tâche | État | Commit | La preuve |
 |---|:--:|---|:--:|---|---|
+| **14/09** | **T25** | [TRK-074](./REFERENCE-ERREURS.md#trk-074) — résolution automatique du témoin des tâches | ✅ **FAIT ET PROUVÉ** *(confirmé par l'audit)* | `171857fc` | 🎯 Les 4 `CRITICAL` du 06/09 (17:35 → 20:35) portent `resolvedAt = 13/09 13:35:00` et la note *« Tâche repassée le 13/09/2026 14:55 (résolution automatique) »* — **deux minutes après le déploiement de 13:33, après 165 h**. `resolvedAt` ×2 dans `dist/observability/scheduled-task-heartbeat.service.js` servi ; **0 ligne active** de cette source au 14/09 (11 au total, toutes archivées). ⚠️ Seconde moitié — une tâche réellement à l'arrêt continue d'en produire — **non exercée** : 24/24 `done` chaque jour depuis |
+| **14/09** | **T5** | [TRK-062](./REFERENCE-ERREURS.md#trk-062) — `SENT_UNCONFIRMED` pour les commandes de boîtier | ✅ **FAIT ET PROUVÉ** *(confirmé par l'audit)* | `66d286f5` | 🎯 Les 2 commandes SMS du 01/09 (`shock_on`, `shock_off`, BP-434-RD) portent `SENT_UNCONFIRMED` et `expiredAt = 13/09 20:30:00` — **premier balayage après le déploiement de 20:25, après 298,3 h et 294,9 h**. `cloturerCommandesSmsSansReponse` et `SENT_UNCONFIRMED` dans `dist/tracker-commands/` servi. **`commandes_en_attente` rend 0 ligne** : première collecte sans aucun résident. ⚠️ Non exercé : une commande SMS **neuve** doit rester « envoyée » 4 h puis basculer, jamais avant — aucune envoyée depuis |
+| **14/09** | **T31** | [TRK-069](./REFERENCE-ERREURS.md#trk-069) — une cause, une ligne | ✅ **FAIT ET PROUVÉ** *(et `13471c53` prouvé)* | `a8f9575e` · `13471c53` | 🎯 **La rechute que le second commit décrit s'est produite AVANT lui, et plus après.** La cause « plafond » a été rouverte à **18:50** sur l'échec ancien de `agent-recit-trajet` (05:48), une heure après sa levée par le rattrapage ; `13471c53` est en ligne à **20:02** ; depuis, **cinq contrôles (20:50 → 00:50) sans rechute** sur la même condition — *l'échec de 05:48 est toujours le dernier passage de cet agent* —, et la ligne de 18:50 s'est refermée seule à 22:50. 12 lignes `agents-locaux` archivées seules dans la journée ; **13 `CRITICAL`** attendent le premier passage réussi de `agent-recit-trajet` (03:15 Paris) et `courrier-ia` (06:30 Paris) |
+| **14/09** | **T28** · **T13** | [TRK-016](./REFERENCE-ERREURS.md#trk-016) — la mesure « à la clôture » | `»` **DÉPLOYÉ — première mesure** | `4d1c4cb5` | 📏 **Journée close du 13/09 (Paris) : 86 trajets, 86 recalés, 66 signés `cloture` à moins de 2 h** (délai moyen 26 min, max 74), **20 d'origine inconnue** (antérieurs aux colonnes de 13:33), **0 sans recalage**. 🗓️ **Preuve attendue les 15 et 16/09 : retrouver 86 / 86 / 66 / 20 / 0** — si ça bouge, le rattrapage réécrit encore le passé ; la journée du 14/09 sera la première sans « origine inconnue ». Rattrapage : **180 traces signées `rattrapage` = 12 passages × 15**, au trace près ; fenêtre 2 → 60 j par `startedAt` : 10 211 trajets, **6 586 restants** |
+| **14/09** | **T30** | [TRK-078](./REFERENCE-ERREURS.md#trk-078) — dédupliquer sur l'excès | `»` **DÉPLOYÉ — indécidable** | `229b7861` | Marqueurs `memeExcesDejaAlerte` et `rattacherAuTrajet` relus dans `dist/alerts/alerts.service.js` servi. Depuis 11:30 : **0 groupe** (véhicule, `startAt`) en double **ET 0 excès distinct** — un dimanche ; 9 groupes en double sur les 7 jours d'avant ; les 2 orphelines n'ont pas bougé. 🗓️ Verdict au **premier jour ouvré** : ~3 excès distincts et 0 doublon. *0 et 0 un jour ouvré = détection cassée* |
+| **14/09** | **T58** | 🆕 [TRK-069](./REFERENCE-ERREURS.md#trk-069) — la clé de refroidissement doit porter la CAUSE ; `courrier-ia` lit le premier objet JSON équilibré | ☐ **OUVERT** | — | *(tâche neuve)* 🔴 Le passage `courrier-ia` de **17:52** est en échec (`SyntaxError: Unexpected non-whitespace character after JSON at position 407`, un `rapport-activite` reposé en tentative 2/3) et **le centre d'alerte n'en dit rien** : la clé (agent, motif) = (courrier-ia, échec) a été consommée à **02:50** par la ligne « weekly limit », pour 24 h. *Un échec d'une AUTRE cause sous la même clé est muet jusqu'au lendemain.* 🗓️ **Test daté : une `CRITICAL` « courrier-ia … SyntaxError » au contrôle de 03:50 UTC** (sauf réussite à 04:30 avant). Côté agent : l'extraction `\{[\s\S]*\}` prend du premier `{` au DERNIER `}` — une phrase ajoutée par le modèle après son objet fait reposer un rapport client |
+| **14/09** | **T59** | 🆕 [TRK-079](./REFERENCE-ERREURS.md#trk-079) — les `fetch` avortés par la fermeture de page ne sont pas des pannes | ☐ **OUVERT** | — | *(tâche neuve)* 4 lignes `frontend-anon` (22:50, 23:14) : deux adresses **Amazon EC2**, agent *« iOS 18 + Safari 26 »* qui n'existe pas, deux appels échoués **à 8 ms** alors que le chunk cité est **PRÉSENT** dans le bundle servi et que le rapport `keepalive` est arrivé — **la page a été fermée**, les requêtes annulées rejettent le même `TypeError: Failed to fetch` qu'une panne. Bruit, gravité 4. Geste dans `report-client-error.ts` : ignorer les erreurs de transport quand la page se cache, et sur le canal anonyme ne remonter que les erreurs qui ne sont pas de transport |
+| **14/09** | **T9** · **T14** | [TRK-053](./REFERENCE-ERREURS.md#trk-053) — les trois « Retour LLD » | ☐ **OUVERTES — le fait a changé** | — | 🔴 **Les trois véhicules déclarés ont été RENOMMÉS le 13/09 entre 11:34 et 11:37 UTC** — `FR-629-AD → HM-733-GA`, `FW-298-WV → HM-769-GA`, `FZ-731-YF → HM-779-GA` (plaques neuves, série HM 2026), *une heure et demie après le rapport d'hier* — **et la déclaration « boîtier débranché / Retour LLD » a survécu à l'édition**. Ce sont des véhicules neufs, en service (1 208 et 592 positions depuis le 11/09 ; HM-769-GA vivant sans fix depuis 57 h), **sans aucune alerte**. `alertes_depuis_declaration` = 7, **9ᵉ point**. Lever les trois déclarations ; question produit : modifier la plaque d'un véhicule déclaré hors service devrait proposer de lever la déclaration |
+| **14/09** *(VPS)* | **V28** | VPS-016 — le client Docker bloqué | ☐ **OUVERT — 20 h 47** | — | 🔴🔴 PID **159541** et son parent **159533** vivants (`etimes = 74 823 s`), `dockerd` à **101 % d'un cœur** mesuré sur 5 s dans `/proc/913/stat`, charge 1,35 / 1,49 / 1,53 sur deux cœurs. **Rien n'a changé depuis hier, sinon seize heures de plus.** `kill 159533 && sleep 1 && kill 159541`, puis `pgrep -x docker` vide |
+| **14/09** | **T6** · **T34** · **T36** · **T37** · **T38** · **T45** | Les relevés du jour | — | — | **T6** : 4 remises après 20:25, **100 % `SUPER_ADMIN`** (1 `SUPPRESSED` pour `tyger.bcn`), `PUSH_ROLLOUT=SUPER_ADMIN_ONLY` lu dans le conteneur — un point. **T34** : une seule pause, l'essai ; ⚠️ la porte a classé un **délai** de 30 s sur `claude auth status` comme « hors abonnement » (20:50 → 22:50, passage du rattrapage perdu) — corrigé sur le poste par `8f1a6c3e`. **T36** : 7 passages depuis 16:56, **0 `^C`** — un point sur sept. **T37** : 0 trajet sans récit du 09 au 12/09, 1/68 le 13/09 à 01:12 (à narrer à 03:15). **T38** : **0 commande moteur** les 12 et 13/09, dernière `SCHEDULER` le 11/09 — l'arrêt est effectif. **T45** : `sms_logs` porte **24 sortants `queued` sans suite** (dernier 11/09 18:49) et **1 seul `delivered`** en 7 j — le relais ne pousse aucun statut, la table Tracky le dit seule |
 | **13/09** | **T33** | 🆕 [TRK-077](./REFERENCE-ERREURS.md#trk-077) — rendre `deploy.sh` incontournable | ☐ **OUVERT** *(décision D1 tranchée)* | — | *(tâche neuve, née d'une DÉCISION)* Le propriétaire a répondu à **D1** depuis le poste de commande le **13/09 à 10:48 UTC** : **« Le rendre incontournable »**, avec la consigne *« Ajouter une tâche à faire, prendre le temps de bien le faire pour ne pas créer des bugs ! et blocage »*. Un seul chemin pour recréer les conteneurs, qui porte la garde de T29 **relue juste avant la recréation** et qui **bloque** (sortie non nulle) sauf option forcée tracée. ⚠️ **Avec T29, pas avant** : rendre obligatoire une garde lue au mauvais moment protégerait de tout sauf du cas le plus probable |
 | **13/09** *(VPS)* | **V28** | VPS-016 — 5ᵉ occurrence, **client nommé à la seconde** | ☐ **OUVERT** — *complété* | *(voir commit du jour)* | Le `bash -c` parent (159533) est **vivant, PPID 1, `do_wait`** : c'est le cas du 08-20, donc **le parent d'abord** (`kill 159533 && sleep 1 && kill 159541`). Session SSH **39478**, root depuis le poste `82.67.153.51`, ouverte **04:34:00,89 UTC** puis fermée ; `sar` : `%system` 3,5 → 22,3 (04:40) → 33,6 (04:50) et s'y tient ; cumul `dockerd` 241,2 → **249,0 h**. **Les trois routines planifiées sont exclues** (bloquées par le quota, reprises ensemble à 10:06). *L'outil n'est pas nommé (VPS-M01) ; la classe l'est.* 🔑 `dockerd` avait journalisé *« Error decoding log file: invalid character '\x00' »* à **04:33:52**, 8 s avant, sur le premier `docker logs` du même `bash` — voir V29 |
 | **13/09** *(VPS)* | **V29** | 🆕 [VPS-041](../vps-audit/REFERENCE-CONSTATS.md) — un seul rotateur pour les journaux de conteneur | ☐ **OUVERT** | *(voir commit du jour)* | *(tâche neuve)* **Deux rotateurs sur les mêmes fichiers** : le pilote `json-file` (10 Mo × 3) **et** `/etc/logrotate.d/docker-containers` (posée le 25/08, `copytruncate`, minuit). `dockerd` garde son offset → chaque rotation perce un trou de NUL **de la taille exacte du fichier tronqué** : `tracky-api json.log.1` = **8 405 652 NUL**, `json.log.2` = **8 405 652 octets** ; même égalité sur `maalem-dev-api`, `maestroo-dev-api`, `tracky-postgres`. **5 fichiers courants à 34–92 % de NUL**, 13 courants à 0 octet (dont `texto-relay`). Geste : `mv` de la stanza hors de `logrotate.d`, **avant** tout `daemon.json` ; 10 s, risque nul ; contrepartie : fenêtre = `max-file 3`. ⚠️ Ce qui n'est PAS prouvé : que les NUL soient la cause *nécessaire* du blocage — ce qui l'est : `docker logs` est faux sur 5 conteneurs, et le mécanisme est le nôtre |

@@ -1,14 +1,14 @@
 {
   "_comment": "Ce que le POSTE DE COMMANDE montre en plus des tâches. Les tâches, elles, viennent de docs/centre-alerte/app/taches.json et ne se recopient JAMAIS ici — voir generer.mjs. Ce fichier ne porte que ce qu'aucune tâche ne décrit : les mesures de tête, les mécaniques qui tournent seules, les décisions posées au propriétaire, et ce qui est prouvé.",
   "version": 1,
-  "releve": "13 septembre 2026, 20:45 UTC",
+  "releve": "14 septembre 2026, 01:30 UTC",
   "machines": [
     {
       "nom": "Rattrapage du recalage des tracés",
       "texte": "Quinze tracés d’historique remis sur la route à chaque passage horaire, après les analyses. S’arrête tout seul.",
-      "fait": 5186,
-      "total": 17702,
-      "pied": "12 516 restants",
+      "fait": 5274,
+      "total": 17715,
+      "pied": "12 441 restants",
       "pied2": "≈ 35 jours à 15 par heure"
     },
     {
@@ -21,20 +21,20 @@
     },
     {
       "nom": "Coupe-circuit automatique — À L’ARRÊT",
-      "texte": "37 plannings coupés par toi le 11/09 à 20 h 49, après la reprise matinale manquée de 12 véhicules sur 26. Le chantier fiabilité (12 documents, lots R1 à R7) prépare la remise en service ; lundi 14/09 en mode supervisé, sans coupure automatique.",
+      "texte": "37 plannings coupés par toi le 11/09 à 20 h 49, après la reprise matinale manquée de 12 véhicules sur 26. Contre-expertise du 13/09 : NO-GO en l'état. Les deux P0 sont corrigés et COMMITTÉS dans les branches — T40 (RESTORE du lendemain avalée) et T41 (validité des SMS de coupure, priorité des remises en route, annulation) — et la branche est propre et rebasée sur main (T46). Restent T42, T44, T45 (code), T43 (téléphone), T47 (procédure) puis la recette T54 avant toute réactivation. Production toujours sans les correctifs.",
       "fait": null,
       "total": null,
       "pied": "0 planning actif sur 37",
-      "pied2": "réactivation sur ta décision (T38)"
+      "pied2": "réactivation sur ta décision (T38), après T42 → T47 puis T54"
     }
   ],
   "chiffres": [
     {
-      "v": "12",
-      "t": "défauts nés au centre d’alerte sur 24 h (sur 19 lignes, dont les essais T33 et T34)"
+      "v": "11",
+      "t": "défauts nés au centre d’alerte sur 24 h (sur 25 lignes : 4 d’un robot, 9 refermées seules dans la journée)"
     },
     {
-      "v": "827/827",
+      "v": "831/831",
       "t": "trajets clos depuis le correctif du 08/09 suivent la route"
     },
     {
@@ -227,9 +227,9 @@
       ],
       "tranchee": {
         "le": "13/09",
-        "choix": "attendre",
+        "choix": "revoir",
         "note": "Actuellement un chat boss sur cela donc on attend de voir ce qui va se faire !",
-        "suite": "T3 passe en « bloquée par le chantier » : rien à décider tant qu’il n’a pas livré. T38 suit la remise en service des plannings (37 coupés depuis le 11/09), et je reprends les quatre questions avec ce que le chantier aura tranché."
+        "suite": "Clic « je veux en rediscuter » le 13/09 à 23:54 (Paris) sur la page : T3 reste ouverte. Les quatre questions seront reprises avec toi une fois le chantier livré (T40 → T47), avec ce que la contre-expertise a tranché."
       }
     },
     {
@@ -256,9 +256,49 @@
         "note": "",
         "suite": "T4 close : seuils et destinataires inchangés (les clients ne reçoivent rien pendant tes tests, T39). Les doublons sont partis avec T30 ; s’il reste trois excès par jour, c’est voulu — la sentinelle « destinataire saturé » pourra le redire, ce ne sera pas un défaut."
       }
+    },
+    {
+      "id": "D10",
+      "sujet": "Committer le correctif P0 (clé RESTORE) sur la branche du chantier",
+      "texte": "Le correctif T40 est écrit dans le worktree du chantier (branche codex/tracky-cutoff-reliability-2026-09-12) : huit tests neufs, suites API et Web vertes, typechecks propres, aucun déploiement. Il n'est PAS committé : la règle de ce dépôt est qu'un commit part sur ta demande, et ce worktree est celui de Codex. Deux voies : committer maintenant sur la branche du chantier, puis enchaîner T46 (nettoyage du reformatage et rebase sur main) ; ou relire d'abord le diff (docs 19 et 20 le décrivent ligne à ligne). Ce que je recommande : committer maintenant — le diff est localisé (deux services, deux specs, l'env, un toast), et chaque jour sans lui est un jour où une RESTORE par SMS peut avaler celle du lendemain une fois la branche déployée.",
+      "options": [
+        {
+          "v": "commit",
+          "l": "Oui — committer maintenant sur la branche du chantier"
+        },
+        {
+          "v": "relire",
+          "l": "Je relis le diff d'abord"
+        },
+        {
+          "v": "non",
+          "l": "Non — attendre"
+        }
+      ],
+      "tranchee": {
+        "le": "14/09",
+        "choix": "commit",
+        "note": "Oui, committe le correctif P0 sur la branche et enchaîne avec T46.",
+        "suite": "Fait dans la foulée : commit d5c19a17 sur la branche du chantier, historique nettoyé du reformatage, rebase sur main sans conflit (T46 close), suites vertes. Rien n'est déployé : T41, T42, T44, T45 puis T47 avant toute mise en ligne."
+      }
     }
   ],
   "faits": [
+    {
+      "d": "14/09",
+      "quoi": "Une coupure par SMS a désormais une date de péremption — et une remise en route passe devant tout (T41)",
+      "preuve": "Relais <code>2536ea4</code> : <code>ttlSeconds</code> et <code>priority</code> transmis au serveur SMS, appareil explicite, accusé de remise toujours demandé, <code>DELETE /v1/texto/:id</code> pour retirer un SMS encore en attente. Tracky <code>8ab1d08e</code> : un <code>stop</code> périme après <b>15 min</b> sur le téléphone, un <code>resume</code> part en priorité 100, et une RESTORE qui supplante une CUT fait annuler son SMS. Vérifié sur le contrat public : le serveur 1.43.0 de production connaît déjà ttl, priority et deviceId ; l'annulation demande un serveur ≥ 1.45.0 (T47). <b>16 tests</b> ajoutés, suites vertes ; rien n'est déployé."
+    },
+    {
+      "d": "14/09",
+      "quoi": "Le P0 du coupe-circuit est committé, la branche du chantier est propre et rebasée sur main",
+      "preuve": "Commit <code>d5c19a17</code> sur la branche du chantier après ta décision D10. Le reformatage prettier qui gonflait le diff (1 315 lignes pour 16 fonctionnelles sur le catalogue) a été retiré en reconstruisant l'historique — contenu vérifié identique par normalisation — puis <code>git rebase main</code> : <b>7 commits, zéro conflit</b>. Le relais Texto a subi le même nettoyage (un commit <code>2de94d8</code> sur <code>origin/main</code>, guillemets du dépôt). Suites après rebase : <b>4 002</b> tests API, 727 Web, 423 partagé, 24 Texto. Rien n'est déployé : la production reste sur <code>66d286f5</code>."
+    },
+    {
+      "d": "13/09",
+      "quoi": "Le chantier fiabilité passé à la contre-expertise : NO-GO, un P0 démontré — et corrigé le soir même",
+      "preuve": "Revue indépendante des deux branches (doc 19) : suites reproduites (<b>3 920</b> tests API, 727 Web, 416 partagé, 24 Texto), diff normalisé (1 315 lignes brutes → <b>16 fonctionnelles</b> sur le catalogue), VPS lu sans rien toucher (<code>lastSeen</code> du téléphone figé <b>552 s</b> au repos, serveur capcom6 1.43.0 dont <code>/health</code> ne teste que la base). Le défaut principal — une RESTORE d'hier qui avale celle du lendemain — a été <b>prouvé par un test contre le service réel</b>, puis corrigé dans le worktree avec huit tests neufs (doc 20). Rien n'est déployé : la production reste sur <code>66d286f5</code>."
+    },
     {
       "d": "13/09",
       "quoi": "Les notifications ne partent plus qu’aux super-admins — et une commande SMS a enfin une fin de vie",
