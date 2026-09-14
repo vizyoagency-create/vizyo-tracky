@@ -58,8 +58,8 @@ git fetch origin
 git rebase origin/main                      # attendu : sans conflit (vérifié le 14/09)
 pnpm verify                                 # typecheck + smoke-boot DI + suites — TOUT vert, sinon stop
 git push origin codex/tracky-cutoff-reliability-2026-09-12
-# puis la PR vers main sur GitHub, relecture, fusion (merge commit, pas de squash : les 23 commits
-# racontent chacun un défaut ou un document), et enfin :
+# puis la PR vers main sur GitHub, relecture, fusion (merge commit, pas de squash : chaque commit
+# raconte un défaut ou un document — la liste est dans la fiche de fusion, doc 34), et enfin :
 git fetch origin && git log --oneline -1 origin/main   # noter le sha fusionné : c'est lui que le VPS tirera
 ```
 

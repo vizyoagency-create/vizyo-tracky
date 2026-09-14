@@ -3,7 +3,7 @@
 Date : 14 septembre 2026
 Pour : la relecture du propriétaire avant la fusion (document 25 §3). Rien ici n'est poussé ni fusionné.
 
-## 1. Tracky — `codex/tracky-cutoff-reliability-2026-09-12`, 26 commits sur `main` (cette fiche comprise)
+## 1. Tracky — `codex/tracky-cutoff-reliability-2026-09-12`, 28 commits sur `main` au 14/09 10 h (cette fiche et ses mises à jour comprises — `git rev-list --count main..HEAD` fait foi)
 
 Vérifié le 14/09 à 09:45 : `git merge-tree origin/main HEAD` **propre**, aucun fichier commun entre les commits de
 `origin/main` depuis la base (`049d1d11`) et ceux de la branche. La copie non suivie `docs/fiabilite-coupe-circuit-2026-09/`
@@ -28,7 +28,7 @@ qui ne sont pas du chantier.
 | 19–20 | `b407481a`, `e1634c97` | T53 (P2-10) | journal des tentatives exercé, changement d'heure | doc 31 |
 | 21–24 | `10719033` … `01795646` | docs, T56 | documents 27–32, relecture des promesses | doc 32 |
 | 25 | `303560c1` | T43, T61 | journée S21 | doc 33 |
-| 26 | (cette fiche) | — | fiche de fusion | doc 34 |
+| 26–28 | (cette fiche) | — | fiche de fusion et ses mises à jour | doc 34 |
 
 Suites au 14/09 : typecheck vert, smoke DI 5/5, API 260 suites / 4 081 tests, web 732, partagé inchangé.
 **Migration** : une seule, `20260912110000_engine_delivery_reliability` (additive), d'horodatage antérieur aux
