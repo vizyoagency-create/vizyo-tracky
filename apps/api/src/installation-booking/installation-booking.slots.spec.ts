@@ -8,7 +8,7 @@ const CONFIG: SlotConfig = {
   dayEndMinutes: 1260, // 21:00
   workingDays: [1, 2, 3, 4, 5, 6, 7],
   horizonDays: 4,
-  leadHours: 0,
+  leadDays: 1,
 };
 
 describe('installation-booking slots — fuseau Europe/Paris', () => {
@@ -42,12 +42,33 @@ describe('installation-booking slots — fuseau Europe/Paris', () => {
     expect(day0.slots.length).toBe(5); // 6 - 1
   });
 
-  it('respecte le délai minimum (leadHours) — les créneaux trop proches sont retirés', () => {
-    // now = mi-journée ; avec 48h de délai, aujourd'hui et demain sautent.
-    const now = new Date('2026-07-06T10:00:00Z');
-    const days = generateAvailability({ ...CONFIG, leadHours: 48 }, now, []);
-    const earliest = Math.min(...days.flatMap((d) => d.slots.map((s) => s.startAt.getTime())));
-    expect(earliest).toBeGreaterThanOrEqual(now.getTime() + 48 * 3_600_000);
+  /**
+   * JAMAIS LE JOUR MÊME — décision du propriétaire du 2026-09-14. Le premier jour proposé est
+   * J+1, tout entier, quelle que soit l'heure ; un délai en heures n'existe plus.
+   */
+  it('ne propose jamais le jour même — même à 00:01 (Paris)', () => {
+    // 22:01 UTC le 6 juillet = 00:01 Paris le 7 juillet : « aujourd'hui » est le 7.
+    const days = generateAvailability(CONFIG, new Date('2026-07-06T22:01:00Z'), []);
+    expect(days[0].date).toBe('2026-07-08');
+  });
+
+  it('à 23:59 Paris, le lendemain reste proposé EN ENTIER — le matin compris', () => {
+    // 21:59 UTC le 7 juillet = 23:59 Paris le 7 : demain est le 8, dès 08:00.
+    const days = generateAvailability(CONFIG, new Date('2026-07-07T21:59:00Z'), []);
+    expect(days[0].date).toBe('2026-07-08');
+    expect(days[0].slots.map((s) => parisParts(s.startAt).hour)).toEqual([8, 10, 12, 14, 16, 18]);
+  });
+
+  it('leadDays 3 → à partir de J+3 ; leadDays 0 ou absent → borné à J+1', () => {
+    const now = new Date('2026-07-06T10:00:00Z'); // lundi 6 juillet, 12:00 Paris
+    expect(generateAvailability({ ...CONFIG, leadDays: 3 }, now, [])[0].date).toBe('2026-07-09');
+    expect(generateAvailability({ ...CONFIG, leadDays: 0 }, now, [])[0].date).toBe('2026-07-07');
+  });
+
+  it('J+1 qui tombe un dimanche décoché glisse au lundi ; coché, le dimanche est proposé', () => {
+    const samedi = new Date('2026-07-11T10:00:00Z'); // samedi 11 juillet
+    expect(generateAvailability({ ...CONFIG, workingDays: [1, 2, 3, 4, 5, 6], horizonDays: 7 }, samedi, [])[0].date).toBe('2026-07-13');
+    expect(generateAvailability({ ...CONFIG, workingDays: [1, 2, 3, 4, 5, 6, 7], horizonDays: 7 }, samedi, [])[0].date).toBe('2026-07-12');
   });
 
   it('ne propose que les jours ouvrés configurés', () => {
@@ -65,7 +86,8 @@ describe('installation-booking slots — fuseau Europe/Paris', () => {
   });
 
   it('signale les jours de week-end (le client sait qu’il réserve un samedi)', () => {
-    const days = generateAvailability(CONFIG, new Date('2026-07-05T00:00:00Z'), []);
+    // Vendredi 3 juillet : J+1 = samedi 4, J+2 = dimanche 5.
+    const days = generateAvailability(CONFIG, new Date('2026-07-03T00:00:00Z'), []);
     for (const day of days) {
       const iso = parisParts(new Date(`${day.date}T12:00:00Z`)).isoWeekday;
       expect(day.weekend).toBe(iso === 6 || iso === 7);
@@ -79,8 +101,8 @@ describe('installation-booking slots — fuseau Europe/Paris', () => {
  * cocher le samedi promettait des créneaux de 08:00 à 21:00 que personne ne viendrait honorer.
  */
 describe('installation-booking slots — horaires du week-end', () => {
-  // Dimanche 5 juillet 2026 à minuit UTC ; l'horizon de 4 jours couvre dim. 5 → jeu. 9.
-  const now = new Date('2026-07-05T00:00:00Z');
+  // Vendredi 3 juillet 2026 (02:00 Paris) ; jamais le jour même, donc J+1 → J+4 = sam. 4 → mar. 7.
+  const now = new Date('2026-07-03T00:00:00Z');
   const isoOf = (date: string) => parisParts(new Date(`${date}T12:00:00Z`)).isoWeekday;
 
   it('sans fenêtre week-end, RIEN NE BOUGE : samedi et dimanche suivent la semaine', () => {

@@ -219,7 +219,8 @@ export interface InstallationBookingLinkDto {
   weekendStartMinutes: number | null;
   weekendEndMinutes: number | null;
   horizonDays: number;
-  leadHours: number;
+  /** Premier jour proposé : J+N (jours entiers, Europe/Paris). 1 = dès demain ; jamais le jour même. */
+  leadDays: number;
   active: boolean;
   singleUse: boolean;
   expiresAt: string | null;
@@ -287,7 +288,8 @@ export interface CreateInstallationBookingLinkDto {
   weekendStartMinutes?: number | null;
   weekendEndMinutes?: number | null;
   horizonDays?: number;
-  leadHours?: number;
+  /** Premier jour proposé : J+N, ≥ 1. */
+  leadDays?: number;
   singleUse?: boolean;
   expiresAt?: string | null;
 }
@@ -302,7 +304,7 @@ export interface UpdateInstallationBookingLinkDto {
   weekendStartMinutes?: number | null;
   weekendEndMinutes?: number | null;
   horizonDays?: number;
-  leadHours?: number;
+  leadDays?: number;
   singleUse?: boolean;
   expiresAt?: string | null;
 }

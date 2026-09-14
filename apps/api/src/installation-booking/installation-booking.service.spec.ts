@@ -25,7 +25,7 @@ function lien(over: Record<string, unknown> = {}) {
     id: LINK, fleetId: FLEET, fleet: { name: 'Transports Legrand' }, planId: null, label: 'Pose Legrand',
     token: 'tok', clientName: null, clientEmail: null, clientPhone: null, clientAddress: null,
     slotMinutes: 120, dayStartMinutes: 480, dayEndMinutes: 1260, workingDays: [1, 2, 3, 4, 5],
-    weekendStartMinutes: null, weekendEndMinutes: null, horizonDays: 14, leadHours: 0,
+    weekendStartMinutes: null, weekendEndMinutes: null, horizonDays: 14, leadDays: 1,
     active: true, singleUse: false, expiresAt: null, openCount: 0, firstOpenedAt: null, lastOpenedAt: null,
     createdBy: null, createdAt: new Date('2026-09-01T08:00:00Z'), updatedAt: new Date('2026-09-01T08:00:00Z'),
     ...over,

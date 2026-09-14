@@ -312,7 +312,8 @@ function toHHMM(minutes: number): string {
 
         <div class="ib-f--full ib-section">Fenêtre de réservation</div>
         <label class="ib-f"><span>Horizon (jours)</span><input class="ib-in" type="number" min="1" max="180" [value]="fHorizon()" (input)="fHorizon.set(+$any($event.target).value)"></label>
-        <label class="ib-f"><span>Délai minimum (heures)</span><input class="ib-in" type="number" min="0" max="720" [value]="fLead()" (input)="fLead.set(+$any($event.target).value)"></label>
+        <label class="ib-f"><span>Premier jour proposé (J+N)</span><input class="ib-in" type="number" min="1" max="60" [value]="fLeadDays()" (input)="fLeadDays.set(+$any($event.target).value)"></label>
+        <div class="ib-f--full ib-hint">Jamais le jour même : 1 = dès demain, tout entier, quelle que soit l'heure de la demande.</div>
         <label class="ib-f"><span>Le lien expire le (optionnel)</span><input class="ib-in" type="date" [value]="fExpires()" (input)="fExpires.set($any($event.target).value)"></label>
         <label class="ib-check ib-f--align"><input type="checkbox" [checked]="fSingle()" (change)="fSingle.set($any($event.target).checked)"> Usage unique (se ferme après la 1ʳᵉ réservation)</label>
 
@@ -471,7 +472,7 @@ export class AdminInstallationBookingsComponent implements OnInit {
   protected readonly fStart = signal('08:00'); protected readonly fEnd = signal('21:00');
   protected readonly fWeekendCustom = signal(false);
   protected readonly fWeStart = signal('09:00'); protected readonly fWeEnd = signal('13:00');
-  protected readonly fHorizon = signal(42); protected readonly fLead = signal(24);
+  protected readonly fHorizon = signal(42); protected readonly fLeadDays = signal(1);
   protected readonly fExpires = signal('');
   protected readonly fSingle = signal(false);
   protected readonly createErr = signal<string | null>(null);
@@ -499,7 +500,8 @@ export class AdminInstallationBookingsComponent implements OnInit {
       const h = this.fWeekendCustom() ? `${this.fWeStart()} à ${this.fWeEnd()}` : `${this.fStart()} à ${this.fEnd()}`;
       parts.push(`${we.join(' et ')} de ${h}`);
     }
-    return `Créneaux de ${duree} — ${parts.join(' · ')} — sur ${this.fHorizon()} jours, au plus tôt ${this.fLead()} h après la demande.`;
+    const premier = this.fLeadDays() <= 1 ? 'à partir de demain' : `à partir de J+${this.fLeadDays()}`;
+    return `Créneaux de ${duree} — ${parts.join(' · ')} — ${premier}, jamais le jour même, sur ${this.fHorizon()} jours.`;
   });
 
   protected readonly agendaDays = computed(() => {
@@ -572,7 +574,7 @@ export class AdminInstallationBookingsComponent implements OnInit {
       parts.push(`${we.map(nom).join(' + ')} ${custom ? plage(l.weekendStartMinutes!, l.weekendEndMinutes!) : plage(l.dayStartMinutes, l.dayEndMinutes)}`);
     }
     const duree = DUREES.find((d) => d.minutes === l.slotMinutes)?.label ?? `${l.slotMinutes} min`;
-    parts.push(`créneaux ${duree}`, `${l.horizonDays} j`, `délai ${l.leadHours} h`);
+    parts.push(`créneaux ${duree}`, `${l.horizonDays} j`, l.leadDays <= 1 ? 'dès demain' : `dès J+${l.leadDays}`);
     if (l.expiresAt) parts.push(`expire le ${DATE_FMT.format(new Date(l.expiresAt))}`);
     return parts.join(' · ');
   }
@@ -684,7 +686,7 @@ export class AdminInstallationBookingsComponent implements OnInit {
   /** Les réglages d'horaires du formulaire, validés et convertis en minutes — ou une erreur lisible. */
   private lireHoraires(): { ok: true; valeurs: {
     slotMinutes: number; workingDays: number[]; dayStartMinutes: number; dayEndMinutes: number;
-    weekendStartMinutes: number | null; weekendEndMinutes: number | null; horizonDays: number; leadHours: number;
+    weekendStartMinutes: number | null; weekendEndMinutes: number | null; horizonDays: number; leadDays: number;
     expiresAt: string | null;
   } } | { ok: false; erreur: string } {
     const jours = [...this.fDays()].sort((a, b) => a - b);
@@ -699,11 +701,11 @@ export class AdminInstallationBookingsComponent implements OnInit {
       if (weEnd - weStart < this.fSlot()) return { ok: false, erreur: 'La plage du week-end est plus courte qu\'un créneau.' };
     }
     const horizon = Math.min(180, Math.max(1, Math.round(this.fHorizon() || 42)));
-    const lead = Math.min(720, Math.max(0, Math.round(this.fLead() || 0)));
+    const leadDays = Math.min(60, Math.max(1, Math.round(this.fLeadDays() || 1)));
     const expiresAt = this.fExpires() ? new Date(`${this.fExpires()}T23:59:59`).toISOString() : null;
     return { ok: true, valeurs: {
       slotMinutes: this.fSlot(), workingDays: jours, dayStartMinutes: start, dayEndMinutes: end,
-      weekendStartMinutes: weStart, weekendEndMinutes: weEnd, horizonDays: horizon, leadHours: lead, expiresAt,
+      weekendStartMinutes: weStart, weekendEndMinutes: weEnd, horizonDays: horizon, leadDays, expiresAt,
     } };
   }
 
@@ -711,7 +713,7 @@ export class AdminInstallationBookingsComponent implements OnInit {
     this.fLabel.set(''); this.fEmail.set(''); this.fName.set(''); this.fPhone.set(''); this.fAddress.set('');
     this.fSlot.set(120); this.fDays.set(new Set([1, 2, 3, 4, 5])); this.fStart.set('08:00'); this.fEnd.set('21:00');
     this.fWeekendCustom.set(false); this.fWeStart.set('09:00'); this.fWeEnd.set('13:00');
-    this.fHorizon.set(42); this.fLead.set(24); this.fExpires.set(''); this.fSingle.set(false);
+    this.fHorizon.set(42); this.fLeadDays.set(1); this.fExpires.set(''); this.fSingle.set(false);
     this.createErr.set(null);
   }
 
@@ -756,7 +758,7 @@ export class AdminInstallationBookingsComponent implements OnInit {
     this.fWeekendCustom.set(custom);
     this.fWeStart.set(custom ? toHHMM(l.weekendStartMinutes!) : '09:00');
     this.fWeEnd.set(custom ? toHHMM(l.weekendEndMinutes!) : '13:00');
-    this.fHorizon.set(l.horizonDays); this.fLead.set(l.leadHours);
+    this.fHorizon.set(l.horizonDays); this.fLeadDays.set(l.leadDays);
     this.fExpires.set(l.expiresAt ? l.expiresAt.slice(0, 10) : '');
     this.fSingle.set(l.singleUse);
   }

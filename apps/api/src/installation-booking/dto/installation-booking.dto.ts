@@ -105,11 +105,12 @@ export class CreateBookingLinkDto {
   @Max(180)
   horizonDays?: number;
 
+  /** Premier jour proposé : J+N (jours entiers). 1 = dès demain ; le jour même n'existe pas. */
   @IsOptional()
   @IsInt()
-  @Min(0)
-  @Max(720)
-  leadHours?: number;
+  @Min(1)
+  @Max(60)
+  leadDays?: number;
 
   @IsOptional()
   @IsBoolean()
@@ -182,11 +183,12 @@ export class UpdateBookingLinkDto {
   @Max(180)
   horizonDays?: number;
 
+  /** Premier jour proposé : J+N (jours entiers). 1 = dès demain ; le jour même n'existe pas. */
   @IsOptional()
   @IsInt()
-  @Min(0)
-  @Max(720)
-  leadHours?: number;
+  @Min(1)
+  @Max(60)
+  leadDays?: number;
 
   @IsOptional()
   @IsBoolean()
