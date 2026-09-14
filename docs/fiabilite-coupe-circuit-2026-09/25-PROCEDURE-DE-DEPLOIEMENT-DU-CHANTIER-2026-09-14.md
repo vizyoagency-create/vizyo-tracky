@@ -40,7 +40,7 @@ ce commit, voir §4.3).
 
 | # | Quoi | Qui | Preuve attendue |
 |---|---|---|---|
-| P1 | **T43** : téléphone (ping 60 s, FIFO, délai min 10 s / max 15 s, limite active, SIM 1), anti-veille One UI, webhooks capcom6 en mode **Individual** | toi | 30 min écran éteint : `lastSeen` avance dans `GET /3rdparty/v1/devices` |
+| P1 | **T43** : téléphone (ping 60 s, FIFO, délai min 10 s / max 15 s, limite active, SIM 1), anti-veille One UI, webhooks capcom6 en mode **Individual** — **fait le 14/09** (document 33) : ping prouvé de 60 s en 60 s, FIFO, 10/15 s, 60/h, Local server OFF, veille OFF ; reste la lecture après 30 min écran éteint | fait (toi + moi) | 30 min écran éteint : `lastSeen` avance dans `GET /3rdparty/v1/devices` |
 | P2 | Relever l'`id` du S21 (`GET /3rdparty/v1/devices`) et le numéro de sa SIM | toi | les deux notés dans le `.env` du VPS (§4.2), jamais dans un document |
 | P3 | Choisir le numéro de la preuve quotidienne (`SMS_DAILY_PROOF_RECIPIENT`, recommandé : la SIM du S21) et **l'ajouter à l'allowlist du tenant Tracky** côté relais (entrée manuelle) | toi | `GET /admin/allowlist` du relais le liste |
 | P4 | Relire `GET /3rdparty/v1/webhooks` côté capcom6 : `sms:received`, `sms:sent`, `sms:delivered`, `sms:failed` vers `https://<texto>/internal/capcom6/webhook` (posés le 24/08 — **non vérifié** depuis) | toi | quatre entrées ; `sms:cancelled` s'ajoute après §4.3 |
