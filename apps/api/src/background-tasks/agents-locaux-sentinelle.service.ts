@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Cron } from '@nestjs/schedule';
@@ -61,9 +62,38 @@ const TOLERANCE_DEMARRAGE_MS = 60_000;
 export type MotifAlerte = 'jamais' | 'manque' | 'echec';
 const MOTIFS: readonly MotifAlerte[] = ['jamais', 'manque', 'echec'];
 
-/** Clé de refroidissement d'un épisode : préfixe du catalogue des clés, agent, motif. */
-export function cleRefroidissement(agent: Pick<AgentDuPoste, 'id'>, motif: MotifAlerte): string {
-  return `${CLES_REFROIDISSEMENT.AGENT_LOCAL}:${agent.id}:${motif}`;
+/**
+ * ── T58 (2026-09-14) — UN ÉCHEC D'UNE AUTRE CAUSE N'EST PAS LE MÊME ÉPISODE ──────────────────
+ *
+ * Constat du 13/09 : la ligne « weekly limit » de 02:50 avait consommé la clé (courrier-ia, echec)
+ * pour 24 h ; l'échec `SyntaxError` de 17:52 — une cause NOUVELLE, un rapport client en jeu —
+ * est resté muet jusqu'au lendemain. La clé d'un échec porte donc l'EMPREINTE de sa cause : une
+ * cause répétée reste à une ligne par jour, une cause nouvelle crie sans délai.
+ *
+ * L'empreinte est calculée sur le motif NORMALISÉ — chiffres, dates, identifiants retirés — pour
+ * que « position 407 » et « position 412 » soient la même cause. Huit hexadécimaux suffisent : on
+ * ne compare qu'entre les échecs d'un même agent.
+ */
+export function empreinteCause(motif: string): string {
+  const normalise = motif
+    .toLowerCase()
+    .replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/g, ' ')
+    .replace(/\b[0-9a-f]{7,}\b/g, ' ')
+    .replace(/\d+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 200);
+  return createHash('sha1').update(normalise).digest('hex').slice(0, 8);
+}
+
+/**
+ * Clé de refroidissement d'un épisode : préfixe du catalogue des clés, agent, motif — et, pour un
+ * ÉCHEC, l'empreinte de sa cause (T58). Sans cause, la clé d'échec est le PRÉFIXE de la famille :
+ * c'est lui que `resoudre` passe à `oublierAvant`.
+ */
+export function cleRefroidissement(agent: Pick<AgentDuPoste, 'id'>, motif: MotifAlerte, cause?: string): string {
+  const base = `${CLES_REFROIDISSEMENT.AGENT_LOCAL}:${agent.id}:${motif}`;
+  return motif === 'echec' && cause ? `${base}:${empreinteCause(cause)}` : base;
 }
 
 /**
@@ -519,7 +549,8 @@ export class AgentsLocauxSentinelleService {
     message: string,
     faits: { attendu: Date | null; passage: PassageLocal | null },
   ): Promise<void> {
-    const cle = cleRefroidissement(agent, motif);
+    // T58 — un échec est refroidi PAR CAUSE : deux causes distinctes le même jour, deux lignes.
+    const cle = cleRefroidissement(agent, motif, motif === 'echec' && faits.passage ? motifDe(faits.passage) : undefined);
     // `tenterEmission` demande le droit d'écrire ET le consomme dans la même instruction ; base
     // injoignable → il rend vrai, et l'on émet : devant le doute, le silence est le mauvais défaut.
     if (!(await this.refroidissement.tenterEmission(cle, REFROIDISSEMENT_MS))) return;
@@ -580,10 +611,17 @@ export class AgentsLocauxSentinelleService {
 
     // Toute émission ANTÉRIEURE au passage réussi appartient à un épisode clos — même si un humain
     // avait déjà archivé la ligne à la main : le refroidissement, lui, courrait encore.
+    const finDuPassage = passage.finiA ?? passage.demarreA;
     for (const motif of MOTIFS) {
       const cle = cleRefroidissement(agent, motif);
+      if (motif === 'echec') {
+        // T58 — une clé par cause, que l'on ne peut pas énumérer ici : la base oublie toute la
+        // famille (le préfixe couvre aussi l'ancienne clé sans empreinte) antérieure au passage.
+        await this.refroidissement.oublierAvant(cle, finDuPassage);
+        continue;
+      }
       const derniere = await this.refroidissement.derniereEmission(cle);
-      if (derniere && derniere.getTime() < (passage.finiA ?? passage.demarreA).getTime()) {
+      if (derniere && derniere.getTime() < finDuPassage.getTime()) {
         await this.refroidissement.oublier(cle);
       }
     }

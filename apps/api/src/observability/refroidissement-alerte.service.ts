@@ -127,6 +127,24 @@ export class RefroidissementAlerteService {
       this.logger.error(`Refroidissement « ${cle} » non oublié : ${e instanceof Error ? e.message : String(e)}`);
     }
   }
+
+  /**
+   * T58 — oublie toute une FAMILLE de clés (même préfixe) dont la dernière émission est
+   * antérieure à `avant`. Sert aux gardes dont la clé porte une empreinte de cause (une clé par
+   * cause) : l'appelant ne peut pas les énumérer, c'est la base qui les connaît. Rend le nombre
+   * de clés oubliées ; 0 en cas de panne (on réémettra au pire).
+   */
+  async oublierAvant(prefixe: string, avant: Date): Promise<number> {
+    try {
+      const { count } = await this.prisma.refroidissementAlerte.deleteMany({
+        where: { cle: { startsWith: prefixe }, derniereEmissionAt: { lt: avant } },
+      });
+      return count;
+    } catch (e) {
+      this.logger.error(`Refroidissements « ${prefixe}* » non oubliés : ${e instanceof Error ? e.message : String(e)}`);
+      return 0;
+    }
+  }
 }
 
 /**

@@ -43,6 +43,7 @@ const { execFileSync } = require('node:child_process');
 const { verifierAbonnement, appeler } = require('./cli-claude.cjs');
 // T34 / D5 — la pause des agents du poste : lue avant tout appel, posee au premier plafond.
 const { lirePause, poserPause, leverPause, motifEnPause, texteReprise } = require('./pause-agents.cjs');
+const { lireObjetJson } = require('./json-equilibre.cjs');
 
 // ── Configuration ────────────────────────────────────────────────────────────────────
 const VPS = 'root@72.62.26.240';
@@ -234,10 +235,10 @@ function appelerModele(travail) {
     timeoutMs: TIMEOUT_TRAVAIL_MS,
   });
 
-  const m = reponse.texte.match(/\{[\s\S]*\}/);
-  if (!m) throw new Error(`reponse sans objet JSON (${reponse.texte.slice(0, 120)})`);
-  // JSON illisible => throw => le travail est repose, pas invente.
-  return { ...reponse, contenu: JSON.parse(m[0]) };
+  // T58 — le PREMIER objet JSON équilibré, pas « du premier { au dernier } » : une phrase ajoutée
+  // par le modèle après son objet (avec ou sans accolades) n'est plus une erreur. Sans objet ou
+  // objet illisible => throw => le travail est repose, pas invente.
+  return { ...reponse, contenu: lireObjetJson(reponse.texte) };
 }
 
 // ── Boucle ───────────────────────────────────────────────────────────────────────────
