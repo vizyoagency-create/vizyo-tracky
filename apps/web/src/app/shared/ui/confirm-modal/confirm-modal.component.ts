@@ -107,7 +107,9 @@ import { LucideAngularModule, AlertTriangle, Info } from 'lucide-angular';
                 [value]="glissement()"
                 (input)="onSlideEvent($event)"
                 (change)="onSlideRelease($event)"
-                [attr.aria-label]="slideLabel()" />
+                (keydown)="onSlideKeydown($event)"
+                [attr.aria-label]="slideLabel()"
+                [attr.aria-description]="'Faites glisser jusqu’au bout, ou maintenez la flèche droite ; les touches Fin et Page suivante sont sans effet.'" />
               <span class="cm-slide-hint" aria-hidden="true">{{ loading() ? 'Envoi…' : 'Faites glisser jusqu’au bout →' }}</span>
             </label>
           }
@@ -305,6 +307,23 @@ export class ConfirmModalComponent {
 
   protected readonly saisie = signal('');
   protected readonly glissement = signal(0);
+  /**
+   * ══ T50 (contre-expertise du 13/09, P2-3) — UN GLISSEMENT, PAS UN CLIC ═════════════════════
+   *
+   * Un `<input type="range">` natif saute au point cliqué : un clic en bout de piste, ou la
+   * touche Fin, produisait `change` à 100 → confirmation d'une coupure moteur sans le moindre
+   * geste continu. L'exigence « impossible de déclencher accidentellement » n'était pas tenue.
+   *
+   * La confirmation exige désormais un geste PROGRESSIF : au moins SLIDE_MIN_SAMPLES valeurs
+   * strictement croissantes, la première sous SLIDE_START_MAX, la dernière au bout. Un doigt qui
+   * glisse en produit des dizaines ; une flèche droite maintenue aussi (chaque répétition est un
+   * événement `input`) — le clavier reste donc possible. Un clic, un `Fin`, un `Page suivante`
+   * n'en produisent qu'un : rien ne part, le curseur revient au départ.
+   */
+  private static readonly SLIDE_MIN_SAMPLES = 8;
+  private static readonly SLIDE_START_MAX = 10;
+  private static readonly SLIDE_END_MIN = 98;
+  private slideSamples: number[] = [];
 
   /** Le mot est-il correctement retapé ? Vrai d'office hors mode critique. */
   protected readonly confirmationOk = computed(() => {
@@ -334,6 +353,11 @@ export class ConfirmModalComponent {
 
   onSlide(value: number | string) {
     const next = Math.max(0, Math.min(100, Number(value) || 0));
+    // T50 — on ne retient que les progressions : un retour en arrière n'efface rien (le pouce
+    // tremble), mais ne compte pas non plus. Un premier échantillon déjà loin du départ (clic en
+    // bout de piste) disqualifie le geste : il n'a pas d'échantillon « de départ ».
+    const last = this.slideSamples[this.slideSamples.length - 1];
+    if (last === undefined || next > last) this.slideSamples.push(next);
     this.glissement.set(next);
   }
 
@@ -341,8 +365,22 @@ export class ConfirmModalComponent {
     this.onSlide((event.target as HTMLInputElement).value);
   }
 
+  /** T50 — un geste continu : assez d'échantillons croissants, partis du début, arrivés au bout. */
+  protected gesteVolontaire(): boolean {
+    const samples = this.slideSamples;
+    const first = samples[0];
+    const last = samples[samples.length - 1];
+    return (
+      samples.length >= ConfirmModalComponent.SLIDE_MIN_SAMPLES &&
+      first !== undefined && first < ConfirmModalComponent.SLIDE_START_MAX &&
+      last !== undefined && last >= ConfirmModalComponent.SLIDE_END_MIN
+    );
+  }
+
   onSlideRelease(event?: Event) {
-    if (this.glissement() >= 98 && !this.loading()) {
+    const volontaire = this.gesteVolontaire();
+    this.slideSamples = [];
+    if (volontaire && this.glissement() >= ConfirmModalComponent.SLIDE_END_MIN && !this.loading()) {
       // La commande part au RELÂCHEMENT au bout, jamais au simple passage du pouce près de la fin.
       this.onConfirm();
     } else {
@@ -354,10 +392,16 @@ export class ConfirmModalComponent {
     }
   }
 
+  /** T50 — Fin, Début, Page suivante/précédente sauteraient au bout d'un seul coup : sans effet. */
+  onSlideKeydown(event: KeyboardEvent) {
+    if (['End', 'Home', 'PageUp', 'PageDown'].includes(event.key)) event.preventDefault();
+  }
+
   onCancel() {
     if (this.loading()) return;
     this.saisie.set('');
     this.glissement.set(0);
+    this.slideSamples = [];
     this.cancelled.emit();
   }
 }
