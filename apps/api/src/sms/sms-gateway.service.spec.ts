@@ -435,6 +435,35 @@ describe('SmsGatewayService — santé Android bout-en-bout', () => {
   });
 });
 
+describe('SmsGatewayService — annulation voulue poussée par le relais (T41 + T45)', () => {
+  const build = (status: string) => {
+    const prisma = {
+      smsLog: {
+        findFirst: jest.fn().mockResolvedValue({ id: 'log-1', imei: 'imei-1', status }),
+        findUnique: jest.fn().mockResolvedValue({ id: 'log-1', direction: 'OUT', status, twilioSid: 'cap-1' }),
+        update: jest.fn().mockResolvedValue({ status: 'cancelled' }),
+      },
+    };
+    const errorLogger = { record: jest.fn().mockResolvedValue(undefined) };
+    const service = new SmsGatewayService(prisma as never, errorLogger as never, { emit: jest.fn() } as never, { record: jest.fn() } as never);
+    return { service, prisma, errorLogger };
+  };
+
+  it('un `cancelled` reçu sur une ligne que NOUS avons mise en `cancelling` écrit le terminal sans alerte', async () => {
+    const { service, prisma, errorLogger } = build('cancelling');
+    const res = await service.recordOutboundStatus({ providerId: 'cap-1', status: 'cancelled' });
+    expect(res).toMatchObject({ found: true, outcome: 'failed' });
+    expect(prisma.smsLog.update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ status: 'cancelled' }) }));
+    expect(errorLogger.record).not.toHaveBeenCalled();
+  });
+
+  it('un `cancelled` que personne n a demandé (ligne encore queued) reste un échec terminal alerté', async () => {
+    const { service, errorLogger } = build('queued');
+    await service.recordOutboundStatus({ providerId: 'cap-1', status: 'cancelled' });
+    expect(errorLogger.record).toHaveBeenCalledWith(expect.stringContaining('échec terminal'), 'sms-gateway-status', expect.anything(), 'CRITICAL');
+  });
+});
+
 describe('SmsGatewayService — idempotence des webhooks terminaux', () => {
   it('ne crée pas une seconde alerte pour le même échec déjà enregistré', async () => {
     const prisma = {

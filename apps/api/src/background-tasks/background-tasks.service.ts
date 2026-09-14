@@ -638,6 +638,22 @@ const CATALOG: CatalogEntry[] = [
     periodic: { everyMs: 7_200_000, offsetMs: 0 },
   },
   {
+    id: 'sms-daily-proof', label: 'Preuve SMS quotidienne (avant les fenêtres de remise en route)',
+    source: 'sms/sms-heartbeat.service.ts', category: 'Notifications',
+    kind: 'cron', scheduleHuman: 'chaque jour à 04:30 et 06:30 (Europe/Paris)', criticality: 'haute', antiOverlap: false,
+    note: "T45 (contre-expertise du 13/09, P1-3). Troisième @Cron du même fichier que la preuve de vie du lundi. Destinataire : SMS_DAILY_PROOF_RECIPIENT (vide = aucun envoi, et l'interlock des coupes automatiques n'a que la preuve du lundi).",
+    purpose: "Envoie un SMS de preuve vers un numéro neutre 30 min avant les fenêtres de remise en route de 05:00 et 07:00 : c'est la remise prouvée (< 24 h) que l'interlock exige avant toute coupure automatique du soir. Sans elle, les coupes sont refusées six jours sur sept.",
+    fire: { tz: PARIS, matcher: (w) => (w.getHours() === 4 || w.getHours() === 6) && w.getMinutes() === 30 },
+  },
+  {
+    id: 'sms-daily-proof-verify', label: 'Verdict de la preuve SMS quotidienne',
+    source: 'sms/sms-heartbeat.service.ts', category: 'Notifications',
+    kind: 'cron', scheduleHuman: 'chaque jour à 04:45 et 06:45 (Europe/Paris)', criticality: 'haute', antiOverlap: false,
+    note: 'T45. Quatrième @Cron du même fichier. Relit les preuves des 30 dernières minutes, réconcilie leur statut au relais, reconnaît l’écho entrant (preuve envoyée à la SIM du téléphone lui-même) et alerte : ECHEC en CRITICAL, INDETERMINE en ERROR, NON_EMIS en CRITICAL.',
+    purpose: "Prononce le verdict de remise de la preuve quotidienne quinze minutes après l'envoi, avant l'heure de départ des véhicules — pour qu'un humain puisse agir avant, pas après.",
+    fire: { tz: PARIS, matcher: (w) => (w.getHours() === 4 || w.getHours() === 6) && w.getMinutes() === 45 },
+  },
+  {
     id: 'sms-heartbeat-verify', label: 'Verification de la preuve de vie SMS',
     source: 'sms/sms-heartbeat.service.ts',
     category: 'Notifications', kind: 'cron',

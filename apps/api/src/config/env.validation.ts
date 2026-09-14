@@ -67,6 +67,12 @@ const envSchema = z.object({
   // CRITICAL est cree. Vide => le cron skip (no-op safe en dev). Cf.
   // SmsHeartbeatService.
   SMS_HEARTBEAT_RECIPIENTS: z.string().default(''),
+  // T45 — preuve SMS QUOTIDIENNE (04:30 et 06:30 Europe/Paris, vérifiée à +15 min) vers UN numéro
+  // E.164 neutre — recommandé : la SIM du téléphone passerelle lui-même (l'écho entrant prouve
+  // émission, réception et webhook). Vide => pas de preuve quotidienne, et l'interlock des coupes
+  // automatiques n'a que la preuve de vie du lundi (refus six jours sur sept). Le numéro doit être
+  // dans l'allowlist du tenant Tracky côté relais.
+  SMS_DAILY_PROOF_RECIPIENT: z.string().default(''),
 
   // Coupe-circuit : une variable absente ne doit jamais réactiver les CUT
   // automatiques. L'activation est une décision Go explicite.

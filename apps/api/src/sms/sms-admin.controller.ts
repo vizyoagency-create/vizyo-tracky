@@ -133,8 +133,8 @@ export class SmsAdminController {
    * ensuite `POST heartbeat/verify` — quelques minutes plus tard.
    */
   @Post('heartbeat/run-now')
-  async runHeartbeat() {
-    return this.heartbeat.runHeartbeat();
+  async runHeartbeat(@Query('kind') kind?: string) {
+    return this.heartbeat.runHeartbeat(kind === 'quotidien' ? 'quotidien' : 'hebdo');
   }
 
   /**
@@ -148,8 +148,9 @@ export class SmsAdminController {
    * aucun accuse de remise : ni un succes, ni une panne.
    */
   @Post('heartbeat/verify')
-  async verifyHeartbeat() {
-    return this.heartbeat.verifyHeartbeat();
+  async verifyHeartbeat(@Query('kind') kind?: string) {
+    // T45 — `?kind=quotidien` : la preuve quotidienne (envoi et verdict), rejouable a la main.
+    return this.heartbeat.verifyHeartbeat(new Date(), kind === 'quotidien' ? 'quotidien' : 'hebdo');
   }
 
   @Get('logs')

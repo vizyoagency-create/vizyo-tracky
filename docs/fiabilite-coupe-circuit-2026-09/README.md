@@ -54,12 +54,13 @@ Les traitements CUT et RESTORE sont volontairement asymétriques :
 21. [Correctif P0-2 (T41) — une coupure par SMS a une date de péremption](./21-CORRECTIF-P0-VALIDITE-SMS-CUT-2026-09-14.md)
 22. [Correctif P1-1 (T42) — une RESTORE repart à la reconnexion et n'est jamais terminale sans preuve](./22-CORRECTIF-P1-RELANCE-RESTORE-RECONNEXION-2026-09-14.md)
 23. [Correctif P1-2 (T44) — la sentinelle Android ne bat plus, verdict par appareil](./23-CORRECTIF-P1-SENTINELLE-ANDROID-2026-09-14.md)
+24. [Correctif P1-3 (T45) — une preuve SMS chaque matin, et le relais dit ce qu'il sait](./24-CORRECTIF-P1-PREUVE-SMS-QUOTIDIENNE-2026-09-14.md)
 
 ## Contre-expertise du 13 septembre
 
 Le document 19 est une revue indépendante de tout le chantier : verdict **NO-GO** en l'état (un
 défaut P0 introduit par la correction, démontré par test), notes, réponses aux vingt questions
-posées, et plan d'action concret. Les documents 20 à 23 décrivent les correctifs issus de cette revue (T40, T41, T42, T44).
+posées, et plan d'action concret. Les documents 20 à 24 décrivent les correctifs issus de cette revue (T40, T41, T42, T44, T45).
 En cas d'écart entre les documents 13/17/18 et le document 19, **le document 19 fait foi** jusqu'à
 ce que les tâches qu'il liste soient closes.
 

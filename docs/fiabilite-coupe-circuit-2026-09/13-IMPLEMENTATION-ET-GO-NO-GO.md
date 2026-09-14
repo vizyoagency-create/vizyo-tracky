@@ -46,6 +46,7 @@ ENGINE_RESTORE_MAX_SMS_ATTEMPTS=3
 ENGINE_RESTORE_TCP_RETRY_MIN=30
 ENGINE_RESTORE_EXPIRY_MIN=240
 ENGINE_CUT_SMS_TTL_S=900
+SMS_DAILY_PROOF_RECIPIENT=<numero E.164 neutre — recommande : la SIM du telephone passerelle, a ajouter a l'allowlist Tracky du relais>
 ```
 
 Côté relais Texto (conteneur `texto-relay`, cf. T43/T44 — la contre-expertise a relevé que ce

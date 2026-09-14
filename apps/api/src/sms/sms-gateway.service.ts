@@ -679,12 +679,23 @@ export class SmsGatewayService implements OnModuleInit {
     const log = await this.prisma.smsLog.findFirst({
       where: { direction: 'OUT', twilioSid: input.providerId },
       orderBy: { createdAt: 'desc' },
-      select: { id: true, imei: true },
+      select: { id: true, imei: true, status: true },
     });
     if (!log) return { found: false };
 
+    // T45 — le relais pousse désormais `cancelled` (serveur capcom6 ≥ v1.45.0). Une annulation
+    // que NOUS avons demandée (T41 : CUT supplantée, ligne déjà `cancelling`) n'est pas une panne
+    // : le statut terminal est écrit, mais aucune alerte n'est levée.
+    const annulationVoulue =
+      String(log.status ?? '').toLowerCase() === 'cancelling' &&
+      ['cancelled', 'canceled'].includes(String(input.status).toLowerCase());
+
     const rec = await this.reconcileOutboundStatus(log.id, input.status);
     if (!rec) return { found: false };
+    if (rec.outcome === 'failed' && annulationVoulue) {
+      this.logger.log({ smsLogId: log.id, providerId: input.providerId }, 'SMS annulé au relais comme demandé (T41)');
+      return { found: true, smsLogId: log.id, outcome: rec.outcome };
+    }
     if (rec.outcome === 'failed') {
       await this.prisma.smsLog.update({
         where: { id: log.id },
