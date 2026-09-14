@@ -69,6 +69,7 @@ Les traitements CUT et RESTORE sont volontairement asymétriques :
 31. [Correctif P2-10 (T53) — le journal des tentatives est exercé, le changement d'heure couvert](./31-CORRECTIF-P2-JOURNAL-DES-TENTATIVES-EXERCE-2026-09-14.md)
 32. [Relecture des promesses documentaires (T56) — ce que les documents disent, ce que le code tient](./32-RELECTURE-DES-PROMESSES-DOCUMENTAIRES-2026-09-14.md)
 33. [Journée S21 du 14/09 — diagnostic, configuration du téléphone, tests SMS (T43, T61)](./33-JOURNEE-S21-DIAGNOSTIC-ET-CONFIGURATION-2026-09-14.md)
+34. [Fiche de fusion — les 25 + 5 commits, dans l'ordre, et comment les relire](./34-FICHE-DE-FUSION-2026-09-14.md)
 
 ## État du chantier au 14 septembre 2026 (07 h)
 
