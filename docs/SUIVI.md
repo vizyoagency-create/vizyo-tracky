@@ -14,7 +14,7 @@
 > `centre-alerte/app/taches.json` + `poste-de-commande/contexte.json`. Ce fichier-ci est rendu des mêmes sources ;
 > quand ils divergent, **`taches.json` fait foi**.
 
-*Dernière mise à jour : 2026-09-14 (relevé du 14 septembre 2026, 09:05 UTC) · dépôt sur `main`*
+*Dernière mise à jour : 2026-09-14 (relevé du 14 septembre 2026, 10:45 UTC) · dépôt sur `main`*
 
 ---
 
@@ -69,7 +69,7 @@ puis le téléphone (T43), la procédure (T47), la recette sur boîtier et les c
 |---|---|---|
 | Rattrapage du recalage des tracés | 12 441 restants | ≈ 35 jours à 15 par heure |
 | Reprise des analyses d’avant le 4 septembre | 25 par passage | s’éteint seule |
-| Coupe-circuit automatique — À L’ARRÊT | 0 planning actif sur 37 | réactivation sur ta décision (T38), après T63 → T47 → T65 → T54 |
+| Coupe-circuit automatique — RÉARMÉ PAR LE CLIENT sur l'ancien code | 30 plannings actifs sur 37 — sur l'ancien code | fenêtre T47 cet après-midi, puis ta décision (T38) : armer ce soir, ou 24 h de preuve d'abord |
 
 | Chiffre | |
 |---|---|
@@ -85,7 +85,7 @@ puis le téléphone (T43), la procédure (T47), la recette sur boîtier et les c
 | | # | Quoi | Fiche | Classe |
 |:--:|:--:|---|---|---|
 | ☐ | **T7** | 🔴🔴 Ouvrir la fenetre de maintenance du role non-superutilisateur | TRK-035 | 🤝 humain |
-| ☐ | **T38** | 🔴🔴 Remettre en service les plannings du coupe-circuit — 37 coupes depuis le 11/09, apres le chantier fiabilite | TRK-066 | 🤝 humain |
+| ☐ | **T38** | 🔴🔴 Remettre en service les plannings du coupe-circuit — 🔴🔴 14/09 : les 30 CDEF31 ont été RÉARMÉS PAR LE CLIENT à 09:03 sur l'ancien code (coupes ce soir 22:00 sans le chantier) — déployer cet après-midi avec le kill-switch baissé, puis ta décision | TRK-066 | 🤝 humain |
 | ☐ | **T9** | 🔴 Declarer ou depanner GLA•KC•31 et FG-669-DQ — et LEVER la declaration des trois revenus | — | 🔵 terrain |
 | ☐ | **T43** | 🔴 Téléphone passerelle S21 configuré le 14/09 (ping 60 s vérifié, FIFO, délais, limite, veille OFF) — restent les variables du relais dans la fenêtre de déploiement | TRK-066 · doc 19 P1-2 | 🔵 terrain |
 | ☐ | **T47** | 🔴 D — La fenêtre de déploiement, ENSEMBLE : sauvegardes → variables du relais → relais → migration sur copie → deploy.sh → vérification dans le conteneur (doc 25 §4–6, Go/No-Go §10) | TRK-066 · doc 19 P1-5 | 🟡 préparé |
@@ -206,6 +206,7 @@ puis le téléphone (T43), la procédure (T47), la recette sur boîtier et les c
 
 | Date | Quoi | La preuve |
 |---|---|---|
+| 14/09 | **🔴🔴 Les 30 plannings CDEF31 ont été réarmés par le client à 09:03 — sur l'ancien code : sans déploiement, 25 coupes ce soir à 22:00 comme le 11/09** | `vehicle_schedules` : 30/30 CDEF31 `enabled`, ligne de base `IN_WINDOW` posée au tick de 07:03:15 UTC ; `system_activity_logs` : `POST /api/fleet-schedules/bulk` à 07:03:16 UTC par le gestionnaire CDEF31 (deux aperçus juste avant). Production = `9afdf52a` : le kill-switch et l'interlock n'existent que dans le chantier (`01756db7`), jamais déployé. Cinq des trente boîtiers sont muets depuis 13 à 25 jours (dormance : le cron les ignore) ; les 25 autres sont vivants en TCP. Mesuré aussi pour la fenêtre : `NODE_ENV=production` dans le conteneur (kill-switch fail-closed effectif dès le déploiement), `env_file` transmet tout, le numéro de preuve est déjà dans l'allowlist (preuve hebdo remise à 07:00 UTC), un seul appareil enrôlé (Device ID facultatif). |
 | 14/09 | **Fusionné : le chantier coupe-circuit est sur main (Tracky #138, relais #9), avec T62 « SIM injoignable = TCP seul » — il ne reste que la fenêtre de déploiement, ensemble** | Fusions en merge commit après `pnpm verify` sur la branche puis sur la branche fusionnée avec `origin/main` : typecheck vert, smoke 5/5, partagé 423, API `262 suites / 4 145 tests`, web 740 ; relais 7/55. T62 (doc 35) répond à la question du jour : on ne sait pas encore <i>où</i> deux SIM sont refusées (Free, le fournisseur ou la carte — un SMS depuis un autre opérateur tranche), mais le système le SAIT désormais : coupe automatique seulement boîtier connecté, remise en route en TCP toutes les 5 min et à chaque reconnexion, un SMS-sonde par 6 h, une ligne par jour. La routine du centre d'alerte lira les 24 h de preuve (six verdicts, T65). Production inchangée : `9afdf52a`. |
 | 14/09 | **Plus rien à coder sans toi : T58, T59, T60 committés sur main, la copie périmée retirée, la fiche de fusion écrite** | Sur `main` (local, non poussé) : `22ec4c1f` (T58 — la sentinelle des agents refroidit PAR CAUSE, et courrier-ia lit le premier objet JSON équilibré ; 56 + 7 tests), `25fa2af9` (T59 — un fetch avorté par la fermeture de la page ne remonte plus, le canal anonyme ne remonte que les bugs JS ; 8 tests, suite web 729), `c8fd9be8` (T60 — horloge figée). La branche du chantier fusionne proprement sur `origin/main` (`merge-tree` sans conflit, aucun fichier commun) ; la copie non suivie qui aurait masqué les vrais documents à la fusion est retirée. Doc 34 : les 27 commits Tracky et les 5 du relais, l'ordre de relecture en 2 h. |
 | 14/09 | **Le S21 est configuré et le prouve : un ping par minute — et les tests SMS renversent la conclusion du matin (T43, T61)** | Sur le téléphone, avec ton accord : ping `60 s`, FIFO, délais 10/15 s, limite 60/h, Local server OFF, veille des applis OFF ; `lastSeen` avance de 60 s en 60 s depuis 09:23 (lu sur le serveur). Puis 13 SMS de statut `check123456` (facturés sur ta ligne — arrêtés à ta demande) : par le relais, `8 des 10 SIM` que rien n'atteignait depuis des semaines répondent en quelques secondes (…621085, 36 échecs depuis juin : `delivered en 8 s`) ; `2 restent en échec` au départ, HD-584-BF et BP-434-RD, boîtiers pourtant en ligne, SIM activées, IMEI concordants. Le défaut du 11/09 tenait donc surtout à l'état du téléphone (pas de ping, app jamais redémarrée) ; pour ces deux véhicules, il reste un test « autre opérateur », à 1 SMS. |

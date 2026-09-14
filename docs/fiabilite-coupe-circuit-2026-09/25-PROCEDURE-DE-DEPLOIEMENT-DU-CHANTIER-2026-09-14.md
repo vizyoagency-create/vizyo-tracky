@@ -48,6 +48,31 @@ ce commit, voir §4.3).
 | P6 | Ta relecture des deux branches, puis fusion (§3) | toi | PR fusionnées, `origin/main` à jour des deux côtés |
 | P7 | Fenêtre choisie : **hors HH:42–HH:46**, hors 04:25–04:50 et 06:25–06:50 (preuves quotidiennes), hors 19:30–22:30 et 04:30–07:30 (fenêtres véhicules, même désactivées : on ne déploie pas quand on devrait surveiller) — un créneau type : **10:00–11:40** | ensemble | date et heure notées |
 
+### 2 bis. Relevé du 14/09 à 10:45 UTC — ce qui change pour la fenêtre d'aujourd'hui
+
+Tout lu **sans rien écrire** (SQL sur `tracky-postgres` et `texto-postgres`, `printenv` du conteneur,
+`GET /3rdparty/v1/devices` depuis `texto-relay`).
+
+| Point | Relevé | Conséquence |
+|---|---|---|
+| 🔴🔴 **Plannings** | `cdef31` : **30 actifs sur 30** (07:00–22:00 Europe/Paris, tous les jours), réarmés par **le gestionnaire de la flotte CDEF31** — `POST /api/fleet-schedules/bulk` à **07:03:16 UTC** (09:03 Paris), deux aperçus juste avant, journal `system_activity_logs` ; `mh cars` : 0 sur 7. Ligne de base `IN_WINDOW` posée au tick de 07:03:15 UTC, aucune commande moteur depuis le 11/09 18:49 | La production (`9afdf52a`) n'a **ni kill-switch ni interlock** (nés dans `01756db7`, jamais déployé). Sans déploiement, le cron **coupe 25 véhicules CDEF31 ce soir à 22:00** avec le code du 11/09 (30 moins 5 boîtiers muets depuis 13–25 j, ignorés par la dormance : FS-253-HR, FS-808-CE, FZ-862-VY, DZ-034-CA, HD-292-SH) et les remet en route demain 07:00 avec ce même code. **L'attendu « 0/30 » de §4.2 est faux aujourd'hui : ne pas s'arrêter dessus, le noter, continuer.** |
+| P1 téléphone | `lastSeen` 10:19:29 pour une lecture à 10:20:04 — ping à 60 s tenu depuis 09:40 | rien à faire |
+| P2 Device ID | **un seul appareil enrôlé** (`samsung/o1sxeea`) ; le relais fusionné retient l'unique appareil quand `CAPCOM6_DEVICE_ID` est vide (`selection: "single"`) | **facultatif** ; recommandé quand même — l'`id` se lit sur le VPS pendant la fenêtre (commande de §4.2), pas besoin du téléphone |
+| P3 numéro de preuve | la SIM du S21 est la **première valeur de `SMS_HEARTBEAT_RECIPIENTS`** du `.env.prod` ; elle figure dans l'**allowlist manuelle** du tenant `tracky` (17 manuelles, 30 synchronisées) ; la preuve hebdomadaire de 07:00 UTC lui a été **remise** ce matin (`sms-heartbeat` SUCCESS, 7 `delivered` sur 24 h côté relais) | **déjà satisfait** : `SMS_DAILY_PROOF_RECIPIENT` = copier cette valeur ; rien à ajouter à l'allowlist |
+| P4 webhooks | vérifiés le 14/09 au matin (quatre) | rien à faire |
+| P5 version capcom6 | `latest` en place = 1.43.0 | **aujourd'hui : rester en `v1.43.0`** (l'annulation d'un SMS supplanté reste « non supportée », sans casse). Pas de changement de version du serveur un jour de mise en service ; v1.47.4 une autre semaine, dans sa sous-fenêtre |
+| P6 fusion | Tracky `08c5fc2d` (#138), relais `724bcb8` (#9) sur `origin/main` ; suivi `5c708c03` | fait |
+| P7 créneau | proposé **13:30–15:10 (Paris)**, hors garde et hors fenêtres véhicules ; un **second passage** de `deploy.sh` (kill-switch à `true`, si décidé) **avant 17:30** pour finir avant 19:30 | à confirmer |
+| Variables | `.env.prod` : **aucune** `ENGINE_*`, `SMS_DAILY_PROOF_RECIPIENT` absent (normal : elles arrivent avec le chantier) ; `env_file: .env.prod` transmet **tout** au conteneur ; **`NODE_ENV=production`** dans le conteneur → le kill-switch fail-closed s'applique dès le déploiement. Relais : **aucune** `CAPCOM6_*` dans `/opt/vizyo-texto/deploy/vps/.env` ; `relay` ne dépend que de `postgres` → `up -d relay` ne recrée pas `capcom6` | écrire les 13 lignes Tracky et les 7 lignes relais de §4.2, telles quelles |
+| SIM de T61 | `sms_logs` ne porte **aucun** sortant Tracky vers HD-584-BF / BP-434-RD depuis 30 j (les tests du matin sont partis du téléphone) | T62 les tiendra pour **joignables** jusqu'à trois échecs enregistrés par Tracky : la première coupe automatique tentera le SMS (refusé au départ, non facturé) — attendu, pas un défaut |
+
+**Ce soir, deux issues, une seule bonne.** (a) Déployer cet après-midi avec `ENGINE_AUTOMATIC_CUT_ENABLED=false` :
+à 22:00 les 25 coupes sont **retenues** (une ligne DÉGRADATION par heure, T49), les RESTORE restent servies ;
+puis la décision d'armer = un second `deploy.sh --attendre` avec `=true` avant 17:30, et les coupes partent à
+22:00 **sous interlock** (preuve < 24 h, téléphone ONLINE, file < 10) avec la remise en route de 07:00 relancée
+en TCP à la reconnexion, SMS cadencés, rappel toutes les 15 min. (b) Désactiver de nouveau les 30 plannings
+depuis `/fleet-schedules` — le client les réarmera. **Ne rien faire = coupes ce soir sur le code du 11/09.**
+
 ## 3. Fusion (toi, après relecture)
 
 Tracky, depuis le PC, sur un worktree propre — jamais `git add -A`, vérifier la branche à chaque pas :

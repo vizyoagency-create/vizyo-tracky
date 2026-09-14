@@ -1,7 +1,7 @@
 {
   "_comment": "Ce que le POSTE DE COMMANDE montre en plus des tâches. Les tâches, elles, viennent de docs/centre-alerte/app/taches.json et ne se recopient JAMAIS ici — voir generer.mjs. Ce fichier ne porte que ce qu'aucune tâche ne décrit : les mesures de tête, les mécaniques qui tournent seules, les décisions posées au propriétaire, et ce qui est prouvé.",
   "version": 1,
-  "releve": "14 septembre 2026, 09:05 UTC",
+  "releve": "14 septembre 2026, 10:45 UTC",
   "machines": [
     {
       "nom": "Rattrapage du recalage des tracés",
@@ -20,12 +20,12 @@
       "pied2": "s’éteint seule"
     },
     {
-      "nom": "Coupe-circuit automatique — À L’ARRÊT",
-      "texte": "37 plannings coupés par toi le 11/09 à 20 h 49. Contre-expertise du 13/09 : NO-GO en l'état. Au 14/09 11:00 : TOUT est corrigé, testé et FUSIONNÉ sur main (Tracky #138, relais #9) — y compris T62, qui met un véhicule à SIM injoignable en « TCP seul » — et le téléphone est configuré (ping 60 s prouvé). Rien n'est déployé : la production tourne sur 9afdf52a (ton chantier rdv de ce matin), sans le coupe-circuit. Restent, ensemble : les prérequis J-1 (T63), la fenêtre de déploiement (T47, checklist en 12 points), 24 h de preuve lues par la routine (T65), la recette T54, puis ta décision T38.",
+      "nom": "Coupe-circuit automatique — RÉARMÉ PAR LE CLIENT sur l'ancien code",
+      "texte": "Coupé par toi le 11/09 à 20 h 49 (37 plannings). Le 14/09 à 09:03 (Paris), le gestionnaire de la flotte CDEF31 a RÉARMÉ ses 30 plannings depuis /fleet-schedules (07:00–22:00, tous les jours) ; les 7 MH Cars restent coupés. La production tourne sur 9afdf52a — sans le chantier, sans kill-switch, sans interlock : si rien n'est déployé, le cron coupe 25 véhicules CDEF31 CE SOIR à 22:00 avec le code du 11/09, et les remet en route demain 07:00 avec ce même code. Le chantier est prêt : fusionné (Tracky #138, relais #9), vérifié (API 262 suites / 4 145 tests, web 740, smoke 5/5), téléphone configuré, prérequis J-1 mesurés (P3 déjà satisfait, P2 facultatif). Il manque la fenêtre, ensemble : créneau proposé 13:30–15:10 (T47), kill-switch baissé — puis ta décision pour ce soir.",
       "fait": null,
       "total": null,
-      "pied": "0 planning actif sur 37",
-      "pied2": "réactivation sur ta décision (T38), après T63 → T47 → T65 → T54"
+      "pied": "30 plannings actifs sur 37 — sur l'ancien code",
+      "pied2": "fenêtre T47 cet après-midi, puis ta décision (T38) : armer ce soir, ou 24 h de preuve d'abord"
     }
   ],
   "chiffres": [
@@ -284,6 +284,11 @@
     }
   ],
   "faits": [
+    {
+      "d": "14/09",
+      "quoi": "🔴🔴 Les 30 plannings CDEF31 ont été réarmés par le client à 09:03 — sur l'ancien code : sans déploiement, 25 coupes ce soir à 22:00 comme le 11/09",
+      "preuve": "<code>vehicle_schedules</code> : 30/30 CDEF31 <code>enabled</code>, ligne de base <code>IN_WINDOW</code> posée au tick de 07:03:15 UTC ; <code>system_activity_logs</code> : <code>POST /api/fleet-schedules/bulk</code> à 07:03:16 UTC par le gestionnaire CDEF31 (deux aperçus juste avant). Production = <code>9afdf52a</code> : le kill-switch et l'interlock n'existent que dans le chantier (<code>01756db7</code>), jamais déployé. Cinq des trente boîtiers sont muets depuis 13 à 25 jours (dormance : le cron les ignore) ; les 25 autres sont vivants en TCP. Mesuré aussi pour la fenêtre : <code>NODE_ENV=production</code> dans le conteneur (kill-switch fail-closed effectif dès le déploiement), <code>env_file</code> transmet tout, le numéro de preuve est déjà dans l'allowlist (preuve hebdo remise à 07:00 UTC), un seul appareil enrôlé (Device ID facultatif)."
+    },
     {
       "d": "14/09",
       "quoi": "Fusionné : le chantier coupe-circuit est sur main (Tracky #138, relais #9), avec T62 « SIM injoignable = TCP seul » — il ne reste que la fenêtre de déploiement, ensemble",
