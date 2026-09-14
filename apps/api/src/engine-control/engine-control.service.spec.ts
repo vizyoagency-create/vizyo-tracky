@@ -67,9 +67,13 @@ function faussesTentatives() {
       rows.push(row);
       return { id: row.id };
     }),
-    updateMany: jest.fn(async ({ where, data }: { where: { id: string }; data: Record<string, unknown> }) => {
+    updateMany: jest.fn(async ({ where, data }: { where: { id?: string; commandId?: string; smsLogId?: string }; data: Record<string, unknown> }) => {
       verifier(data);
-      const hits = rows.filter((r) => r.id === where.id);
+      // Les deux formes que le service emploie : par id (finishAttempt) et par (commandId, smsLogId)
+      // (réconciliation du worker : DELIVERED / FAILED posés sur la tentative SMS corrélée).
+      const hits = rows.filter((r) =>
+        where.id !== undefined ? r.id === where.id : r.commandId === where.commandId && r['smsLogId'] === where.smsLogId,
+      );
       for (const r of hits) Object.assign(r, data);
       return { count: hits.length };
     }),
