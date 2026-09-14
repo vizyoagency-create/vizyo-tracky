@@ -126,7 +126,7 @@ Développer une nouvelle application Android d'ici lundi serait plus risqué : e
 - File FIFO persistante.
 - Un SMS toutes les 15 secondes pour le premier réglage prudent, avec jitter possible jusqu'à 20 secondes.
 - Limite de volume active et compteur visible.
-- SIM explicitement sélectionnée.
+- SIM explicitement sélectionnée — *au 14/09 : **non fait en production**, `CAPCOM6_SIM_NUMBER` est absent du `.env` du relais ; le code du relais sait la sélectionner (T44), la variable est un geste propriétaire (T43, doc 25 §2).*
 - Aucun batch ne doit contourner cette file.
 
 ### P0-5 — Interface et centre d'alertes fiables
@@ -139,7 +139,7 @@ Développer une nouvelle application Android d'ici lundi serait plus risqué : e
 ### P0-6 — Santé de la passerelle
 
 - Heartbeat au maximum toutes les 60 secondes.
-- Statuts distincts : `ONLINE`, `DEGRADED`, `STALE`, `OFFLINE`.
+- Statuts distincts : `ONLINE`, `DEGRADED`, `STALE`, `OFFLINE` — *tenu depuis T44 (doc 23) : `device.state`, seuils 120 s / 900 s.*
 - Surveillance du dernier heartbeat, dernier SMS terminal, profondeur de file, taux d'échec et âge du plus vieux `RESTORE`.
 - Alarme spécifique après reboot si le service foreground/receiver n'est pas opérationnel.
 

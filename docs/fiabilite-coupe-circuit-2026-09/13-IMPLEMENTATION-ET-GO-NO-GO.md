@@ -23,7 +23,7 @@ l'intention, montre l'absence de preuve et alerte au lieu d'abandonner silencieu
 - arrivée d'un RESTORE annule les CUT actives contradictoires ;
 - `queued`, `accepted`, `sent` et `delivered` restent des preuves de transport, jamais une
   preuve de rallumage ; seule l'ACK ou la remontée ignition confirme l'exécution ;
-- webhook signé pour les statuts sortants, plus polling indépendant si le webhook se perd ;
+- webhook signé pour les statuts sortants, plus polling indépendant si le webhook se perd (*émetteur côté relais depuis T45, doc 24 — exige le relais du chantier déployé, doc 25*) ;
 - alerte critique après 60 secondes sans confirmation, avec plaque, IMEI, canal et tentative ;
 - file SMS cadencée, priorité RESTORE, FIFO à priorité égale et état de file visible ;
 - bouton Horaires flotte non bloquant : les CUT rejoignent une file récupérable, au plus un départ

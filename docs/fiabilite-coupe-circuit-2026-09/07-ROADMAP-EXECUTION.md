@@ -41,6 +41,16 @@ Production : **hors périmètre — aucun déploiement ni changement VPS autoris
 
 Règle de coche : une case n'est cochée qu'après code, test automatisé pertinent et documentation de rollback. Les étapes terrain et production restent nécessairement non cochées tant qu'elles n'ont pas été explicitement autorisées et réalisées.
 
+*Relecture du 14/09 (T56, document 32) — à quoi renvoie chaque case cochée :* R1.1/R1.2 →
+`engine_delivery_attempts` (migration `20260912110000`, exercée par la suite depuis T53, doc 31) ;
+R1.3 → sentinelle Android (doc 23) et statuts sortants poussés par le relais (doc 24) ;
+R2.1–R2.3 → docs 13 et 16 ; R3.1 → clé d'unicité et sa libération (doc 20), orpheline dispatchée
+(doc 27) ; R3.2 → doc 16 ; R4.1/R4.2 → relance à la reconnexion, TCP seul après les SMS, rappel
+toutes les 15 min (docs 22 et 28) ; R4.3 → RESTORE prioritaire et CUT contradictoires annulées (12/09, doc 13), péremption des CUT par SMS (doc 21) ; R5.1/R5.2 →
+kill-switch et interlock sans rafale (doc 26), preuve SMS quotidienne (doc 24) ; R6.1/R6.1b → doc
+15 ; R6.2a → doc 23 ; R6.3 → doc 12 (procédure seulement, second téléphone **non implémenté**) ;
+R7.1/R7.2a → suites API et web ; R7.3 → doc 25. **R6.2b, R7.2b, R7.4 restent ouvertes.**
+
 ## Ordre obligatoire
 
 L'ordre ci-dessous est une dépendance technique, pas une préférence. On commence par voir la vérité, puis on corrige les états, ensuite seulement on automatise les retries. Sinon une nouvelle logique pourrait multiplier silencieusement les SMS ou présenter un faux succès.
@@ -93,7 +103,7 @@ Chaque transition doit enregistrer : acteur, ancien état, nouvel état, raison,
 
 ### R1.3 — réconciliation indépendante des webhooks
 
-- recevoir les webhooks terminaux et vérifier leur signature ;
+- recevoir les webhooks terminaux et vérifier leur signature (*tenu depuis T45, doc 24 : le relais pousse chaque statut terminal signé vers `<callbackUrl>/status`*) ;
 - poller les messages non terminaux toutes les 30 à 60 secondes ;
 - considérer le webhook comme accélérateur, jamais comme l'unique vérité ;
 - rendre les événements désordonnés et dupliqués idempotents ;
@@ -101,7 +111,7 @@ Chaque transition doit enregistrer : acteur, ancien état, nouvel état, raison,
 
 Alertes minimales :
 
-- passerelle sans ping au-delà du seuil configuré (120 secondes par défaut, contrôle toutes les 60 secondes) ;
+- passerelle sans ping au-delà du seuil configuré (`STALE` à 120 secondes, `OFFLINE` à 900 secondes par défaut — `CAPCOM6_DEVICE_STALE_SECONDS` / `CAPCOM6_DEVICE_OFFLINE_SECONDS`, T44 ; contrôle toutes les 60 secondes ; un téléphone qui ne pingue pas au repos est couvert par la preuve SMS quotidienne, T45) ;
 - message encore `queued/pending` après 60 secondes pour RESTORE ;
 - échec Android terminal immédiat avec plaque et code ;
 - aucun ACK boîtier dans le délai ;
@@ -150,7 +160,7 @@ Test de sortie : 20 appels simultanés depuis deux sessions produisent une seule
 1. enregistrer l'intention et l'outbox dans la même transaction ;
 2. si socket présente, envoyer TCP et attendre l'ACK `kt` dans une fenêtre mesurée ;
 3. sans ACK, garder la tentative visible et planifier le fallback, au lieu de déclarer succès ;
-4. si socket absente, conserver le RESTORE dans une file TCP prioritaire et le rejouer dès la reconnexion ;
+4. si socket absente, conserver l'intention RESTORE **en base** (`activeKey`, `nextAttemptAt` — pas de file dédiée) et la rejouer dès la reconnexion (*tenu depuis T42, doc 22 : hook `tracker.connected`*) ;
 5. en parallèle ou après un délai configurable validé par tests, déclencher le secours SMS ;
 6. réguler les retries avec backoff et jitter, sans abandonner l'intention RESTORE ;
 7. après redémarrage API/Redis/VPS, reprendre exactement au dernier état durable.

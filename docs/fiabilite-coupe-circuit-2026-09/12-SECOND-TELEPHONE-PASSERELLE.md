@@ -1,5 +1,7 @@
 # Deuxième téléphone — mémoire de décision et procédure future
 
+> *État au 14/09 (T56) : le second téléphone n'est **pas implémenté** ; ce document est une mémoire de décision et une procédure future. La sélection de SIM et la santé par appareil existent côté relais (T44), sans second appareil.*
+
 Date : 12 septembre 2026
 Décision propriétaire : achat prévu ultérieurement, pas pour la reprise de cette semaine.
 
@@ -42,7 +44,7 @@ La puissance du téléphone est secondaire. La stabilité du cycle de vie Androi
 - le secondaire n'est utilisé qu'après verdict de santé ou politique explicite ;
 - jamais de mise à jour simultanée des deux appareils ;
 - test synthétique régulier sur chaque SIM ;
-- alerte si un appareil est `STALE` depuis plus de 90 secondes ;
+- alerte si un appareil est `STALE` depuis plus de `CAPCOM6_DEVICE_STALE_SECONDS` (**120 s** dans le code, pas 90 — corrigé le 14/09, T56) et `OFFLINE` au-delà de 900 s (T44) ;
 - historique distinct des taux d'échec par appareil, version, SIM et opérateur.
 
 ## Alternative à moyen terme

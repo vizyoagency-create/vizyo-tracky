@@ -24,6 +24,11 @@ Le but n'est pas de promettre qu'un réseau mobile ne tombera jamais en panne. L
 
 > Une coupure peut être différée ou refusée. Une restauration ne doit jamais être abandonnée.
 
+*État au 14/09 (T56, document 32) — ce que « jamais abandonnée » veut dire dans le code :* trois
+SMS au plus, puis TCP seul retenté pendant 24 h à chaque reconnexion du boîtier et toutes les
+30 min (T42, document 22) ; jamais `FAILED` sans preuve ; rappel au centre d'alerte toutes les
+15 min tant qu'elle n'est pas prouvée (T51, document 28).
+
 Les traitements CUT et RESTORE sont volontairement asymétriques :
 
 - CUT : sécurité physique stricte, pas de tentative tardive aveugle, pas de coupure en mouvement.
@@ -57,6 +62,27 @@ Les traitements CUT et RESTORE sont volontairement asymétriques :
 24. [Correctif P1-3 (T45) — une preuve SMS chaque matin, et le relais dit ce qu'il sait](./24-CORRECTIF-P1-PREUVE-SMS-QUOTIDIENNE-2026-09-14.md)
 25. [Procédure de déploiement du chantier (T47) — téléphone → relais → Tracky, kill-switch false](./25-PROCEDURE-DE-DEPLOIEMENT-DU-CHANTIER-2026-09-14.md)
 26. [Correctif P2-2 (T49) — une coupe retenue n'est pas une panne par véhicule](./26-CORRECTIF-P2-KILL-SWITCH-SANS-RAFALE-2026-09-14.md)
+27. [Correctif P2-1 · P2-4 (T48) — une preuve ne se rétrograde jamais, une CUT orpheline est dispatchée](./27-CORRECTIF-P2-PREUVE-JAMAIS-RETROGRADEE-2026-09-14.md)
+28. [Correctif P2-5 · P2-6 (T51) — une RESTORE qui traîne se rappelle, un SMS bloqué est retenté, un clic répond en 20 s](./28-CORRECTIF-P2-RESTORE-QUI-TRAINE-SE-RAPPELLE-2026-09-14.md)
+29. [Correctif P2-9 (T52) — l'allowlist du relais ne bloque plus une remise en route](./29-CORRECTIF-P2-ALLOWLIST-NE-BLOQUE-PAS-RESTORE-2026-09-14.md)
+30. [Correctif P2-3 (T50) — la confirmation par glissement est un geste, pas un clic](./30-CORRECTIF-P2-GLISSEMENT-VOLONTAIRE-2026-09-14.md)
+31. [Correctif P2-10 (T53) — le journal des tentatives est exercé, le changement d'heure couvert](./31-CORRECTIF-P2-JOURNAL-DES-TENTATIVES-EXERCE-2026-09-14.md)
+32. [Relecture des promesses documentaires (T56) — ce que les documents disent, ce que le code tient](./32-RELECTURE-DES-PROMESSES-DOCUMENTAIRES-2026-09-14.md)
+
+## État du chantier au 14 septembre 2026 (soir)
+
+- `main` **a bougé** pendant le chantier (27 commits, 3 migrations, production redéployée le 13/09
+  à 22:25) ; la branche est rebasée dessus (T46) et sa migration, antérieure aux leurs, s'applique
+  « en retard » — vérifié localement, document 25 §6.
+- Correctifs committés sur la branche, **non déployés** : P0-1, P0-2, P1-1, P1-2, P1-3, P2-1 à
+  P2-6, P2-9, P2-10 (documents 20 à 31) ; relais Texto : santé par appareil, statuts sortants
+  poussés, image capcom6 épinglée (documents 23, 24, 25).
+- Restent au propriétaire : T43 (`CAPCOM6_SIM_NUMBER` et prérequis téléphone), revue et fusion,
+  déploiement selon le document 25, T54 (mesures après déploiement), T38 ; hors chantier : T57
+  (dépendances), T58/T59 (sur `main`).
+- Suites au 14/09 (soir) : typecheck vert, smoke DI 5/5, API 260 suites / 4 081 tests (une suite de
+  `main`, `trip-analysis/fenetre-utile`, tient à la milliseconde et a dû être relancée seule),
+  web 732 tests, relais 7 suites / 55 tests.
 
 ## Contre-expertise du 13 septembre
 
@@ -77,7 +103,9 @@ Le document 11 consolide les constats des audits. Le document 13 décrit l'état
 - Le centre d'alertes reçoit tout échec terminal SMS et toute restauration en retard.
 - Le téléphone SMS ne reçoit jamais une rafale non régulée.
 - Un RESTORE TCP sans ACK déclenche le chemin de secours.
-- Une socket absente déclenche une file TCP durable, pas un abandon du TCP.
+- Une socket absente laisse l'intention **en base** (pas de file dédiée : `activeKey`,
+  `nextAttemptAt`), attachée à la prochaine connexion du boîtier et retentée par le worker ; le
+  secours SMS ne part qu'après l'attente TCP de 15 s et un second essai TCP (T42, document 22).
 - L'interface sépare toujours « planning » et « état moteur ».
 - Les boutons sont verrouillés pendant l'action dans toutes les vues et tous les onglets.
 - Les requêtes sont idempotentes côté serveur.

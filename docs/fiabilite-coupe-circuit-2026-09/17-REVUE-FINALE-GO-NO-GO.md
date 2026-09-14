@@ -37,8 +37,8 @@ Deux décisions doivent rester séparées :
 
 - typecheck des trois paquets : succès ;
 - smoke de démarrage API : 5 tests réussis ;
-- suite API finale exécutée en série : 255 suites et 3 920 tests réussis ;
-- suite Web : 727 tests réussis ;
+- suite API finale exécutée en série : 255 suites et 3 920 tests réussis (*chiffres du 13/09 ; au 14/09, après les correctifs 20 à 31 : 260 suites, 4 081 tests — voir README « État du chantier »*) ;
+- suite Web : 727 tests réussis (*732 au 14/09, T50*) ;
 - suite partagée : 416 tests réussis ;
 - tests moteur ciblés après les derniers durcissements : 95 réussis ;
 - builds de production API, Web et partagé : succès ;

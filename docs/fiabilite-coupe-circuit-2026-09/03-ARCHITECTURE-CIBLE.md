@@ -73,6 +73,11 @@ L'état métier `RESTORED_CONFIRMED` ne peut venir que d'une preuve boîtier qua
 8. Continuer à envoyer K au prochain TCP tant que la restauration n'est pas prouvée.
 9. Lever une alerte humaine avant l'heure de départ, pas après.
 
+*État au 14/09 (T56, document 32) :* points 1, 2, 3, 4, 6, 8 et 9 **tenus** par le code (documents
+20, 22, 24, 28 ; « `WAITING_TCP` » est le statut `PENDING` avec `channel = TCP`). Point 5 tenu
+**autrement** : le SMS part après l'attente TCP de 15 s et un second essai TCP du worker, pas « à
+l'approche de l'échéance ». Point 7 (passerelle secondaire) **non implémenté** (document 12).
+
 ### Fenêtre proposée pour les horaires
 
 - T−30 min : création des intentions RESTORE et opportunités TCP.
