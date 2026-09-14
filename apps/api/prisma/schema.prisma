@@ -3567,9 +3567,15 @@ model InstallationBookingLink {
   /// que personne ne viendrait honorer.
   weekendStartMinutes Int?
   weekendEndMinutes   Int?
-  /// Horizon de reservation (jours) et delai minimum avant un creneau (heures).
+  /// Horizon de reservation (jours).
   horizonDays     Int               @default(42)
+  /// ⚠️ OBSOLETE depuis le 2026-09-14 — remplace par `leadDays` (le proprietaire veut « jamais le
+  /// jour meme, toujours J+1 », un delai en heures cachait le matin du lendemain l'apres-midi).
+  /// Conserve pour que l'image precedente (repli) lise encore la table ; plus lu par le code.
   leadHours       Int               @default(24)
+  /// Premier jour propose : J+N, en jours ENTIERS du calendrier Europe/Paris. 1 = a partir de
+  /// demain, jamais le jour meme, quelle que soit l'heure. Decision du proprietaire du 2026-09-14.
+  leadDays        Int               @default(1)
   active          Boolean           @default(true)
   /// true => le lien se ferme apres la 1re reservation confirmee.
   singleUse       Boolean           @default(false)

@@ -30,7 +30,15 @@ export interface SlotConfig {
   /** Jours ISO ouvrés (1=lundi … 7=dimanche). */
   workingDays: number[];
   horizonDays: number;
-  leadHours: number;
+  /**
+   * Premier jour proposé : J+N, en jours ENTIERS du calendrier Paris. 1 = à partir de demain.
+   *
+   * ⚠️ JAMAIS LE JOUR MÊME, quelle que soit l'heure — décision du propriétaire du 2026-09-14.
+   * Le délai en heures qui précédait laissait réserver « pour tout à l'heure » dès qu'il était
+   * court, et à 24 h faisait disparaître le matin du lendemain dès l'après-midi. En jours
+   * entiers, la règle se lit d'un coup d'œil : demain, tout entier ; aujourd'hui, jamais.
+   */
+  leadDays: number;
   /**
    * Fenêtre horaire propre au WEEK-END (samedi et dimanche), quand ces jours sont ouvrés.
    * `null`/absent = la fenêtre de la semaine s'applique aussi le week-end.
@@ -119,23 +127,24 @@ function pad(n: number): string {
 
 /**
  * Génère les jours + créneaux LIBRES sur l'horizon, en excluant :
+ *  - aujourd'hui, TOUJOURS, et les jours avant J+`leadDays` (jours entiers, calendrier Paris),
  *  - les jours non ouvrés,
  *  - les jours dont la fenêtre horaire (semaine ou week-end) est plus courte qu'un créneau,
- *  - les créneaux avant `now + leadHours`,
  *  - les créneaux chevauchant un intervalle occupé (`busy`, demi-ouvert [start,end)).
  */
 export function generateAvailability(config: SlotConfig, now: Date, busy: BusyInterval[]): GeneratedDay[] {
-  const { slotMinutes, workingDays, horizonDays, leadHours } = config;
+  const { slotMinutes, workingDays, horizonDays } = config;
   const days: GeneratedDay[] = [];
   if (slotMinutes <= 0) return days;
 
-  const earliestMs = now.getTime() + leadHours * 3_600_000;
+  // Borné à 1 quoi qu'on lui passe : le jour même n'est pas une option de configuration.
+  const premierJour = Math.max(1, Math.floor(config.leadDays || 1));
   const workSet = new Set(workingDays);
   const today = parisParts(now);
   // Point de départ : minuit Paris du jour courant.
   const base = parisWallClockToUtc(today.year, today.month, today.day, 0, 0);
 
-  for (let dayOffset = 0; dayOffset <= horizonDays; dayOffset++) {
+  for (let dayOffset = premierJour; dayOffset <= horizonDays; dayOffset++) {
     // Milieu de journée (12h) pour lire une date stable même autour d'un DST.
     const midInstant = new Date(base.getTime() + dayOffset * 86_400_000 + 12 * 3_600_000);
     const dp = parisParts(midInstant);
@@ -151,7 +160,6 @@ export function generateAvailability(config: SlotConfig, now: Date, busy: BusyIn
       const em = (start + slotMinutes) % 60;
       const startAt = parisWallClockToUtc(dp.year, dp.month, dp.day, sh, sm);
       const endAt = parisWallClockToUtc(dp.year, dp.month, dp.day, eh, em);
-      if (startAt.getTime() < earliestMs) continue;
       const overlaps = busy.some((b) => startAt.getTime() < b.endMs && endAt.getTime() > b.startMs);
       if (overlaps) continue;
       slots.push({

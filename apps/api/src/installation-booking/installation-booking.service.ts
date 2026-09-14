@@ -119,7 +119,7 @@ export class InstallationBookingService {
 
   private configOf(link: {
     slotMinutes: number; dayStartMinutes: number; dayEndMinutes: number;
-    workingDays: number[]; horizonDays: number; leadHours: number;
+    workingDays: number[]; horizonDays: number; leadDays: number;
     weekendStartMinutes: number | null; weekendEndMinutes: number | null;
   }): SlotConfig {
     return {
@@ -128,7 +128,7 @@ export class InstallationBookingService {
       dayEndMinutes: link.dayEndMinutes,
       workingDays: link.workingDays,
       horizonDays: link.horizonDays,
-      leadHours: link.leadHours,
+      leadDays: link.leadDays,
       weekendStartMinutes: link.weekendStartMinutes,
       weekendEndMinutes: link.weekendEndMinutes,
     };
@@ -222,7 +222,7 @@ export class InstallationBookingService {
         weekendStartMinutes: dto.weekendStartMinutes ?? null,
         weekendEndMinutes: dto.weekendEndMinutes ?? null,
         horizonDays: dto.horizonDays ?? undefined,
-        leadHours: dto.leadHours ?? undefined,
+        leadDays: dto.leadDays ?? undefined,
         singleUse: dto.singleUse ?? undefined,
         expiresAt: dto.expiresAt ? new Date(dto.expiresAt) : null,
         createdBy: userId,
@@ -292,7 +292,7 @@ export class InstallationBookingService {
         weekendStartMinutes: dto.weekendStartMinutes,
         weekendEndMinutes: dto.weekendEndMinutes,
         horizonDays: dto.horizonDays,
-        leadHours: dto.leadHours,
+        leadDays: dto.leadDays,
         singleUse: dto.singleUse,
         expiresAt: dto.expiresAt === undefined ? undefined : dto.expiresAt ? new Date(dto.expiresAt) : null,
       },
@@ -1062,7 +1062,7 @@ export class InstallationBookingService {
       weekendStartMinutes: row.weekendStartMinutes,
       weekendEndMinutes: row.weekendEndMinutes,
       horizonDays: row.horizonDays,
-      leadHours: row.leadHours,
+      leadDays: row.leadDays,
       active: row.active,
       singleUse: row.singleUse,
       expiresAt: row.expiresAt ? row.expiresAt.toISOString() : null,

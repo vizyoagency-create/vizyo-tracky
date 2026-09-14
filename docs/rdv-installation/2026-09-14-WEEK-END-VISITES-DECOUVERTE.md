@@ -7,6 +7,14 @@ Ce que le propriétaire a demandé le 14/09 : retravailler la page `/book/:token
 (`decouvrir.html`, `decouvrir-depot.html`, les vidéos), et **savoir qui ouvre le lien, quand,
 et ce qu'il fait ensuite**.
 
+> **Recette du propriétaire, 14/09 midi : validé**, avec une règle en plus — **jamais le jour même**.
+> Le délai en heures (`leadHours`) est remplacé par un **premier jour proposé J+N** (`leadDays`, défaut 1) :
+> le lendemain, tout entier, quelle que soit l'heure de la demande ; le dimanche reste hors jeu tant qu'il
+> n'est pas coché sur le lien (un J+1 tombant un dimanche glisse au lundi). La colonne `leadHours` est
+> conservée en base (plus lue) pour que le repli d'image reste possible. Déployé sur **prod + ce correctif
+> seulement** (`deploy.sh --branche feat/rdv-installation-v2`), parce que `main` porte depuis midi le
+> chantier coupe-circuit (#138), qui a sa propre procédure de déploiement.
+
 ---
 
 ## 1. Ce qui change, en une lecture
@@ -14,7 +22,8 @@ et ce qu'il fait ensuite**.
 | Sujet | Avant | Maintenant |
 |---|---|---|
 | Week-end | Un seul horaire pour tous les jours cochés : cocher le samedi = 08:00–21:00 comme un mardi | Fenêtre propre au week-end (`weekendStartMinutes` / `weekendEndMinutes`, `null` = comme la semaine), proposée **09:00–13:00** à la création, modifiable ensuite |
-| Console admin | Créer / copier / désactiver / supprimer ; formulaire à 4 champs | Formulaire complet (durée, jours, horaires semaine et week-end, horizon, délai, expiration, usage unique), **aperçu en une phrase** avant de générer, **modification** d'un lien existant, **panneau des visites** |
+| Console admin | Créer / copier / désactiver / supprimer ; formulaire à 4 champs | Formulaire complet (durée, jours, horaires semaine et week-end, horizon, **premier jour proposé J+N**, expiration, usage unique), **aperçu en une phrase** avant de générer, **modification** d'un lien existant, **panneau des visites** |
+| Jour même | Réservable dès que le délai en heures le permettait | **Jamais.** Premier jour = J+1 entier (décision du 14/09) |
 | Suivi | `openCount` + 1ʳᵉ / dernière ouverture | Une **ligne par visite** : appareil (téléphone / tablette / ordinateur, OS, navigateur), provenance (Gmail, WhatsApp, Messages SMS, appli Android…), IP tronquée, identité quand elle est connue, **chronologie des gestes** horodatée par le serveur |
 | Page publique | Jours + créneaux + formulaire ; une seule sortie (mailto) | Pastille « week-end possible », jours de week-end marqués, **trois sorties réelles** (appeler l'atelier, être prévenu, demander un autre créneau), section **« Découvrir Tracky »** (4 scènes de la vitrine + présentation + espace dépôt) |
 | « Prévenez-moi » | L'API acceptait l'inscription… et **personne n'était jamais prévenu**, rien n'était purgé | Entretien quotidien 07:40 : purge 90 j (décision client du 16/08), purge des visites 180 j, **e-mail « des créneaux sont disponibles »** une fois par inscription (nouveau modèle `installation_slot_available`) |
@@ -75,6 +84,7 @@ un `POST … {"type":"reservation"}` depuis la page est refusé (400). Sinon n'i
 | D1 | Rétention des visites | **180 j** (`VISIT_RETENTION_DAYS`) = l'horizon maximal d'un lien ; documenté dans `rgpd-retention-donnees.md` | Confirmer ou raccourcir (90 j comme les abonnés ?) |
 | D2 | Heure de l'entretien | **07:40** — le courriel « des créneaux sont disponibles » arrive quand on peut réserver | OK ? |
 | D3 | Fenêtre week-end par défaut | **09:00–13:00** proposée quand on coche S ou D et « horaires différents » | OK ? |
+| D6 | Jour même | **Jamais** ; `leadDays` ≥ 1, défaut 1 — **tranché le 14/09** | — |
 | D4 | `INSTALLATION_PUBLIC_PHONE` | Toujours **vide en prod** → le bouton « Appeler l'atelier » **n'apparaît pas** (décision du 16/08 : numéro d'atelier, jamais d'une personne) | Renseigner un numéro d'atelier dans le `.env` prod si on veut la 1ʳᵉ sortie |
 | D5 | Liens de découverte | Toujours affichés (pas d'option par lien) ; `?from=rdv-installation` lu par `vt.js` sur la vitrine | Faut-il pouvoir les masquer sur un lien ? |
 
@@ -83,9 +93,10 @@ un `POST … {"type":"reservation"}` depuis la page est refusé (400). Sinon n'i
 ## 4. Déployer
 
 1. Fusionner `feat/rdv-installation-v2` dans `main`, pousser `origin/main`.
-2. `deploy.sh` applique la migration `20260914120000_rdv_installation_weekend_et_visites`
-   (`prisma migrate deploy` au démarrage du conteneur) : deux colonnes nullables + une table ;
-   **aucune réécriture de ligne**, aucun lien existant ne change de comportement.
+2. `deploy.sh` applique les migrations `20260914120000_rdv_installation_weekend_et_visites`
+   (deux colonnes nullables + une table) et `20260914150000_rdv_premier_jour_j_plus_1`
+   (`leadDays` avec défaut 1 → tous les liens passent à « jamais le jour même ») au démarrage du
+   conteneur (`prisma migrate deploy`) ; **aucune réécriture de ligne**.
 3. Variables : `VITRINE_BASE_URL` optionnelle (défaut `https://tracky.vizyoagency.com`) ;
    `INSTALLATION_PUBLIC_PHONE` inchangée (voir D4).
 4. Vérifier après déploiement : `/admin/background-tasks` liste **« Entretien de la prise de RDV
