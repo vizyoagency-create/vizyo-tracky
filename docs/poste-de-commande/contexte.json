@@ -1,7 +1,7 @@
 {
   "_comment": "Ce que le POSTE DE COMMANDE montre en plus des tâches. Les tâches, elles, viennent de docs/centre-alerte/app/taches.json et ne se recopient JAMAIS ici — voir generer.mjs. Ce fichier ne porte que ce qu'aucune tâche ne décrit : les mesures de tête, les mécaniques qui tournent seules, les décisions posées au propriétaire, et ce qui est prouvé.",
   "version": 1,
-  "releve": "14 septembre 2026, 06:35 UTC",
+  "releve": "14 septembre 2026, 07:05 UTC",
   "machines": [
     {
       "nom": "Rattrapage du recalage des tracés",
@@ -284,6 +284,11 @@
     }
   ],
   "faits": [
+    {
+      "d": "14/09",
+      "quoi": "Le S21 diagnostiqué de l'intérieur : le bug du 11/09 a DEUX causes, et la seconde n'est pas dans le téléphone (T43, T61)",
+      "preuve": "Mobile connecté, lecture seule, 08:40–08:58. (1) Le téléphone ne relève les ordres que toutes les 15 min faute de ping : les 10 RESTORE de 07:00 sont partis à <b>07:07</b>, et celui de 20:49 à <b>21:55</b> parce que le S21 redémarrait (uptime 60 h = dernier redémarrage le 11/09 vers 20:45) — réglages de l'app tous au défaut (ping vide, LIFO, ni délai ni limite), veille des applis inutilisées ON sans protection, téléphone personnel sur batterie. (2) Les 5 échecs de 07:07 et toutes les reprises du jour sont « RESULT_ERROR_GENERIC_FAILURE » vers <b>les mêmes numéros</b> : dix SIM de boîtiers n'ont <b>jamais</b> reçu un SMS du S21 depuis juin (…621085 : 36 échecs) alors que leurs voisines livrent à 100 % dans la même seconde, que le fournisseur les dit activées, qu'elles sont en session data, en TCP, et qu'elles émettent des SMS. Ni débit, ni veille, ni batterie : la destination. Test décisif à faire (T61) : un SMS neutre vers …621085 depuis un autre opérateur. Vérifié aussi : le S21 se remet ses propres SMS (preuves hebdo), les 4 webhooks sont en place."
+    },
     {
       "d": "14/09",
       "quoi": "Le S21 est relevé avant d'y toucher : aucun réglage, pull toutes les 15 min, quatre webhooks bien en place (T43)",

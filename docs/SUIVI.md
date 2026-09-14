@@ -14,7 +14,7 @@
 > `centre-alerte/app/taches.json` + `poste-de-commande/contexte.json`. Ce fichier-ci est rendu des mêmes sources ;
 > quand ils divergent, **`taches.json` fait foi**.
 
-*Dernière mise à jour : 2026-09-14 (relevé du 14 septembre 2026, 06:35 UTC) · dépôt sur `main`*
+*Dernière mise à jour : 2026-09-14 (relevé du 14 septembre 2026, 07:05 UTC) · dépôt sur `main`*
 
 ---
 
@@ -56,6 +56,7 @@ puis le téléphone (T43), la procédure (T47), la recette sur boîtier et les c
 | ☐ | **T58** | La cle de refroidissement de la sentinelle des agents doit porter la CAUSE — et courrier-ia doit lire le premier objet JSON equilibre | TRK-069 | 🔧 à coder |
 | ☐ | **T59** | Ne plus remonter au centre d alerte les appels avortes par la fermeture de la page sur le canal anonyme (robots) | TRK-079 | 🔧 à coder |
 | ☐ | **T60** | Test fenetre-utile.spec.ts (trajets, sur main) tient à la milliseconde : deux Date.now() distincts — à figer | main · 152883ec | 🔧 à coder |
+| ☐ | **T61** | 🔴 Dix SIM de boîtiers sont INJOIGNABLES par SMS depuis le S21 (RESULT_ERROR_GENERIC_FAILURE persistant) — les identifier comme « TCP seul » et faire trancher Free / WhereverSIM | TRK-066 · S21 · doc 10 test B/C | 🤝 humain |
 
 ---
 
@@ -71,12 +72,12 @@ puis le téléphone (T43), la procédure (T47), la recette sur boîtier et les c
 |---|---|
 | **11** | défauts nés au centre d’alerte sur 24 h (sur 25 lignes : 4 d’un robot, 9 refermées seules dans la journée) |
 | **831/831** | trajets clos depuis le correctif du 08/09 suivent la route |
-| **11** | gestes qui n’avancent que par toi |
-| **91** | fiches suivies dans la roadmap |
+| **12** | gestes qui n’avancent que par toi |
+| **92** | fiches suivies dans la roadmap |
 
 ---
 
-## 🤝 CE QUI T'ATTEND — rien ne peut avancer sans toi *(11 gestes)*
+## 🤝 CE QUI T'ATTEND — rien ne peut avancer sans toi *(12 gestes)*
 
 | | # | Quoi | Fiche | Classe |
 |:--:|:--:|---|---|---|
@@ -86,6 +87,7 @@ puis le téléphone (T43), la procédure (T47), la recette sur boîtier et les c
 | ☐ | **T43** | 🔴 AUJOURD'HUI — Configurer le téléphone passerelle S21 (ping 60 s, FIFO, délais, limite, SIM 1, One UI) — avant tout déploiement | TRK-066 · doc 19 P1-2 | 🔵 terrain |
 | ☐ | **T47** | 🔴 Procédure de déploiement du chantier — ÉCRITE (doc 25), à jouer ensemble : téléphone → relais → Tracky, kill-switch false | TRK-066 · doc 19 P1-5 | 🟡 préparé |
 | ☐ | **T54** | 🔴 Recette réelle : boîtier de banc, puis un canari MH Cars, puis un CDEF31 — un à la fois, présence physique, jamais les 37 | TRK-066 · doc 19 §3 phase 5 | 🔵 terrain |
+| ☐ | **T61** | 🔴 Dix SIM de boîtiers sont INJOIGNABLES par SMS depuis le S21 (RESULT_ERROR_GENERIC_FAILURE persistant) — les identifier comme « TCP seul » et faire trancher Free / WhereverSIM | TRK-066 · S21 · doc 10 test B/C | 🤝 humain |
 | ☐ | **T1** | Recharger au moins UN des deux comptes IA | TRK-071 | 🤝 humain |
 | ☐ | **T35** | Ouvrir un second abonnement reserve aux agents du poste — quand tu le decideras (D7) | TRK-071 | 🤝 humain |
 | ☐ | **T39** | Rouvrir les notifications aux clients (PUSH_ROLLOUT=ALL) quand les tests seront finis | TRK-065 | 🤝 humain |
@@ -198,6 +200,7 @@ puis le téléphone (T43), la procédure (T47), la recette sur boîtier et les c
 
 | Date | Quoi | La preuve |
 |---|---|---|
+| 14/09 | **Le S21 diagnostiqué de l'intérieur : le bug du 11/09 a DEUX causes, et la seconde n'est pas dans le téléphone (T43, T61)** | Mobile connecté, lecture seule, 08:40–08:58. (1) Le téléphone ne relève les ordres que toutes les 15 min faute de ping : les 10 RESTORE de 07:00 sont partis à `07:07`, et celui de 20:49 à `21:55` parce que le S21 redémarrait (uptime 60 h = dernier redémarrage le 11/09 vers 20:45) — réglages de l'app tous au défaut (ping vide, LIFO, ni délai ni limite), veille des applis inutilisées ON sans protection, téléphone personnel sur batterie. (2) Les 5 échecs de 07:07 et toutes les reprises du jour sont « RESULT_ERROR_GENERIC_FAILURE » vers `les mêmes numéros` : dix SIM de boîtiers n'ont `jamais` reçu un SMS du S21 depuis juin (…621085 : 36 échecs) alors que leurs voisines livrent à 100 % dans la même seconde, que le fournisseur les dit activées, qu'elles sont en session data, en TCP, et qu'elles émettent des SMS. Ni débit, ni veille, ni batterie : la destination. Test décisif à faire (T61) : un SMS neutre vers …621085 depuis un autre opérateur. Vérifié aussi : le S21 se remet ses propres SMS (preuves hebdo), les 4 webhooks sont en place. |
 | 14/09 | **Le S21 est relevé avant d'y toucher : aucun réglage, pull toutes les 15 min, quatre webhooks bien en place (T43)** | Lecture seule depuis le conteneur du relais, 06:33 UTC : serveur capcom6 `1.43.0` sain ; un seul appareil, `lastSeen` vieux de `10 min` (le pull de secours, faute de ping) ; `GET /3rdparty/v1/settings` rend `{}` — tout au défaut, comme le diagnostic du 12/09 ; les quatre webhooks `sms:received/sent/delivered/failed` pointent bien sur le relais (le point P4 du doc 25 est vérifié). Les gestes exacts sur le téléphone sont dans la fiche T43 ; la preuve sera `lastSeen` qui avance toutes les 60 s, écran éteint, pendant 30 min. |
 | 14/09 | **Les six derniers correctifs faisables seul sont committés : le chantier n'attend plus que toi (T48, T50, T51, T52, T53, T56)** | Tracky `8a8cb2c4` (T48) : une preuve ne se rétrograde jamais en « envoyée », une CUT orpheline est dispatchée. `b582fbf6` (T51) : une RESTORE non prouvée se rappelle toutes les `15 min`, un SMS bloqué une heure est retenté, un clic manuel répond en 20 s. `428d1f39` (T52) : l'allowlist du relais ne bloque plus une remise en route. `8bb24ca7` (T50) : le glissement exige un vrai geste — un clic en bout de piste ou la touche Fin ne coupent plus rien (3 tests rouges sur l'ancien composant). `b407481a` (T53) : le journal des tentatives est enfin exercé, avec les contraintes de la migration rejouées, et le changement d'heure du `25/10` est couvert. `0677cd05` (T56) : chaque promesse des documents 01–18 est datée « tenu / tenu autrement / non implémenté » (doc 32). Suites : API `260 suites / 4 081 tests`, web 732, smoke 5, typecheck vert ; rien n'est déployé. Non vérifié : rejeu des migrations sur PostGIS 16 réel (Docker éteint ici), annulation SMS effective (capcom6 ≥ 1.45.0). |
 | 14/09 | **Une coupe retenue par le garde-fou ne remplit plus le centre d'alerte (T49)** | Tracky `93dba465` : le kill-switch écrit `une` ligne par heure (niveau dégradation : état voulu, pas de courriel) avec le compte des refus et les plaques ; l'interlock une ligne CRITICAL par raison et par quart d'heure ; le cron ne compte plus une coupe retenue comme un blocage. Avant : un CRITICAL par appel, trente véhicules, palier 2/5/15/30 min, un courriel par heure. `8 tests` ; rien n'est déployé. |

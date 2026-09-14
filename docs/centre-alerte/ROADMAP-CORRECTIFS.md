@@ -250,6 +250,7 @@ d'une section à l'autre sans le dire, ou cocher `[x]` sur la foi d'une fiche pl
 | ☐ | **T58** | TRK-069 | 🆕 **La clé de refroidissement de la sentinelle des agents doit porter la CAUSE** — l'échec `SyntaxError` de `courrier-ia` (13/09 17:52) est muet sous la clé consommée par « weekly limit » ; et `courrier-ia` doit lire le **premier objet JSON équilibré** *(test daté 14/09 03:50 UTC)* | 🔧 À CODER |
 | ☐ | **T59** | TRK-079 | 🆕 **Ne plus remonter les `fetch` avortés par la fermeture de page sur le canal anonyme** — 4 lignes de deux robots EC2, bruit | 🔧 À CODER |
 | ☐ | **T60** | main · 152883ec | 🆕 **`fenetre-utile.spec.ts` (trajets) tient à la milliseconde** — deux `Date.now()` distincts, rouge sous charge (vu le 14/09 en suite complète, vert relancé seul) — à figer, sur `main` | 🔧 À CODER |
+| ☐ | **T61** | TRK-066 · S21 · doc 10 | 🔴 🆕 **Dix SIM de boîtiers injoignables par SMS depuis le S21** — `RESULT_ERROR_GENERIC_FAILURE` au départ, persistant depuis juin, destination-spécifique (voisines livrées à 100 %) ; ces 10 véhicules = TCP seul ; test B/C (autre opérateur) + ticket WhereverSIM | 🤝 HUMAIN |
 
 #### Chantier coupe-circuit — contre-expertise du 13/09 *(T40 → T57, nées le 13/09 au soir ; T34 → T39 vivent dans `app/taches.json`)*
 
