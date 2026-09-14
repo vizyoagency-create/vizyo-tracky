@@ -262,6 +262,26 @@ const ENGINE_WITHHELD_MAX_PLATES = 40;
  * désormais dispatchée — même logique que le réarmement RESTORE de P0-1.
  */
 const ENGINE_ORPHAN_PENDING_AFTER_MS = ENGINE_DISPATCH_LEASE_MS;
+/**
+ * ══ T51 (contre-expertise du 13/09, P2-5 · P2-6) — UNE RESTORE QUI TRAÎNE SE RAPPELLE ══════
+ *
+ * La sentinelle alertait UNE fois (à 60 s) puis se taisait : un téléphone éteint pendant des
+ * heures produisait une ligne, puis le silence, pendant que la RESTORE tournait en `queued`.
+ * Désormais : une ligne toutes les ENGINE_RESTORE_REALERT_MS tant que l'intention n'est pas
+ * prouvée ; et un SMS resté en file plus de ENGINE_RESTORE_SMS_STUCK_MS est annulé au relais
+ * puis retenté (le budget SMS le compte — pas un SMS de plus qu'avant).
+ *
+ * Et le clic MANUEL ne reste plus suspendu derrière la file SMS : `requestCommand` répond au
+ * plus tard après ENGINE_MANUAL_RESPONSE_BUDGET_MS avec l'intention persistée — le dispatch
+ * finit en arrière-plan, l'écran est tenu au courant par le flux temps réel. Avant, N SMS en
+ * file (15 s chacun) faisaient dépasser le délai du proxy : toast « refusé » pour une intention
+ * pourtant enregistrée et suivie.
+ */
+const ENGINE_RESTORE_REALERT_MS = 15 * 60_000;
+const ENGINE_RESTORE_SMS_STUCK_MS = 60 * 60_000;
+/** Lu à chaque appel (pas au chargement) : les tests le règlent sans recharger le module. */
+const manualResponseBudgetMs = (): number =>
+  Math.max(1_000, Number(process.env['ENGINE_MANUAL_RESPONSE_BUDGET_MS']) || 20_000);
 
 @Injectable()
 export class EngineControlService implements OnModuleDestroy {
@@ -1139,7 +1159,7 @@ export class EngineControlService implements OnModuleDestroy {
       // livrée (TCP ou SMS) ; FAILURE = dispatch impossible. L'ACK/confirmation détaillé reste
       // dans l'onglet « Commandes moteur ». Les refus (REJECTED_SPEED) lèvent avant ce point.
       try {
-        command = await this.dispatchCommand(tracker.imei, command, action, fleetId);
+        command = await this.dispatchBounded(tracker.imei, command, action, fleetId, source);
         // Une intention RESTORE conservée en base mais pas encore transmise n'est pas un
         // « succès ». SKIPPED signifie ici « en attente/reprise automatique » ; les détails
         // de transport et l'ACK restent portés par EngineControlCommand.
@@ -1282,6 +1302,55 @@ export class EngineControlService implements OnModuleDestroy {
         'Annulation du SMS de CUT supplantée impossible',
       );
     }
+  }
+
+  /**
+   * T51 — un clic MANUEL attend le dispatch au plus ENGINE_MANUAL_RESPONSE_BUDGET_MS ; au-delà,
+   * l'intention persistée est rendue telle quelle (PENDING, suivie par le worker et le flux
+   * temps réel) pendant que l'envoi finit en arrière-plan. Le planificateur, lui, attend : rien
+   * ne presse un cron, et son état ne doit avancer qu'une fois la commande réellement partie.
+   */
+  private async dispatchBounded(
+    imei: string,
+    command: EngineControlCommand,
+    action: EngineAction,
+    fleetId: string,
+    source: 'MANUAL' | 'SCHEDULER',
+  ): Promise<EngineControlCommand> {
+    const dispatched = this.dispatchCommand(imei, command, action, fleetId);
+    if (source !== 'MANUAL') return dispatched;
+
+    let timer: NodeJS.Timeout | undefined;
+    const budget = new Promise<null>((resolve) => {
+      timer = setTimeout(() => resolve(null), manualResponseBudgetMs());
+      timer.unref?.();
+    });
+    try {
+      const first = await Promise.race([dispatched, budget]);
+      if (first) return first;
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+    // Le budget est écoulé : le dispatch continue seul. Ses erreurs sont déjà journalisées par
+    // dispatchCommand (FAILED + centre d'alerte) ; ici on empêche seulement un rejet orphelin.
+    dispatched
+      .then((done) =>
+        this.logger.log(
+          { commandId: command.id, imei, status: done.status, channel: done.channel },
+          'Dispatch manuel terminé en arrière-plan après le budget de réponse (T51)',
+        ),
+      )
+      .catch((err) =>
+        this.logger.warn(
+          { commandId: command.id, imei, error: err instanceof Error ? err.message : String(err) },
+          'Dispatch manuel terminé en échec en arrière-plan (T51) — déjà remonté au centre d’alerte',
+        ),
+      );
+    this.logger.warn(
+      { commandId: command.id, imei, action, budgetMs: manualResponseBudgetMs() },
+      'Réponse rendue avant la fin du dispatch : intention persistée, envoi en cours (T51)',
+    );
+    return command;
   }
 
   /** T48 — PENDING, hors bail, plus vieille que le bail : personne ne la dispatche plus. */
@@ -2098,6 +2167,32 @@ export class EngineControlService implements OnModuleDestroy {
           continue;
         }
 
+        // T51 — un SMS en file depuis plus d'une heure ne partira probablement plus tel quel
+        // (téléphone éteint, application tuée) : on l'annule au relais (best-effort, T41) et on
+        // laisse le worker retenter au tick suivant — le budget SMS le compte, pas un de plus.
+        const queuedSince = command.lastAttemptAt ?? command.sentAt ?? command.createdAt;
+        if (Date.now() - queuedSince.getTime() > ENGINE_RESTORE_SMS_STUCK_MS) {
+          const cancel = await this.sms.cancelOutbound(command.smsLogId).catch((err) => ({
+            ok: false,
+            reason: err instanceof Error ? err.message : String(err),
+          }));
+          const stuck = await this.prisma.engineControlCommand.update({
+            where: { id: command.id },
+            data: {
+              smsLogId: null,
+              nextAttemptAt: new Date(),
+              dispatchLeaseUntil: null,
+              lastError: `SMS en file depuis plus de ${Math.round(ENGINE_RESTORE_SMS_STUCK_MS / 60_000)} min sans départ — ${cancel.ok ? 'annulé au relais' : `annulation refusée (${cancel.reason ?? 'sans raison'})`}, nouvelle tentative`,
+            },
+          });
+          this.emitUpdate(stuck, fleetId);
+          this.logger.warn(
+            { commandId: command.id, imei: command.tracker.imei, smsLogId: command.smsLogId, cancelled: cancel.ok },
+            'RESTORE : SMS bloqué en file depuis plus d’une heure, retenté (T51)',
+          );
+          continue;
+        }
+
         // Toujours queued/accepted : on repollera, sans envoyer un doublon ambigu.
         await this.prisma.engineControlCommand.update({
           where: { id: command.id },
@@ -2247,7 +2342,13 @@ export class EngineControlService implements OnModuleDestroy {
         // terminal reste durablement visible et sera remonté au prochain passage.
         status: { in: [CommandStatus.PENDING, CommandStatus.SENT, CommandStatus.FAILED] },
         ackedAt: null,
-        alertedAt: null,
+        // T51 — jamais alertée, OU alertée il y a plus de ENGINE_RESTORE_REALERT_MS : tant
+        // qu'une RESTORE n'est pas prouvée, elle se rappelle — un silence de plusieurs heures
+        // après une seule ligne était le défaut.
+        OR: [
+          { alertedAt: null },
+          { alertedAt: { lt: new Date(Date.now() - ENGINE_RESTORE_REALERT_MS) } },
+        ],
         createdAt: { lte: new Date(Date.now() - ENGINE_RESTORE_ALERT_AFTER_MS) },
       },
       include: { tracker: { include: { vehicle: true } } },
@@ -2257,18 +2358,24 @@ export class EngineControlService implements OnModuleDestroy {
 
     for (const command of overdue) {
       const alertedAt = new Date();
+      const previousAlertAt = command.alertedAt ?? null;
+      // Comparaison-et-échange sur la valeur lue : deux instances ne rappellent pas deux fois.
       const marked = await this.prisma.engineControlCommand.updateMany({
-        where: { id: command.id, alertedAt: null, ackedAt: null },
+        where: { id: command.id, alertedAt: previousAlertAt, ackedAt: null },
         data: { alertedAt },
       });
       if (marked.count !== 1) continue;
+      const ageMin = Math.round((Date.now() - command.createdAt.getTime()) / 60_000);
       try {
         await this.errorLogger.record(
           command.status === CommandStatus.FAILED
             ? 'RESTORE en échec terminal — intervention humaine obligatoire'
-            : `RESTORE non confirmé depuis plus de ${Math.round(ENGINE_RESTORE_ALERT_AFTER_MS / 1000)} s`,
+            : previousAlertAt
+              ? `RESTORE toujours non confirmée depuis ${ageMin} min (rappel toutes les ${Math.round(ENGINE_RESTORE_REALERT_MS / 60_000)} min tant qu'elle n'est pas prouvée)`
+              : `RESTORE non confirmé depuis plus de ${Math.round(ENGINE_RESTORE_ALERT_AFTER_MS / 1000)} s`,
           'engine-control-restore',
           {
+            reminder: previousAlertAt != null,
             commandId: command.id,
             trackerId: command.trackerId,
             imei: command.tracker.imei,
@@ -2287,7 +2394,7 @@ export class EngineControlService implements OnModuleDestroy {
         // La remise à null autorise le prochain passage à retenter.
         await this.prisma.engineControlCommand.updateMany({
           where: { id: command.id, alertedAt },
-          data: { alertedAt: null },
+          data: { alertedAt: previousAlertAt },
         }).catch(() => undefined);
         this.logger.error(
           { commandId: command.id, error: err instanceof Error ? err.message : String(err) },

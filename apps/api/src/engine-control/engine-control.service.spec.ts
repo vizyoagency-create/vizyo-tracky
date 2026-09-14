@@ -2768,6 +2768,103 @@ describe('EngineControlService', () => {
       expect(terminal).toBeUndefined();
     });
 
+    // ── T51 (contre-expertise du 13/09, P2-5 · P2-6) — une RESTORE qui traîne se rappelle ─────
+    it('T51 : la sentinelle RAPPELLE une RESTORE non prouvée toutes les 15 min — plus une ligne puis le silence', async () => {
+      const dejaAlertee = new Date(Date.now() - 16 * 60_000);
+      prisma.engineControlCommand.findMany
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([{
+          ...createdCommand({ action: EngineAction.RESTORE, status: CommandStatus.SENT, channel: 'SMS', attemptCount: 2, alertedAt: dejaAlertee, createdAt: new Date(Date.now() - 2 * 3600_000) }),
+          tracker: { imei: trackerWithVehicle.imei, vehicle: trackerWithVehicle.vehicle },
+        }]);
+
+      await service.processPendingRestores();
+
+      const sentinelWhere = prisma.engineControlCommand.findMany.mock.calls[1][0].where;
+      expect(sentinelWhere.OR).toEqual([{ alertedAt: null }, { alertedAt: { lt: expect.any(Date) } }]);
+      expect(Date.now() - (sentinelWhere.OR[1].alertedAt.lt as Date).getTime()).toBeGreaterThanOrEqual(15 * 60_000 - 1_000);
+      // Comparaison-et-échange sur la valeur lue : deux instances ne rappellent pas deux fois.
+      expect(prisma.engineControlCommand.updateMany).toHaveBeenCalledWith({
+        where: { id: expect.any(String), alertedAt: dejaAlertee, ackedAt: null },
+        data: { alertedAt: expect.any(Date) },
+      });
+      expect(errorLogger.record).toHaveBeenCalledWith(
+        expect.stringContaining('toujours non confirmée depuis 120 min'),
+        'engine-control-restore',
+        expect.objectContaining({ reminder: true, plate: 'AB-123-CD' }),
+        'CRITICAL',
+      );
+    });
+
+    it('T51 : un SMS en file depuis plus d une heure est annulé au relais et retenté', async () => {
+      const sms = testModule.get(SmsGatewayService) as unknown as { reconcileOutboundStatus: jest.Mock; cancelOutbound: jest.Mock };
+      sms.reconcileOutboundStatus.mockResolvedValue({ outcome: 'accepted', status: 'queued' });
+      prisma.engineControlCommand.findFirst.mockResolvedValue(null);
+      prisma.engineControlCommand.findMany
+        .mockResolvedValueOnce([{
+          ...createdCommand({ action: EngineAction.RESTORE, status: CommandStatus.SENT, channel: 'SMS', smsLogId: 'sms-bloque', smsAttemptCount: 1, lastAttemptAt: new Date(Date.now() - 61 * 60_000), nextAttemptAt: new Date(Date.now() - 1_000), dispatchLeaseUntil: null }),
+          tracker: { imei: trackerWithVehicle.imei, vehicle: trackerWithVehicle.vehicle },
+        }])
+        .mockResolvedValue([]);
+
+      await service.processPendingRestores();
+
+      expect(sms.cancelOutbound).toHaveBeenCalledWith('sms-bloque');
+      expect(prisma.engineControlCommand.update).toHaveBeenCalledWith({
+        where: { id: expect.any(String) },
+        data: expect.objectContaining({ smsLogId: null, nextAttemptAt: expect.any(Date), lastError: expect.stringContaining('annulé au relais') }),
+      });
+    });
+
+    it('T51 : un SMS en file depuis 30 min est simplement repollé — pas encore bloqué', async () => {
+      const sms = testModule.get(SmsGatewayService) as unknown as { reconcileOutboundStatus: jest.Mock; cancelOutbound: jest.Mock };
+      sms.reconcileOutboundStatus.mockResolvedValue({ outcome: 'accepted', status: 'queued' });
+      prisma.engineControlCommand.findFirst.mockResolvedValue(null);
+      prisma.engineControlCommand.findMany
+        .mockResolvedValueOnce([{
+          ...createdCommand({ action: EngineAction.RESTORE, status: CommandStatus.SENT, channel: 'SMS', smsLogId: 'sms-recent', smsAttemptCount: 1, lastAttemptAt: new Date(Date.now() - 30 * 60_000), nextAttemptAt: new Date(Date.now() - 1_000), dispatchLeaseUntil: null }),
+          tracker: { imei: trackerWithVehicle.imei, vehicle: trackerWithVehicle.vehicle },
+        }])
+        .mockResolvedValue([]);
+
+      await service.processPendingRestores();
+
+      expect(sms.cancelOutbound).not.toHaveBeenCalled();
+      expect(prisma.engineControlCommand.update).toHaveBeenCalledWith({
+        where: { id: expect.any(String) },
+        data: { nextAttemptAt: expect.any(Date), dispatchLeaseUntil: null },
+      });
+    });
+
+    it('🔴 T51 : un clic MANUEL n attend plus la file SMS — réponse dans le budget avec l intention persistée, l envoi finit derrière', async () => {
+      const previous = process.env['ENGINE_MANUAL_RESPONSE_BUDGET_MS'];
+      process.env['ENGINE_MANUAL_RESPONSE_BUDGET_MS'] = '1000';
+      try {
+        const sms = testModule.get(SmsGatewayService) as unknown as { isEnabled: jest.Mock; send: jest.Mock };
+        sms.isEnabled.mockReturnValue(true);
+        // La file SMS est longue : l'envoi ne rend la main qu'après 2 s.
+        sms.send.mockImplementation(() => new Promise((resolve) => setTimeout(() => resolve({ ok: true, outcome: 'accepted', submittedStatus: 'queued', smsLogId: 'sms-lent' }), 2_000)));
+        prisma.tracker.findFirst.mockResolvedValueOnce(trackerWithVehicle).mockResolvedValue({ simPhoneNumber: '+33600000000' });
+        prisma.position.findFirst.mockResolvedValue(recentPosition(0));
+        registry.send.mockReturnValue(false);
+
+        const t0 = Date.now();
+        const result = await service.requestCommand(TRACKER_ID, EngineAction.CUT, null, fleetAdmin, 'MANUAL');
+        expect(Date.now() - t0).toBeLessThan(1_800);
+        expect(result.status).toBe(CommandStatus.PENDING); // l'intention, persistée, rendue avant la fin de l'envoi
+
+        // … et l'envoi se termine en arrière-plan.
+        await new Promise((r) => setTimeout(r, 1_500));
+        expect(sms.send).toHaveBeenCalledTimes(1);
+        expect(prisma.engineControlCommand.updateMany).toHaveBeenCalledWith(
+          expect.objectContaining({ data: expect.objectContaining({ status: CommandStatus.SENT, channel: 'SMS', smsLogId: 'sms-lent' }) }),
+        );
+      } finally {
+        if (previous === undefined) delete process.env['ENGINE_MANUAL_RESPONSE_BUDGET_MS'];
+        else process.env['ENGINE_MANUAL_RESPONSE_BUDGET_MS'] = previous;
+      }
+    });
+
     it('ignore un tick concurrent pendant qu un worker RESTORE est encore actif', async () => {
       let release!: (rows: unknown[]) => void;
       const blocked = new Promise<unknown[]>((resolve) => { release = resolve; });
