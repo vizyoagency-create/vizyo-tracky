@@ -52,12 +52,13 @@ Les traitements CUT et RESTORE sont volontairement asymétriques :
 19. [Contre-expertise indépendante du 13 septembre — verdict NO-GO, défauts P0/P1, plan d'action](./19-CONTRE-EXPERTISE-INDEPENDANTE-2026-09-13.md)
 20. [Correctif P0-1 — la clé d'unicité RESTORE ne vit plus pour toujours](./20-CORRECTIF-P0-CLE-RESTORE-2026-09-13.md)
 21. [Correctif P0-2 (T41) — une coupure par SMS a une date de péremption](./21-CORRECTIF-P0-VALIDITE-SMS-CUT-2026-09-14.md)
+22. [Correctif P1-1 (T42) — une RESTORE repart à la reconnexion et n'est jamais terminale sans preuve](./22-CORRECTIF-P1-RELANCE-RESTORE-RECONNEXION-2026-09-14.md)
 
 ## Contre-expertise du 13 septembre
 
 Le document 19 est une revue indépendante de tout le chantier : verdict **NO-GO** en l'état (un
 défaut P0 introduit par la correction, démontré par test), notes, réponses aux vingt questions
-posées, et plan d'action concret. Les documents 20 et 21 décrivent les correctifs issus de cette revue (T40, T41).
+posées, et plan d'action concret. Les documents 20, 21 et 22 décrivent les correctifs issus de cette revue (T40, T41, T42).
 En cas d'écart entre les documents 13/17/18 et le document 19, **le document 19 fait foi** jusqu'à
 ce que les tâches qu'il liste soient closes.
 

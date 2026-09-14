@@ -27,7 +27,11 @@ import { PrismaService } from '../prisma/prisma.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { SMS_INBOUND_EVENT, SmsGatewayService } from '../sms/sms-gateway.service';
 import type { SmsInboundEvent } from '../sms/sms-gateway.service';
-import { SocketRegistryService } from '../socket-registry/socket-registry.service';
+import {
+  SocketRegistryService,
+  TRACKER_CONNECTED_EVENT,
+  type TrackerConnectedEvent,
+} from '../socket-registry/socket-registry.service';
 import { SystemActivityService } from '../system-activity/system-activity.service';
 import { AckWaiterService } from '../tracker-commands/ack-waiter.service';
 import { computeNextTransition } from '../vehicle-schedules/schedule-evaluator';
@@ -113,6 +117,38 @@ const ENGINE_CUT_SMS_TTL_S = Math.max(
   Number(process.env['ENGINE_CUT_SMS_TTL_S']) || 900,
 );
 const ENGINE_RESTORE_SMS_PRIORITY = 100;
+/**
+ * ══ T42 (contre-expertise du 13/09, P1-1) — UNE RESTORE N'EST JAMAIS TERMINALE SANS PREUVE ═══
+ *
+ * Jusqu'ici : socket absente = un seul créneau de 15 s avant le secours SMS ; trois SMS refusés
+ * = `FAILED`, clé libérée — et le cron des horaires, qui a déjà avancé son état, ne recrée jamais
+ * l'intention. Un boîtier qui revenait en TCP à 07:40 ne recevait jamais K : seul un humain
+ * rallumait. Les documents promettaient pourtant « jamais abandonnée, rejouée à la reconnexion »
+ * (README du chantier, doc 03 §8, doc 07 R4.1, CC-003).
+ *
+ * Désormais :
+ *   1. le registre de sockets émet `tracker.connected` ; la dernière RESTORE non prouvée du
+ *      boîtier — plus récente que sa dernière CUT, créée depuis moins de 24 h — est RELANCÉE,
+ *      TCP d'abord (`onTrackerConnected`). SANS budget SMS neuf : une reconnexion n'est pas une
+ *      demande nouvelle (le budget neuf, c'est le réarmement P0-1 sur une demande neuve) ;
+ *   2. le secours SMS épuisé ne ferme plus l'intention : elle reste `SENT`, garde sa clé, et K
+ *      repart en TCP à chaque reconnexion et toutes les ENGINE_RESTORE_TCP_RETRY_MS — plus jamais
+ *      un SMS de plus (`retryTcpOnly`). L'alerte CRITICAL, elle, part toujours ;
+ *   3. une RESTORE ne transmet JAMAIS après une COUPURE plus récente qu'elle : le worker vérifie
+ *      avant chaque envoi, et une CUT créée supplante les RESTORE encore ouvertes — l'intention
+ *      la plus récente gagne, dans les deux sens ;
+ *   4. l'échéance de 4 h (`cloturerCommandesPerimees`) borne le tout, y compris une intention
+ *      qui n'a jamais rien transmis (`sentAt` nul → l'horloge part de `createdAt`).
+ *
+ * Env `ENGINE_RESTORE_TCP_RETRY_MIN`, défaut 30 min, plancher 1 min.
+ */
+const ENGINE_RESTORE_TCP_RETRY_MS =
+  Math.max(1, Number(process.env['ENGINE_RESTORE_TCP_RETRY_MIN']) || 30) * 60 * 1000;
+/** Même fenêtre que la preuve par ignition (positions.service) : au-delà, l'intention est morte. */
+const ENGINE_RESTORE_RECONNECT_WINDOW_MS = 24 * 60 * 60 * 1000;
+const ENGINE_RESTORE_SMS_EXHAUSTED_ALERT =
+  'RESTORE : secours SMS épuisé — relance TCP seule à la reconnexion du boîtier, vérifier le véhicule';
+const RESTORE_SUPPLANTEE_PAR_CUT = 'RESTORE supplantée par une intention CUT plus récente';
 const ENGINE_STOP_ACK_PATTERN = /imei:\d{15},J/i;
 const ENGINE_RESUME_ACK_PATTERN = /imei:\d{15},K/i;
 
@@ -276,10 +312,21 @@ export class EngineControlService implements OnModuleDestroy {
           status: CommandStatus.SENT,
           action: EngineAction.RESTORE,
           ackedAt: null,
-          sentAt: { lt: echeanceRestore },
-          OR: [
-            { dispatchLeaseUntil: null },
-            { dispatchLeaseUntil: { lt: new Date() } },
+          // T42 — une intention qui n'a JAMAIS rien transmis (socket absente, SMS refusés) n'a
+          // pas de `sentAt` : son horloge part de sa création, sinon elle ne se fermerait jamais.
+          AND: [
+            {
+              OR: [
+                { sentAt: { lt: echeanceRestore } },
+                { sentAt: null, createdAt: { lt: echeanceRestore } },
+              ],
+            },
+            {
+              OR: [
+                { dispatchLeaseUntil: null },
+                { dispatchLeaseUntil: { lt: new Date() } },
+              ],
+            },
           ],
         },
         data: {
@@ -389,6 +436,130 @@ export class EngineControlService implements OnModuleDestroy {
         { error: err instanceof Error ? err.message : String(err) },
         'Echec du rapprochement d\'un accuse SMS moteur',
       );
+    }
+  }
+
+  /**
+   * T42 — un boîtier vient de (re)devenir joignable en TCP : sa dernière RESTORE non prouvée
+   * repart, TCP d'abord, sans attendre le prochain tick du worker.
+   *
+   * Périmètre volontairement étroit : la RESTORE la plus récente du boîtier, créée depuis moins
+   * de 24 h, sans accusé, sans COUPURE demandée depuis (sinon la reconnexion raconte un autre
+   * épisode et K rallumerait un véhicule qu'on vient de couper), et pas sous lease (le worker
+   * écrit déjà sur cette socket). `FAILED` et `SENT_UNCONFIRMED` sont ravivées : c'est tout
+   * l'objet — « nul ne sait » n'est pas « c'est fini ». Ne lève jamais : un abonné qui casse
+   * casserait le login de TOUS les boîtiers.
+   */
+  @OnEvent(TRACKER_CONNECTED_EVENT)
+  async onTrackerConnected(evt: TrackerConnectedEvent): Promise<void> {
+    try {
+      if (!evt?.imei) return;
+      const restore = await this.prisma.engineControlCommand.findFirst({
+        where: {
+          tracker: { imei: evt.imei },
+          action: EngineAction.RESTORE,
+          source: { not: 'DEVICE_OBSERVED' },
+          createdAt: { gte: new Date(Date.now() - ENGINE_RESTORE_RECONNECT_WINDOW_MS) },
+        },
+        orderBy: { createdAt: 'desc' },
+      });
+      if (!restore || restore.ackedAt || restore.status === CommandStatus.ACKNOWLEDGED) return;
+      if (restore.dispatchLeaseUntil && restore.dispatchLeaseUntil.getTime() > Date.now()) return;
+      if (await this.restoreSupplanteeParCut(restore)) return;
+
+      const rearmed = await this.rearmRestoreOnReconnect(restore, evt);
+      if (!rearmed) return;
+      // La socket est là MAINTENANT : on ne laisse pas passer jusqu'à 15 s de tick.
+      void this.processPendingRestores().catch((err) =>
+        this.logger.warn(
+          { imei: evt.imei, error: err instanceof Error ? err.message : String(err) },
+          'Worker RESTORE non relancé après reconnexion — le tick suivant reprendra',
+        ),
+      );
+    } catch (err) {
+      this.logger.warn(
+        { imei: evt?.imei, error: err instanceof Error ? err.message : String(err) },
+        'Relance RESTORE à la reconnexion impossible (T42)',
+      );
+    }
+  }
+
+  /**
+   * T42 — une COUPURE demandée après cette RESTORE la rend obsolète : l'intention la plus
+   * récente gagne. Les refus (REJECTED_SPEED) et les observations boîtier ne comptent pas.
+   */
+  private async restoreSupplanteeParCut(
+    restore: Pick<EngineControlCommand, 'trackerId' | 'createdAt'>,
+  ): Promise<boolean> {
+    const cutSince = await this.prisma.engineControlCommand.findFirst({
+      where: {
+        trackerId: restore.trackerId,
+        action: EngineAction.CUT,
+        source: { not: 'DEVICE_OBSERVED' },
+        status: { not: CommandStatus.REJECTED_SPEED },
+        createdAt: { gt: restore.createdAt },
+      },
+      select: { id: true },
+    });
+    // `!= null` et non `!== null` : une lecture douteuse ne doit pas bloquer une remise en route —
+    // le sens sûr d'une RESTORE est d'être transmise.
+    return cutSince != null;
+  }
+
+  private async rearmRestoreOnReconnect(
+    restore: EngineControlCommand,
+    evt: TrackerConnectedEvent,
+  ): Promise<boolean> {
+    const now = new Date();
+    try {
+      // `updateMany` conditionnel : un ACK arrivé entre la relecture et ici l'emporte. Le budget
+      // SMS (`smsAttemptCount`) n'est PAS remis à zéro — voir l'en-tête T42.
+      const { count } = await this.prisma.engineControlCommand.updateMany({
+        where: {
+          id: restore.id,
+          ackedAt: null,
+          status: {
+            in: [
+              CommandStatus.PENDING,
+              CommandStatus.SENT,
+              CommandStatus.FAILED,
+              CommandStatus.SENT_UNCONFIRMED,
+            ],
+          },
+        },
+        data: {
+          status: CommandStatus.PENDING,
+          channel: null,
+          smsLogId: null,
+          expiredAt: null,
+          activeKey: `${restore.trackerId}:${EngineAction.RESTORE}`,
+          nextAttemptAt: now,
+          dispatchLeaseUntil: null,
+          lastError: `Boîtier reconnecté en TCP (${evt.remoteAddress}) — RESTORE relancée, TCP d’abord`,
+        },
+      });
+      if (count !== 1) return false;
+      this.logger.warn(
+        {
+          commandId: restore.id,
+          trackerId: restore.trackerId,
+          imei: evt.imei,
+          previousStatus: restore.status,
+          smsAttemptCount: (restore as EngineControlCommand & { smsAttemptCount?: number }).smsAttemptCount ?? 0,
+          ageMs: now.getTime() - restore.createdAt.getTime(),
+          replaced: evt.replaced,
+        },
+        'RESTORE non prouvée relancée à la reconnexion du boîtier (T42)',
+      );
+      return true;
+    } catch (err) {
+      // Une autre RESTORE porte déjà la clé d'unicité (course avec une demande neuve) : celle-là
+      // est en cours, on ne ravive pas la vieille.
+      if ((err as { code?: string })?.code === 'P2002') {
+        this.logger.debug({ commandId: restore.id }, 'Relance à la reconnexion écartée : une autre RESTORE est active');
+        return false;
+      }
+      throw err;
     }
   }
 
@@ -859,6 +1030,38 @@ export class EngineControlService implements OnModuleDestroy {
       command = rearmed;
     }
 
+    if (action === EngineAction.CUT && command.status === CommandStatus.PENDING) {
+      // T42 — symétrique de la supplantation ci-dessus : une COUPURE neuve rend obsolète toute
+      // RESTORE encore ouverte du boîtier. Sans cela, une RESTORE relancée en TCP (reconnexion,
+      // créneau de 30 min) pourrait renvoyer K APRÈS le J du soir. La ligne garde sa trace en
+      // « nul ne sait » ; elle ne transmettra plus rien (le worker revérifie de son côté).
+      await this.prisma.engineControlCommand
+        .updateMany({
+          where: {
+            trackerId,
+            action: EngineAction.RESTORE,
+            status: { in: [CommandStatus.PENDING, CommandStatus.SENT] },
+            ackedAt: null,
+            activeKey: { not: null },
+            id: { not: command.id },
+          },
+          data: {
+            status: CommandStatus.SENT_UNCONFIRMED,
+            activeKey: null,
+            nextAttemptAt: null,
+            dispatchLeaseUntil: null,
+            expiredAt: new Date(),
+            lastError: RESTORE_SUPPLANTEE_PAR_CUT,
+          },
+        })
+        .catch((err) =>
+          this.logger.warn(
+            { trackerId, error: err instanceof Error ? err.message : String(err) },
+            'Supplantation des RESTORE ouvertes par la CUT impossible — le worker revérifiera avant tout envoi',
+          ),
+        );
+    }
+
     if (command.status === CommandStatus.PENDING) {
       // Palier B — journalise la commande moteur (arrière-plan / device). SUCCESS = commande
       // livrée (TCP ou SMS) ; FAILURE = dispatch impossible. L'ACK/confirmation détaillé reste
@@ -1255,14 +1458,23 @@ export class EngineControlService implements OnModuleDestroy {
 
       // RESTORE est asymétrique : un refus de soumission ne l'abandonne pas. Il
       // reste visible et le worker le réessaie avec backoff, puis escalade.
-      if (action === EngineAction.RESTORE && smsAttemptNumber < ENGINE_RESTORE_MAX_SMS_ATTEMPTS) {
-        const retryAt = new Date(Date.now() + Math.min(5 * 60_000, 30_000 * smsAttemptNumber));
+      // T42 — et un budget SMS épuisé ne la rend pas terminale non plus : relance TCP seule.
+      if (action === EngineAction.RESTORE) {
+        const exhausted = smsAttemptNumber >= ENGINE_RESTORE_MAX_SMS_ATTEMPTS;
+        const retryAt = new Date(
+          Date.now() +
+            (exhausted
+              ? ENGINE_RESTORE_TCP_RETRY_MS
+              : Math.min(5 * 60_000, 30_000 * smsAttemptNumber)),
+        );
         const retrying = await this.prisma.engineControlCommand.update({
           where: { id: command.id },
           data: {
             status: CommandStatus.SENT,
             channel: 'SMS',
-            lastError: `Échec SMS : ${smsSent.reason} — nouvel essai planifié`,
+            lastError: exhausted
+              ? this.smsExhaustedMessage(smsAttemptNumber, smsSent.reason)
+              : `Échec SMS : ${smsSent.reason} — nouvel essai planifié`,
             smsLogId: null,
             attemptCount: attempt.number,
             smsAttemptCount: smsAttemptNumber,
@@ -1273,7 +1485,9 @@ export class EngineControlService implements OnModuleDestroy {
         });
         this.emitUpdate(retrying, fleetId);
         this.errorLogger.record(
-          `RESTORE SMS en échec — retry ${smsAttemptNumber + 1}/${ENGINE_RESTORE_MAX_SMS_ATTEMPTS} planifié`,
+          exhausted
+            ? ENGINE_RESTORE_SMS_EXHAUSTED_ALERT
+            : `RESTORE SMS en échec — retry ${smsAttemptNumber + 1}/${ENGINE_RESTORE_MAX_SMS_ATTEMPTS} planifié`,
           'engine-control-restore',
           { imei, commandId: command.id, attemptId: attempt.id, reason: smsSent.reason, retryAt },
           'CRITICAL',
@@ -1485,15 +1699,18 @@ export class EngineControlService implements OnModuleDestroy {
       where: { id: command.id },
       data: exhausted
         ? {
-            status: CommandStatus.FAILED,
-            activeKey: null,
+            // T42 — jamais terminale : l'intention reste SENT, garde sa clé, et K repart en TCP
+            // à la reconnexion du boîtier ou au prochain créneau — plus aucun SMS.
+            status: CommandStatus.SENT,
+            channel: 'SMS',
+            smsLogId: null,
             attemptCount: attempt.number,
             smsAttemptCount: smsAttemptNumber,
-          lastAttemptAt: now,
-          nextAttemptAt: null,
-          dispatchLeaseUntil: null,
-          alertedAt: null,
-          lastError: `RESTORE non transmis après ${smsAttemptNumber} tentative(s) SMS — intervention humaine obligatoire : ${result.reason}`,
+            lastAttemptAt: now,
+            nextAttemptAt: new Date(now.getTime() + ENGINE_RESTORE_TCP_RETRY_MS),
+            dispatchLeaseUntil: null,
+            alertedAt: null,
+            lastError: this.smsExhaustedMessage(smsAttemptNumber, result.reason),
           }
         : {
             status: CommandStatus.SENT,
@@ -1510,7 +1727,7 @@ export class EngineControlService implements OnModuleDestroy {
     this.emitUpdate(updated, fleetId);
     await this.errorLogger.record(
       exhausted
-        ? 'RESTORE en échec terminal — intervention humaine obligatoire'
+        ? ENGINE_RESTORE_SMS_EXHAUSTED_ALERT
         : `RESTORE SMS en échec — retry ${smsAttemptNumber + 1}/${ENGINE_RESTORE_MAX_SMS_ATTEMPTS} planifié`,
       'engine-control-restore',
       { imei, commandId: command.id, attemptId: attempt.id, reason: result.reason },
@@ -1584,6 +1801,35 @@ export class EngineControlService implements OnModuleDestroy {
       }
 
       try {
+        // T42 — une RESTORE ne transmet JAMAIS après une COUPURE plus récente qu'elle. Vérifié
+        // ici, au seul endroit qui (ré)émet, quel que soit le chemin qui l'a réveillée.
+        if (await this.restoreSupplanteeParCut(command)) {
+          const closed = await this.prisma.engineControlCommand.update({
+            where: { id: command.id },
+            data: {
+              status: CommandStatus.SENT_UNCONFIRMED,
+              activeKey: null,
+              nextAttemptAt: null,
+              dispatchLeaseUntil: null,
+              expiredAt: new Date(),
+              lastError: RESTORE_SUPPLANTEE_PAR_CUT,
+            },
+          });
+          this.emitUpdate(closed, fleetId);
+          this.logger.warn(
+            { commandId: command.id, imei: command.tracker.imei },
+            'RESTORE close sans envoi : une COUPURE plus récente la supplante (T42)',
+          );
+          continue;
+        }
+
+        // T42 — budget SMS épuisé (et plus aucun SMS en vol) : plus un SMS, K renvoyée en TCP
+        // seulement, à la reconnexion puis toutes les ENGINE_RESTORE_TCP_RETRY_MS.
+        if (this.smsBudgetExhausted(command)) {
+          await this.retryTcpOnly(command.tracker.imei, command, fleetId);
+          continue;
+        }
+
         if (command.status === CommandStatus.PENDING) {
           await this.dispatchCommand(
             command.tracker.imei,
@@ -1643,17 +1889,25 @@ export class EngineControlService implements OnModuleDestroy {
               },
             });
           } else {
-            await this.prisma.engineControlCommand.update({
+            // T42 — secours SMS épuisé : l'intention reste ouverte, relance TCP seule.
+            const reason = `échec SMS terminal (${reconciliation.status ?? 'inconnu'})`;
+            const kept = await this.prisma.engineControlCommand.update({
               where: { id: command.id },
               data: {
-                status: CommandStatus.FAILED,
-                activeKey: null,
-                nextAttemptAt: null,
+                status: CommandStatus.SENT,
+                smsLogId: null,
+                nextAttemptAt: new Date(Date.now() + ENGINE_RESTORE_TCP_RETRY_MS),
                 dispatchLeaseUntil: null,
-                alertedAt: null,
-                lastError: `RESTORE non transmis après ${smsAttemptCount} tentative(s) SMS — intervention humaine obligatoire`,
+                lastError: this.smsExhaustedMessage(smsAttemptCount, reason),
               },
             });
+            this.emitUpdate(kept, fleetId);
+            await this.errorLogger.record(
+              ENGINE_RESTORE_SMS_EXHAUSTED_ALERT,
+              'engine-control-restore',
+              { imei: command.tracker.imei, commandId: command.id, reason, smsAttemptCount },
+              'CRITICAL',
+            ).catch(() => undefined);
           }
           continue;
         }
@@ -1686,6 +1940,117 @@ export class EngineControlService implements OnModuleDestroy {
     } finally {
       this.restoreWorkerRunning = false;
     }
+  }
+
+  /** T42 — plus aucun SMS possible pour cette intention : budget consommé et rien en vol. */
+  private smsBudgetExhausted(command: EngineControlCommand): boolean {
+    const count = Number(
+      (command as EngineControlCommand & { smsAttemptCount?: number }).smsAttemptCount ?? 0,
+    );
+    return count >= ENGINE_RESTORE_MAX_SMS_ATTEMPTS && !command.smsLogId;
+  }
+
+  private smsExhaustedMessage(smsAttemptCount: number, reason: string): string {
+    return (
+      `RESTORE non transmise après ${smsAttemptCount} tentative(s) SMS (${reason}) — secours SMS épuisé : ` +
+      `K sera renvoyée en TCP dès la reconnexion du boîtier et toutes les ${Math.round(ENGINE_RESTORE_TCP_RETRY_MS / 60000)} min ; vérifier le véhicule`
+    );
+  }
+
+  /**
+   * T42 — relance TCP SEULE d'une RESTORE dont le secours SMS est épuisé. Jamais de SMS ici : le
+   * budget est par intention, et une reconnexion n'est pas une demande neuve. Socket absente →
+   * prochain créneau, rien d'autre qu'une date. Socket présente → K écrite, ACK attendu ; sans
+   * ACK, prochain créneau. `sentAt` n'est posé qu'à la PREMIÈRE transmission : l'échéance de 4 h
+   * court depuis celle-là, pas depuis la dernière relance.
+   */
+  private async retryTcpOnly(
+    imei: string,
+    command: EngineControlCommand,
+    fleetId: string,
+  ): Promise<void> {
+    const retryAt = new Date(Date.now() + ENGINE_RESTORE_TCP_RETRY_MS);
+    const payload = encodeCommand(imei, { type: 'engine_resume' });
+    const sent = this.sessionRegistry.send(imei, payload);
+    if (!sent) {
+      const waiting = await this.prisma.engineControlCommand.update({
+        where: { id: command.id },
+        data: {
+          status: CommandStatus.SENT,
+          nextAttemptAt: retryAt,
+          dispatchLeaseUntil: null,
+          lastError:
+            'Secours SMS épuisé et boîtier hors ligne — K sera renvoyée dès sa reconnexion ou au prochain créneau',
+        },
+      });
+      this.emitUpdate(waiting, fleetId);
+      return;
+    }
+
+    const attempt = await this.beginAttempt(command, 'TCP', 'WRITTEN');
+    const writtenAt = new Date();
+    this.wireLogger.out(imei, payload, {
+      commandId: command.id,
+      attemptId: attempt.id ?? undefined,
+      source: 'engine',
+    });
+    const updated = await this.prisma.engineControlCommand.update({
+      where: { id: command.id },
+      data: {
+        status: CommandStatus.SENT,
+        channel: 'TCP',
+        sentAt: command.sentAt ?? writtenAt,
+        attemptCount: attempt.number,
+        lastAttemptAt: writtenAt,
+        nextAttemptAt: retryAt,
+        dispatchLeaseUntil: null,
+        lastError: 'Secours SMS épuisé — K renvoyée en TCP, en attente d’ACK',
+      },
+    });
+    this.emitUpdate(updated, fleetId);
+    this.logger.log({ commandId: command.id, attemptId: attempt.id, imei }, 'RESTORE relancée en TCP seul (T42)');
+
+    this.ackWaiter
+      .waitForAck(imei, ENGINE_RESUME_ACK_PATTERN, ENGINE_ACK_TIMEOUT_MS, command.id, ENGINE_ACK_PRIORITY)
+      .then(async (rawAck) => {
+        this.wireLogger.ackMatch(imei, rawAck, command.id, Date.now() - writtenAt.getTime());
+        await this.finishAttempt(attempt.id, 'ACKNOWLEDGED', { rawCode: rawAck }).catch(() => undefined);
+        try {
+          // Conditionnel : jamais réécrire une commande déjà close ou supplantée entre-temps.
+          const { count } = await this.prisma.engineControlCommand.updateMany({
+            where: { id: command.id, status: CommandStatus.SENT, ackedAt: null },
+            data: {
+              status: CommandStatus.ACKNOWLEDGED,
+              ackedAt: new Date(),
+              activeKey: null,
+              nextAttemptAt: null,
+              dispatchLeaseUntil: null,
+              lastError: null,
+            },
+          });
+          if (count !== 1) return;
+          const acked = await this.prisma.engineControlCommand.findUnique({ where: { id: command.id } });
+          if (acked) this.emitUpdate(acked, fleetId);
+          this.logger.log({ commandId: command.id, imei }, 'RESTORE acquittée après relance TCP (T42)');
+        } catch (dbErr) {
+          this.logger.error(
+            { commandId: command.id, error: (dbErr as Error).message },
+            'Failed to persist ACK status after TCP-only retry — command stuck as SENT',
+          );
+          this.errorLogger.record(dbErr instanceof Error ? dbErr : new Error(String(dbErr)),
+            'engine-control', { imei, commandId: command.id, attemptId: attempt.id, phase: 'ack-persist' },
+          ).catch(() => {});
+        }
+      })
+      .catch(async (err) => {
+        await this.finishAttempt(attempt.id, 'TIMED_OUT', {
+          errorMessage: err instanceof Error ? err.message : 'ACK timeout',
+        }).catch(() => undefined);
+        this.logger.warn(
+          { commandId: command.id, attemptId: attempt.id, imei },
+          'Relance TCP sans ACK — prochain créneau ou reconnexion (T42)',
+        );
+      });
   }
 
   private async alertOverdueRestores(): Promise<void> {

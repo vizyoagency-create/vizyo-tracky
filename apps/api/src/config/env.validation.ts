@@ -80,6 +80,8 @@ const envSchema = z.object({
   ENGINE_RESTORE_ACK_TIMEOUT_MS: z.coerce.number().int().positive().default(15000),
   ENGINE_RESTORE_ALERT_AFTER_MS: z.coerce.number().int().positive().default(60000),
   ENGINE_RESTORE_MAX_SMS_ATTEMPTS: z.coerce.number().int().positive().default(3),
+  // T42 : secours SMS épuisé → K renvoyée en TCP seule, toutes les N minutes et à chaque reconnexion.
+  ENGINE_RESTORE_TCP_RETRY_MIN: z.coerce.number().int().positive().default(30),
   // P0-1 (contre-expertise du 13/09) : une RESTORE « envoyée » sans preuve libère sa clé
   // d'unicité après cette échéance ; sans borne, la RESTORE du lendemain était avalée.
   ENGINE_RESTORE_EXPIRY_MIN: z.coerce.number().int().positive().default(240),
