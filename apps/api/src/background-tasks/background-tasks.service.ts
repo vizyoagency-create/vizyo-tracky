@@ -269,6 +269,15 @@ const CATALOG: CatalogEntry[] = [
     fire: { tz: SERVER_TZ, matcher: (w) => w.getHours() === 4 && w.getMinutes() === 15 },
   },
   {
+    id: 'installation-booking-entretien',
+    source: 'installation-booking/installation-booking-entretien.service.ts',
+    label: 'Entretien de la prise de RDV d\'installation', category: 'Maintenance données',
+    kind: 'cron', scheduleHuman: 'chaque jour à 07:40', criticality: 'basse', antiOverlap: true,
+    note: 'Purge REELLE : abonnements « prévenez-moi » de plus de 90 j (décision client du 2026-08-16) et visites de la page publique de plus de 180 j. Le matin, parce que le courriel « des créneaux sont disponibles » doit arriver à une heure où on réserve. Avant ce traitement (2026-09-14), la purge existait sans appelant et personne n\'était jamais prévenu.',
+    purpose: 'Purge les abonnements « prévenez-moi » et les visites expirés, puis prévient par e-mail les abonnés des liens qui proposent de nouveau des créneaux (une fois par inscription).',
+    fire: { tz: SERVER_TZ, matcher: (w) => w.getHours() === 7 && w.getMinutes() === 40 },
+  },
+  {
     id: 'trip-share-purge',
     source: 'reports/trip-share-purge.service.ts', label: 'Purge des liens de partage de trajet', category: 'Maintenance données',
     kind: 'cron', scheduleHuman: 'chaque jour à 04:20', criticality: 'basse', antiOverlap: true,

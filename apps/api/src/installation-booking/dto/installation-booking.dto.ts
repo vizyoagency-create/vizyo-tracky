@@ -14,7 +14,9 @@ import {
   MaxLength,
   Min,
   MinLength,
+  ValidateIf,
 } from 'class-validator';
+import { BOOKING_VISIT_EVENTS_PAGE, type BookingVisitEventType } from '@vizyo/tracky-shared';
 
 const DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
 const ENERGIES = ['DIESEL', 'ESSENCE', 'ELECTRIQUE', 'HYBRIDE', 'AUTRE'] as const;
@@ -79,6 +81,24 @@ export class CreateBookingLinkDto {
   @Max(7, { each: true })
   workingDays?: number[];
 
+  /**
+   * Fenêtre horaire du WEEK-END (minutes depuis minuit, Europe/Paris). `null` explicite =
+   * « comme la semaine ». Les deux vont ensemble : le service refuse l'une sans l'autre.
+   */
+  @IsOptional()
+  @ValidateIf((_, v) => v !== null)
+  @IsInt()
+  @Min(0)
+  @Max(1440)
+  weekendStartMinutes?: number | null;
+
+  @IsOptional()
+  @ValidateIf((_, v) => v !== null)
+  @IsInt()
+  @Min(0)
+  @Max(1440)
+  weekendEndMinutes?: number | null;
+
   @IsOptional()
   @IsInt()
   @Min(1)
@@ -137,6 +157,24 @@ export class UpdateBookingLinkDto {
   @Min(1, { each: true })
   @Max(7, { each: true })
   workingDays?: number[];
+
+  /**
+   * Fenêtre horaire du WEEK-END (minutes depuis minuit, Europe/Paris). `null` explicite =
+   * « comme la semaine ». Les deux vont ensemble : le service refuse l'une sans l'autre.
+   */
+  @IsOptional()
+  @ValidateIf((_, v) => v !== null)
+  @IsInt()
+  @Min(0)
+  @Max(1440)
+  weekendStartMinutes?: number | null;
+
+  @IsOptional()
+  @ValidateIf((_, v) => v !== null)
+  @IsInt()
+  @Min(0)
+  @Max(1440)
+  weekendEndMinutes?: number | null;
 
   @IsOptional()
   @IsInt()
@@ -207,6 +245,39 @@ export class CreatePublicBookingDto {
   @IsString()
   @MaxLength(1000)
   notes?: string;
+
+  /** La visite en cours (rendue par le GET). Inconnue ou d'un autre lien → ignorée, jamais refusée. */
+  @IsOptional()
+  @IsUUID()
+  visiteId?: string;
+}
+
+/** « Prévenez-moi si un créneau se libère » (page publique). */
+export class AbonnementCreneauDto {
+  @IsString()
+  @MaxLength(254)
+  email!: string;
+
+  @IsOptional()
+  @IsUUID()
+  visiteId?: string;
+}
+
+/**
+ * Un geste de la page publique, ajouté à la chronologie de sa visite.
+ *
+ * ⚠️ Seuls les types que la PAGE a le droit de poser sont acceptés ici : « réservation »
+ * ou « abonnement » sont posés par l'API elle-même quand l'acte a réellement eu lieu. Sans
+ * cette liste, n'importe quel appel pourrait écrire « a réservé » dans une chronologie.
+ */
+export class EnregistrerEvenementVisiteDto {
+  @IsIn(BOOKING_VISIT_EVENTS_PAGE as readonly string[])
+  type!: BookingVisitEventType;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  target?: string;
 }
 
 /** Validation d'une demande → création de la pose (SUPER_ADMIN). */

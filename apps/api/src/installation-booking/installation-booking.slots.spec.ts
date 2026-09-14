@@ -1,4 +1,6 @@
-import { generateAvailability, parisParts, parisWallClockToUtc, type SlotConfig } from './installation-booking.slots';
+import {
+  generateAvailability, parisParts, parisWallClockToUtc, windowFor, type SlotConfig,
+} from './installation-booking.slots';
 
 const CONFIG: SlotConfig = {
   slotMinutes: 120,
@@ -60,5 +62,62 @@ describe('installation-booking slots — fuseau Europe/Paris', () => {
 
   it('grille vide si la fenêtre journalière est plus courte qu\'un créneau', () => {
     expect(generateAvailability({ ...CONFIG, dayStartMinutes: 480, dayEndMinutes: 540 }, new Date('2026-07-05T00:00:00Z'), [])).toEqual([]);
+  });
+
+  it('signale les jours de week-end (le client sait qu’il réserve un samedi)', () => {
+    const days = generateAvailability(CONFIG, new Date('2026-07-05T00:00:00Z'), []);
+    for (const day of days) {
+      const iso = parisParts(new Date(`${day.date}T12:00:00Z`)).isoWeekday;
+      expect(day.weekend).toBe(iso === 6 || iso === 7);
+    }
+    expect(days.some((d) => d.weekend)).toBe(true);
+  });
+});
+
+/**
+ * LA FENÊTRE DU WEEK-END. Un samedi d'installateur est une matinée : sans fenêtre propre,
+ * cocher le samedi promettait des créneaux de 08:00 à 21:00 que personne ne viendrait honorer.
+ */
+describe('installation-booking slots — horaires du week-end', () => {
+  // Dimanche 5 juillet 2026 à minuit UTC ; l'horizon de 4 jours couvre dim. 5 → jeu. 9.
+  const now = new Date('2026-07-05T00:00:00Z');
+  const isoOf = (date: string) => parisParts(new Date(`${date}T12:00:00Z`)).isoWeekday;
+
+  it('sans fenêtre week-end, RIEN NE BOUGE : samedi et dimanche suivent la semaine', () => {
+    const sans = generateAvailability(CONFIG, now, []);
+    const nulls = generateAvailability({ ...CONFIG, weekendStartMinutes: null, weekendEndMinutes: null }, now, []);
+    expect(nulls).toEqual(sans);
+    const dimanche = sans.find((d) => isoOf(d.date) === 7)!;
+    expect(dimanche.slots.map((s) => parisParts(s.startAt).hour)).toEqual([8, 10, 12, 14, 16, 18]);
+  });
+
+  it('avec une fenêtre week-end 09:00–13:00, le dimanche n’offre que la matinée et la semaine reste entière', () => {
+    const days = generateAvailability({ ...CONFIG, weekendStartMinutes: 540, weekendEndMinutes: 780 }, now, []);
+    const dimanche = days.find((d) => isoOf(d.date) === 7)!;
+    expect(dimanche.weekend).toBe(true);
+    expect(dimanche.slots.map((s) => parisParts(s.startAt).hour)).toEqual([9, 11]);
+    const lundi = days.find((d) => isoOf(d.date) === 1)!;
+    expect(lundi.weekend).toBe(false);
+    expect(lundi.slots.map((s) => parisParts(s.startAt).hour)).toEqual([8, 10, 12, 14, 16, 18]);
+  });
+
+  it('la fenêtre week-end ne s’applique QUE si le jour est ouvré — décocher le dimanche reste décisif', () => {
+    const days = generateAvailability(
+      { ...CONFIG, workingDays: [1, 2, 3, 4, 5, 6], weekendStartMinutes: 540, weekendEndMinutes: 780 }, now, [],
+    );
+    expect(days.some((d) => isoOf(d.date) === 7)).toBe(false);
+  });
+
+  it('une fenêtre week-end trop courte pour un créneau retire le week-end SANS toucher la semaine', () => {
+    const days = generateAvailability({ ...CONFIG, weekendStartMinutes: 540, weekendEndMinutes: 600 }, now, []);
+    expect(days.some((d) => d.weekend)).toBe(false);
+    expect(days.some((d) => !d.weekend)).toBe(true);
+  });
+
+  it('windowFor — la semaine pour lun.–ven., le week-end pour sam.–dim. quand elle existe', () => {
+    const cfg = { ...CONFIG, weekendStartMinutes: 540, weekendEndMinutes: 780 };
+    expect(windowFor(cfg, 3)).toEqual({ start: 480, end: 1260 });
+    expect(windowFor(cfg, 6)).toEqual({ start: 540, end: 780 });
+    expect(windowFor(CONFIG, 6)).toEqual({ start: 480, end: 1260 });
   });
 });

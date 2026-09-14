@@ -61,6 +61,12 @@ export class InstallationBookingController {
     await this.service.deleteLink(id);
   }
 
+  /** Les visites de la page publique d'un lien : qui l'a ouvert, quand, depuis quoi, et la suite. */
+  @Get('links/:id/visites')
+  listerVisites(@Param('id') id: string) {
+    return this.service.listerVisites(id);
+  }
+
   // ── Demandes ──
   @Get()
   listBookings(

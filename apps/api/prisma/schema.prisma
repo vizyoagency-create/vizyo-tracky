@@ -3516,6 +3516,13 @@ model InstallationBookingLink {
   dayEndMinutes   Int               @default(1260)
   /// Jours ouvres ISO (1=lundi … 7=dimanche).
   workingDays     Int[]             @default([1, 2, 3, 4, 5])
+  /// Horaires du WEEK-END (samedi / dimanche), quand ces jours figurent dans `workingDays`.
+  /// `null` = memes horaires que la semaine. Minutes depuis minuit, Europe/Paris.
+  /// Un samedi d'installateur, c'est une matinee, pas la journee de 08:00 a 21:00 :
+  /// sans fenetre propre, ouvrir le week-end revenait a promettre des creneaux
+  /// que personne ne viendrait honorer.
+  weekendStartMinutes Int?
+  weekendEndMinutes   Int?
   /// Horizon de reservation (jours) et delai minimum avant un creneau (heures).
   horizonDays     Int               @default(42)
   leadHours       Int               @default(24)
@@ -3534,10 +3541,64 @@ model InstallationBookingLink {
 
   bookings InstallationBooking[]
   watchers InstallationSlotWatcher[]
+  visits   InstallationBookingLinkVisit[]
 
   @@index([fleetId])
   @@index([token])
   @@map("installation_booking_links")
+}
+
+/// Une VISITE de la page publique `/book/<token>` — « qui a ouvert le lien, quand,
+/// depuis quoi, et qu'a-t-il fait ensuite ? ».
+///
+/// `openCount` sur le lien ne repondait qu'a « combien ». Ici, une ligne par
+/// ouverture reelle (un rechargement apres un creneau perdu REUTILISE sa visite,
+/// il n'en cree pas une deuxieme), et une chronologie des gestes dans `events` :
+/// jour regarde, creneau choisi, video ouverte, appel, reservation…
+///
+/// ⚠️ PROPORTIONNE : le visiteur n'a pas de compte et n'a consenti a rien.
+///  - l'IP est TRONQUEE (« 92.184.x.x »), meme regle que les liens de partage ;
+///  - l'user-agent n'est PAS conserve : seulement ce qu'on en deduit (mobile /
+///    iOS / Safari), qui distingue deux appareils sans identifier une personne ;
+///  - du referrer, seul l'HOTE est garde (« mail.google.com »), jamais l'URL ;
+///  - l'identite n'est posee que quand elle est CONNUE — lien nominatif,
+///    reservation deposee, abonnement « prevenez-moi » — et `identitySource`
+///    dit laquelle des trois, parce qu'un lien nominatif transfere se lit
+///    « presume », pas « certain » ;
+///  - purge au bout de VISIT_RETENTION_DAYS (cf. service d'entretien).
+model InstallationBookingLinkVisit {
+  id             String                  @id @default(uuid()) @db.Uuid
+  linkId         String                  @db.Uuid
+  link           InstallationBookingLink @relation(fields: [linkId], references: [id], onDelete: Cascade)
+  /// Denormalise depuis le lien (filtre par societe sans jointure).
+  fleetId        String                  @db.Uuid
+  openedAt       DateTime                @default(now())
+  /// Dernier geste recu (evenement, rechargement).
+  lastSeenAt     DateTime                @default(now())
+  ipTruncated    String?
+  /// 'mobile' | 'tablet' | 'desktop' — deduit de l'user-agent, jamais l'user-agent lui-meme.
+  device         String?
+  os             String?
+  browser        String?
+  /// Hote du referrer ; null = ouverture directe (SMS, application de messagerie).
+  referrerHost   String?
+  /// Robot de previsualisation / scanner de liens : exclu des compteurs et du feed.
+  robot          Boolean                 @default(false)
+  contactName    String?
+  contactEmail   String?
+  /// 'LIEN_DIRECT' (presume) | 'RESERVATION' | 'ABONNEMENT' (certains).
+  identitySource String?
+  /// Chronologie des gestes, horodatee COTE SERVEUR : [{ t, type, target }]. Bornee.
+  events         Json                    @default("[]")
+  eventCount     Int                     @default(0)
+  /// La demande deposee pendant cette visite (SetNull : la visite survit a la demande).
+  bookingId      String?                 @unique @db.Uuid
+  booking        InstallationBooking?    @relation(fields: [bookingId], references: [id], onDelete: SetNull)
+
+  @@index([linkId, openedAt])
+  @@index([fleetId, openedAt])
+  @@index([openedAt])
+  @@map("installation_booking_link_visits")
 }
 
 /// Une demande de creneau deposee via un lien public. `startAt`/`endAt` = le
@@ -3572,6 +3633,8 @@ model InstallationBooking {
   confirmedBy     String?                   @db.Uuid
   createdAt       DateTime                  @default(now())
   updatedAt       DateTime                  @updatedAt
+  /// La visite de la page publique pendant laquelle la demande a ete deposee.
+  visit           InstallationBookingLinkVisit?
 
   @@index([linkId])
   @@index([fleetId, status])

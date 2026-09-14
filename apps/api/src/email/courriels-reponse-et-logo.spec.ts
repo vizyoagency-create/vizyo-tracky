@@ -58,6 +58,7 @@ const POLITIQUE: Record<EmailTemplateId, Politique> = {
   lead_welcome: 'conversation',
   quote_client: 'conversation',
   installation_slot_confirmed: 'conversation',
+  installation_slot_available: 'conversation',
   // Vers l'intérieur : la notification porte la demande de quelqu'un, et `replyTo` fait que
   // « répondre » écrit à cette personne — pas à notre propre boîte.
   lead: 'conversation',

@@ -31,7 +31,73 @@ export interface BookingDayDto {
   date: string;
   /** Libellé lisible (ex. « lun. 7 juil. »). */
   label: string;
+  /** Samedi ou dimanche — l'écran le signale, le client sait qu'il réserve un week-end. */
+  weekend: boolean;
   slots: BookingSlotDto[];
+}
+
+// ───────────────────────── Découverte (vitrine) ─────────────────────────
+
+export type DecouverteVideoId = 'supervision' | 'analyse' | 'administration' | 'depot';
+
+/** Une scène animée de la vitrine (`decouvrir.html#…`), présentée comme une vidéo. */
+export interface DecouverteVideoDto {
+  id: DecouverteVideoId;
+  titre: string;
+  description: string;
+  /** URL ABSOLUE sur la vitrine, avec `?from=` pour que la vitrine sache d'où on vient. */
+  url: string;
+}
+
+/**
+ * Les liens « découvrir Tracky » affichés sur la page de RDV : le client qui attend sa pose
+ * peut voir à quoi ressemble ce qu'on va lui installer. Les URL sont décidées CÔTÉ SERVEUR
+ * (une seule adresse de vitrine, la même que les courriels).
+ */
+export interface DecouverteDto {
+  /** `decouvrir.html` — la présentation en vidéo (supervision, analyse, administration). */
+  presentationUrl: string;
+  /** `decouvrir-depot.html` — l'espace dépôt, pour les clients d'un transporteur. */
+  depotUrl: string;
+  videos: DecouverteVideoDto[];
+}
+
+// ───────────────────────── Visites (suivi) ─────────────────────────
+
+/**
+ * Les gestes qu'une visite peut raconter. Ceux marqués « serveur » sont posés par l'API
+ * elle-même (une réservation qui aboutit) ; les autres viennent de la page, via
+ * `POST /public/booking/:token/visites/:id/evenements`, et sont horodatés à la RÉCEPTION —
+ * jamais avec l'heure du navigateur.
+ */
+export type BookingVisitEventType =
+  | 'ouverture'          // serveur — target : 'nouvelle' | 'rechargement'
+  | 'jour'               // page — target : "YYYY-MM-DD"
+  | 'creneau'            // page — target : libellé du créneau
+  | 'formulaire'         // page — premier champ touché
+  | 'decouverte'         // page — target : 'presentation' | 'depot' | 'video:<id>'
+  | 'appel'              // page — clic sur « Appeler »
+  | 'courriel'           // page — target : 'nouveau-lien' | 'creneau' | 'question'
+  | 'reservation'        // serveur — target : libellé du créneau
+  | 'reservation_echec'  // serveur — target : motif
+  | 'abonnement';        // serveur — « prévenez-moi » déposé
+
+/** Ce que la page a le droit d'envoyer. Le reste, seule l'API le pose. */
+export const BOOKING_VISIT_EVENTS_PAGE: readonly BookingVisitEventType[] = [
+  'jour', 'creneau', 'formulaire', 'decouverte', 'appel', 'courriel',
+];
+
+export interface BookingVisitEventDto {
+  /** ISO 8601, horodatage serveur. */
+  t: string;
+  type: BookingVisitEventType;
+  target: string | null;
+}
+
+/** Un geste envoyé par la page publique. */
+export interface EnregistrerEvenementVisiteDto {
+  type: BookingVisitEventType;
+  target?: string;
 }
 
 /** Réponse publique : infos du lien + disponibilités. */
@@ -62,12 +128,22 @@ export interface PublicBookingLinkDto {
    * `false` → on n'offre pas une sortie qui ne mène nulle part.
    */
   abonnementCreneauDisponible: boolean;
+  /** Au moins un jour de week-end est ouvert : l'écran le dit avant même la liste des jours. */
+  weekendOuvert: boolean;
+  /**
+   * La visite créée (ou réutilisée) par cet appel. `null` si le suivi a échoué : la page
+   * fonctionne exactement pareil, elle n'envoie simplement plus de gestes.
+   */
+  visite: { id: string } | null;
+  decouverte: DecouverteDto;
 }
 
 /** « Prévenez-moi » — la sortie n° 3 quand aucun créneau ne convient. */
 export interface AbonnementCreneauDto {
   /** Rien d'autre n'est demandé : le strict nécessaire pour envoyer un e-mail. */
   email: string;
+  /** La visite en cours, pour que la chronologie raconte l'abonnement. */
+  visiteId?: string;
 }
 
 /** Soumission d'une réservation (POST public). */
@@ -84,6 +160,8 @@ export interface CreatePublicBookingDto {
   vehicleModel?: string;
   vehicleEnergy?: InstallationEnergy | null;
   notes?: string;
+  /** La visite en cours, pour rattacher la demande à la chronologie de la page. */
+  visiteId?: string;
 }
 
 export interface PublicBookingResultDto {
@@ -137,6 +215,9 @@ export interface InstallationBookingLinkDto {
   dayStartMinutes: number;
   dayEndMinutes: number;
   workingDays: number[];
+  /** Fenêtre du week-end (minutes depuis minuit, Europe/Paris) ; `null` = comme la semaine. */
+  weekendStartMinutes: number | null;
+  weekendEndMinutes: number | null;
   horizonDays: number;
   leadHours: number;
   active: boolean;
@@ -150,6 +231,42 @@ export interface InstallationBookingLinkDto {
   openCount: number;
   firstOpenedAt: string | null;
   lastOpenedAt: string | null;
+  /** Visites HUMAINES enregistrées (les robots de prévisualisation sont comptés à part). */
+  visitCount: number;
+  robotVisitCount: number;
+}
+
+/** Une visite de la page publique, telle que l'admin la lit. */
+export interface InstallationBookingLinkVisitDto {
+  id: string;
+  openedAt: string;
+  lastSeenAt: string;
+  /** « 92.184.x.x » — tronquée, jamais complète. */
+  ipTruncated: string | null;
+  device: 'mobile' | 'tablet' | 'desktop' | null;
+  os: string | null;
+  browser: string | null;
+  referrerHost: string | null;
+  /** Provenance lisible, dérivée côté serveur (« Gmail », « Ouverture directe… »). */
+  provenance: string;
+  robot: boolean;
+  contactName: string | null;
+  contactEmail: string | null;
+  /** 'LIEN_DIRECT' = présumé (lien nominatif) ; 'RESERVATION' / 'ABONNEMENT' = certain. */
+  identitySource: 'LIEN_DIRECT' | 'RESERVATION' | 'ABONNEMENT' | null;
+  events: BookingVisitEventDto[];
+  bookingId: string | null;
+}
+
+export interface InstallationBookingLinkVisitsDto {
+  linkId: string;
+  /** Visites humaines. */
+  humaines: number;
+  robots: number;
+  /** Visites humaines qui ont abouti à une demande de créneau. */
+  avecReservation: number;
+  /** Les plus récentes d'abord, bornées côté serveur. */
+  visites: InstallationBookingLinkVisitDto[];
 }
 
 export interface CreateInstallationBookingLinkDto {
@@ -166,6 +283,9 @@ export interface CreateInstallationBookingLinkDto {
   dayStartMinutes?: number;
   dayEndMinutes?: number;
   workingDays?: number[];
+  /** Fenêtre du week-end ; les deux ensemble, ou `null` pour « comme la semaine ». */
+  weekendStartMinutes?: number | null;
+  weekendEndMinutes?: number | null;
   horizonDays?: number;
   leadHours?: number;
   singleUse?: boolean;
@@ -179,6 +299,8 @@ export interface UpdateInstallationBookingLinkDto {
   dayStartMinutes?: number;
   dayEndMinutes?: number;
   workingDays?: number[];
+  weekendStartMinutes?: number | null;
+  weekendEndMinutes?: number | null;
   horizonDays?: number;
   leadHours?: number;
   singleUse?: boolean;
