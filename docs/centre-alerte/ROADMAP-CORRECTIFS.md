@@ -249,6 +249,7 @@ d'une section à l'autre sans le dire, ou cocher `[x]` sur la foi d'une fiche pl
 | ☑ | **T33** | TRK-077 | **`deploy.sh` rendu INCONTOURNABLE — détecté, pas empêché** : journal des déploiements + sentinelle « déploiement hors script », **exercée volontairement** le 13/09 12:55 → ligne 12:57 | ✅ **FAIT** `18c975ee` |
 | ☐ | **T58** | TRK-069 | 🆕 **La clé de refroidissement de la sentinelle des agents doit porter la CAUSE** — l'échec `SyntaxError` de `courrier-ia` (13/09 17:52) est muet sous la clé consommée par « weekly limit » ; et `courrier-ia` doit lire le **premier objet JSON équilibré** *(test daté 14/09 03:50 UTC)* | 🔧 À CODER |
 | ☐ | **T59** | TRK-079 | 🆕 **Ne plus remonter les `fetch` avortés par la fermeture de page sur le canal anonyme** — 4 lignes de deux robots EC2, bruit | 🔧 À CODER |
+| ☐ | **T60** | main · 152883ec | 🆕 **`fenetre-utile.spec.ts` (trajets) tient à la milliseconde** — deux `Date.now()` distincts, rouge sous charge (vu le 14/09 en suite complète, vert relancé seul) — à figer, sur `main` | 🔧 À CODER |
 
 #### Chantier coupe-circuit — contre-expertise du 13/09 *(T40 → T57, nées le 13/09 au soir ; T34 → T39 vivent dans `app/taches.json`)*
 
@@ -256,21 +257,21 @@ d'une section à l'autre sans le dire, ou cocher `[x]` sur la foi d'une fiche pl
 |:--:|:--:|---|---|---|
 | ~ | **T40** | TRK-066 · doc 19 P0-1 | 🔴🔴 P0 — La clé d'unicité RESTORE ne doit plus vivre pour toujours (RESTORE du lendemain avalée) — COMMITTÉ d5c19a17, en attente de fusion | ~ **COMMITÉ** `d5c19a17` — *pas encore fusionné* |
 | ~ | **T41** | TRK-066 · doc 19 P0-2 | 🔴🔴 P0 — Donner une validité aux SMS CUT (ttl), une priorité aux RESTORE, un appareil explicite, et annuler le SMS CUT supplanté | ~ **COMMITÉ** `8ab1d08e` (relais `2536ea4`) — *pas encore fusionné* |
-| ☐ | **T42** | TRK-066 · doc 19 P1-1 | 🔴 Relancer une RESTORE non prouvée à la reconnexion TCP du boîtier — et ne plus la rendre terminale après trois SMS | 🔧 À CODER |
-| ☐ | **T43** | TRK-066 · doc 19 P1-2 | 🔴 Configurer le téléphone passerelle (ping 60 s, FIFO, délais, SIM 1) et l'environnement du relais — AVANT tout déploiement | 🔵 TERRAIN |
-| ☐ | **T44** | TRK-066 · doc 19 P1-2 | 🔴 Sentinelle Android : hystérésis, bornes d'environnement, fraîcheur par appareil, délai d'envoi séparé du délai de santé | 🔧 À CODER |
-| ☐ | **T45** | TRK-066 · doc 19 P1-3 | 🔴 Preuve SMS quotidienne réconciliée (T-30 min avant chaque fenêtre) — sans elle l'interlock refuse les coupes six jours sur sept | 🔧 À CODER |
+| ~ | **T42** | TRK-066 · doc 19 P1-1 | 🔴 Relancer une RESTORE non prouvée à la reconnexion TCP du boîtier — et ne plus la rendre terminale après trois SMS | ~ **COMMITÉ** `86c32fa9` — *pas encore fusionné* |
+| ☐ | **T43** | TRK-066 · doc 19 P1-2 | 🔴 **AUJOURD'HUI** — Configurer le téléphone passerelle S21 (ping 60 s, FIFO, délais, limite, SIM 1, One UI) — AVANT tout déploiement ; relevé de départ du 14/09 06:33 UTC : réglages `{}`, pull 15 min, 4 webhooks OK | 🔵 TERRAIN |
+| ~ | **T44** | TRK-066 · doc 19 P1-2 | 🔴 Sentinelle Android : hystérésis, bornes d'environnement, fraîcheur par appareil, délai d'envoi séparé du délai de santé | ~ **COMMITÉ** `86a2fc53` (relais `784d766`) — *pas encore fusionné* |
+| ~ | **T45** | TRK-066 · doc 19 P1-3 | 🔴 Preuve SMS quotidienne réconciliée (T-30 min avant chaque fenêtre) — sans elle l'interlock refuse les coupes six jours sur sept | ~ **COMMITÉ** `1aa1e0f9` (relais `ae17b34`) — *pas encore fusionné* |
 | ☑ | **T46** | TRK-066 · doc 19 P1-4 | 🔴 Nettoyer le diff du chantier (reformatage prettier), rebaser sur main, résoudre le conflit — la production est déjà sur 66d286f5 | ✅ **FAIT** `d5c19a17` |
-| ☐ | **T47** | TRK-066 · doc 19 P1-5 | 🔴 Procédure de déploiement du chantier : deploy.sh, migration rejouée sur copie PostgreSQL, ordre téléphone → Texto → Tracky, kill-switch false | 🟡 PRÉPARÉ |
-| ☐ | **T48** | TRK-066 · doc 19 P2-1 · P2-4 | Course ACK/SMS : ne jamais rétrograder ACKNOWLEDGED en SENT ; dispatcher une CUT PENDING orpheline au lieu de la rendre telle quelle | 🔧 À CODER |
-| ☐ | **T49** | TRK-066 · doc 19 P2-2 | Kill-switch et interlock : une ligne par véhicule et par heure, pas un CRITICAL par appel | 🔧 À CODER |
-| ☐ | **T50** | TRK-066 · doc 19 P2-3 | Glissement de confirmation réellement volontaire : ni un clic en bout de piste, ni la touche End | 🔧 À CODER |
-| ☐ | **T51** | TRK-066 · doc 19 P2-5 · P2-6 | Rappeler une RESTORE qui traîne (toutes les 15 min) et ne pas suspendre le clic manuel derrière la file SMS | 🔧 À CODER |
-| ☐ | **T52** | TRK-066 · doc 19 P2-8 · P2-9 | Santé par appareil (deviceId, simCards) et allowlist non bloquante pour une RESTORE | 🔧 À CODER |
-| ☐ | **T53** | TRK-066 · doc 19 P2-10 | Tests : exercer la table des tentatives, index dans schema.prisma, migration rejouée sur PostgreSQL réel, changement d'heure du 25/10 | 🔧 À CODER |
+| ☐ | **T47** | TRK-066 · doc 19 P1-5 | 🔴 Procédure de déploiement du chantier : deploy.sh, migration rejouée sur copie PostgreSQL, ordre téléphone → Texto → Tracky, kill-switch false — **procédure écrite** (doc 25, `fde25b96`), à jouer ensemble après T43 | 🟡 PRÉPARÉ |
+| ~ | **T48** | TRK-066 · doc 19 P2-1 · P2-4 | Course ACK/SMS : une preuve ne se rétrograde jamais en « envoyée » (écritures conditionnelles) ; une CUT PENDING orpheline est dispatchée | ~ **COMMITÉ** `8a8cb2c4` — *pas encore fusionné* |
+| ~ | **T49** | TRK-066 · doc 19 P2-2 | Kill-switch et interlock : une ligne par véhicule et par heure, pas un CRITICAL par appel | ~ **COMMITÉ** `93dba465` — *pas encore fusionné* |
+| ~ | **T50** | TRK-066 · doc 19 P2-3 | Glissement de confirmation réellement volontaire : 8 valeurs croissantes depuis < 10, End/Home/Page neutralisées, flèche maintenue acceptée | ~ **COMMITÉ** `8bb24ca7` — *pas encore fusionné* |
+| ~ | **T51** | TRK-066 · doc 19 P2-5 · P2-6 | Une RESTORE non prouvée se rappelle toutes les 15 min ; SMS en file > 60 min annulé et retenté ; clic manuel borné à 20 s | ~ **COMMITÉ** `b582fbf6` — *pas encore fusionné* |
+| ~ | **T52** | TRK-066 · doc 19 P2-8 · P2-9 | Santé par appareil (fait par T44, relais `784d766`) ; allowlist non bloquante pour une RESTORE (ajout à la volée + un nouvel essai) | ~ **COMMITÉ** `428d1f39` — *pas encore fusionné* |
+| ~ | **T53** | TRK-066 · doc 19 P2-10 | Journal des tentatives exercé (CHECK + unicité rejoués depuis le SQL de la migration), index dans schema.prisma (T47), changement d'heure du 25/10 couvert — reste PostGIS réel et la rétention | ~ **COMMITÉ** `b407481a` — *pas encore fusionné* |
 | ☐ | **T54** | TRK-066 · doc 19 §3 phase 5 | 🔴 Recette réelle : boîtier de banc, puis un canari MH Cars, puis un CDEF31 — un à la fois, présence physique, jamais les 37 | 🔵 TERRAIN |
 | ☐ | **T55** | TRK-066 · doc 12 · doc 19 P2-8 | Second téléphone + seconde SIM (autre opérateur) — après T52, jamais sous le même deviceId | 🤝 HUMAIN |
-| ☐ | **T56** | TRK-066 · doc 19 §15 | Corriger les promesses des documents du chantier qui dépassent le code | 🧹 dette doc |
+| ~ | **T56** | TRK-066 · doc 19 §15 | Promesses des documents 01–18 datées « tenu / tenu autrement / non implémenté » (doc 32) | ~ **COMMITÉ** `0677cd05` — *pas encore fusionné* |
 | ☐ | **T57** | TRK-066 · doc 19 §14 | Dépendances : lot séparé après stabilisation (maplibre critique, socket.io/ws, axios via twilio, multer) | 🔧 À CODER |
 
 ### Partie II — VPS *(31 tâches)*

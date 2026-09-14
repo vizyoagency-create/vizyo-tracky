@@ -25,7 +25,7 @@
 | [`chantier-cartes/SUIVI-CARTES-2026-09-07.md`](./chantier-cartes/SUIVI-CARTES-2026-09-07.md) | Le chantier cartes, terminé et prouvé. |
 | [`environnement-demo/`](./environnement-demo/) | La démo en ligne : plan et exploitation. |
 | [`rdv-installation/`](./rdv-installation/) | La prise de RDV d'installation (`/book/:token`) : week-end, visites (qui, quand, depuis quoi), liens de découverte, entretien quotidien. Chantier du 14/09 (`feat/rdv-installation-v2`), fusionné sur `main` et déployé le 14/09. |
-| [`fiabilite-coupe-circuit-2026-09/`](./fiabilite-coupe-circuit-2026-09/) | **Chantier sécurité en cours** : incident du 11/09, défauts prouvés, architecture cible, tests de fiabilité et gates avant réactivation des horaires. |
+| [`fiabilite-coupe-circuit-2026-09/`](./fiabilite-coupe-circuit-2026-09/) | **Chantier sécurité en cours** : incident du 11/09, défauts prouvés, architecture cible, tests, runbook ; **contre-expertise du 13/09 (doc 19, verdict NO-GO)** et correctif P0 (doc 20). ⚠️ Les 20 documents à jour vivent sur la branche `codex/tracky-cutoff-reliability-2026-09-12` ; la copie non suivie présente sur `main` est périmée. État et ordre des tâches : [`SUIVI.md`](./SUIVI.md) §« Coupe-circuit ». |
 
 ---
 
