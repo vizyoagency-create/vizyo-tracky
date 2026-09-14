@@ -18,6 +18,48 @@ let lastAt = 0;
 const DEDUP_MS = 15_000;
 
 /**
+ * ── T59 / TRK-079 (2026-09-14) — UN APPEL AVORTÉ PAR LA FERMETURE DE LA PAGE N'EST PAS UN BUG ──
+ *
+ * Constat du 13/09 (22:50, 23:14) : deux robots (EC2, agent iPhone falsifié) chargent
+ * l'application sans session et l'abandonnent au bout d'une seconde. Les requêtes en vol —
+ * `fetch` de `/api/health` par le mode démo, import différé d'une route — sont annulées par la
+ * navigation et rejettent `TypeError: Failed to fetch`, le même texte qu'une panne de réseau ;
+ * et le rapport arrive quand même, parce qu'il part en `keepalive`. Quatre lignes `frontend-anon`
+ * pour rien.
+ *
+ * Deux gardes, et deux seulement :
+ *   1. une erreur de TRANSPORT (fetch / import de module) survenue page cachée ou après
+ *      `pagehide` est un appel avorté par la navigation : on ne la remonte pas ;
+ *   2. sur le canal ANONYME (pas de session), seules les erreurs qui ne sont pas de transport
+ *      remontent — une vraie panne de `/api/health` vue par un anonyme relève de la sonde des
+ *      dépendances, pas du centre d'alerte client.
+ * Le canal public reste OUVERT : un bug JS avant connexion est le pire cas pour la crédibilité.
+ */
+let pageQuittee = false;
+if (typeof window !== 'undefined') {
+  window.addEventListener('pagehide', () => {
+    pageQuittee = true;
+  });
+  // `pageshow` avec `persisted` : la page revient du bfcache, elle est de nouveau vivante.
+  window.addEventListener('pageshow', () => {
+    pageQuittee = false;
+  });
+}
+
+/** Une panne de fetch, ou un import de module (route différée) qui n'a pas abouti. */
+const MOTIF_TRANSPORT =
+  /failed to fetch|networkerror|load failed|network request failed|dynamically imported module|importing a module script failed|error loading dynamically imported/i;
+
+export function estErreurDeTransport(error: unknown): boolean {
+  return error instanceof TypeError && MOTIF_TRANSPORT.test(error.message);
+}
+
+function pageEnTrainDeSeFermer(): boolean {
+  if (pageQuittee) return true;
+  return typeof document !== 'undefined' && document.visibilityState === 'hidden';
+}
+
+/**
  * Remet la dédup à zéro. **Réservé aux tests**, et ce n'est pas du confort.
  *
  * ⚠️ CES DEUX VARIABLES SONT UN SINGLETON DE MODULE, PARTAGÉ PAR TOUTE LA SUITE.
@@ -34,11 +76,14 @@ const DEDUP_MS = 15_000;
 export function resetClientErrorDedup(): void {
   lastKey = '';
   lastAt = 0;
+  pageQuittee = false;
 }
 
 export function reportClientError(source: string, error: unknown, route?: string): void {
   try {
     const sessionId = activityContext.sessionId ?? null;
+    // T59 — les deux gardes, avant tout le reste (et avant la dédup : un silence ne consomme rien).
+    if (estErreurDeTransport(error) && (pageEnTrainDeSeFermer() || !sessionId)) return;
     const message = `[${source}] ${error instanceof Error ? `${error.name}: ${error.message}` : String(error)}`.slice(0, 2000);
     const now = Date.now();
     const key = `${sessionId ?? 'anon'}:${message}`;

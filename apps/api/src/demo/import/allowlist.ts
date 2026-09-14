@@ -289,7 +289,7 @@ export const EXCLUS: Readonly<Record<string, string>> = {
     'commercial et partenaires : tarifs, facturation, prospects, liens partenaires, installations — noms et coordonnées de clients',
     'PricingSettings', 'BillingSettings', 'Lead', 'PartnerLink', 'PartnerLinkEvent', 'PartnerAccessToken',
     'PartnerOutboxEvent', 'PartnerInvitation', 'InstallationPlan', 'InstallationTask', 'InstallationBookingLink',
-    'InstallationBooking', 'InstallationSlotWatcher',
+    'InstallationBooking', 'InstallationSlotWatcher', 'InstallationBookingLinkVisit',
   ),
   ...exclure(
     "surveillance : événements horodatés et règles d'alerte propres à la société — la démo produit les siens",

@@ -304,6 +304,14 @@ const envSchema = z.object({
   // numero personnel expose la ne se reprend plus. Ne jamais rebrancher ce champ
   // sur `User.phone` ni sur le telephone d'un client pre-rempli.
   INSTALLATION_PUBLIC_PHONE: z.string().default(''),
+  // Le SITE VITRINE (tracky.vizyoagency.com) : la page publique de prise de RDV y renvoie
+  // (« decouvrir.html », « decouvrir-depot.html ») pour que le client voie a quoi ressemble
+  // ce qu'on va lui installer. Une seule adresse, surchargeable en dev (npx serve lp/public).
+  // Chaine vide (le .env.example la laisse vide) = le defaut, pas une adresse vide.
+  VITRINE_BASE_URL: z.preprocess(
+    (v) => (v === '' || v === undefined || v === null ? undefined : v),
+    z.string().url().default('https://tracky.vizyoagency.com'),
+  ),
 
   // ─── Environnement de démonstration (2026-09) ───────────────────────────────────────────
   // docs/environnement-demo/PLAN-2026-09-07.md. `DEMO_MODE=true` fait de cette instance LA

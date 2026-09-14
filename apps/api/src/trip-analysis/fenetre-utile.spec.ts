@@ -22,6 +22,15 @@ import { TripAutomationService } from './trip-automation.service';
 const JOUR = 86_400_000;
 const HEURE = 3_600_000;
 
+/**
+ * T60 — l'horloge est FIGÉE pour toute la suite : `fenetreUtile()` lit `Date.now()` de son côté,
+ * les tests le lisent du leur, et le cas « 89 jours = exactement l'horizon » tenait à la
+ * milliseconde — rouge sous charge (vu le 14/09 en suite complète, vert relancé seul). Un test
+ * qui compare deux lectures d'horloge n'est pas un test : une seule lecture, la même pour tous.
+ */
+beforeAll(() => jest.useFakeTimers({ now: Date.parse('2026-09-14T08:00:00.000Z') }));
+afterAll(() => jest.useRealTimers());
+
 /** Accès à la méthode privée : c'est une règle métier, elle mérite d'être vérifiée. */
 const utile = (svc: TripAutomationService, windowFrom: Date): Date =>
   (svc as unknown as { fenetreUtile(w: Date): Date }).fenetreUtile(windowFrom);

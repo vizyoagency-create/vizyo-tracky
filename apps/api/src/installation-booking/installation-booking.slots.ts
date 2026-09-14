@@ -31,6 +31,35 @@ export interface SlotConfig {
   workingDays: number[];
   horizonDays: number;
   leadHours: number;
+  /**
+   * Fenêtre horaire propre au WEEK-END (samedi et dimanche), quand ces jours sont ouvrés.
+   * `null`/absent = la fenêtre de la semaine s'applique aussi le week-end.
+   *
+   * Un samedi d'installateur est une matinée, pas une journée de 08:00 à 21:00 : sans
+   * fenêtre distincte, ouvrir le week-end promettait des créneaux que personne ne viendrait
+   * honorer.
+   */
+  weekendStartMinutes?: number | null;
+  weekendEndMinutes?: number | null;
+}
+
+/** Jours ISO du week-end. */
+export const WEEKEND_DAYS: ReadonlySet<number> = new Set([6, 7]);
+
+/**
+ * La fenêtre horaire [début, fin) d'un jour ISO donné : celle du week-end si elle est
+ * définie et que le jour en est un, celle de la semaine sinon.
+ */
+export function windowFor(
+  config: Pick<SlotConfig, 'dayStartMinutes' | 'dayEndMinutes' | 'weekendStartMinutes' | 'weekendEndMinutes'>,
+  isoWeekday: number,
+): { start: number; end: number } {
+  const weekend = WEEKEND_DAYS.has(isoWeekday)
+    && config.weekendStartMinutes != null
+    && config.weekendEndMinutes != null;
+  return weekend
+    ? { start: config.weekendStartMinutes as number, end: config.weekendEndMinutes as number }
+    : { start: config.dayStartMinutes, end: config.dayEndMinutes };
 }
 
 export interface GeneratedSlot {
@@ -41,6 +70,8 @@ export interface GeneratedSlot {
 export interface GeneratedDay {
   date: string; // "YYYY-MM-DD" (jour local Paris)
   label: string;
+  /** Samedi ou dimanche — l'écran le signale, le client sait qu'il réserve un week-end. */
+  weekend: boolean;
   slots: GeneratedSlot[];
 }
 
@@ -89,15 +120,14 @@ function pad(n: number): string {
 /**
  * Génère les jours + créneaux LIBRES sur l'horizon, en excluant :
  *  - les jours non ouvrés,
+ *  - les jours dont la fenêtre horaire (semaine ou week-end) est plus courte qu'un créneau,
  *  - les créneaux avant `now + leadHours`,
  *  - les créneaux chevauchant un intervalle occupé (`busy`, demi-ouvert [start,end)).
  */
 export function generateAvailability(config: SlotConfig, now: Date, busy: BusyInterval[]): GeneratedDay[] {
-  const {
-    slotMinutes, dayStartMinutes, dayEndMinutes, workingDays, horizonDays, leadHours,
-  } = config;
+  const { slotMinutes, workingDays, horizonDays, leadHours } = config;
   const days: GeneratedDay[] = [];
-  if (slotMinutes <= 0 || dayEndMinutes - dayStartMinutes < slotMinutes) return days;
+  if (slotMinutes <= 0) return days;
 
   const earliestMs = now.getTime() + leadHours * 3_600_000;
   const workSet = new Set(workingDays);
@@ -110,6 +140,8 @@ export function generateAvailability(config: SlotConfig, now: Date, busy: BusyIn
     const midInstant = new Date(base.getTime() + dayOffset * 86_400_000 + 12 * 3_600_000);
     const dp = parisParts(midInstant);
     if (!workSet.has(dp.isoWeekday)) continue;
+    const { start: dayStartMinutes, end: dayEndMinutes } = windowFor(config, dp.isoWeekday);
+    if (dayEndMinutes - dayStartMinutes < slotMinutes) continue;
 
     const slots: GeneratedSlot[] = [];
     for (let start = dayStartMinutes; start + slotMinutes <= dayEndMinutes; start += slotMinutes) {
@@ -132,6 +164,7 @@ export function generateAvailability(config: SlotConfig, now: Date, busy: BusyIn
       days.push({
         date: `${dp.year}-${pad(dp.month)}-${pad(dp.day)}`,
         label: DAY_LABEL_FMT.format(midInstant),
+        weekend: WEEKEND_DAYS.has(dp.isoWeekday),
         slots,
       });
     }

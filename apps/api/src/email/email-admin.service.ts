@@ -37,6 +37,7 @@ export const TEMPLATE_META: {
   { id: 'audio_info', label: 'Mode assistance', category: 'Nouveauté', subject: 'Nouvelle fonction « Mode assistance »', trigger: 'Présentation par le prestataire' },
   { id: 'installation_slot_requested', label: 'Demande de créneau', category: 'Installation', subject: 'Demande de créneau d\'installation — {flotte}', trigger: 'Client réserve via un lien public' },
   { id: 'installation_slot_confirmed', label: 'Créneau confirmé', category: 'Installation', subject: 'Votre créneau d\'installation est confirmé', trigger: 'L\'opérateur valide la demande' },
+  { id: 'installation_slot_available', label: 'Créneau disponible', category: 'Installation', subject: 'Des créneaux d\'installation sont disponibles — {flotte}', trigger: 'Un client avait cliqué « Prévenez-moi » sur un lien sans créneau, et des créneaux sont réapparus (entretien quotidien, une fois par inscription)' },
   { id: 'reservation_requested', label: 'Demande de réservation reçue', category: 'Réservation', subject: 'Votre demande de réservation a bien été reçue', trigger: 'Un demandeur soumet via un lien public' },
   { id: 'reservation_confirmed', label: 'Réservation confirmée', category: 'Réservation', subject: 'Votre réservation est confirmée', trigger: 'Un gestionnaire valide la demande' },
   { id: 'ai_invoice_request', label: 'Facture physique — Option IA', category: 'Facturation', subject: 'Facture physique — Option IA · {société}', trigger: 'Un fleet-admin demande une facture physique pour l\'option IA' },

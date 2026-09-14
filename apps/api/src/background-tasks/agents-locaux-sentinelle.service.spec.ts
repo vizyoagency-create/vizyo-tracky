@@ -4,7 +4,7 @@ import {
   GRACE_MS,
   REFROIDISSEMENT_MS,
   SOURCE_AGENTS_LOCAUX,
-} from './agents-locaux-sentinelle.service';
+ empreinteCause } from './agents-locaux-sentinelle.service';
 import { BackgroundTasksService } from './background-tasks.service';
 import { PauseAgentsLocauxService } from './pause-agents-locaux.service';
 
@@ -120,6 +120,7 @@ function construire(opts: {
     tenterEmission: jest.fn(async (cle: string) => opts.tenterEmission?.(cle) ?? true),
     derniereEmission: jest.fn(async (cle: string) => opts.derniereEmission?.[cle] ?? null),
     oublier: jest.fn().mockResolvedValue(undefined),
+    oublierAvant: jest.fn().mockResolvedValue(0),
   };
   const dispatch = opts.dispatch === null ? undefined : (opts.dispatch ?? { notifyUsers: jest.fn().mockResolvedValue(1) });
   const email = opts.email === false ? undefined : {
@@ -243,7 +244,85 @@ describe('Sentinelle des agents du poste — le matin, un PC éteint se lit au c
           "Dernier passage en échec : agent-recit-trajet le 05/09/2026 à 03:20 — claude auth status : l'abonnement claude.ai n'est pas actif",
       },
     ]);
-    expect(refroidissement.tenterEmission).toHaveBeenCalledWith('agent-local:agent-recit-trajet:echec', REFROIDISSEMENT_MS);
+    // T58 — la clé d'un échec porte l'empreinte de sa cause.
+    expect(refroidissement.tenterEmission).toHaveBeenCalledWith(
+      `agent-local:agent-recit-trajet:echec:${empreinteCause("claude auth status : l'abonnement claude.ai n'est pas actif")}`,
+      REFROIDISSEMENT_MS,
+    );
+    expect(refroidissement.tenterEmission.mock.calls[0]![0]).toMatch(/^agent-local:agent-recit-trajet:echec:[0-9a-f]{8}$/);
+  });
+
+  /**
+   * ── T58 (14/09) — un échec d'une AUTRE cause sous la même clé restait muet 24 h ───────────
+   * Constat : « weekly limit » à 02:50 consomme (courrier-ia, echec) ; `SyntaxError` à 17:52 ne
+   * dit rien jusqu'au lendemain — un rapport client en jeu.
+   */
+  describe('T58 — le refroidissement d’un échec est PAR CAUSE', () => {
+    it('deux échecs de causes DIFFÉRENTES à une heure d’intervalle → deux clés, donc deux lignes', async () => {
+      const vus = new Set<string>();
+      const uneFoisParCle = (cle: string) => (vus.has(cle) ? false : (vus.add(cle), true));
+      const t1 = paris(2026, 9, 13, 18, 50);
+      const a = construire({
+        now: t1,
+        tenterEmission: uneFoisParCle,
+        passages: { 'agent-courrier-ia': passage(paris(2026, 9, 13, 17, 52), { succes: false, erreur: 'SyntaxError: Unexpected non-whitespace character after JSON at position 407' }) },
+      });
+      await a.svc.verifier(t1);
+      const t2 = paris(2026, 9, 13, 19, 50);
+      const b = construire({
+        now: t2,
+        tenterEmission: uneFoisParCle,
+        passages: { 'agent-courrier-ia': passage(paris(2026, 9, 13, 18, 52), { succes: false, erreur: 'délai dépassé : la CLI n a rien rendu en 20 min' }) },
+      });
+      await b.svc.verifier(t2);
+      const clesEchec = [...vus].filter((c) => c.startsWith('agent-local:courrier-ia:echec:'));
+      expect(clesEchec).toHaveLength(2);
+      expect(alertes(a.errorLogger).map((l) => l.message)).toEqual([
+        'Dernier passage en échec : courrier-ia le 13/09/2026 à 17:52 — SyntaxError: Unexpected non-whitespace character after JSON at position 407',
+      ]);
+      expect(alertes(b.errorLogger).map((l) => l.message)).toEqual([
+        'Dernier passage en échec : courrier-ia le 13/09/2026 à 18:52 — délai dépassé : la CLI n a rien rendu en 20 min',
+      ]);
+    });
+
+    it('deux échecs de la MÊME cause (les chiffres diffèrent) → une seule clé, donc une ligne par jour', async () => {
+      const vus = new Set<string>();
+      const uneFoisParCle = (cle: string) => (vus.has(cle) ? false : (vus.add(cle), true));
+      const t1 = paris(2026, 9, 13, 18, 50);
+      const a = construire({
+        now: t1,
+        tenterEmission: uneFoisParCle,
+        passages: { 'agent-courrier-ia': passage(paris(2026, 9, 13, 17, 52), { succes: false, erreur: 'SyntaxError: Unexpected non-whitespace character after JSON at position 407' }) },
+      });
+      await a.svc.verifier(t1);
+      const t2 = paris(2026, 9, 13, 21, 50);
+      const b = construire({
+        now: t2,
+        tenterEmission: uneFoisParCle,
+        passages: { 'agent-courrier-ia': passage(paris(2026, 9, 13, 20, 52), { succes: false, erreur: 'SyntaxError: Unexpected non-whitespace character after JSON at position 1093' }) },
+      });
+      await b.svc.verifier(t2);
+      expect([...vus].filter((c) => c.startsWith('agent-local:courrier-ia:echec:'))).toHaveLength(1);
+      expect(alertes(a.errorLogger)).toHaveLength(1);
+      expect(alertes(b.errorLogger)).toHaveLength(0);
+    });
+
+    it('empreinteCause : chiffres, dates et identifiants ne comptent pas ; un autre texte, si', () => {
+      expect(empreinteCause('JSON at position 407')).toBe(empreinteCause('JSON at position 1093'));
+      expect(empreinteCause('travail 4024ee90 reposé le 13/09/2026 à 17:52')).toBe(empreinteCause('travail a1b2c3d4 reposé le 14/09/2026 à 03:50'));
+      expect(empreinteCause('SyntaxError: Unexpected token')).not.toBe(empreinteCause('délai dépassé'));
+      expect(empreinteCause('x')).toMatch(/^[0-9a-f]{8}$/);
+    });
+
+    it('un passage réussi oublie toute la FAMILLE des clés d’échec antérieures (par préfixe), pas seulement une', async () => {
+      const demarreA = new Date(paris(2026, 9, 14, 3, 20));
+      const { svc, refroidissement } = construire({
+        now: paris(2026, 9, 14, 5, 30),
+        passages: { 'agent-recit-trajet': { ...passage(demarreA.getTime()), demarreA } },
+      });
+      await svc.verifier(paris(2026, 9, 14, 5, 30));
+      expect(refroidissement.oublierAvant).toHaveBeenCalledWith('agent-local:agent-recit-trajet:echec', new Date(demarreA.getTime() + 20 * MINUTE));
+    });
   });
 
   it('un créneau manqué APRÈS un échec se signale « manqué », et le message garde le motif de l’échec', async () => {

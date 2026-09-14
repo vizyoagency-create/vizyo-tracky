@@ -1,14 +1,14 @@
 {
   "_comment": "Ce que le POSTE DE COMMANDE montre en plus des tâches. Les tâches, elles, viennent de docs/centre-alerte/app/taches.json et ne se recopient JAMAIS ici — voir generer.mjs. Ce fichier ne porte que ce qu'aucune tâche ne décrit : les mesures de tête, les mécaniques qui tournent seules, les décisions posées au propriétaire, et ce qui est prouvé.",
   "version": 1,
-  "releve": "13 septembre 2026, 20:45 UTC",
+  "releve": "14 septembre 2026, 08:05 UTC",
   "machines": [
     {
       "nom": "Rattrapage du recalage des tracés",
       "texte": "Quinze tracés d’historique remis sur la route à chaque passage horaire, après les analyses. S’arrête tout seul.",
-      "fait": 5186,
-      "total": 17702,
-      "pied": "12 516 restants",
+      "fait": 5274,
+      "total": 17715,
+      "pied": "12 441 restants",
       "pied2": "≈ 35 jours à 15 par heure"
     },
     {
@@ -21,20 +21,20 @@
     },
     {
       "nom": "Coupe-circuit automatique — À L’ARRÊT",
-      "texte": "37 plannings coupés par toi le 11/09 à 20 h 49, après la reprise matinale manquée de 12 véhicules sur 26. Le chantier fiabilité (12 documents, lots R1 à R7) prépare la remise en service ; lundi 14/09 en mode supervisé, sans coupure automatique.",
+      "texte": "37 plannings coupés par toi le 11/09 à 20 h 49, après la reprise matinale manquée de 12 véhicules sur 26. Contre-expertise du 13/09 : NO-GO en l'état. Au 14/09 09:40 : TOUT le code faisable seul est committé dans les branches (T40 à T53, T56 — 24 commits, suites vertes), la procédure est écrite (T47) et le TÉLÉPHONE est configuré (T43 : ping 60 s prouvé, FIFO, délais, limite, veille OFF). Les tests SMS du matin ont rendu 8 SIM sur 10 « injoignables » à la vie ; 2 restent KO (HD-584-BF, BP-434-RD) : TCP seul pour elles. Restent ce qui n'avance que par toi : relecture et fusion, la fenêtre de déploiement ensemble (doc 25), 24 h de preuve, la recette T54, ta décision T38. Production toujours sans les correctifs.",
       "fait": null,
       "total": null,
       "pied": "0 planning actif sur 37",
-      "pied2": "réactivation sur ta décision (T38)"
+      "pied2": "réactivation sur ta décision (T38), après fusion → fenêtre doc 25 → T54"
     }
   ],
   "chiffres": [
     {
-      "v": "12",
-      "t": "défauts nés au centre d’alerte sur 24 h (sur 19 lignes, dont les essais T33 et T34)"
+      "v": "11",
+      "t": "défauts nés au centre d’alerte sur 24 h (sur 25 lignes : 4 d’un robot, 9 refermées seules dans la journée)"
     },
     {
-      "v": "827/827",
+      "v": "831/831",
       "t": "trajets clos depuis le correctif du 08/09 suivent la route"
     },
     {
@@ -227,9 +227,9 @@
       ],
       "tranchee": {
         "le": "13/09",
-        "choix": "attendre",
+        "choix": "revoir",
         "note": "Actuellement un chat boss sur cela donc on attend de voir ce qui va se faire !",
-        "suite": "T3 passe en « bloquée par le chantier » : rien à décider tant qu’il n’a pas livré. T38 suit la remise en service des plannings (37 coupés depuis le 11/09), et je reprends les quatre questions avec ce que le chantier aura tranché."
+        "suite": "Clic « je veux en rediscuter » le 13/09 à 23:54 (Paris) sur la page : T3 reste ouverte. Les quatre questions seront reprises avec toi une fois le chantier livré (T40 → T47), avec ce que la contre-expertise a tranché."
       }
     },
     {
@@ -256,9 +256,99 @@
         "note": "",
         "suite": "T4 close : seuils et destinataires inchangés (les clients ne reçoivent rien pendant tes tests, T39). Les doublons sont partis avec T30 ; s’il reste trois excès par jour, c’est voulu — la sentinelle « destinataire saturé » pourra le redire, ce ne sera pas un défaut."
       }
+    },
+    {
+      "id": "D10",
+      "sujet": "Committer le correctif P0 (clé RESTORE) sur la branche du chantier",
+      "texte": "Le correctif T40 est écrit dans le worktree du chantier (branche codex/tracky-cutoff-reliability-2026-09-12) : huit tests neufs, suites API et Web vertes, typechecks propres, aucun déploiement. Il n'est PAS committé : la règle de ce dépôt est qu'un commit part sur ta demande, et ce worktree est celui de Codex. Deux voies : committer maintenant sur la branche du chantier, puis enchaîner T46 (nettoyage du reformatage et rebase sur main) ; ou relire d'abord le diff (docs 19 et 20 le décrivent ligne à ligne). Ce que je recommande : committer maintenant — le diff est localisé (deux services, deux specs, l'env, un toast), et chaque jour sans lui est un jour où une RESTORE par SMS peut avaler celle du lendemain une fois la branche déployée.",
+      "options": [
+        {
+          "v": "commit",
+          "l": "Oui — committer maintenant sur la branche du chantier"
+        },
+        {
+          "v": "relire",
+          "l": "Je relis le diff d'abord"
+        },
+        {
+          "v": "non",
+          "l": "Non — attendre"
+        }
+      ],
+      "tranchee": {
+        "le": "14/09",
+        "choix": "commit",
+        "note": "Oui, committe le correctif P0 sur la branche et enchaîne avec T46.",
+        "suite": "Fait dans la foulée : commit d5c19a17 sur la branche du chantier, historique nettoyé du reformatage, rebase sur main sans conflit (T46 close), suites vertes. Rien n'est déployé : T41, T42, T44, T45 puis T47 avant toute mise en ligne."
+      }
     }
   ],
   "faits": [
+    {
+      "d": "14/09",
+      "quoi": "Plus rien à coder sans toi : T58, T59, T60 committés sur main, la copie périmée retirée, la fiche de fusion écrite",
+      "preuve": "Sur <code>main</code> (local, non poussé) : <code>22ec4c1f</code> (T58 — la sentinelle des agents refroidit PAR CAUSE, et courrier-ia lit le premier objet JSON équilibré ; 56 + 7 tests), <code>25fa2af9</code> (T59 — un fetch avorté par la fermeture de la page ne remonte plus, le canal anonyme ne remonte que les bugs JS ; 8 tests, suite web 729), <code>c8fd9be8</code> (T60 — horloge figée). La branche du chantier fusionne proprement sur <code>origin/main</code> (<code>merge-tree</code> sans conflit, aucun fichier commun) ; la copie non suivie qui aurait masqué les vrais documents à la fusion est retirée. Doc 34 : les 27 commits Tracky et les 5 du relais, l'ordre de relecture en 2 h."
+    },
+    {
+      "d": "14/09",
+      "quoi": "Le S21 est configuré et le prouve : un ping par minute — et les tests SMS renversent la conclusion du matin (T43, T61)",
+      "preuve": "Sur le téléphone, avec ton accord : ping <b>60 s</b>, FIFO, délais 10/15 s, limite 60/h, Local server OFF, veille des applis OFF ; <code>lastSeen</code> avance de 60 s en 60 s depuis 09:23 (lu sur le serveur). Puis 13 SMS de statut <code>check123456</code> (facturés sur ta ligne — arrêtés à ta demande) : par le relais, <b>8 des 10 SIM</b> que rien n'atteignait depuis des semaines répondent en quelques secondes (…621085, 36 échecs depuis juin : <b>delivered en 8 s</b>) ; <b>2 restent en échec</b> au départ, HD-584-BF et BP-434-RD, boîtiers pourtant en ligne, SIM activées, IMEI concordants. Le défaut du 11/09 tenait donc surtout à l'état du téléphone (pas de ping, app jamais redémarrée) ; pour ces deux véhicules, il reste un test « autre opérateur », à 1 SMS."
+    },
+    {
+      "d": "14/09",
+      "quoi": "Le S21 diagnostiqué de l'intérieur : le bug du 11/09 a DEUX causes, et la seconde n'est pas dans le téléphone (T43, T61)",
+      "preuve": "Mobile connecté, lecture seule, 08:40–08:58. (1) Le téléphone ne relève les ordres que toutes les 15 min faute de ping : les 10 RESTORE de 07:00 sont partis à <b>07:07</b>, et celui de 20:49 à <b>21:55</b> parce que le S21 redémarrait (uptime 60 h = dernier redémarrage le 11/09 vers 20:45) — réglages de l'app tous au défaut (ping vide, LIFO, ni délai ni limite), veille des applis inutilisées ON sans protection, téléphone personnel sur batterie. (2) Les 5 échecs de 07:07 et toutes les reprises du jour sont « RESULT_ERROR_GENERIC_FAILURE » vers <b>les mêmes numéros</b> : dix SIM de boîtiers n'ont <b>jamais</b> reçu un SMS du S21 depuis juin (…621085 : 36 échecs) alors que leurs voisines livrent à 100 % dans la même seconde, que le fournisseur les dit activées, qu'elles sont en session data, en TCP, et qu'elles émettent des SMS. Ni débit, ni veille, ni batterie : la destination. Test décisif à faire (T61) : un SMS neutre vers …621085 depuis un autre opérateur. Vérifié aussi : le S21 se remet ses propres SMS (preuves hebdo), les 4 webhooks sont en place."
+    },
+    {
+      "d": "14/09",
+      "quoi": "Le S21 est relevé avant d'y toucher : aucun réglage, pull toutes les 15 min, quatre webhooks bien en place (T43)",
+      "preuve": "Lecture seule depuis le conteneur du relais, 06:33 UTC : serveur capcom6 <code>1.43.0</code> sain ; un seul appareil, <code>lastSeen</code> vieux de <b>10 min</b> (le pull de secours, faute de ping) ; <code>GET /3rdparty/v1/settings</code> rend <code>{}</code> — tout au défaut, comme le diagnostic du 12/09 ; les quatre webhooks <code>sms:received/sent/delivered/failed</code> pointent bien sur le relais (le point P4 du doc 25 est vérifié). Les gestes exacts sur le téléphone sont dans la fiche T43 ; la preuve sera <code>lastSeen</code> qui avance toutes les 60 s, écran éteint, pendant 30 min."
+    },
+    {
+      "d": "14/09",
+      "quoi": "Les six derniers correctifs faisables seul sont committés : le chantier n'attend plus que toi (T48, T50, T51, T52, T53, T56)",
+      "preuve": "Tracky <code>8a8cb2c4</code> (T48) : une preuve ne se rétrograde jamais en « envoyée », une CUT orpheline est dispatchée. <code>b582fbf6</code> (T51) : une RESTORE non prouvée se rappelle toutes les <b>15 min</b>, un SMS bloqué une heure est retenté, un clic manuel répond en 20 s. <code>428d1f39</code> (T52) : l'allowlist du relais ne bloque plus une remise en route. <code>8bb24ca7</code> (T50) : le glissement exige un vrai geste — un clic en bout de piste ou la touche Fin ne coupent plus rien (3 tests rouges sur l'ancien composant). <code>b407481a</code> (T53) : le journal des tentatives est enfin exercé, avec les contraintes de la migration rejouées, et le changement d'heure du <b>25/10</b> est couvert. <code>0677cd05</code> (T56) : chaque promesse des documents 01–18 est datée « tenu / tenu autrement / non implémenté » (doc 32). Suites : API <b>260 suites / 4 081 tests</b>, web 732, smoke 5, typecheck vert ; rien n'est déployé. Non vérifié : rejeu des migrations sur PostGIS 16 réel (Docker éteint ici), annulation SMS effective (capcom6 ≥ 1.45.0)."
+    },
+    {
+      "d": "14/09",
+      "quoi": "Une coupe retenue par le garde-fou ne remplit plus le centre d'alerte (T49)",
+      "preuve": "Tracky <code>93dba465</code> : le kill-switch écrit <b>une</b> ligne par heure (niveau dégradation : état voulu, pas de courriel) avec le compte des refus et les plaques ; l'interlock une ligne CRITICAL par raison et par quart d'heure ; le cron ne compte plus une coupe retenue comme un blocage. Avant : un CRITICAL par appel, trente véhicules, palier 2/5/15/30 min, un courriel par heure. <b>8 tests</b> ; rien n'est déployé."
+    },
+    {
+      "d": "14/09",
+      "quoi": "La procédure de déploiement est écrite, et la migration a été jouée sur un vrai PostgreSQL avant de l'être sur le tien (T47)",
+      "preuve": "Tracky <code>fde25b96</code>, relais <code>0bb4013</code>. Doc 25 : téléphone → relais → Tracky par <code>deploy.sh</code>, sauvegardes des trois bases, migration rejouée sur une copie AVANT la production, 24 h de preuve, rollback par couche, liste Go/No-Go. Démontré en local avec le même Prisma : la migration à l'horodatage « d'avant » s'applique bien après celles déjà déployées. Trouvé au passage : l'image du serveur SMS n'était pas épinglée — <code>latest</code> valait <b>v1.47.4</b> quand la production tourne en <b>v1.43.0</b> ; c'est corrigé. Rien n'est déployé : la procédure attend le téléphone (T43) et ta relecture."
+    },
+    {
+      "d": "14/09",
+      "quoi": "Chaque matin, une preuve que les SMS partent — et le relais dit enfin ce qu'il sait (T45)",
+      "preuve": "Relais <code>ae17b34</code> : <code>sent</code> / <code>delivered</code> / <code>failed</code> / <code>cancelled</code> poussés à Tracky sur <code>/sms/webhook/status</code>, signés, avec retries. Tracky <code>1aa1e0f9</code> : preuve SMS à <b>04:30</b> et <b>06:30</b>, verdict à +15 min, écho entrant reconnu comme remise ; sans preuve, une ligne qui dit « les coupes du soir seront refusées ». C'est ce qui manquait à l'interlock six jours sur sept. <b>20 tests</b> ajoutés, suites vertes ; rien n'est déployé. Non vérifié : l'auto-envoi du S21 vers son propre numéro."
+    },
+    {
+      "d": "14/09",
+      "quoi": "La sentinelle du téléphone ne crie plus à chaque pull — et son verdict porte sur le bon téléphone (T44)",
+      "preuve": "Relais <code>784d766</code> : santé jugée sur <b>un</b> appareil (<code>CAPCOM6_DEVICE_ID</code>), quatre états ONLINE / STALE / OFFLINE / UNKNOWN, cartes SIM exposées, réglages bornés (999999999 s ne désactive plus rien), délai d'envoi séparé. Tracky <code>86a2fc53</code> : <b>2</b> contrôles mauvais pour ouvrir un épisode, <b>3</b> sains pour le fermer, rappel toutes les 15 min — une alerte au lieu de quatre par heure ; l'écran /admin dit <i>pourquoi</i>. <b>27 tests</b> ajoutés ou réécrits, suites vertes ; rien n'est déployé."
+    },
+    {
+      "d": "14/09",
+      "quoi": "Un boîtier qui revient en ligne reçoit sa remise en route — et une remise en route n'est plus jamais abandonnée (T42)",
+      "preuve": "Tracky <code>86c32fa9</code> : le registre de sockets annonce chaque reconnexion ; la dernière RESTORE non prouvée du boîtier (moins de 24 h, sans coupure demandée depuis) repart aussitôt en TCP — même si elle était « en échec » ou « nul ne sait ». Trois SMS refusés ne ferment plus rien : <b>K</b> repart en TCP à chaque reconnexion et toutes les <b>30 min</b>, sans un SMS de plus. Et une RESTORE ne renvoie <b>jamais</b> K après le J du soir. <b>18 tests</b> ajoutés, suites vertes ; rien n'est déployé."
+    },
+    {
+      "d": "14/09",
+      "quoi": "Une coupure par SMS a désormais une date de péremption — et une remise en route passe devant tout (T41)",
+      "preuve": "Relais <code>2536ea4</code> : <code>ttlSeconds</code> et <code>priority</code> transmis au serveur SMS, appareil explicite, accusé de remise toujours demandé, <code>DELETE /v1/texto/:id</code> pour retirer un SMS encore en attente. Tracky <code>8ab1d08e</code> : un <code>stop</code> périme après <b>15 min</b> sur le téléphone, un <code>resume</code> part en priorité 100, et une RESTORE qui supplante une CUT fait annuler son SMS. Vérifié sur le contrat public : le serveur 1.43.0 de production connaît déjà ttl, priority et deviceId ; l'annulation demande un serveur ≥ 1.45.0 (T47). <b>16 tests</b> ajoutés, suites vertes ; rien n'est déployé."
+    },
+    {
+      "d": "14/09",
+      "quoi": "Le P0 du coupe-circuit est committé, la branche du chantier est propre et rebasée sur main",
+      "preuve": "Commit <code>d5c19a17</code> sur la branche du chantier après ta décision D10. Le reformatage prettier qui gonflait le diff (1 315 lignes pour 16 fonctionnelles sur le catalogue) a été retiré en reconstruisant l'historique — contenu vérifié identique par normalisation — puis <code>git rebase main</code> : <b>7 commits, zéro conflit</b>. Le relais Texto a subi le même nettoyage (un commit <code>2de94d8</code> sur <code>origin/main</code>, guillemets du dépôt). Suites après rebase : <b>4 002</b> tests API, 727 Web, 423 partagé, 24 Texto. Rien n'est déployé : la production reste sur <code>66d286f5</code>."
+    },
+    {
+      "d": "13/09",
+      "quoi": "Le chantier fiabilité passé à la contre-expertise : NO-GO, un P0 démontré — et corrigé le soir même",
+      "preuve": "Revue indépendante des deux branches (doc 19) : suites reproduites (<b>3 920</b> tests API, 727 Web, 416 partagé, 24 Texto), diff normalisé (1 315 lignes brutes → <b>16 fonctionnelles</b> sur le catalogue), VPS lu sans rien toucher (<code>lastSeen</code> du téléphone figé <b>552 s</b> au repos, serveur capcom6 1.43.0 dont <code>/health</code> ne teste que la base). Le défaut principal — une RESTORE d'hier qui avale celle du lendemain — a été <b>prouvé par un test contre le service réel</b>, puis corrigé dans le worktree avec huit tests neufs (doc 20). Rien n'est déployé : la production reste sur <code>66d286f5</code>."
+    },
     {
       "d": "13/09",
       "quoi": "Les notifications ne partent plus qu’aux super-admins — et une commande SMS a enfin une fin de vie",

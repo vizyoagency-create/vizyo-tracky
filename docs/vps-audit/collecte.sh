@@ -2426,6 +2426,61 @@ if [ -n "$SRC" ]; then
   echo "    cout : ~54 processus par session (mesure du 2026-08-22 contre temoin — PLANCHER,"
   echo "           temoin unique). A comparer aux ~93 600 invocations/j de healthchecks."
 fi
+# ── Sessions SSH ETABLIES en ce moment, et leur AGE ─────────────────────────────────────────
+# ⚠️ AJOUTE LE 2026-09-14 — angle mort n° 2 du rapport du 13/09. Tout ce qui precede compte des
+# OUVERTURES (auth.log) : une session qui ne se ferme jamais n'y pese qu'une ligne, le jour ou
+# elle s'est ouverte. Le 13/09, une session `vaultbk` ouverte depuis 3,5 jours n'a ete vue qu'a
+# la main (`ss -tnp`). Une session qui dure des jours est soit un canal de maintenance voulu
+# (multiplexage, tunnel), soit un client qui n'a jamais rendu la main — dans les deux cas c'est
+# un fait de premier ordre pour la surface d'attaque, et il n'etait ecrit nulle part.
+# On imprime chaque session etablie sur :22 avec son COMPTE, son AGE et ce qu'elle PORTE
+# (les enfants de son `sshd` : une commande en cours, ou rien = canal vide). COUT : ~0.
+echo "  ── Sessions SSH ETABLIES maintenant : qui, depuis combien de temps, et ce qu elles PORTENT ──"
+_nsess=0; _nlong=0
+# Une session = un processus « sshd: <compte> … » dont le PARENT n'est pas lui-meme une session.
+# ⚠️ Deux pieges, tous deux payes au banc du 2026-09-14 :
+#   • pour root, sshd ne forke PAS de moniteur « [priv] » (privsep post-auth saute quand uid = 0) :
+#     le processus s'appelle directement « sshd: root@notty ». Chercher « [priv] » rendait
+#     INVISIBLE le seul compte qui compte ;
+#   • enumerer les enfants du sshd d'ECOUTE rate toute session plus vieille que lui : sshd a ete
+#     relance le 09-12 06:39 (libc6), et la session `vaultbk` du 09-09 a pour parent l'ANCIEN
+#     listener — le banc l'a manquee, c est-a-dire exactement la session que ce bloc existe
+#     pour montrer. On part donc des processus eux-memes, pas d'un parent suppose.
+_ss_etab=$(ss -tnp state established '( sport = :22 )' 2>/dev/null)
+for _p in $(pgrep -f '^sshd: [^ /]' 2>/dev/null); do
+  _cmdp=$(ps -o cmd= -p "$_p" 2>/dev/null)
+  case "$_cmdp" in "sshd: "*) ;; *) continue ;; esac
+  case "$_cmdp" in "sshd: [accepted]"*|"sshd: [net]"*|"sshd: [listener]"*) continue ;; esac
+  # si le parent est deja une session (« sshd: <compte> [priv] »), ceci est son enfant : sauter
+  _pp=$(ps -o ppid= -p "$_p" 2>/dev/null | tr -d ' ')
+  _cmdpp=$(ps -o cmd= -p "${_pp:-0}" 2>/dev/null)
+  case "$_cmdpp" in "sshd: "*" [priv]") continue ;; esac
+  _u=$(printf '%s' "$_cmdp" | sed 's/^sshd: \([^ @[]*\).*/\1/')
+  _age=$(ps -o etimes= -p "$_p" 2>/dev/null | tr -d ' ')
+  [ -z "$_u" ] || [ -z "$_age" ] && continue
+  _nsess=$((_nsess + 1))
+  # ce que la session PORTE : le premier descendant (2 niveaux) qui n'est pas un sshd
+  _cmd=""
+  for _c in $(pgrep -P "$_p" 2>/dev/null) ; do
+    _cc=$(ps -o cmd= -p "$_c" 2>/dev/null)
+    case "$_cc" in "sshd: "*) _cmd=$(ps -o cmd= --ppid "$_c" 2>/dev/null | head -1) ;; *) _cmd="$_cc" ;; esac
+    [ -n "$_cmd" ] && break
+  done
+  _cmd=$(printf '%s' "$_cmd" | cut -c1-60)
+  _pair=$(printf '%s\n' "$_ss_etab" | grep -F "pid=$_p," | awk '{print $4}' | head -1)
+  if [ "$_age" -ge 86400 ]; then _v="🟠 > 1 JOUR"; _nlong=$((_nlong + 1)); else _v="  "; fi
+  printf '    %-12s age %6s s (%3d h)  %-22s porte : %s  %s\n' "$_u" "$_age" "$((_age / 3600))" "${_pair:-?}" "${_cmd:-(rien — canal ouvert, aucune commande en cours)}" "$_v"
+done
+[ "$_nsess" -eq 0 ] && echo "    (aucune session etablie — ce script tourne alors hors SSH)"
+if [ "$_nlong" -gt 0 ]; then
+  echo "    🟠 $_nlong session(s) ouverte(s) depuis plus d un jour. Une session n est pas un tirage :"
+  echo "       si elle ne porte AUCUNE commande, c est un canal qui reste (multiplexage ControlMaster,"
+  echo "       tunnel, ou client qui n a jamais ferme). A reconnaitre — VPS-042 en a une depuis le 09-09."
+else
+  echo "    ✅ aucune session de plus d un jour (celle de cette collecte comprise)."
+fi
+echo "    ⚠️ PORTEE : les enfants sont lus a un instant ; une commande courte entre deux lectures"
+echo "       est invisible. « porte : rien » signifie « rien A CET INSTANT », pas « jamais rien »."
 # ⚠️ `fail2ban-client status` (sans nom de prison) ne dit QUE « il y a 1 prison ». Il ne dit ni
 # combien d'echecs la prison a VUS, ni combien d'IP elle a bannies. Or c'est exactement la
 # difference entre une prison qui protege et une prison inerte — le defaut VPS-M06, ou le
@@ -3665,16 +3720,29 @@ sub "Age de la derniere sauvegarde, par dossier de /var/backups"
 # On enumere donc TOUS les dossiers. Un dossier qui n'est pas une sauvegarde s'affiche et ne
 # coute rien ; un dossier de sauvegarde invisible, lui, coute VPS-013.
 # COUT : ZERO commande de plus — la boucle parcourait deja /var/backups/*/.
+#
+# ⚠️⚠️ VPS-M99 — CORRIGE LE 2026-09-14. LE MEME DEFAUT, UN CRAN PLUS BAS : le filtre par NOM
+# de dossier avait ete retire, mais le filtre par EXTENSION (`*.gz`, `*.gpg`) restait. Le 09-09,
+# un depot distant a ete pose dans /var/backups/vizyo-conductor-distant/ : des dumps chiffres
+# `age` (`*.sql.gz.age`), un par nuit, retention 14 par le script qui les recoit. Ce bloc a
+# imprime « AUCUNE SAUVEGARDE » sur un dossier qui portait SEPT copies fraiches — deux passages
+# de suite (13 et 14/09), et personne ne l'a lu, parce que « AUCUNE SAUVEGARDE » sur un nom
+# inconnu se lit « un dossier vide de plus ». On ajoute `*.age`, et on imprime le PROPRIETAIRE
+# du dossier quand il n'est pas root : un depot ecrit par un compte de service est le depot
+# d'une AUTRE machine, pas une sauvegarde de celle-ci — et la table de couverture ne peut pas
+# le savoir. COUT : zero.
 for d in /var/backups/*/; do
   app=$(basename "$d")
-  dernier=$(find "$d" -maxdepth 1 -type f \( -name '*.gz' -o -name '*.gpg' \) -printf '%T@ %p\n' 2>/dev/null | sort -rn | head -1)
+  _prop=$(stat -c %U "$d" 2>/dev/null)
+  _dep=""; [ -n "$_prop" ] && [ "$_prop" != root ] && _dep="  [depot ecrit par « $_prop » — copie d une AUTRE machine, VPS-042]"
+  dernier=$(find "$d" -maxdepth 1 -type f \( -name '*.gz' -o -name '*.gpg' -o -name '*.age' \) -printf '%T@ %p\n' 2>/dev/null | sort -rn | head -1)
   if [ -z "$dernier" ]; then
-    printf '  %-22s AUCUNE SAUVEGARDE\n' "$app"
+    printf '  %-22s AUCUNE SAUVEGARDE (aucun .gz/.gpg/.age au premier niveau)%s\n' "$app" "$_dep"
     continue
   fi
   ts=${dernier%% *}; fic=${dernier#* }
   age_h=$(( (MAINTENANT - ${ts%.*}) / 3600 ))
-  nb=$(find "$d" -maxdepth 1 -type f \( -name '*.gz' -o -name '*.gpg' \) 2>/dev/null | wc -l)
+  nb=$(find "$d" -maxdepth 1 -type f \( -name '*.gz' -o -name '*.gpg' -o -name '*.age' \) 2>/dev/null | wc -l)
   taille=$(du -sh "$d" 2>/dev/null | cut -f1)
   # ⚠️ Un dossier dont le NOM porte une date (`tracky-pre-deploy-20260427`) est un instantane
   # pris une fois avant un deploiement, pas une serie planifiee. Le declarer « PERIMEE » chaque
@@ -3684,7 +3752,7 @@ for d in /var/backups/*/; do
     *-[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]) verdict="instantane ponctuel (garde volontairement)" ;;
     *) if [ "$age_h" -gt 30 ]; then verdict="⚠️ PERIMEE (> 30 h)"; else verdict="a jour"; fi ;;
   esac
-  printf '  %-26s %3s h  %-42s %2d copies, %s  %s\n' "$app" "$age_h" "$verdict" "$nb" "$taille" "$(basename "$fic")"
+  printf '  %-26s %3s h  %-42s %2d copies, %s  %s%s\n' "$app" "$age_h" "$verdict" "$nb" "$taille" "$(basename "$fic")" "$_dep"
 done
 
 # ── VPS-M88, second volet : QUEL dossier n'a ete reclame par AUCUN conteneur ? ─────────────
@@ -3703,21 +3771,26 @@ _orphelins=0
 for d in /var/backups/*/; do
   app=$(basename "$d")
   case " $DOSSIERS_RECLAMES " in *" $app "*) continue ;; esac
-  _n=$(find "$d" -maxdepth 1 -type f \( -name '*.gz' -o -name '*.gpg' \) 2>/dev/null | wc -l)
+  _n=$(find "$d" -maxdepth 1 -type f \( -name '*.gz' -o -name '*.gpg' -o -name '*.age' \) 2>/dev/null | wc -l)
   [ "$_n" -eq 0 ] && continue          # un dossier vide n'est pas une sauvegarde non reclamee
   _orphelins=$((_orphelins + 1))
-  _t=$(find "$d" -maxdepth 1 -type f \( -name '*.gz' -o -name '*.gpg' \) -printf '%T@\n' 2>/dev/null | sort -rn | head -1)
-  printf '    🟠 %-24s %2s copie(s), la plus recente il y a %s h — reclame par AUCUN conteneur\n' \
-    "$app" "$_n" "$(( (MAINTENANT - ${_t%.*}) / 3600 ))"
+  _t=$(find "$d" -maxdepth 1 -type f \( -name '*.gz' -o -name '*.gpg' -o -name '*.age' \) -printf '%T@\n' 2>/dev/null | sort -rn | head -1)
+  _prop=$(stat -c %U "$d" 2>/dev/null); _dep=""
+  [ -n "$_prop" ] && [ "$_prop" != root ] && _dep=" — depot d une AUTRE machine (ecrit par « $_prop »)"
+  printf '    🟠 %-24s %2s copie(s), la plus recente il y a %s h — reclame par AUCUN conteneur%s\n' \
+    "$app" "$_n" "$(( (MAINTENANT - ${_t%.*}) / 3600 ))" "$_dep"
 done
 if [ "$_orphelins" -eq 0 ]; then
   printf '    ✅ aucun : chaque dossier portant des archives est rattache a un conteneur en service.\n'
 else
-  printf '    ⚠️ Deux lectures, et elles sont OPPOSEES — il faut trancher, pas choisir la rassurante :\n'
+  printf '    ⚠️ TROIS lectures, et il faut trancher, pas choisir la rassurante :\n'
   printf '       • soit la base a disparu et ces octets sont a retirer ;\n'
   printf '       • soit la base est BIEN sauvegardee ici, et la table de couverture ci-dessus\n'
-  printf '         la declare « en retard » a tort parce que le dossier ne porte pas son nom.\n'
-  printf '       Le journal de l unite tranche : il imprime sa destination (journalctl -u <unite>).\n'
+  printf '         la declare « en retard » a tort parce que le dossier ne porte pas son nom ;\n'
+  printf '       • soit ce dossier est le DEPOT d une autre machine (VPS-M99) : il n a AUCUNE base\n'
+  printf '         ici a couvrir, et sa fraicheur mesure la sante de l EXPEDITEUR, pas la notre.\n'
+  printf '       Le journal de l unite tranche : il imprime sa destination (journalctl -u <unite>) ;\n'
+  printf '       pour un depot, c est le script force de la cle (command=) qui dit ou il ecrit.\n'
 fi
 
 # ── Ce qui RESSEMBLE a une sauvegarde et vit HORS de tout controle ────────────────────────

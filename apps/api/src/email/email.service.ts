@@ -37,6 +37,9 @@ export type EmailTemplateId =
   | 'audio_info'
   | 'installation_slot_requested'
   | 'installation_slot_confirmed'
+  // RDV d'installation (2026-09) : « prevenez-moi si un creneau se libere » — la promesse
+  // faite sur la page publique, tenue par le service d'entretien quotidien.
+  | 'installation_slot_available'
   | 'reservation_requested'
   | 'reservation_confirmed'
   | 'ai_invoice_request'
@@ -1615,6 +1618,48 @@ Un imprévu ? Répondez à cet e-mail. À bientôt.
   }
 
   /**
+   * Prise de RDV en ligne — « UN CRÉNEAU S'EST LIBÉRÉ » (→ e-mail laissé par le client qui
+   * n'avait trouvé aucun créneau). C'est la promesse du bouton « Prévenez-moi » : elle est
+   * tenue UNE fois par inscription, puis l'adresse est purgée (cf. SLOT_WATCH_RETENTION_DAYS).
+   */
+  buildInstallationSlotAvailableEmail(opts: {
+    companyName: string;
+    /** Le premier créneau libre, lisible (Europe/Paris) — pour qu'on sache QUOI réserver. */
+    nextSlotLabel: string;
+    /** Nombre de jours offrant au moins un créneau. */
+    dayCount: number;
+    bookingUrl: string;
+  }): { subject: string; html: string; text: string } {
+    const subject = `Des créneaux d'installation sont disponibles — ${opts.companyName}`;
+    const jours = opts.dayCount > 1 ? `${opts.dayCount} journées proposent des créneaux` : 'une journée propose des créneaux';
+    const body = `
+        <tr><td style="padding:28px 36px 0;">
+          <h1 class="m-title" style="margin:0 0 12px;font-family:${EMAIL_FONT};font-size:25px;line-height:1.15;font-weight:800;letter-spacing:-0.025em;color:#0A1311;">Un créneau s'est libéré</h1>
+          <p class="m-text" style="margin:0 0 6px;font-family:${EMAIL_FONT};font-size:15px;line-height:1.65;color:#56635E;">Bonjour,</p>
+          <p class="m-text" style="margin:0 0 20px;font-family:${EMAIL_FONT};font-size:15px;line-height:1.65;color:#56635E;">Vous aviez demandé à être prévenu dès qu'un créneau d'installation se libérerait pour <span style="color:${EMAIL_ACCENT_TEXTE};font-weight:600;">${escapeHtml(opts.companyName)}</span>. C'est le cas : ${jours}, le plus proche le <strong style="color:#0A1311;">${escapeHtml(opts.nextSlotLabel)}</strong>.</p>
+          <table role="presentation"><tr><td style="border-radius:11px;background:#10E0A0;">
+            <a href="${opts.bookingUrl}" style="display:inline-block;padding:14px 30px;font-family:${EMAIL_FONT};font-size:14px;font-weight:700;letter-spacing:-0.01em;color:#04130D;text-decoration:none;">Choisir mon créneau →</a>
+          </td></tr></table>
+          <p class="m-text" style="margin:20px 0 0;font-family:${EMAIL_FONT};font-size:13px;line-height:1.6;color:${EMAIL_TEXTE_SECOND};">Les créneaux partent dans l'ordre des demandes. Si aucun ne vous convient, répondez à cet e-mail : on vous en propose un directement.</p>
+        </td></tr>`;
+    const html = this.shell({
+      eyebrow: 'Installation · Créneau disponible',
+      preheader: `Le plus proche : ${opts.nextSlotLabel}.`,
+      footer: 'VIZYO TRACKY · GPS FLOTTE · OCCITANIE',
+      body,
+    });
+    const text = `Bonjour,
+
+Vous aviez demandé à être prévenu dès qu'un créneau d'installation se libérerait pour ${opts.companyName}. C'est le cas : ${jours}, le plus proche le ${opts.nextSlotLabel}.
+
+Choisir mon créneau : ${opts.bookingUrl}
+
+Si aucun ne vous convient, répondez à cet e-mail : on vous en propose un directement.
+— L'équipe Vizyo`;
+    return { subject, html, text };
+  }
+
+  /**
    * Lien public de réservation — ACCUSÉ DE RÉCEPTION (→ demandeur) quand une demande est déposée.
    * Charte 2026 via shell(). Aucun véhicule exposé (la demande est en attente de validation).
    */
@@ -2020,6 +2065,13 @@ ${this.commercialSignatureText()}`;
           vehicle: 'AB-123-CD · Renault Kangoo · Diesel',
           notes: 'Disponible plutôt le matin.',
           manageUrl: `${appBase}/admin/installation-bookings`,
+        });
+      case 'installation_slot_available':
+        return this.buildInstallationSlotAvailableEmail({
+          companyName: fleetName,
+          nextSlotLabel: 'sam. 26 sept., 09:00 – 11:00',
+          dayCount: 4,
+          bookingUrl: `${appBase}/book/apercu`,
         });
       case 'installation_slot_confirmed':
         return this.buildInstallationSlotConfirmedEmail({

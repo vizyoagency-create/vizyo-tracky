@@ -15,6 +15,8 @@ aucune corbeille ni restauration applicative.
 | Audit des mutations (`category=MUTATION`) | 365 jours | `LogCleanupService`, 03h00 | OUI |
 | Décisions d'échantillonnage | 7 jours | `DataRetentionService`, 03h30 | OUI |
 | **Registre du temps de travail** (`work_time_entries`) | **5 ans** (obligation employeur) | `WorkTimeService`, cron 04h00 | OUI |
+| **Abonnements « prévenez-moi »** de la page de RDV (`installation_slot_watchers` : e-mail) | **90 jours** (décision client du 16/08/2026) | `InstallationBookingEntretienService`, cron **07h40** | **OUI** — ⚠️ la purge existait depuis le 16/08 **sans aucun appelant** ; elle tourne depuis le 14/09/2026 |
+| **Visites de la page de RDV** (`installation_booking_link_visits` : IP tronquée, famille d'appareil, hôte du referrer, gestes) | **180 jours** (`VISIT_RETENTION_DAYS`) | `InstallationBookingEntretienService`, cron 07h40 | OUI |
 
 ## Garde-fous
 

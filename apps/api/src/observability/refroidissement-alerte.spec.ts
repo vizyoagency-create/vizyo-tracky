@@ -80,6 +80,20 @@ describe('RefroidissementAlerteService', () => {
     });
   });
 
+  describe('oublierAvant (T58)', () => {
+    it('efface la FAMILLE (préfixe) dont la dernière émission est antérieure à la borne, et rend le compte', async () => {
+      const deleteMany = jest.fn().mockResolvedValue({ count: 2 });
+      const avant = new Date('2026-09-14T03:20:00Z');
+      await expect(monter({ refroidissementAlerte: { deleteMany } }).oublierAvant('agent-local:x:echec', avant)).resolves.toBe(2);
+      expect(deleteMany).toHaveBeenCalledWith({ where: { cle: { startsWith: 'agent-local:x:echec' }, derniereEmissionAt: { lt: avant } } });
+    });
+
+    it('🔑 rend 0 et ne lève pas si la base est injoignable', async () => {
+      const deleteMany = jest.fn().mockRejectedValue(new Error('DB down'));
+      await expect(monter({ refroidissementAlerte: { deleteMany } }).oublierAvant('p', new Date())).resolves.toBe(0);
+    });
+  });
+
   describe('oublier', () => {
     it("efface le refroidissement — l'episode suivant est un fait NEUF", async () => {
       const deleteMany = jest.fn().mockResolvedValue({ count: 1 });

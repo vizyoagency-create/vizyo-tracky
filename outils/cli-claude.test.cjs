@@ -206,6 +206,41 @@ test('verifierAbonnement : une CLI qui plante ou ne rend pas du JSON → refus, 
   assert.match(inconnu.motif, /refus prudent/);
 });
 
+// Constat du 13/09 a 20h00 UTC : « claude auth status » a depasse ses 30 s pendant que le poste
+// compilait et testait ; l agent a conclu « CLI hors abonnement » et a perdu son passage. Un delai
+// n est pas une session absente : on reessaie UNE fois, et seulement sur un delai.
+test('verifierAbonnement : un DELAI sur « auth status » vaut un second essai — pas un refus', () => {
+  const muet = { log() {}, error() {} };
+  let essais = 0;
+  const lancer = () => {
+    essais++;
+    if (essais === 1) throw Object.assign(new Error('Command failed: claude auth status'), { code: 'ETIMEDOUT', killed: true, signal: 'SIGTERM', status: null, stdout: '', stderr: '' });
+    return JSON.stringify(STATUT_OK);
+  };
+  const v = cli.verifierAbonnement({ env: { PATH: 'x' }, lancer, journal: muet, attendreMs: 0 });
+  assert.equal(v.ok, true);
+  assert.equal(essais, 2);
+});
+
+test('verifierAbonnement : deux delais d affilee → refus qui dit « delai », et jamais un troisieme essai', () => {
+  const muet = { log() {}, error() {} };
+  let essais = 0;
+  const lancer = () => { essais++; throw Object.assign(new Error('x'), { code: 'ETIMEDOUT', killed: true, signal: 'SIGTERM', status: null, stdout: '', stderr: '' }); };
+  const v = cli.verifierAbonnement({ env: { PATH: 'x' }, lancer, journal: muet, attendreMs: 0 });
+  assert.equal(v.ok, false);
+  assert.match(v.motif, /delai depasse/);
+  assert.equal(essais, 2);
+});
+
+test('verifierAbonnement : un echec qui n est PAS un delai ne se reessaie pas', () => {
+  const muet = { log() {}, error() {} };
+  let essais = 0;
+  const lancer = () => { essais++; throw Object.assign(new Error('x'), { stderr: 'boom', status: 1, stdout: '' }); };
+  const v = cli.verifierAbonnement({ env: { PATH: 'x' }, lancer, journal: muet, attendreMs: 0 });
+  assert.equal(v.ok, false);
+  assert.equal(essais, 1);
+});
+
 // ── extraireErreurCli / erreurDepuisEchecCli ────────────────────────────────────────
 
 const PROMPT = 'Tu es un assistant d exploitation de flotte. SECRET-DU-PROMPT.';
