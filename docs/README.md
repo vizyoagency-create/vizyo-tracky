@@ -24,6 +24,7 @@
 | [`REARCHITECTURE-ARBORESCENCE.md`](./REARCHITECTURE-ARBORESCENCE.md) | Le plan de rangement du dépôt. **Écrit, pas exécuté** (tâche R1). |
 | [`chantier-cartes/SUIVI-CARTES-2026-09-07.md`](./chantier-cartes/SUIVI-CARTES-2026-09-07.md) | Le chantier cartes, terminé et prouvé. |
 | [`environnement-demo/`](./environnement-demo/) | La démo en ligne : plan et exploitation. |
+| [`rdv-installation/`](./rdv-installation/) | La prise de RDV d'installation (`/book/:token`) : week-end, visites (qui, quand, depuis quoi), liens de découverte, entretien quotidien. Chantier du 14/09 (`feat/rdv-installation-v2`), fusionné sur `main` et déployé le 14/09. |
 | [`fiabilite-coupe-circuit-2026-09/`](./fiabilite-coupe-circuit-2026-09/) | **Chantier sécurité en cours** : incident du 11/09, défauts prouvés, architecture cible, tests de fiabilité et gates avant réactivation des horaires. |
 
 ---
