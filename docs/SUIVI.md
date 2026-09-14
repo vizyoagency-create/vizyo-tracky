@@ -14,7 +14,7 @@
 > `centre-alerte/app/taches.json` + `poste-de-commande/contexte.json`. Ce fichier-ci est rendu des mêmes sources ;
 > quand ils divergent, **`taches.json` fait foi**.
 
-*Dernière mise à jour : 2026-09-14 (relevé du 14 septembre 2026, 07:05 UTC) · dépôt sur `main`*
+*Dernière mise à jour : 2026-09-14 (relevé du 14 septembre 2026, 07:40 UTC) · dépôt sur `main`*
 
 ---
 
@@ -38,7 +38,7 @@ puis le téléphone (T43), la procédure (T47), la recette sur boîtier et les c
 | ~ | **T40** | 🔴🔴 P0 — La clé d'unicité RESTORE ne doit plus vivre pour toujours (RESTORE du lendemain avalée) — COMMITTÉ d5c19a17, en attente de fusion | TRK-066 · doc 19 P0-1 | 🔧 à coder `d5c19a17` |
 | ~ | **T41** | 🔴🔴 P0 — Donner une validité aux SMS CUT (ttl), une priorité aux RESTORE, un appareil explicite, et annuler le SMS CUT supplanté — COMMITTÉ, en attente de fusion | TRK-066 · doc 19 P0-2 | 🔧 à coder `8ab1d08e` |
 | ~ | **T42** | 🔴 Relancer une RESTORE non prouvée à la reconnexion TCP du boîtier — et ne plus la rendre terminale après trois SMS — COMMITTÉ, en attente de fusion | TRK-066 · doc 19 P1-1 | 🔧 à coder `86c32fa9` |
-| ☐ | **T43** | 🔴 AUJOURD'HUI — Configurer le téléphone passerelle S21 (ping 60 s, FIFO, délais, limite, SIM 1, One UI) — avant tout déploiement | TRK-066 · doc 19 P1-2 | 🔵 terrain |
+| ☐ | **T43** | 🔴 Téléphone passerelle S21 configuré le 14/09 (ping 60 s vérifié, FIFO, délais, limite, veille OFF) — restent les variables du relais dans la fenêtre de déploiement | TRK-066 · doc 19 P1-2 | 🔵 terrain |
 | ~ | **T44** | 🔴 Sentinelle Android : hystérésis, bornes d'environnement, fraîcheur par appareil, délai d'envoi séparé du délai de santé — COMMITTÉ, en attente de fusion | TRK-066 · doc 19 P1-2 | 🔧 à coder `86a2fc53` |
 | ~ | **T45** | 🔴 Preuve SMS quotidienne réconciliée (T-30 min avant chaque fenêtre) — et le relais pousse ses statuts — COMMITTÉ, en attente de fusion | TRK-066 · doc 19 P1-3 | 🔧 à coder `1aa1e0f9` |
 | ☑ | **T46** | 🔴 Nettoyer le diff du chantier (reformatage prettier), rebaser sur main, résoudre le conflit — la production est déjà sur 66d286f5 | TRK-066 · doc 19 P1-4 | 🔧 à coder |
@@ -56,7 +56,7 @@ puis le téléphone (T43), la procédure (T47), la recette sur boîtier et les c
 | ☐ | **T58** | La cle de refroidissement de la sentinelle des agents doit porter la CAUSE — et courrier-ia doit lire le premier objet JSON equilibre | TRK-069 | 🔧 à coder |
 | ☐ | **T59** | Ne plus remonter au centre d alerte les appels avortes par la fermeture de la page sur le canal anonyme (robots) | TRK-079 | 🔧 à coder |
 | ☐ | **T60** | Test fenetre-utile.spec.ts (trajets, sur main) tient à la milliseconde : deux Date.now() distincts — à figer | main · 152883ec | 🔧 à coder |
-| ☐ | **T61** | 🔴 Dix SIM de boîtiers sont INJOIGNABLES par SMS depuis le S21 (RESULT_ERROR_GENERIC_FAILURE persistant) — les identifier comme « TCP seul » et faire trancher Free / WhereverSIM | TRK-066 · S21 · doc 10 test B/C | 🤝 humain |
+| ☐ | **T61** | Deux SIM de boîtiers (HD-584-BF, BP-434-RD) restent INJOIGNABLES par SMS depuis le S21 après remise en état ; les huit autres sont revenues — test depuis un autre opérateur ou ticket WhereverSIM | TRK-066 · S21 · doc 10 test B/C | 🤝 humain |
 
 ---
 
@@ -66,7 +66,7 @@ puis le téléphone (T43), la procédure (T47), la recette sur boîtier et les c
 |---|---|---|
 | Rattrapage du recalage des tracés | 12 441 restants | ≈ 35 jours à 15 par heure |
 | Reprise des analyses d’avant le 4 septembre | 25 par passage | s’éteint seule |
-| Coupe-circuit automatique — À L’ARRÊT | 0 planning actif sur 37 | réactivation sur ta décision (T38), après T43 → fusion → fenêtre doc 25 → T54 |
+| Coupe-circuit automatique — À L’ARRÊT | 0 planning actif sur 37 | réactivation sur ta décision (T38), après fusion → fenêtre doc 25 → T54 |
 
 | Chiffre | |
 |---|---|
@@ -84,14 +84,14 @@ puis le téléphone (T43), la procédure (T47), la recette sur boîtier et les c
 | ☐ | **T7** | 🔴🔴 Ouvrir la fenetre de maintenance du role non-superutilisateur | TRK-035 | 🤝 humain |
 | ☐ | **T38** | 🔴🔴 Remettre en service les plannings du coupe-circuit — 37 coupes depuis le 11/09, apres le chantier fiabilite | TRK-066 | 🤝 humain |
 | ☐ | **T9** | 🔴 Declarer ou depanner GLA•KC•31 et FG-669-DQ — et LEVER la declaration des trois revenus | — | 🔵 terrain |
-| ☐ | **T43** | 🔴 AUJOURD'HUI — Configurer le téléphone passerelle S21 (ping 60 s, FIFO, délais, limite, SIM 1, One UI) — avant tout déploiement | TRK-066 · doc 19 P1-2 | 🔵 terrain |
+| ☐ | **T43** | 🔴 Téléphone passerelle S21 configuré le 14/09 (ping 60 s vérifié, FIFO, délais, limite, veille OFF) — restent les variables du relais dans la fenêtre de déploiement | TRK-066 · doc 19 P1-2 | 🔵 terrain |
 | ☐ | **T47** | 🔴 Procédure de déploiement du chantier — ÉCRITE (doc 25), à jouer ensemble : téléphone → relais → Tracky, kill-switch false | TRK-066 · doc 19 P1-5 | 🟡 préparé |
 | ☐ | **T54** | 🔴 Recette réelle : boîtier de banc, puis un canari MH Cars, puis un CDEF31 — un à la fois, présence physique, jamais les 37 | TRK-066 · doc 19 §3 phase 5 | 🔵 terrain |
-| ☐ | **T61** | 🔴 Dix SIM de boîtiers sont INJOIGNABLES par SMS depuis le S21 (RESULT_ERROR_GENERIC_FAILURE persistant) — les identifier comme « TCP seul » et faire trancher Free / WhereverSIM | TRK-066 · S21 · doc 10 test B/C | 🤝 humain |
 | ☐ | **T1** | Recharger au moins UN des deux comptes IA | TRK-071 | 🤝 humain |
 | ☐ | **T35** | Ouvrir un second abonnement reserve aux agents du poste — quand tu le decideras (D7) | TRK-071 | 🤝 humain |
 | ☐ | **T39** | Rouvrir les notifications aux clients (PUSH_ROLLOUT=ALL) quand les tests seront finis | TRK-065 | 🤝 humain |
 | ☐ | **T55** | Second téléphone + seconde SIM (autre opérateur) — après T52, jamais sous le même deviceId | TRK-066 · doc 12 · doc 19 P2-8 | 🤝 humain |
+| ☐ | **T61** | Deux SIM de boîtiers (HD-584-BF, BP-434-RD) restent INJOIGNABLES par SMS depuis le S21 après remise en état ; les huit autres sont revenues — test depuis un autre opérateur ou ticket WhereverSIM | TRK-066 · S21 · doc 10 test B/C | 🤝 humain |
 | ☐ | **T8** | Controler les antennes de trois vehicules | TRK-001 · TRK-027 | 🔵 terrain |
 
 ---
@@ -200,6 +200,7 @@ puis le téléphone (T43), la procédure (T47), la recette sur boîtier et les c
 
 | Date | Quoi | La preuve |
 |---|---|---|
+| 14/09 | **Le S21 est configuré et le prouve : un ping par minute — et les tests SMS renversent la conclusion du matin (T43, T61)** | Sur le téléphone, avec ton accord : ping `60 s`, FIFO, délais 10/15 s, limite 60/h, Local server OFF, veille des applis OFF ; `lastSeen` avance de 60 s en 60 s depuis 09:23 (lu sur le serveur). Puis 13 SMS de statut `check123456` (facturés sur ta ligne — arrêtés à ta demande) : par le relais, `8 des 10 SIM` que rien n'atteignait depuis des semaines répondent en quelques secondes (…621085, 36 échecs depuis juin : `delivered en 8 s`) ; `2 restent en échec` au départ, HD-584-BF et BP-434-RD, boîtiers pourtant en ligne, SIM activées, IMEI concordants. Le défaut du 11/09 tenait donc surtout à l'état du téléphone (pas de ping, app jamais redémarrée) ; pour ces deux véhicules, il reste un test « autre opérateur », à 1 SMS. |
 | 14/09 | **Le S21 diagnostiqué de l'intérieur : le bug du 11/09 a DEUX causes, et la seconde n'est pas dans le téléphone (T43, T61)** | Mobile connecté, lecture seule, 08:40–08:58. (1) Le téléphone ne relève les ordres que toutes les 15 min faute de ping : les 10 RESTORE de 07:00 sont partis à `07:07`, et celui de 20:49 à `21:55` parce que le S21 redémarrait (uptime 60 h = dernier redémarrage le 11/09 vers 20:45) — réglages de l'app tous au défaut (ping vide, LIFO, ni délai ni limite), veille des applis inutilisées ON sans protection, téléphone personnel sur batterie. (2) Les 5 échecs de 07:07 et toutes les reprises du jour sont « RESULT_ERROR_GENERIC_FAILURE » vers `les mêmes numéros` : dix SIM de boîtiers n'ont `jamais` reçu un SMS du S21 depuis juin (…621085 : 36 échecs) alors que leurs voisines livrent à 100 % dans la même seconde, que le fournisseur les dit activées, qu'elles sont en session data, en TCP, et qu'elles émettent des SMS. Ni débit, ni veille, ni batterie : la destination. Test décisif à faire (T61) : un SMS neutre vers …621085 depuis un autre opérateur. Vérifié aussi : le S21 se remet ses propres SMS (preuves hebdo), les 4 webhooks sont en place. |
 | 14/09 | **Le S21 est relevé avant d'y toucher : aucun réglage, pull toutes les 15 min, quatre webhooks bien en place (T43)** | Lecture seule depuis le conteneur du relais, 06:33 UTC : serveur capcom6 `1.43.0` sain ; un seul appareil, `lastSeen` vieux de `10 min` (le pull de secours, faute de ping) ; `GET /3rdparty/v1/settings` rend `{}` — tout au défaut, comme le diagnostic du 12/09 ; les quatre webhooks `sms:received/sent/delivered/failed` pointent bien sur le relais (le point P4 du doc 25 est vérifié). Les gestes exacts sur le téléphone sont dans la fiche T43 ; la preuve sera `lastSeen` qui avance toutes les 60 s, écran éteint, pendant 30 min. |
 | 14/09 | **Les six derniers correctifs faisables seul sont committés : le chantier n'attend plus que toi (T48, T50, T51, T52, T53, T56)** | Tracky `8a8cb2c4` (T48) : une preuve ne se rétrograde jamais en « envoyée », une CUT orpheline est dispatchée. `b582fbf6` (T51) : une RESTORE non prouvée se rappelle toutes les `15 min`, un SMS bloqué une heure est retenté, un clic manuel répond en 20 s. `428d1f39` (T52) : l'allowlist du relais ne bloque plus une remise en route. `8bb24ca7` (T50) : le glissement exige un vrai geste — un clic en bout de piste ou la touche Fin ne coupent plus rien (3 tests rouges sur l'ancien composant). `b407481a` (T53) : le journal des tentatives est enfin exercé, avec les contraintes de la migration rejouées, et le changement d'heure du `25/10` est couvert. `0677cd05` (T56) : chaque promesse des documents 01–18 est datée « tenu / tenu autrement / non implémenté » (doc 32). Suites : API `260 suites / 4 081 tests`, web 732, smoke 5, typecheck vert ; rien n'est déployé. Non vérifié : rejeu des migrations sur PostGIS 16 réel (Docker éteint ici), annulation SMS effective (capcom6 ≥ 1.45.0). |
