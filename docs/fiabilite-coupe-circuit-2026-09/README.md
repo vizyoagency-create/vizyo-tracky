@@ -56,12 +56,13 @@ Les traitements CUT et RESTORE sont volontairement asymétriques :
 23. [Correctif P1-2 (T44) — la sentinelle Android ne bat plus, verdict par appareil](./23-CORRECTIF-P1-SENTINELLE-ANDROID-2026-09-14.md)
 24. [Correctif P1-3 (T45) — une preuve SMS chaque matin, et le relais dit ce qu'il sait](./24-CORRECTIF-P1-PREUVE-SMS-QUOTIDIENNE-2026-09-14.md)
 25. [Procédure de déploiement du chantier (T47) — téléphone → relais → Tracky, kill-switch false](./25-PROCEDURE-DE-DEPLOIEMENT-DU-CHANTIER-2026-09-14.md)
+26. [Correctif P2-2 (T49) — une coupe retenue n'est pas une panne par véhicule](./26-CORRECTIF-P2-KILL-SWITCH-SANS-RAFALE-2026-09-14.md)
 
 ## Contre-expertise du 13 septembre
 
 Le document 19 est une revue indépendante de tout le chantier : verdict **NO-GO** en l'état (un
 défaut P0 introduit par la correction, démontré par test), notes, réponses aux vingt questions
-posées, et plan d'action concret. Les documents 20 à 24 décrivent les correctifs issus de cette revue (T40, T41, T42, T44, T45) ; le document 25 est la procédure de déploiement (T47), à jouer avec le propriétaire.
+posées, et plan d'action concret. Les documents 20 à 24 et 26 décrivent les correctifs issus de cette revue (T40, T41, T42, T44, T45, T49) ; le document 25 est la procédure de déploiement (T47), à jouer avec le propriétaire.
 En cas d'écart entre les documents 13/17/18 et le document 19, **le document 19 fait foi** jusqu'à
 ce que les tâches qu'il liste soient closes.
 

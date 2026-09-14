@@ -22,6 +22,7 @@ import {
 } from '../gps-dead-zones/presomption-stationnement';
 import { CobanWireLogger } from '../observability/coban-wire-logger.service';
 import { ErrorLogger } from '../observability/error-logger.service';
+import { NIVEAU_DEGRADATION } from '../observability/niveaux-erreur';
 import { resolveTenantScope } from '../common/tenant-scope';
 import { PrismaService } from '../prisma/prisma.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
@@ -210,11 +211,51 @@ interface RequestedBy {
  */
 export class PresumedParkedException extends ForbiddenException {}
 
+/**
+ * ══ T49 (contre-expertise du 13/09, P2-2) — UNE COUPE RETENUE N'EST PAS UNE PANNE PAR VÉHICULE ══
+ *
+ * Le kill-switch et l'interlock écrivaient un CRITICAL à CHAQUE appel refusé. Le cron retente avec
+ * un palier 2/5/15/30 min, la dédup d'ErrorLogger ne dure que 60 s, et la vigie envoie un
+ * courriel par heure dès qu'un CRITICAL existe : un administrateur de flotte qui réactive lui-même
+ * ses horaires (droit `schedules_manage`) déclenchait un flux nocturne de dizaines de lignes — et
+ * autant de lignes « coupe impossible depuis N min » côté cron — sans connaître le kill-switch.
+ *
+ * Désormais :
+ *   - le refus est une exception TYPÉE (`AutomaticCutWithheldException`, cause `kill-switch` ou
+ *     `interlock`) : le cron la reconnaît par son type (jamais par son texte) et n'en fait pas un
+ *     blocage à alerter — il retente avec son palier, sans écrire ;
+ *   - le kill-switch est un ÉTAT VOULU, pas une faute : niveau DÉGRADATION (le niveau du centre
+ *     d'alerte pour « repli propre, perte bornée, contrepartie acceptée » — TRK-037 ; il n'est
+ *     pas compté comme une erreur et ne réveille pas la vigie), UNE ligne par heure au plus, qui
+ *     compte les refus et nomme les véhicules concernés depuis la ligne précédente ;
+ *   - l'interlock est une vraie panne de la chaîne de secours : CRITICAL, UNE ligne par raison et
+ *     par quart d'heure, avec le même compte.
+ *   Le compteur est en mémoire : un redémarrage coûte au pire une ligne de plus, jamais trente.
+ */
+export class AutomaticCutWithheldException extends ServiceUnavailableException {
+  constructor(
+    message: string,
+    readonly cause: 'kill-switch' | 'interlock',
+    readonly reason: string,
+  ) {
+    super(message);
+  }
+}
+const ENGINE_KILL_SWITCH_ALERT_SPACING_MS = 60 * 60_000;
+const ENGINE_INTERLOCK_ALERT_SPACING_MS = 15 * 60_000;
+/** Plaques nommées dans une ligne : au-delà, on compte sans lister (une flotte fait 30 véhicules). */
+const ENGINE_WITHHELD_MAX_PLATES = 40;
+
 @Injectable()
 export class EngineControlService implements OnModuleDestroy {
   private readonly logger = new Logger(EngineControlService.name);
   private automaticCutHealthCache: { expiresAt: number; safe: boolean; reason: string } | null = null;
   private restoreWorkerRunning = false;
+  /** T49 — par cause de refus : dernière ligne écrite, refus et véhicules accumulés depuis. */
+  private readonly withheldCuts = new Map<
+    string,
+    { lastAt: number; refusals: number; vehicles: Set<string> }
+  >();
 
   /**
    * Timers armés par la sentinelle « coupure non confirmée ». SUIVIS pour pouvoir les annuler à
@@ -605,14 +646,17 @@ export class EngineControlService implements OnModuleDestroy {
       process.env['NODE_ENV'] === 'production' &&
       process.env['ENGINE_AUTOMATIC_CUT_ENABLED'] !== 'true'
     ) {
-      this.errorLogger.record(
-        'CUT automatique bloquée par le kill-switch de fiabilité',
-        'engine-control-interlock',
-        { trackerId, imei: tracker.imei, fleetId, action, source },
-        'CRITICAL',
-      ).catch(() => undefined);
-      throw new ServiceUnavailableException(
+      const reason = 'ENGINE_AUTOMATIC_CUT_ENABLED ≠ true';
+      await this.signalWithheldCut('kill-switch', reason, {
+        trackerId,
+        imei: tracker.imei,
+        fleetId,
+        plate: tracker.vehicle.plate ?? null,
+      });
+      throw new AutomaticCutWithheldException(
         'Coupures automatiques désactivées par le garde-fou de fiabilité',
+        'kill-switch',
+        reason,
       );
     }
     if (
@@ -620,7 +664,7 @@ export class EngineControlService implements OnModuleDestroy {
       action === EngineAction.CUT &&
       process.env['NODE_ENV'] === 'production'
     ) {
-      await this.assertAutomaticCutSafe(trackerId, tracker.imei, fleetId);
+      await this.assertAutomaticCutSafe(trackerId, tracker.imei, fleetId, tracker.vehicle.plate);
     }
 
     // Un retry HTTP portant la même clé converge immédiatement vers l'intention
@@ -1277,7 +1321,7 @@ export class EngineControlService implements OnModuleDestroy {
   }
 
   /** Deuxième étage fail-closed, évalué seulement quand le kill-switch est armé. */
-  private async assertAutomaticCutSafe(trackerId: string, imei: string, fleetId: string): Promise<void> {
+  private async assertAutomaticCutSafe(trackerId: string, imei: string, fleetId: string, plate?: string | null): Promise<void> {
     const now = Date.now();
     if (!this.automaticCutHealthCache || this.automaticCutHealthCache.expiresAt <= now) {
       try {
@@ -1326,13 +1370,61 @@ export class EngineControlService implements OnModuleDestroy {
 
     if (this.automaticCutHealthCache.safe) return;
     const reason = this.automaticCutHealthCache.reason;
+    await this.signalWithheldCut('interlock', reason, { trackerId, imei, fleetId, plate: plate ?? null });
+    throw new AutomaticCutWithheldException(
+      `Coupure automatique différée : ${reason}`,
+      'interlock',
+      reason,
+    );
+  }
+
+  /**
+   * T49 — une ligne par CAUSE, espacée, qui compte les refus et nomme les véhicules depuis la
+   * ligne précédente. Le kill-switch (état voulu) en DÉGRADATION toutes les heures au plus ;
+   * l'interlock (chaîne de secours non prouvée) en CRITICAL par raison et par quart d'heure.
+   * Ne lève jamais.
+   */
+  private async signalWithheldCut(
+    cause: 'kill-switch' | 'interlock',
+    reason: string,
+    vehicle: { trackerId: string; imei: string; fleetId: string; plate: string | null },
+  ): Promise<void> {
+    const key = cause === 'kill-switch' ? 'kill-switch' : `interlock|${reason}`;
+    const spacing = cause === 'kill-switch' ? ENGINE_KILL_SWITCH_ALERT_SPACING_MS : ENGINE_INTERLOCK_ALERT_SPACING_MS;
+    const now = Date.now();
+    const entry = this.withheldCuts.get(key) ?? { lastAt: 0, refusals: 0, vehicles: new Set<string>() };
+    entry.refusals += 1;
+    if (entry.vehicles.size < ENGINE_WITHHELD_MAX_PLATES) entry.vehicles.add(vehicle.plate ?? vehicle.imei);
+    this.withheldCuts.set(key, entry);
+    if (now - entry.lastAt < spacing) return;
+
+    const refusals = entry.refusals;
+    const vehicles = [...entry.vehicles];
+    entry.lastAt = now;
+    entry.refusals = 0;
+    entry.vehicles = new Set<string>();
+
+    const liste = vehicles.length > 0 ? ` — véhicules : ${vehicles.join(', ')}` : '';
+    const message = cause === 'kill-switch'
+      ? `Coupes automatiques RETENUES par le kill-switch (${reason}) : ${refusals} refus depuis la dernière ligne${liste}. ` +
+        'État voulu jusqu’au Go terrain ; les RESTORE et les actions manuelles restent disponibles. Prochaine ligne dans 60 min au plus tôt.'
+      : `CUT automatique bloquée : capacité de RESTORE non démontrée (${reason}) : ${refusals} refus depuis la dernière ligne${liste}. Prochaine ligne dans 15 min au plus tôt.`;
     await this.errorLogger.record(
-      `CUT automatique bloquée : capacité de RESTORE non démontrée (${reason})`,
+      message,
       'engine-control-interlock',
-      { trackerId, imei, fleetId, reason },
-      'CRITICAL',
+      {
+        cause,
+        reason,
+        refusalsSinceLastLine: refusals,
+        vehicles,
+        trackerId: vehicle.trackerId,
+        imei: vehicle.imei,
+        fleetId: vehicle.fleetId,
+        plate: vehicle.plate ?? undefined,
+        spacingMin: Math.round(spacing / 60_000),
+      },
+      cause === 'kill-switch' ? NIVEAU_DEGRADATION : 'CRITICAL',
     ).catch(() => undefined);
-    throw new ServiceUnavailableException(`Coupure automatique différée : ${reason}`);
   }
 
   private async beginAttempt(

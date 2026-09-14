@@ -5,7 +5,11 @@ import { CommandStatus, EngineAction, type VehicleSchedule } from '@prisma/clien
 import { DORMANT_STOP_ACTING_MS, formatSilenceLabel, trackerSilenceMs } from '@vizyo/tracky-shared';
 import { ErrorLogger } from '../observability/error-logger.service';
 import { PrismaService } from '../prisma/prisma.service';
-import { EngineControlService, PresumedParkedException } from '../engine-control/engine-control.service';
+import {
+  AutomaticCutWithheldException,
+  EngineControlService,
+  PresumedParkedException,
+} from '../engine-control/engine-control.service';
 import { evaluateSchedule, type EvaluationResult } from './schedule-evaluator';
 import { AUTOMATIC_CUT_QUEUE_INTERVAL_MS, AutomaticCutQueueGate } from './automatic-cut-queue';
 
@@ -150,6 +154,12 @@ export class ScheduleCronService {
   private readonly parkedRecheckAfter = new Map<string, number>();
   /** Journal « considéré stationné » : dernière ligne écrite, pour espacer (PARKED_RELOG_MS). */
   private readonly lastParkedLogAt = new Map<string, number>();
+  /**
+   * T49 — véhicules dont la dernière coupe a été RETENUE (kill-switch, interlock) : pendant le
+   * palier d'attente, on ne compte pas le temps « bloqué » — le moteur de commande a déjà écrit
+   * sa ligne, une par cause. Vidé par clearDeferral, ou par un refus d'une autre nature.
+   */
+  private readonly withheldCuts = new Set<string>();
 
   /** Évaluation complète chaque minute : RESTORE prioritaires + transitions ordinaires. */
   @Cron('0 * * * * *')
@@ -310,6 +320,8 @@ export class ScheduleCronService {
 
       const retryAfter = this.cutRetryAfter.get(schedule.vehicleId);
       if (retryAfter && Date.now() < retryAfter) {
+        // T49 — une coupe retenue attend son palier SANS compter le temps « bloqué ».
+        if (this.withheldCuts.has(schedule.vehicleId)) return;
         // On continue de suivre le blocage : l'alerte « coupe impossible depuis X min » doit
         // toujours partir, même pendant qu'on espace les tentatives. On rapporte la DERNIÈRE
         // cause réelle — pas l'état d'attente, qui n'apprend rien à qui lit l'alerte.
@@ -371,6 +383,24 @@ export class ScheduleCronService {
         }
         return;
       }
+      // ══ T49 — COUPE RETENUE (kill-switch, interlock) : un état, pas un blocage à alerter ═══
+      // Le moteur de commande a déjà écrit SA ligne, une par cause et espacée. Écrire ici
+      // « coupe impossible depuis N min » par véhicule — trente fois par nuit — ne dirait rien
+      // de plus, et enterrerait la seule ligne utile. On retente avec le palier habituel (le
+      // kill-switch sera levé un jour, l'interlock redeviendra vert), sans compter le temps
+      // « bloqué » : ce compteur est réservé aux refus qu'un exploitant peut lever.
+      // Discriminé par TYPE, jamais par texte (même règle que PresumedParkedException).
+      if (err instanceof AutomaticCutWithheldException && action === EngineAction.CUT) {
+        this.lastFailureReason.set(schedule.vehicleId, msg);
+        this.cutRetryDeadline.delete(schedule.vehicleId);
+        this.withheldCuts.add(schedule.vehicleId);
+        const nextIn = this.scheduleCutRetry(schedule.vehicleId);
+        this.logger.log(
+          { vehicleId: schedule.vehicleId, plate: schedule.vehicle.plate ?? null, cause: err.cause, reason: err.reason, retryInMin: nextIn / 60000 },
+          `Coupe automatique retenue (${err.cause}) — nouvel essai dans ${Math.round(nextIn / 60000)} min, sans alerte par véhicule`,
+        );
+        return;
+      }
       // REPORT (defer) : la commande ne peut pas s'appliquer MAINTENANT mais devra être
       // retentée — véhicule en mouvement, arrêt trop récent (règle 10 min CDEF), position
       // périmée/invalide, ou tracker hors ligne. Tous ces refus sont des ForbiddenException
@@ -386,6 +416,8 @@ export class ScheduleCronService {
       const isDeferrable =
         err instanceof ForbiddenException || err instanceof ServiceUnavailableException;
       if (isDeferrable) {
+        // T49 — un refus d'une AUTRE nature rouvre le compte du temps « bloqué ».
+        this.withheldCuts.delete(schedule.vehicleId);
         // Mémorise la cause RÉELLE : les ticks suivants tombent dans la fenêtre d'attente et
         // ne la reverront pas, alors que c'est elle qu'il faut rapporter (cf. lastFailureReason).
         this.lastFailureReason.set(schedule.vehicleId, msg);
@@ -639,6 +671,7 @@ export class ScheduleCronService {
     this.cutFailures.delete(vehicleId);
     this.cutRetryDeadline.delete(vehicleId);
     this.lastFailureReason.delete(vehicleId);
+    this.withheldCuts.delete(vehicleId);
     // TRK-046 — l'état « considéré stationné » se referme avec le reste : une coupe aboutie,
     // une reprise ou un planning revenu en phase rendent la présomption sans objet. (La
     // branche stationné re-pose son entrée juste APRÈS avoir appelé clearDeferral.)

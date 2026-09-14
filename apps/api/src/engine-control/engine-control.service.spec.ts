@@ -15,7 +15,7 @@ import { SocketRegistryService } from '../socket-registry/socket-registry.servic
 import { AckWaiterService } from '../tracker-commands/ack-waiter.service';
 import { GpsDeadZonesService } from '../gps-dead-zones/gps-dead-zones.service';
 import { SmsGatewayService } from '../sms/sms-gateway.service';
-import { EngineControlService, PresumedParkedException } from './engine-control.service';
+import { AutomaticCutWithheldException, EngineControlService, PresumedParkedException } from './engine-control.service';
 import { SystemActivityService } from '../system-activity/system-activity.service';
 import { computeNextTransition } from '../vehicle-schedules/schedule-evaluator';
 
@@ -1595,12 +1595,16 @@ describe('EngineControlService', () => {
           service.requestCommand(TRACKER_ID, EngineAction.CUT, null, superAdmin, 'SCHEDULER'),
         ).rejects.toThrow('Coupures automatiques désactivées');
         expect(prisma.engineControlCommand.create).not.toHaveBeenCalled();
+        // T49 — un état voulu, pas une panne : DÉGRADATION (non compté, pas de vigie), et typé.
         expect(errorLogger.record).toHaveBeenCalledWith(
           expect.stringContaining('kill-switch'),
           'engine-control-interlock',
-          expect.objectContaining({ trackerId: TRACKER_ID }),
-          'CRITICAL',
+          expect.objectContaining({ cause: 'kill-switch', trackerId: TRACKER_ID, plate: 'AB-123-CD', refusalsSinceLastLine: 1 }),
+          'DEGRADATION',
         );
+        await expect(
+          service.requestCommand(TRACKER_ID, EngineAction.CUT, null, superAdmin, 'SCHEDULER'),
+        ).rejects.toBeInstanceOf(AutomaticCutWithheldException);
       } finally {
         if (previousNodeEnv === undefined) delete process.env['NODE_ENV'];
         else process.env['NODE_ENV'] = previousNodeEnv;
@@ -1647,7 +1651,7 @@ describe('EngineControlService', () => {
         expect(errorLogger.record).toHaveBeenCalledWith(
           expect.stringContaining('téléphone Android/SIM indisponible'),
           'engine-control-interlock',
-          expect.objectContaining({ trackerId: TRACKER_ID }),
+          expect.objectContaining({ cause: 'interlock', trackerId: TRACKER_ID, plate: 'AB-123-CD' }),
           'CRITICAL',
         );
       } finally {
@@ -1657,6 +1661,109 @@ describe('EngineControlService', () => {
           delete process.env['ENGINE_AUTOMATIC_CUT_ENABLED'];
         else process.env['ENGINE_AUTOMATIC_CUT_ENABLED'] = previousFlag;
       }
+    });
+
+    /**
+     * ── T49 (contre-expertise du 13/09, P2-2) — une ligne par cause, espacée ────────────────────
+     * Avant : un CRITICAL par appel refusé ; 30 véhicules × palier 2/5/15/30 min = des dizaines de
+     * lignes par nuit et un courriel par heure, pour un état que le propriétaire a choisi.
+     */
+    describe('T49 — kill-switch et interlock sans rafale', () => {
+      let previousNodeEnv: string | undefined;
+      let previousFlag: string | undefined;
+      beforeEach(() => {
+        previousNodeEnv = process.env['NODE_ENV'];
+        previousFlag = process.env['ENGINE_AUTOMATIC_CUT_ENABLED'];
+        process.env['NODE_ENV'] = 'production';
+        prisma.tracker.findFirst.mockResolvedValue(trackerWithVehicle);
+      });
+      afterEach(() => {
+        jest.restoreAllMocks();
+        if (previousNodeEnv === undefined) delete process.env['NODE_ENV'];
+        else process.env['NODE_ENV'] = previousNodeEnv;
+        if (previousFlag === undefined) delete process.env['ENGINE_AUTOMATIC_CUT_ENABLED'];
+        else process.env['ENGINE_AUTOMATIC_CUT_ENABLED'] = previousFlag;
+      });
+      const refus = () =>
+        service.requestCommand(TRACKER_ID, EngineAction.CUT, null, superAdmin, 'SCHEDULER').catch((e) => e);
+
+      it('🔴 kill-switch : trente refus en une heure = UNE ligne, puis une ligne qui les compte et nomme les véhicules', async () => {
+        delete process.env['ENGINE_AUTOMATIC_CUT_ENABLED'];
+        const t0 = 1_800_000_000_000;
+        const now = jest.spyOn(Date, 'now').mockReturnValue(t0);
+        for (let i = 0; i < 30; i++) {
+          prisma.tracker.findFirst.mockResolvedValueOnce({ ...trackerWithVehicle, vehicle: { ...trackerWithVehicle.vehicle, plate: `VH-${String(i).padStart(3, '0')}` } });
+          now.mockReturnValue(t0 + i * 2 * 60_000); // un refus toutes les 2 min pendant une heure
+          await refus();
+        }
+        expect(errorLogger.record).toHaveBeenCalledTimes(1);
+        // L'heure passée : une seconde ligne, qui porte les 29 refus muets et leurs plaques.
+        now.mockReturnValue(t0 + 61 * 60_000);
+        prisma.tracker.findFirst.mockResolvedValueOnce({ ...trackerWithVehicle, vehicle: { ...trackerWithVehicle.vehicle, plate: 'VH-030' } });
+        await refus();
+        expect(errorLogger.record).toHaveBeenCalledTimes(2);
+        const [message, source, context, level] = errorLogger.record.mock.calls[1];
+        expect(source).toBe('engine-control-interlock');
+        expect(level).toBe('DEGRADATION');
+        expect(context).toMatchObject({ cause: 'kill-switch', refusalsSinceLastLine: 30, spacingMin: 60 });
+        expect(context.vehicles).toEqual(expect.arrayContaining(['VH-001', 'VH-029', 'VH-030']));
+        expect(context.vehicles).not.toContain('VH-000'); // la première ligne l'avait déjà nommé
+        expect(String(message)).toContain('30 refus');
+        expect(String(message)).toContain('VH-030');
+      });
+
+      it('interlock : CRITICAL une fois par raison et par quart d heure — une raison nouvelle a sa propre ligne', async () => {
+        process.env['ENGINE_AUTOMATIC_CUT_ENABLED'] = 'true';
+        const sms = testModule.get(SmsGatewayService) as unknown as { currentProvider: jest.Mock; healthCheck: jest.Mock };
+        sms.currentProvider.mockReturnValue('vizyo-texto');
+        const sante = (operational: boolean, error?: string) => ({
+          enabled: true, reachable: true, deliveryProofAvailable: true, pendingWithoutReceipt: 0, oldestPendingAt: null,
+          lastTerminalSuccessAt: new Date().toISOString(), error,
+          gateway: { operational, device: { fresh: operational } },
+        });
+        sms.healthCheck.mockResolvedValue(sante(false, 'téléphone périmé'));
+        const t0 = 1_800_000_000_000;
+        const now = jest.spyOn(Date, 'now').mockReturnValue(t0);
+
+        await refus();
+        now.mockReturnValue(t0 + 5 * 60_000);
+        await refus(); // même raison, 5 min plus tard : muet
+        now.mockReturnValue(t0 + 14 * 60_000);
+        await refus(); // 14 min : encore muet
+        expect(errorLogger.record).toHaveBeenCalledTimes(1);
+        expect(errorLogger.record.mock.calls[0][3]).toBe('CRITICAL');
+
+        now.mockReturnValue(t0 + 16 * 60_000);
+        await refus(); // le quart d'heure est passé : une ligne, avec le compte
+        expect(errorLogger.record).toHaveBeenCalledTimes(2);
+        expect(errorLogger.record.mock.calls[1][2]).toMatchObject({ cause: 'interlock', refusalsSinceLastLine: 3, spacingMin: 15 });
+
+        // Une raison DIFFÉRENTE (le cache de santé expire à 30 s : on le pousse au-delà) a sa propre ligne, tout de suite.
+        sms.healthCheck.mockResolvedValue({ ...sante(true), deliveryProofAvailable: false });
+        now.mockReturnValue(t0 + 17 * 60_000);
+        const err = await refus();
+        expect(err).toBeInstanceOf(AutomaticCutWithheldException);
+        expect((err as AutomaticCutWithheldException).reason).toContain('aucune preuve de remise');
+        expect(errorLogger.record).toHaveBeenCalledTimes(3);
+        expect(errorLogger.record.mock.calls[2][2]).toMatchObject({ cause: 'interlock', refusalsSinceLastLine: 1 });
+      });
+
+      it('le refus est typé, avec sa cause et sa raison — le cron discrimine par TYPE, jamais par texte', async () => {
+        delete process.env['ENGINE_AUTOMATIC_CUT_ENABLED'];
+        const err = await refus();
+        expect(err).toBeInstanceOf(AutomaticCutWithheldException);
+        expect(err).toBeInstanceOf(ServiceUnavailableException); // le traitement « report » du cron reste vrai
+        expect((err as AutomaticCutWithheldException).cause).toBe('kill-switch');
+        expect((err as AutomaticCutWithheldException).reason).toContain('ENGINE_AUTOMATIC_CUT_ENABLED');
+      });
+
+      it('un centre d alerte en panne ne bloque ni ne casse le refus', async () => {
+        delete process.env['ENGINE_AUTOMATIC_CUT_ENABLED'];
+        errorLogger.record.mockRejectedValueOnce(new Error('centre indisponible'));
+        await expect(
+          service.requestCommand(TRACKER_ID, EngineAction.CUT, null, superAdmin, 'SCHEDULER'),
+        ).rejects.toBeInstanceOf(AutomaticCutWithheldException);
+      });
     });
 
     it('renvoie la même intention après collision idempotente', async () => {

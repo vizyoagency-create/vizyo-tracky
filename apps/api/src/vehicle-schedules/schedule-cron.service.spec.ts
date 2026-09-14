@@ -1,5 +1,5 @@
 import { ForbiddenException, ServiceUnavailableException } from '@nestjs/common';
-import { PresumedParkedException } from '../engine-control/engine-control.service';
+import { AutomaticCutWithheldException, PresumedParkedException } from '../engine-control/engine-control.service';
 import { AutomaticCutQueueGate } from './automatic-cut-queue';
 import { parseKnownCountdown, ScheduleCronService } from './schedule-cron.service';
 import type { VehicleSchedule } from '@prisma/client';
@@ -752,6 +752,93 @@ describe('ScheduleCronService.evaluateOne override', () => {
    * lignes de blocage antérieures (il n'est plus bloqué : il est stationné). Discriminé par
    * TYPE d'exception, jamais par texte (même revue que isDeferrable).
    */
+  /**
+   * ── T49 — coupe RETENUE (kill-switch, interlock) : un état, pas un blocage à alerter ──────────
+   * Le moteur de commande écrit sa propre ligne (une par cause, espacée). Le cron ne doit pas en
+   * ajouter trente par nuit « coupe impossible depuis N min ».
+   */
+  describe('T49 — coupe retenue par le kill-switch ou l interlock (AutomaticCutWithheldException)', () => {
+    const HORS_PLAGE = () => ({
+      ...makeSchedule({
+        lastEvaluatedState: 'IN_WINDOW',
+        mondayEnabled: false, tuesdayEnabled: false, wednesdayEnabled: false,
+        thursdayEnabled: false, fridayEnabled: false,
+      }),
+      vehicle: { id: 'v-1', fleetId: 'f-1', plate: 'FZ-862-VY', tracker: { id: 't-1', imei: '123', status: 'ONLINE' } },
+    } as any);
+
+    function buildWithheld(failWith: Error) {
+      const prisma = {
+        vehicleSchedule: { update: jest.fn().mockResolvedValue({}) },
+        scheduleHistory: { create: jest.fn().mockResolvedValue({}) },
+        errorLog: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
+      } as any;
+      const engine = { requestCommand: jest.fn().mockRejectedValue(failWith) } as any;
+      const errorLogger = { record: jest.fn().mockResolvedValue('id') } as any;
+      const service = new ScheduleCronService(prisma, engine, errorLogger, { emit: jest.fn() } as any);
+      return { service, engine, prisma, errorLogger };
+    }
+
+    afterEach(() => jest.useRealTimers());
+
+    it("🔴 n'écrit JAMAIS « coupe impossible » pour une coupe retenue par le kill-switch — même sur une nuit entière", async () => {
+      jest.useFakeTimers();
+      const { service, engine, errorLogger } = buildWithheld(
+        new AutomaticCutWithheldException('Coupures automatiques désactivées par le garde-fou de fiabilité', 'kill-switch', 'ENGINE_AUTOMATIC_CUT_ENABLED ≠ true'),
+      );
+      const schedule = HORS_PLAGE();
+      for (let minute = 0; minute < 720; minute++) {
+        await service.evaluateOne(schedule);
+        jest.advanceTimersByTime(60 * 1000);
+      }
+      expect(errorLogger.record).not.toHaveBeenCalled();
+      // Et on retente avec le palier habituel — jamais une fois par minute, jamais zéro.
+      expect(engine.requestCommand.mock.calls.length).toBeLessThan(30);
+      expect(engine.requestCommand.mock.calls.length).toBeGreaterThan(5);
+    });
+
+    it('même traitement pour l interlock : la ligne CRITICAL appartient au moteur de commande, pas au cron', async () => {
+      jest.useFakeTimers();
+      const { service, errorLogger } = buildWithheld(
+        new AutomaticCutWithheldException('Coupure automatique différée : téléphone Android/SIM indisponible', 'interlock', 'téléphone Android/SIM indisponible'),
+      );
+      const schedule = HORS_PLAGE();
+      for (let minute = 0; minute < 120; minute++) {
+        await service.evaluateOne(schedule);
+        jest.advanceTimersByTime(60 * 1000);
+      }
+      expect(errorLogger.record).not.toHaveBeenCalled();
+    });
+
+    it("une ServiceUnavailableException ORDINAIRE (boîtier hors ligne) garde l'alerte de blocage — le type est le seul discriminant", async () => {
+      jest.useFakeTimers();
+      const { service, errorLogger } = buildWithheld(new ServiceUnavailableException('Tracker hors ligne, commande non envoyée'));
+      const schedule = HORS_PLAGE();
+      for (let minute = 0; minute < 120; minute++) {
+        await service.evaluateOne(schedule);
+        jest.advanceTimersByTime(60 * 1000);
+      }
+      expect(errorLogger.record).toHaveBeenCalledWith(
+        expect.objectContaining({ message: expect.stringContaining('coupe/reprise impossible') }),
+        'schedule-cron',
+        expect.objectContaining({ phase: 'stuck-schedule-action' }),
+      );
+    });
+
+    it('le kill-switch levé : la coupe suivante passe et rien ne reste en mémoire', async () => {
+      jest.useFakeTimers();
+      const { service, engine, prisma } = buildWithheld(
+        new AutomaticCutWithheldException('désactivées', 'kill-switch', 'ENGINE_AUTOMATIC_CUT_ENABLED ≠ true'),
+      );
+      const schedule = HORS_PLAGE();
+      await service.evaluateOne(schedule);
+      jest.advanceTimersByTime(3 * 60 * 1000);
+      engine.requestCommand.mockResolvedValue({}); // le Go est donné
+      await service.evaluateOne(schedule);
+      expect(prisma.vehicleSchedule.update).toHaveBeenCalled(); // lastEvaluatedState avance : la coupe est passée
+    });
+  });
+
   describe('TRK-046 — véhicule considéré stationné (PresumedParkedException)', () => {
     const PARKED_MSG =
       'Coupe auto en veille : véhicule hors champ GPS dans un lieu validé (parking souterrain) — considéré stationné, sortie surveillée';
