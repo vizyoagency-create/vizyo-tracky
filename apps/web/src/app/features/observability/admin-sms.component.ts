@@ -142,20 +142,27 @@ type Tab = 'status' | 'logs' | 'allowlist' | 'backup';
                 >
                   <div class="font-semibold">
                     Téléphone Android :
-                    {{
-                      gw.device.fresh ? 'vu récemment' : 'absent ou ping périmé'
-                    }}
+                    {{ libelleEtatAndroid(gw.device) }}
                   </div>
                   <div>
                     {{ gw.device.count }} appareil(s)
+                    @if (gw.device.selectedId) {
+                      · verdict sur {{ gw.device.selectedName || gw.device.selectedId }}
+                      ({{ gw.device.selection === 'configured' ? 'CAPCOM6_DEVICE_ID' : 'seul enrôlé' }})
+                    }
                     @if (gw.device.freshestLastSeenAt) {
                       · dernier ping
                       {{
                         gw.device.freshestLastSeenAt | date: 'dd/MM HH:mm:ss'
                       }}
-                      ({{ gw.device.ageSeconds }} s)
+                      ({{ gw.device.ageSeconds }} s, périmé au-delà de {{ gw.device.staleAfterSeconds }} s)
                     }
                   </div>
+                  @if (gw.sim.configuredPresent === false) {
+                    <div class="font-semibold">
+                      ⚠️ SIM {{ gw.sim.configuredNumber }} configurée absente du téléphone
+                    </div>
+                  }
                   <div>
                     Serveur {{ gw.provider.status }}
                     @if (gw.provider.version) {
@@ -433,6 +440,31 @@ type Tab = 'status' | 'logs' | 'allowlist' | 'backup';
   `,
 })
 export class AdminSmsComponent implements OnInit, OnDestroy {
+  /**
+   * T44 — l'état du téléphone en quatre valeurs quand le relais les envoie, `fresh` sinon
+   * (relais antérieur). Le libellé dit POURQUOI la chaîne est indisponible, pas seulement qu'elle l'est.
+   */
+  protected libelleEtatAndroid(device: NonNullable<SmsStatus['gateway']>['device']): string {
+    switch (device.state) {
+      case 'ONLINE':
+        return 'vu récemment';
+      case 'STALE':
+        return 'ping périmé — le téléphone ne contacte plus le serveur dans le délai';
+      case 'OFFLINE':
+        return 'hors ligne — plus aucun contact, même son pull de secours';
+      case 'UNKNOWN':
+        return device.selection === 'ambiguous'
+          ? 'plusieurs appareils enrôlés, aucun désigné (CAPCOM6_DEVICE_ID)'
+          : device.selection === 'missing'
+            ? 'appareil désigné introuvable (CAPCOM6_DEVICE_ID)'
+            : device.selection === 'none'
+              ? 'aucun téléphone enrôlé'
+              : 'dernier ping inconnu';
+      default:
+        return device.fresh ? 'vu récemment' : 'absent ou ping périmé';
+    }
+  }
+
   private readonly api = inject(AdminSmsService);
   private readonly simsApi = inject(SimsApiService);
   private readonly trackersApi = inject(TrackersApiService);

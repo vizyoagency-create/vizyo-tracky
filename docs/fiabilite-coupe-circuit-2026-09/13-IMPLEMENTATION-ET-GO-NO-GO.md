@@ -48,6 +48,18 @@ ENGINE_RESTORE_EXPIRY_MIN=240
 ENGINE_CUT_SMS_TTL_S=900
 ```
 
+Côté relais Texto (conteneur `texto-relay`, cf. T43/T44 — la contre-expertise a relevé que ce
+document ne les listait pas) :
+
+```text
+CAPCOM6_DEVICE_ID=<id du S21 dans GET /3rdparty/v1/devices>
+CAPCOM6_SIM_NUMBER=1
+CAPCOM6_DEVICE_STALE_SECONDS=240
+CAPCOM6_DEVICE_OFFLINE_SECONDS=900
+CAPCOM6_REQUEST_TIMEOUT_MS=5000
+CAPCOM6_SEND_TIMEOUT_MS=9000
+```
+
 Le kill-switch reste `false` pendant le déploiement technique, les tests et le canari. Le passer
 à `true` n'est permis qu'après le Go terrain. Les horaires CDEF et MH Cars restent désactivés.
 

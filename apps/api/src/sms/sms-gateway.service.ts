@@ -129,12 +129,24 @@ export interface TextoGatewayHealth {
   };
   device: {
     count: number;
+    /** Dernier ping de l'appareil du verdict (nom historique conservé). */
     freshestLastSeenAt: string | null;
     ageSeconds: number | null;
     fresh: boolean;
     staleAfterSeconds: number;
+    // T44 — facultatifs : un relais antérieur ne les envoie pas, et `fresh` suffit au verdict.
+    /** ONLINE / STALE / OFFLINE / UNKNOWN — voir le relais (README, « santé »). */
+    state?: 'ONLINE' | 'STALE' | 'OFFLINE' | 'UNKNOWN';
+    selectedId?: string | null;
+    selectedName?: string | null;
+    selection?: 'configured' | 'single' | 'none' | 'ambiguous' | 'missing';
+    offlineAfterSeconds?: number;
   };
-  sim: { configuredNumber: number | null };
+  sim: {
+    configuredNumber: number | null;
+    cards?: Array<{ simNumber: number | null; phoneNumber: string | null; carrierName: string | null }>;
+    configuredPresent?: boolean | null;
+  };
   queue: {
     pending: number;
     oldestPendingAt: string | null;

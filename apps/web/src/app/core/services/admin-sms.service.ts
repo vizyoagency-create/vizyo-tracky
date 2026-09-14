@@ -41,8 +41,18 @@ export interface SmsStatus {
       ageSeconds: number | null;
       fresh: boolean;
       staleAfterSeconds: number;
+      // T44 — facultatifs : un relais antérieur ne les envoie pas.
+      state?: 'ONLINE' | 'STALE' | 'OFFLINE' | 'UNKNOWN';
+      selectedId?: string | null;
+      selectedName?: string | null;
+      selection?: 'configured' | 'single' | 'none' | 'ambiguous' | 'missing';
+      offlineAfterSeconds?: number;
     };
-    sim: { configuredNumber: number | null };
+    sim: {
+      configuredNumber: number | null;
+      cards?: Array<{ simNumber: number | null; phoneNumber: string | null; carrierName: string | null }>;
+      configuredPresent?: boolean | null;
+    };
     queue: {
       pending: number;
       oldestPendingAt: string | null;
