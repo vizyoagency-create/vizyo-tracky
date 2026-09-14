@@ -245,6 +245,23 @@ const ENGINE_KILL_SWITCH_ALERT_SPACING_MS = 60 * 60_000;
 const ENGINE_INTERLOCK_ALERT_SPACING_MS = 15 * 60_000;
 /** Plaques nommées dans une ligne : au-delà, on compte sans lister (une flotte fait 30 véhicules). */
 const ENGINE_WITHHELD_MAX_PLATES = 40;
+/**
+ * ══ T48 (contre-expertise du 13/09, P2-1 · P2-4) — UNE PREUVE NE SE RÉTROGRADE PAS ══════════
+ *
+ * Les écritures « envoyée » (`status = SENT`) passaient par `update({ where: { id } })`, sans
+ * garde : un ACK TCP arrivé pendant `trySmsFallback` (jusqu'à 10 s de file) ou une supplantation
+ * survenue entre la création et le dispatch étaient ÉCRASÉS — commande `SENT` avec `ackedAt`
+ * renseigné, écran « rallumage non confirmé » alors que le boîtier avait acquitté. Désormais ces
+ * écritures sont CONDITIONNELLES (`ackedAt IS NULL`, statut encore ouvert) : si la condition ne
+ * tient plus, la preuve reste, le SMS devenu inutile est annulé au relais (T41), et l'appelant
+ * reçoit la ligne telle qu'elle est.
+ *
+ * Et une CUT créée puis jamais dispatchée (crash entre `create` et l'envoi) restait `PENDING`
+ * avec sa clé d'unicité : la coupure antivol suivante rendait 201 avec cette vieille ligne et
+ * n'envoyait RIEN. À la collision, une CUT `PENDING` plus vieille que le bail de dispatch est
+ * désormais dispatchée — même logique que le réarmement RESTORE de P0-1.
+ */
+const ENGINE_ORPHAN_PENDING_AFTER_MS = ENGINE_DISPATCH_LEASE_MS;
 
 @Injectable()
 export class EngineControlService implements OnModuleDestroy {
@@ -1070,8 +1087,19 @@ export class EngineControlService implements OnModuleDestroy {
       // elle est RÉARMÉE et repart par le dispatch ci-dessous — sinon la demande neuve serait
       // avalée sans qu'un seul octet ne parte vers le boîtier.
       const rearmed = await this.rearmStaleRestore(active);
-      if (!rearmed) return active;
-      command = rearmed;
+      if (rearmed) {
+        command = rearmed;
+      } else if (this.isOrphanPending(active)) {
+        // T48 — une intention créée puis jamais transmise (crash entre create et dispatch) :
+        // on la dispatche au lieu de la rendre telle quelle. La clé reste la sienne.
+        this.logger.warn(
+          { commandId: active.id, trackerId, action, ageMs: Date.now() - active.createdAt.getTime() },
+          'Intention PENDING orpheline dispatchée à la collision (T48)',
+        );
+        command = active;
+      } else {
+        return active;
+      }
     }
 
     if (action === EngineAction.CUT && command.status === CommandStatus.PENDING) {
@@ -1254,6 +1282,60 @@ export class EngineControlService implements OnModuleDestroy {
         'Annulation du SMS de CUT supplantée impossible',
       );
     }
+  }
+
+  /** T48 — PENDING, hors bail, plus vieille que le bail : personne ne la dispatche plus. */
+  private isOrphanPending(command: EngineControlCommand): boolean {
+    if (command.status !== CommandStatus.PENDING || command.ackedAt) return false;
+    const now = Date.now();
+    if (command.dispatchLeaseUntil && command.dispatchLeaseUntil.getTime() > now) return false;
+    return now - command.createdAt.getTime() > ENGINE_ORPHAN_PENDING_AFTER_MS;
+  }
+
+  /**
+   * T48 — écrit « envoyée » SANS jamais écraser une preuve : la condition (`ackedAt IS NULL`,
+   * statut encore ouvert) voyage dans l'instruction elle-même. Quand elle ne tient plus, la
+   * ligne est relue et rendue telle qu'elle est ; si un SMS venait d'être accepté pour rien,
+   * il est annulé au relais (best-effort, T41).
+   */
+  private async writeSent(
+    command: EngineControlCommand,
+    data: Prisma.EngineControlCommandUpdateInput,
+    options: { imei: string; redundantSmsLogId?: string | null },
+  ): Promise<{ row: EngineControlCommand; written: boolean }> {
+    const { count } = await this.prisma.engineControlCommand.updateMany({
+      where: {
+        id: command.id,
+        ackedAt: null,
+        status: { in: [CommandStatus.PENDING, CommandStatus.SENT] },
+      },
+      data,
+    });
+    let reloaded: EngineControlCommand | null = null;
+    try {
+      reloaded = (await this.prisma.engineControlCommand.findUnique({ where: { id: command.id } })) ?? null;
+    } catch {
+      reloaded = null;
+    }
+    if (count === 1) {
+      return { row: reloaded ?? ({ ...command, ...(data as Partial<EngineControlCommand>) } as EngineControlCommand), written: true };
+    }
+    this.logger.warn(
+      { commandId: command.id, imei: options.imei, status: reloaded?.status, ackedAt: reloaded?.ackedAt ?? null },
+      'Écriture « envoyée » écartée : la commande a été acquittée ou supplantée entre-temps (T48)',
+    );
+    if (options.redundantSmsLogId) {
+      void this.sms
+        .cancelOutbound(options.redundantSmsLogId)
+        .then((r) =>
+          this.logger.log(
+            { commandId: command.id, smsLogId: options.redundantSmsLogId, ok: r.ok, reason: r.reason },
+            'SMS devenu inutile après acquittement : annulation demandée au relais',
+          ),
+        )
+        .catch(() => undefined);
+    }
+    return { row: reloaded ?? command, written: false };
   }
 
   private async rearmStaleRestore(
@@ -1513,19 +1595,21 @@ export class EngineControlService implements OnModuleDestroy {
           },
         );
         const now = new Date();
-        const updated = await this.prisma.engineControlCommand.update({
-          where: { id: command.id },
-          // TRK-018 — le ROUTAGE sort du champ d'erreur. `lastError` portait « Envoyé via
-          // SMS (TCP indisponible) » : un champ dont le nom annonce une erreur et le contenu
-          // livre une information de routage. Conséquence mesurée le 24/08 : un lecteur qui
-          // trie sur `lastError IS NOT NULL` comptait 153 échecs qui n'en sont pas — le
-          // défaut exact que TRK-007 dénonçait sur `outcomeReason`.
-          //
-          // ⚠️ `lastError` est mis à `null` ICI, sur les commandes NEUVES seulement : il n'y
-          // a pas d'erreur, donc le champ doit être vide. Les lignes historiques gardent
-          // leur texte (la migration rétro-remplit `channel` sans rien effacer) — détruire
-          // une donnée pour corriger un nom serait pire que le nom.
-          data: {
+        // TRK-018 — le ROUTAGE sort du champ d'erreur. `lastError` portait « Envoyé via
+        // SMS (TCP indisponible) » : un champ dont le nom annonce une erreur et le contenu
+        // livre une information de routage. Conséquence mesurée le 24/08 : un lecteur qui
+        // trie sur `lastError IS NOT NULL` comptait 153 échecs qui n'en sont pas — le
+        // défaut exact que TRK-007 dénonçait sur `outcomeReason`.
+        //
+        // ⚠️ `lastError` est mis à `null` ICI, sur les commandes NEUVES seulement : il n'y
+        // a pas d'erreur, donc le champ doit être vide. Les lignes historiques gardent
+        // leur texte (la migration rétro-remplit `channel` sans rien effacer) — détruire
+        // une donnée pour corriger un nom serait pire que le nom.
+        // T48 — écriture conditionnelle : une supplantation entre la création et ce point
+        // (RESTORE créée pendant l'envoi de la CUT) n'est jamais écrasée.
+        const { row: updated } = await this.writeSent(
+          command,
+          {
             status: CommandStatus.SENT,
             sentAt: now,
             channel: 'SMS',
@@ -1537,7 +1621,8 @@ export class EngineControlService implements OnModuleDestroy {
             dispatchLeaseUntil: null,
             nextAttemptAt: new Date(now.getTime() + 30_000),
           },
-        });
+          { imei, redundantSmsLogId: smsSent.smsLogId ?? null },
+        );
         this.emitUpdate(updated, fleetId);
         this.logger.log(
           { commandId: command.id, attemptId: attempt.id, imei, channel: 'SMS' },
@@ -1618,12 +1703,13 @@ export class EngineControlService implements OnModuleDestroy {
     });
     this.logger.log({ commandId: command.id, attemptId: attempt.id, imei, payload }, 'Command dispatched');
 
-    const updated = await this.prisma.engineControlCommand.update({
-      where: { id: command.id },
-      // TRK-018 — le canal est écrit ICI aussi, pas seulement sur le repli. Ne le renseigner
-      // que sur le chemin SMS aurait laissé `channel = NULL` sur le chemin nominal : on ne
-      // saurait toujours pas distinguer « parti en TCP » de « on ne sait pas ».
-      data: {
+    // TRK-018 — le canal est écrit ICI aussi, pas seulement sur le repli. Ne le renseigner
+    // que sur le chemin SMS aurait laissé `channel = NULL` sur le chemin nominal : on ne
+    // saurait toujours pas distinguer « parti en TCP » de « on ne sait pas ».
+    // T48 — écriture conditionnelle (voir writeSent).
+    const { row: updated } = await this.writeSent(
+      command,
+      {
         status: CommandStatus.SENT,
         sentAt,
         channel: 'TCP',
@@ -1635,7 +1721,8 @@ export class EngineControlService implements OnModuleDestroy {
           : null,
         lastError: null,
       },
-    });
+      { imei },
+    );
     this.emitUpdate(updated, fleetId);
 
     // Background ACK wait (fire-and-forget, same pattern as TrackerCommandsService)
@@ -1666,8 +1753,10 @@ export class EngineControlService implements OnModuleDestroy {
             );
             return;
           }
-          const acked = await this.prisma.engineControlCommand.update({
-            where: { id: command.id },
+          // T48 — conditionnel : un second écho ne réécrit pas `ackedAt`, et un acquittement posé
+          // par un autre chemin (accusé SMS, ignition) n'est pas horodaté deux fois.
+          const { count } = await this.prisma.engineControlCommand.updateMany({
+            where: { id: command.id, ackedAt: null },
             data: {
               status: CommandStatus.ACKNOWLEDGED,
               ackedAt: new Date(),
@@ -1676,7 +1765,9 @@ export class EngineControlService implements OnModuleDestroy {
               dispatchLeaseUntil: null,
             },
           });
-          this.emitUpdate(acked, fleetId);
+          if (count !== 1) return;
+          const acked = await this.prisma.engineControlCommand.findUnique({ where: { id: command.id } });
+          if (acked) this.emitUpdate(acked, fleetId);
         } catch (dbErr) {
           this.logger.error({ commandId: command.id, error: (dbErr as Error).message },
             'Failed to persist ACK status — command stuck as SENT');
@@ -1766,9 +1857,11 @@ export class EngineControlService implements OnModuleDestroy {
           rawCode: result.submittedStatus,
         },
       );
-      const updated = await this.prisma.engineControlCommand.update({
-        where: { id: command.id },
-        data: {
+      // T48 — un ACK TCP arrivé pendant l'envoi du SMS gagne : la ligne n'est pas rétrogradée
+      // en SENT, et le SMS devenu inutile est annulé au relais.
+      const { row: updated } = await this.writeSent(
+        command,
+        {
           status: CommandStatus.SENT,
           sentAt: command.sentAt ?? now,
           channel: 'SMS',
@@ -1780,7 +1873,8 @@ export class EngineControlService implements OnModuleDestroy {
           dispatchLeaseUntil: null,
           lastError: null,
         },
-      });
+        { imei, redundantSmsLogId: result.smsLogId ?? null },
+      );
       this.emitUpdate(updated, fleetId);
       return updated;
     }
