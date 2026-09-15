@@ -278,6 +278,15 @@ const ENGINE_ORPHAN_PENDING_AFTER_MS = ENGINE_DISPATCH_LEASE_MS;
  * pourtant enregistrée et suivie.
  */
 const ENGINE_RESTORE_REALERT_MS = 15 * 60_000;
+/**
+ * Fenêtre au-delà de laquelle la sentinelle ne porte plus une RESTORE non prouvée : 24 h.
+ * Mesuré au premier passage après le déploiement du 15/09 (17:35 UTC) : la migration avait
+ * laissé `alertedAt` à NULL sur TOUT l'historique, et le balayage a réveillé une cinquantaine
+ * de RESTORE `FAILED` de juillet-août (jamais acquittées, véhicules depuis longtemps repartis)
+ * — une ligne CRITICAL, puis un rappel toutes les 15 min, pour toujours. Passé 24 h une RESTORE
+ * n'est plus un geste de nuit à rattraper : l'audit quotidien la lit, la sentinelle se tait.
+ */
+const ENGINE_RESTORE_ALERT_WINDOW_MS = 24 * 60 * 60_000;
 const ENGINE_RESTORE_SMS_STUCK_MS = 60 * 60_000;
 /** Lu à chaque appel (pas au chargement) : les tests le règlent sans recharger le module. */
 const manualResponseBudgetMs = (): number =>
@@ -2513,7 +2522,13 @@ export class EngineControlService implements OnModuleDestroy {
           { alertedAt: null },
           { alertedAt: { lt: new Date(Date.now() - ENGINE_RESTORE_REALERT_MS) } },
         ],
-        createdAt: { lte: new Date(Date.now() - ENGINE_RESTORE_ALERT_AFTER_MS) },
+        // Bornée des deux côtés : assez vieille pour être en retard, assez récente pour être
+        // encore un geste à faire (ENGINE_RESTORE_ALERT_WINDOW_MS) — sinon l'historique
+        // `FAILED` d'avant la migration remonte à chaque passage.
+        createdAt: {
+          lte: new Date(Date.now() - ENGINE_RESTORE_ALERT_AFTER_MS),
+          gte: new Date(Date.now() - ENGINE_RESTORE_ALERT_WINDOW_MS),
+        },
       },
       include: { tracker: { include: { vehicle: true } } },
       orderBy: { createdAt: 'asc' },

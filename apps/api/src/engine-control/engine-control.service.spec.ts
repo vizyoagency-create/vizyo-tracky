@@ -2851,6 +2851,12 @@ describe('EngineControlService', () => {
       const sentinelWhere = prisma.engineControlCommand.findMany.mock.calls[1][0].where;
       expect(sentinelWhere.OR).toEqual([{ alertedAt: null }, { alertedAt: { lt: expect.any(Date) } }]);
       expect(Date.now() - (sentinelWhere.OR[1].alertedAt.lt as Date).getTime()).toBeGreaterThanOrEqual(15 * 60_000 - 1_000);
+      // Bornée à 24 h : au premier passage après la migration (15/09, 17:35 UTC), `alertedAt` NULL
+      // sur tout l'historique avait réveillé ~50 RESTORE FAILED de juillet-août — rappelées à vie.
+      const fenetreH = (Date.now() - (sentinelWhere.createdAt.gte as Date).getTime()) / 3600_000;
+      expect(fenetreH).toBeGreaterThanOrEqual(23.99);
+      expect(fenetreH).toBeLessThanOrEqual(24.01);
+      expect(sentinelWhere.createdAt.lte).toEqual(expect.any(Date));
       // Comparaison-et-échange sur la valeur lue : deux instances ne rappellent pas deux fois.
       expect(prisma.engineControlCommand.updateMany).toHaveBeenCalledWith({
         where: { id: expect.any(String), alertedAt: dejaAlertee, ackedAt: null },
