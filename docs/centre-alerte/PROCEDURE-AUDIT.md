@@ -17,6 +17,13 @@
 
 Tout se lit **sans rien écrire** — SQL sur `tracky-postgres`, GET sur le relais depuis le conteneur `texto-relay`.
 
+> ⚠️ **Constaté le 15/09** : tant que la migration du chantier n'est pas passée, les colonnes que les
+> points 5 et 6 lisent (`smsAttemptCount`, `activeKey`, `attemptCount`) **n'existent pas** dans
+> `engine_control_commands` — la requête échoue, ce qui est en soi la preuve que la section ne s'applique
+> pas. Lire alors les RESTORE avec `status`, `channel`, `ackedAt`, `sentAt` seuls. **Et si les plannings
+> sont réarmés sans que le chantier soit déployé** *(le cas du 14/09 : réarmés par le client)*, la lecture
+> « pendant la réactivation » s'impose quand même — 04:45–05:30 et 06:45–07:30 Paris, liste nominative.
+
 | # | Ce qu'on vérifie | Comment (lecture seule) | Verdict OK | Sinon |
 |---|---|---|---|---|
 | 1 | **La preuve SMS quotidienne** est partie à 04:30 et 06:30 (Paris) et vérifiée OK à +15 min | `SELECT to_char("createdAt",'DD HH24:MI') AS h, level, left(message,110) FROM error_logs WHERE source='sms-daily-proof' AND "createdAt" > now()-interval '36 hours' ORDER BY "createdAt";` — **et** le journal du conteneur : `docker logs --since 36h tracky-api 2>&1 \| grep -a "Preuve SMS quotidienne" \| tail -6` (sous `timeout 20`, VPS-041) | deux passages « acceptée » et deux `verdict=OK` par jour, **aucune** ligne `sms-daily-proof` au centre d'alerte | une ligne `INDETERMINE` = on ne sait pas si les SMS partent ; `ECHEC`/`NON_EMIS` = les coupes du soir seront refusées par l'interlock — le dire en 🔴, nommer l'heure |
