@@ -391,3 +391,31 @@ PostGIS 16 ; le comportement du téléphone face à un serveur 1.47.x ; l'auto-e
 Free ; la présence effective des webhooks posés le 24/08 ; le temps de build sur le VPS à 2 vCPU
 (le script construit `api` et `web` ensemble — c'est son choix, mesuré fonctionnel les 08 et
 09/09).
+
+## 12. Journal de la fenêtre — jouée le 15/09/2026 de 19:20 à 20:15 (Paris)
+
+Pilotée par Claude sur ordre du propriétaire (« fais-le toi, je supervise »), après la nuit du 14 au 15 sur
+l'ancien code (24 coupes, 23 reprises, GS-928-NX immobilisé 2 h 56 en silence — le cas que T42/T51 corrigent).
+Tout est horodaté en UTC (Paris = UTC+2).
+
+| Heure | Étape | Résultat |
+|---|---|---|
+| 17:20 | V28 : `kill 159533 159541` | mort ; le build API passe de 32 min (14/09) à **4 min 21** |
+| 17:20 | sauvegardes | `avant-chantier-20260915-1720.dump` 161 Mo (25 s), relais 99 Ko, capcom6 `sms` 73 Ko |
+| 17:21 | variables | 13 lignes dans `.env.prod` (**`ENGINE_AUTOMATIC_CUT_ENABLED=true` d'entrée**, `SMS_DAILY_PROOF_RECIPIENT` = 1ʳᵉ valeur de `SMS_HEARTBEAT_RECIPIENTS`), 7 `CAPCOM6_*` dans le `.env` du relais (`CAPCOM6_DEVICE_ID` lu sur `/3rdparty/v1/devices`) ; copies dans `/root/.env.prod.avant-chantier-20260915-1721` et `/root/.env.texto.avant-chantier-20260915-1721` |
+| 17:21–17:24 | relais | `git pull` → `724bcb8`, `build relay` 159 s, `up -d relay` (capcom6 et postgres intacts), « Nest application successfully started » ; santé : `provider 1.43.0 pass`, `selection: configured`, `sim.configuredNumber 1` — **`device.state: OFFLINE`** (dernier ping 13:49:42 UTC) |
+| 17:25–17:29 | Tracky | `checkout main` (l'arbre était resté sur `feat/rdv-installation-v2`), `pull` → `fa9ff1d1` (contient `08c5fc2d`), `build api` 261 s |
+| 17:30 | migration sur copie | `tracky_copie` restaurée en 37 s (0 erreur) ; `migrate deploy` applique `20260912110000_engine_delivery_reliability` **et** `20260914150000_rdv_premier_jour_j_plus_1` (arrivée sur `main` le matin) ; `activeKey` non nul = 0 ; copie supprimée |
+| 17:31–17:35 | `deploy.sh --attendre` | `sha fa9ff1d1`, 226 s, api + web recréés à 17:35:05 ; migrations appliquées 17:35:10 ; 6 colonnes neuves ; artefact : T42, T45, T62, kill-switch présents ; `NODE_ENV=production` ; `/api/health` 200 ; 33 boîtiers reconnectés en TCP en 30 s |
+| 17:35:30 | ⚠️ écart 1 | premier `alertOverdueRestores` : `alertedAt` NULL sur tout l'historique → ~50 RESTORE `FAILED` de juillet-août réveillées, une ligne CRITICAL (FV-941-LZ, 153 j) puis rappel toutes les 15 min (17:50:45, `reminder: true`) — **correctif `0c9672c9`** (borne `createdAt ≥ now − 24 h`, test T51 étendu, 148 verts) |
+| 17:37 | ⚠️ écart 2 | `sms-gateway-watchdog` CRITICAL « téléphone hors ligne : dernier ping il y a 13 638 s » — la sentinelle T44 fait son travail ; **le S21 était verrouillé depuis 15:49 Paris** ; débloqué par le propriétaire, ping repris à 17:51:21 UTC |
+| 17:41 → 20:15 | redéploiement | `deploy.sh --attendre` a patienté derrière le passage des trajets de 17:45 (garde TRK-077), puis recréé sur `0c9672c9` |
+
+**Repère de repli** : `deploy.sh --repli avant-20260914-1140-9afdf52a` (image `5da87fd11e72`, celle qui tournait
+avant la fenêtre). ⚠️ L'étiquette `avant-20260915-1731-fa9ff1d1` posée par le script pointe l'image
+**pré-construite** en §6.1, pas l'ancienne : quand on pré-construit, le « avant » du script n'est plus le
+« avant » de la production — lire l'ID d'image, pas l'étiquette.
+
+**Ce qui reste à faire ce soir** : la preuve quotidienne à la main (`/admin` → SMS → envoyer, puis vérifier à
++15 min) — sans remise prouvée de moins de 24 h (dernière : 14/09 07:00 UTC), l'interlock retient les coupes de
+22:00 ; relectures programmées 22:07 (coupes) et 07:10 (reprises) ; MH Cars s'arme après une nuit propre.

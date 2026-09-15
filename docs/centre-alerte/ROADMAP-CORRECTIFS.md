@@ -289,12 +289,13 @@ d'une section à l'autre sans le dire, ou cocher `[x]` sur la foi d'une fiche pl
 | ☑ | **T31** | TRK-069 | Une cause commune = **UNE** ligne `DEGRADATION`, levée au premier succès — **et `13471c53` : cinq contrôles sans rechute** sur l'échec ancien (14/09) | ✅ **FAIT ET PROUVÉ** `a8f9575e` |
 | ☑ | **T32** | TRK-071 · 069 | Parade au plafond de la CLI — **D3 à D7 tranchées le 13/09** (pas d'API pour les agents, tous les trajets narrés, le poste sait qu'il est au plafond = T34, Opus pour les audits, second abonnement plus tard = T35) | ✅ **FAIT** *(décisions)* |
 | ☑ | **T33** | TRK-077 | **`deploy.sh` rendu INCONTOURNABLE — détecté, pas empêché** : journal des déploiements + sentinelle « déploiement hors script », **exercée volontairement** le 13/09 12:55 → ligne 12:57 | ✅ **FAIT** `18c975ee` |
-| ~ | **T58** | TRK-069 | La clé de refroidissement d'un échec porte l'empreinte de sa cause ; `courrier-ia` lit le premier objet JSON équilibré | ~ **FUSIONNÉ** `1539674c` sur `main` — *à déployer* |
-| ~ | **T59** | TRK-079 | Un fetch avorté par la fermeture de la page ne remonte plus ; le canal anonyme ne remonte que les bugs JS | ~ **FUSIONNÉ** `314e4193` sur `main` — *à déployer* |
-| ~ | **T60** | main · 152883ec | `fenetre-utile.spec.ts` lit une seule horloge (figée) | ~ **FUSIONNÉ** `979fdfec` sur `main` |
+| ~ | **T58** | TRK-069 | La clé de refroidissement d'un échec porte l'empreinte de sa cause ; `courrier-ia` lit le premier objet JSON équilibré | » **DÉPLOYÉ** `1539674c` le 15/09 |
+| ~ | **T59** | TRK-079 | Un fetch avorté par la fermeture de la page ne remonte plus ; le canal anonyme ne remonte que les bugs JS | » **DÉPLOYÉ** `314e4193` le 15/09 |
+| ~ | **T60** | main · 152883ec | `fenetre-utile.spec.ts` lit une seule horloge (figée) | » **DÉPLOYÉ** `979fdfec` le 15/09 |
 | ☐ | **T61** | TRK-066 · S21 · doc 10 | 🆕 **Deux SIM restent injoignables par SMS depuis le S21** (HD-584-BF, BP-434-RD — `failed` au départ le 14/09 09:34, boîtiers en ligne) ; les 8 autres sont revenues après remise en état du téléphone (…621085 : delivered en 8 s) ; TCP seul pour ces deux-là ; 1 SMS depuis un autre opérateur ou ticket WhereverSIM | 🤝 HUMAIN |
-| ~ | **T62** | TRK-066 · doc 35 | 🆕 **Une SIM injoignable par SMS met le véhicule en « TCP seul »** — coupe auto seulement boîtier connecté, RESTORE en TCP toutes les 5 min, un SMS-sonde par 6 h, une ligne par jour | ~ **FUSIONNÉ** `b3ee67e2` (#138) — *à déployer* |
-| ☐ | **T63** | TRK-066 · doc 25 §2 | **C — Prérequis J-1** — mesurés le 14/09 10:45 : numéro de preuve **déjà dans l'allowlist** (preuve hebdo remise à 07:00 UTC), Device ID **facultatif** (un seul appareil enrôlé, lu sur le VPS pendant la fenêtre), capcom6 **reste en v1.43.0** aujourd'hui ; restent le S21 branché et le créneau (proposé 13:30–15:10) | 🤝 HUMAIN |
+| ~ | **T62** | TRK-066 · doc 35 | 🆕 **Une SIM injoignable par SMS met le véhicule en « TCP seul »** — coupe auto seulement boîtier connecté, RESTORE en TCP toutes les 5 min, un SMS-sonde par 6 h, une ligne par jour | » **DÉPLOYÉ** `b3ee67e2` le 15/09 |
+| ☑ | **T63** | TRK-066 · doc 25 §2 | **C — Prérequis J-1 — FAITS le 15/09** (Device ID écrit, numéro de preuve, v1.43.0, créneau) ; reste vivant : **le S21 branché en permanence** (hors ligne 15:49→19:51 le 15/09) | ✅ **FAIT** |
+| » | **T67** | TRK-066 · T51 | 🆕 **La sentinelle des RESTORE relisait tout l'historique après la migration** (~50 `FAILED` de juillet-août, un CRITICAL toutes les 15 min à vie) — bornée à 24 h | » **DÉPLOYÉ** `0c9672c9` le 15/09 |
 | ☐ | **T65** | TRK-066 · doc 25 §7 | 🆕 **E — 24 h de preuve lues par la routine du centre d'alerte** (six verdicts, section ajoutée à PROCEDURE-AUDIT.md) — *15/09 : non applicable, prod = `9afdf52a`, colonnes absentes en base* | 🟢 AUTO |
 | ☐ | **T66** | TRK-077 | 🆕 **`deploy.sh` journalise ses REFUS et abandons, et la sentinelle « déploiement » les dit** — le 14/09 un refus juste s'est lu comme un succès partout sauf dans le conteneur | 🔧 À CODER |
 
@@ -302,23 +303,23 @@ d'une section à l'autre sans le dire, ou cocher `[x]` sur la foi d'une fiche pl
 
 | | ID | Fiche | La tâche | État |
 |:--:|:--:|---|---|---|
-| ~ | **T40** | TRK-066 · doc 19 P0-1 | 🔴🔴 P0 — La clé d'unicité RESTORE ne doit plus vivre pour toujours (RESTORE du lendemain avalée) — COMMITTÉ d5c19a17, en attente de fusion | ~ **FUSIONNÉ** `d5c19a17` (#138) — *à déployer* |
-| ~ | **T41** | TRK-066 · doc 19 P0-2 | 🔴🔴 P0 — Donner une validité aux SMS CUT (ttl), une priorité aux RESTORE, un appareil explicite, et annuler le SMS CUT supplanté | ~ **FUSIONNÉ** `8ab1d08e` (#138 ; relais `2536ea4`, #9) — *à déployer* |
-| ~ | **T42** | TRK-066 · doc 19 P1-1 | 🔴 Relancer une RESTORE non prouvée à la reconnexion TCP du boîtier — et ne plus la rendre terminale après trois SMS | ~ **FUSIONNÉ** `86c32fa9` (#138) — *à déployer* |
+| ~ | **T40** | TRK-066 · doc 19 P0-1 | 🔴🔴 P0 — La clé d'unicité RESTORE ne doit plus vivre pour toujours (RESTORE du lendemain avalée) — COMMITTÉ d5c19a17, en attente de fusion | » **DÉPLOYÉ** `d5c19a17` le 15/09 |
+| ~ | **T41** | TRK-066 · doc 19 P0-2 | 🔴🔴 P0 — Donner une validité aux SMS CUT (ttl), une priorité aux RESTORE, un appareil explicite, et annuler le SMS CUT supplanté | » **DÉPLOYÉ** `8ab1d08e` le 15/09 |
+| ~ | **T42** | TRK-066 · doc 19 P1-1 | 🔴 Relancer une RESTORE non prouvée à la reconnexion TCP du boîtier — et ne plus la rendre terminale après trois SMS | » **DÉPLOYÉ** `86c32fa9` le 15/09 |
 | ☐ | **T43** | TRK-066 · doc 19 P1-2 | 🔴 Téléphone S21 **configuré le 14/09** (ping 60 s prouvé sur `lastSeen`, FIFO, délais 10/15 s, limite 60/h, Local server OFF, veille OFF) — restent les variables du relais (doc 25 §4.2) et 30 min écran éteint à relire | 🔵 TERRAIN |
-| ~ | **T44** | TRK-066 · doc 19 P1-2 | 🔴 Sentinelle Android : hystérésis, bornes d'environnement, fraîcheur par appareil, délai d'envoi séparé du délai de santé | ~ **FUSIONNÉ** `86a2fc53` (#138 ; relais `784d766`, #9) — *à déployer* |
-| ~ | **T45** | TRK-066 · doc 19 P1-3 | 🔴 Preuve SMS quotidienne réconciliée (T-30 min avant chaque fenêtre) — sans elle l'interlock refuse les coupes six jours sur sept | ~ **FUSIONNÉ** `1aa1e0f9` (#138 ; relais `ae17b34`, #9) — *à déployer* |
+| ~ | **T44** | TRK-066 · doc 19 P1-2 | 🔴 Sentinelle Android : hystérésis, bornes d'environnement, fraîcheur par appareil, délai d'envoi séparé du délai de santé | » **DÉPLOYÉ** `86a2fc53` le 15/09 |
+| ~ | **T45** | TRK-066 · doc 19 P1-3 | 🔴 Preuve SMS quotidienne réconciliée (T-30 min avant chaque fenêtre) — sans elle l'interlock refuse les coupes six jours sur sept | » **DÉPLOYÉ** `1aa1e0f9` le 15/09 |
 | ☑ | **T46** | TRK-066 · doc 19 P1-4 | 🔴 Nettoyer le diff du chantier (reformatage prettier), rebaser sur main, résoudre le conflit — la production est déjà sur 66d286f5 | ✅ **FAIT** `d5c19a17` |
-| ☐ | **T47** | TRK-066 · doc 19 P1-5 | 🔴🔴 **La fenêtre, ENSEMBLE, CET APRÈS-MIDI** (créneau proposé 13:30–15:10 Paris) : les 30 plannings CDEF31 ont été **réarmés par le client à 09:03 sur l'ancien code** — sans déploiement, 25 coupes ce soir à 22:00 comme le 11/09. Procédure doc 25, ordre du jour dans la tâche ; kill-switch `false` au déploiement, ta décision ensuite | 🟡 PRÉPARÉ |
-| ~ | **T48** | TRK-066 · doc 19 P2-1 · P2-4 | Course ACK/SMS : une preuve ne se rétrograde jamais en « envoyée » (écritures conditionnelles) ; une CUT PENDING orpheline est dispatchée | ~ **FUSIONNÉ** `8a8cb2c4` (#138) — *à déployer* |
-| ~ | **T49** | TRK-066 · doc 19 P2-2 | Kill-switch et interlock : une ligne par véhicule et par heure, pas un CRITICAL par appel | ~ **FUSIONNÉ** `93dba465` (#138) — *à déployer* |
-| ~ | **T50** | TRK-066 · doc 19 P2-3 | Glissement de confirmation réellement volontaire : 8 valeurs croissantes depuis < 10, End/Home/Page neutralisées, flèche maintenue acceptée | ~ **FUSIONNÉ** `8bb24ca7` (#138) — *à déployer* |
-| ~ | **T51** | TRK-066 · doc 19 P2-5 · P2-6 | Une RESTORE non prouvée se rappelle toutes les 15 min ; SMS en file > 60 min annulé et retenté ; clic manuel borné à 20 s | ~ **FUSIONNÉ** `b582fbf6` (#138) — *à déployer* |
-| ~ | **T52** | TRK-066 · doc 19 P2-8 · P2-9 | Santé par appareil (fait par T44, relais `784d766`) ; allowlist non bloquante pour une RESTORE (ajout à la volée + un nouvel essai) | ~ **FUSIONNÉ** `428d1f39` (#138) — *à déployer* |
-| ~ | **T53** | TRK-066 · doc 19 P2-10 | Journal des tentatives exercé (CHECK + unicité rejoués depuis le SQL de la migration), index dans schema.prisma (T47), changement d'heure du 25/10 couvert — reste PostGIS réel et la rétention | ~ **FUSIONNÉ** `b407481a` (#138) — *à déployer* |
+| ☑ | **T47** | TRK-066 · doc 19 P1-5 | **La fenêtre — JOUÉE le 15/09 au soir** (19:20–20:15) : V28 tué, 3 sauvegardes, variables, relais `724bcb8`, migration rejouée sur copie, `deploy.sh` → prod `fa9ff1d1` (19:35) puis `0c9672c9` ; kill-switch **true** ; S21 hors ligne 15:49→19:51 vu par la sentinelle | ✅ **FAIT** |
+| ~ | **T48** | TRK-066 · doc 19 P2-1 · P2-4 | Course ACK/SMS : une preuve ne se rétrograde jamais en « envoyée » (écritures conditionnelles) ; une CUT PENDING orpheline est dispatchée | » **DÉPLOYÉ** `8a8cb2c4` le 15/09 |
+| ~ | **T49** | TRK-066 · doc 19 P2-2 | Kill-switch et interlock : une ligne par véhicule et par heure, pas un CRITICAL par appel | » **DÉPLOYÉ** `93dba465` le 15/09 |
+| ~ | **T50** | TRK-066 · doc 19 P2-3 | Glissement de confirmation réellement volontaire : 8 valeurs croissantes depuis < 10, End/Home/Page neutralisées, flèche maintenue acceptée | » **DÉPLOYÉ** `8bb24ca7` le 15/09 |
+| ~ | **T51** | TRK-066 · doc 19 P2-5 · P2-6 | Une RESTORE non prouvée se rappelle toutes les 15 min ; SMS en file > 60 min annulé et retenté ; clic manuel borné à 20 s | » **DÉPLOYÉ** `b582fbf6` le 15/09 |
+| ~ | **T52** | TRK-066 · doc 19 P2-8 · P2-9 | Santé par appareil (fait par T44, relais `784d766`) ; allowlist non bloquante pour une RESTORE (ajout à la volée + un nouvel essai) | » **DÉPLOYÉ** `428d1f39` le 15/09 |
+| ~ | **T53** | TRK-066 · doc 19 P2-10 | Journal des tentatives exercé (CHECK + unicité rejoués depuis le SQL de la migration), index dans schema.prisma (T47), changement d'heure du 25/10 couvert — reste PostGIS réel et la rétention | » **DÉPLOYÉ** `b407481a` le 15/09 |
 | ☐ | **T54** | TRK-066 · doc 19 §3 phase 5 | 🔴 Recette réelle : boîtier de banc, puis un canari MH Cars, puis un CDEF31 — un à la fois, présence physique, jamais les 37 | 🔵 TERRAIN |
 | ☐ | **T55** | TRK-066 · doc 12 · doc 19 P2-8 | Second téléphone + seconde SIM (autre opérateur) — après T52, jamais sous le même deviceId | 🤝 HUMAIN |
-| ~ | **T56** | TRK-066 · doc 19 §15 | Promesses des documents 01–18 datées « tenu / tenu autrement / non implémenté » (doc 32) | ~ **FUSIONNÉ** `0677cd05` (#138) — *à déployer* |
+| ~ | **T56** | TRK-066 · doc 19 §15 | Promesses des documents 01–18 datées « tenu / tenu autrement / non implémenté » (doc 32) | » **DÉPLOYÉ** `0677cd05` le 15/09 |
 | ☐ | **T57** | TRK-066 · doc 19 §14 | Dépendances : lot séparé après stabilisation (maplibre critique, socket.io/ws, axios via twilio, multer) | 🔧 À CODER |
 
 ### Partie II — VPS *(32 tâches)*
