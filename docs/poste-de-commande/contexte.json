@@ -291,6 +291,11 @@
     },
     {
       "d": "15/09",
+      "quoi": "Les tâches ont été optimisées : 20 fiches closes, 8 fusionnées dans 3 — il reste ce qui protège quelque chose et a un geste",
+      "preuve": "Closes parce que tranchées par le chantier déployé (T3, T21, T18, T43, T56, T54), non exerçables ou cosmétiques (T15, T19, T20, T14), faites ce soir (V28), déconseillées ou impossibles (V19, V22, V18), sans propriétaire (V20, V21), closes sur le fait (V27). Fusions : boîtiers muets / antennes / déclarations → T9 ; téléphone passerelle → T55 ; ménage du VPS → V17. V4 et V5 débloquées par V28."
+    },
+    {
+      "d": "15/09",
       "quoi": "Nuit du 14 au 15 sur l'ancien code : 24/24 coupes, 23/24 reprises — GS-928-NX immobilisé 2 h 56 en silence, réparé à la main",
       "preuve": "<code>engine_control_commands</code> : 24 CUT TCP acquittées 20:00:01–20:00:12 UTC ; 24 RESTORE TCP à 05:00–05:01 UTC, 23 acquittées en ≤ 5 s, GS-928-NX <code>SENT_UNCONFIRMED</code> à 05:40 sans relance ni SMS (<code>sms_logs</code> vide) ni ligne au centre d'alerte ; positions : boîtier connecté toute la nuit, trois tentatives de démarrage 07:46–07:53 UTC (contact 1–5 s, 0 km/h), RESTORE manuelle du veilleur de nuit à 07:56:39 acquittée en 3 s, départ à 08:01, 39 km/h à 08:09. HM-769-GA jamais coupé (hors champ GPS, report de sécurité). Deux reprises manuelles nocturnes (23:13, 23:14) servies sans re-coupe."
     },

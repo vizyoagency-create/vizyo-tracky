@@ -258,25 +258,25 @@ d'une section à l'autre sans le dire, ou cocher `[x]` sur la foi d'une fiche pl
 |:--:|:--:|---|---|---|
 | ☐ | **T1** | TRK-071 | 🔴🔴 Recharger **au moins un** des deux comptes IA | 🤝 HUMAIN |
 | ☑ | **T2** | TRK-069 | 🔵 ~~Rallumer le poste~~ — **le poste a repris SEUL le 06/09 à 06:08** | ✅ **FAIT** |
-| ☐ | **T3** | TRK-066 | 🔴 Trancher les **trois questions** du coupe-circuit | 🤝 HUMAIN |
+| ☑ | **T3** | TRK-066 | 🔴 Trancher les **trois questions** du coupe-circuit | ✅ **CLOSE 15/09** — optimisation des tâches (voir la fiche) |
 | ☑ | **T4** | TRK-072 | Calibrer les notifications d'excès de vitesse — **D9 tranchée le 13/09 : « ne rien changer »**, seuils et destinataires conservés | ✅ **FAIT** *(décision)* |
 | ☑ | **T5** | TRK-062 | `SENT_UNCONFIRMED` pour les commandes de boîtier — **migration `20260913200000`, les 2 résidentes de 298 h closes au premier balayage de 20:30**, `commandes_en_attente` à **0** le 14/09 | ✅ **FAIT ET PROUVÉ** `66d286f5` |
 | ☑ | **T6** | TRK-065 | Prévenir `tyger.bcn@gmail.com` — **voulu** (notifications en phase de test) ; `PUSH_ROLLOUT=SUPER_ADMIN_ONLY`, **4 remises 100 % super-admin après 20:25** (14/09, un point) | ✅ **FAIT** *(décision + réglage)* |
 | ☐ | **T7** | TRK-035 | Ouvrir la fenêtre de maintenance *(rôle non-superutilisateur)* | 🤝 HUMAIN |
-| ☐ | **T8** | TRK-001 · 027 | 🔵 Contrôler les antennes *(3 véhicules)* | 🤝 HUMAIN |
+| ☑ | **T8** | TRK-001 · 027 | 🔵 Contrôler les antennes *(3 véhicules)* | ✅ **CLOSE 15/09** — optimisation des tâches (voir la fiche) |
 | ☐ | **T9** | — | 🔵 Déclarer ou dépanner `GLA•KC•31` et `FG-669-DQ` | 🤝 HUMAIN |
 | `»` | **T10** | TRK-070 | Le niveau de l'escalade suit la **cause**, pas la gravité | 🗓️ **DÉPLOYÉ** `2112e9ae` |
 | ☑ | **T11** | TRK-068 | ✅ **EXERCÉE le 12/09 00:00:23** — 503, `ERROR`, « Vizyo Auth est injoignable … Motif technique : aucune reponse en 8 s » ; `http CRITICAL` reste à 2 | ✅ **FAIT ET PROUVÉ** `c80632ba` |
 | ☑ | **T12** | TRK-022 | Déduplication **générique** des alarmes du boîtier — **livrée le 19/08**, entrée périmée close sur la mesure (14 j : 2 alertes max par type et par véhicule et par jour) | ✅ **FAIT** |
 | `»` | **T13** | TRK-016 | Recalage — flux neuf réparé, **mesure redéfinie (T28)**, historique en rattrapage **15 par passage** (6 586 restants sur 2–60 j au 14/09) | 🗓️ **DÉPLOYÉ** `4d1c4cb5` |
-| ☐ | **T14** | TRK-053 | **REQUALIFIER** — occasion venue **entière** le 14/09 : 0 alarme (10ᵉ point) **mais deux déclarés COUPÉS par le planificateur à 22:00, un rallumé à la main** — la déclaration ne retient pas l'automatisation *(7 j de dépassement)* | 🗓️ test daté → **défaut produit** |
-| ☐ | **T15** | TRK-060 | Guetter : « Un point de mesure système… » | 🗓️ NON EXERCÉ |
+| ☑ | **T14** | TRK-053 | **REQUALIFIER** — occasion venue **entière** le 14/09 : 0 alarme (10ᵉ point) **mais deux déclarés COUPÉS par le planificateur à 22:00, un rallumé à la main** — la déclaration ne retient pas l'automatisation *(7 j de dépassement)* | ✅ **CLOSE 15/09** — optimisation des tâches (voir la fiche) |
+| ☑ | **T15** | TRK-060 | Guetter : « Un point de mesure système… » | ✅ **CLOSE 15/09** — optimisation des tâches (voir la fiche) |
 | ☑ | **T16** | TRK-064 | ✅ **CLOSE** — la sentinelle **désigne des véhicules** (`vehiculesHorsNorme`) **et sait se taire** : « cdef31 » 0 ligne le 09/09 | ✅ **FAIT ET PROUVÉ** `8fa14cb4` |
 | ☑ | **T17** | TRK-065 | ✅ **EXERCÉE le 11/09 06:30** — `comptesTechniquesEcartes: 1`, compte technique absent ; 53 sur un compte au lieu de 42 sur deux *(numérateur ×2,5)* | ✅ **FAIT ET PROUVÉ** `68034a1d` |
-| ☐ | **T18** | TRK-066 | Guetter « SMS non remis au relais » *(+ motif conservé)* | 🗓️ NON EXERCÉ |
-| ☐ | **T19** | TRK-032 | **REQUALIFIER** — **20 j** d'attente | 🗓️ test daté |
-| ☐ | **T20** | TRK-051 | Confier à un humain — **16 j**, **30 s** pour qui a l'écran | 🗓️ test daté |
-| ☐ | **T21** | TRK-018 | Accusé de remise de la passerelle SMS | ⛔ BLOQUÉ |
+| ☑ | **T18** | TRK-066 | Guetter « SMS non remis au relais » *(+ motif conservé)* | ✅ **CLOSE 15/09** — optimisation des tâches (voir la fiche) |
+| ☑ | **T19** | TRK-032 | **REQUALIFIER** — **20 j** d'attente | ✅ **CLOSE 15/09** — optimisation des tâches (voir la fiche) |
+| ☑ | **T20** | TRK-051 | Confier à un humain — **16 j**, **30 s** pour qui a l'écran | ✅ **CLOSE 15/09** — optimisation des tâches (voir la fiche) |
+| ☑ | **T21** | TRK-018 | Accusé de remise de la passerelle SMS | ✅ **CLOSE 15/09** — optimisation des tâches (voir la fiche) |
 | ☑ | **T22** | TRK-014 | Rectifier son `quoiFaire` — fait le 13/09, republié | ✅ **FAIT** |
 | ☑ | **T23** | — | `TACHES-AMELIORATION.md` — il était **à la racine** : déplacé dans `docs/` par `git mv`, renvois réécrits | ✅ **FAIT** |
 | ☑ | **T24** | TRK-073 | ✅ **La ligne au DÉPART** — *24/24 le 08/09, **dont 1 marquée `interrupted`***, la consigne écrite d'avance est tombée au mot près | ✅ **FAIT ET PROUVÉ** `dae97b03` |
@@ -306,7 +306,7 @@ d'une section à l'autre sans le dire, ou cocher `[x]` sur la foi d'une fiche pl
 | ~ | **T40** | TRK-066 · doc 19 P0-1 | 🔴🔴 P0 — La clé d'unicité RESTORE ne doit plus vivre pour toujours (RESTORE du lendemain avalée) — COMMITTÉ d5c19a17, en attente de fusion | » **DÉPLOYÉ** `d5c19a17` le 15/09 |
 | ~ | **T41** | TRK-066 · doc 19 P0-2 | 🔴🔴 P0 — Donner une validité aux SMS CUT (ttl), une priorité aux RESTORE, un appareil explicite, et annuler le SMS CUT supplanté | » **DÉPLOYÉ** `8ab1d08e` le 15/09 |
 | ~ | **T42** | TRK-066 · doc 19 P1-1 | 🔴 Relancer une RESTORE non prouvée à la reconnexion TCP du boîtier — et ne plus la rendre terminale après trois SMS | » **DÉPLOYÉ** `86c32fa9` le 15/09 |
-| ☐ | **T43** | TRK-066 · doc 19 P1-2 | 🔴 Téléphone S21 **configuré le 14/09** (ping 60 s prouvé sur `lastSeen`, FIFO, délais 10/15 s, limite 60/h, Local server OFF, veille OFF) — restent les variables du relais (doc 25 §4.2) et 30 min écran éteint à relire | 🔵 TERRAIN |
+| ☑ | **T43** | TRK-066 · doc 19 P1-2 | 🔴 Téléphone S21 **configuré le 14/09** (ping 60 s prouvé sur `lastSeen`, FIFO, délais 10/15 s, limite 60/h, Local server OFF, veille OFF) — restent les variables du relais (doc 25 §4.2) et 30 min écran éteint à relire | ✅ **CLOSE 15/09** — optimisation des tâches (voir la fiche) |
 | ~ | **T44** | TRK-066 · doc 19 P1-2 | 🔴 Sentinelle Android : hystérésis, bornes d'environnement, fraîcheur par appareil, délai d'envoi séparé du délai de santé | » **DÉPLOYÉ** `86a2fc53` le 15/09 |
 | ~ | **T45** | TRK-066 · doc 19 P1-3 | 🔴 Preuve SMS quotidienne réconciliée (T-30 min avant chaque fenêtre) — sans elle l'interlock refuse les coupes six jours sur sept | » **DÉPLOYÉ** `1aa1e0f9` le 15/09 |
 | ☑ | **T46** | TRK-066 · doc 19 P1-4 | 🔴 Nettoyer le diff du chantier (reformatage prettier), rebaser sur main, résoudre le conflit — la production est déjà sur 66d286f5 | ✅ **FAIT** `d5c19a17` |
@@ -317,9 +317,9 @@ d'une section à l'autre sans le dire, ou cocher `[x]` sur la foi d'une fiche pl
 | ~ | **T51** | TRK-066 · doc 19 P2-5 · P2-6 | Une RESTORE non prouvée se rappelle toutes les 15 min ; SMS en file > 60 min annulé et retenté ; clic manuel borné à 20 s | » **DÉPLOYÉ** `b582fbf6` le 15/09 |
 | ~ | **T52** | TRK-066 · doc 19 P2-8 · P2-9 | Santé par appareil (fait par T44, relais `784d766`) ; allowlist non bloquante pour une RESTORE (ajout à la volée + un nouvel essai) | » **DÉPLOYÉ** `428d1f39` le 15/09 |
 | ~ | **T53** | TRK-066 · doc 19 P2-10 | Journal des tentatives exercé (CHECK + unicité rejoués depuis le SQL de la migration), index dans schema.prisma (T47), changement d'heure du 25/10 couvert — reste PostGIS réel et la rétention | » **DÉPLOYÉ** `b407481a` le 15/09 |
-| ☐ | **T54** | TRK-066 · doc 19 §3 phase 5 | 🔴 Recette réelle : boîtier de banc, puis un canari MH Cars, puis un CDEF31 — un à la fois, présence physique, jamais les 37 | 🔵 TERRAIN |
+| ☑ | **T54** | TRK-066 · doc 19 §3 phase 5 | 🔴 Recette réelle : boîtier de banc, puis un canari MH Cars, puis un CDEF31 — un à la fois, présence physique, jamais les 37 | ✅ **CLOSE 15/09** — optimisation des tâches (voir la fiche) |
 | ☐ | **T55** | TRK-066 · doc 12 · doc 19 P2-8 | Second téléphone + seconde SIM (autre opérateur) — après T52, jamais sous le même deviceId | 🤝 HUMAIN |
-| ~ | **T56** | TRK-066 · doc 19 §15 | Promesses des documents 01–18 datées « tenu / tenu autrement / non implémenté » (doc 32) | » **DÉPLOYÉ** `0677cd05` le 15/09 |
+| ☑ | **T56** | TRK-066 · doc 19 §15 | Promesses des documents 01–18 datées « tenu / tenu autrement / non implémenté » (doc 32) | ✅ **CLOSE 15/09** — optimisation des tâches (voir la fiche) |
 | ☐ | **T57** | TRK-066 · doc 19 §14 | Dépendances : lot séparé après stabilisation (maplibre critique, socket.io/ws, axios via twilio, multer) | 🔧 À CODER |
 
 ### Partie II — VPS *(32 tâches)*
@@ -327,34 +327,34 @@ d'une section à l'autre sans le dire, ou cocher `[x]` sur la foi d'une fiche pl
 | | ID | Fiche | La tâche | État |
 |:--:|:--:|---|---|---|
 | ☑ | **V0** | — | ✅ **Docs VPS versées sur `main`** *(06/09)* | ✅ **FAIT** |
-| ☐ | **V1** | VPS-038 | 🔵 Porter les **3 IMEI encore muets** de la cohorte du 08-31 à l'exploitant *(3 sont revenus le 11/09 ; gravité **1 → 2** le 13/09)* | 🔵 PRODUIT |
-| ☐ | **V2** | VPS-038 | 🔵 Sortir du parc les 6 boîtiers muets > 7 j | 🔵 PRODUIT |
+| ☑ | **V1** | VPS-038 | 🔵 Porter les **3 IMEI encore muets** de la cohorte du 08-31 à l'exploitant *(3 sont revenus le 11/09 ; gravité **1 → 2** le 13/09)* | ✅ **CLOSE 15/09** — optimisation des tâches (voir la fiche) |
+| ☑ | **V2** | VPS-038 | 🔵 Sortir du parc les 6 boîtiers muets > 7 j | ✅ **CLOSE 15/09** — optimisation des tâches (voir la fiche) |
 | ☐ | **V3** | VPS-036 · 027 | 🔵 **Un seul ticket hébergeur** *(2 écritures root)* | 🔵 PRODUIT |
 | ☐ | **V4** | VPS-010 | Planifier un redémarrage *(noyau, 6 services)* | 🔴 HUMAIN |
 | ☐ | **V5** | VPS-M56 | Arbitrer le budget de collecte *(20 dépassements)* | 🟡 PRÉPARÉ |
 | ☐ | **V6** | VPS-037 | Second dépositaire de la copie hors-site | 🟡 PRÉPARÉ |
 | ☐ | **V7** | VPS-005 | Limites mémoire — **31 conteneurs sur 38** *(dont le coffre, VPS-042)* | 🔴 HUMAIN |
 | ☐ | **V8** | VPS-020 | Séparer les projets compose `deploy` | 🔴 HUMAIN |
-| ☐ | **V9** | VPS-017 | 4,5 Go d'outillage dans `/root` | 🔴 HUMAIN |
-| ☐ | **V10** | VPS-018 | Retirer `/opt/vizyo-leads` | 🔴 HUMAIN |
+| ☑ | **V9** | VPS-017 | 4,5 Go d'outillage dans `/root` | ✅ **CLOSE 15/09** — optimisation des tâches (voir la fiche) |
+| ☑ | **V10** | VPS-018 | Retirer `/opt/vizyo-leads` | ✅ **CLOSE 15/09** — optimisation des tâches (voir la fiche) |
 | ☑ | **V11** | VPS-013 | ✅ **3 bases de prod sauvegardées de façon reproductible** — *les 3 minuteries ont déclenché **seules**, aux 3 horaires attendus* | ✅ **FAIT ET PROUVÉ** *(08/09)* |
 | ☐ | **V12** | VPS-012 | Restreindre la clé CI `vizyo-auth` *(10 s)* | 🟡 PRÉPARÉ |
 | ☐ | **V13** | VPS-015 | `ExecStart` par `bash` **+ `OnFailure=` sur `tracky-backup`** | 🟢 AUTO |
 | ☐ | **V14** | VPS-033 | **Fixer l'heure** du rafraîchissement `apt` — **geste confirmé par le code le 14/09** : deux sonneries/jour, la 1ʳᵉ du jour UTC rafraîchit ; 18 % de mesures valides prédits **et** mesurés | 🟡 PRÉPARÉ |
 | ☐ | **V15** | VPS-034 | Épingler Traefik par digest *(déjà relevé)* | 🔴 HUMAIN |
-| ☐ | **V16** | VPS-026 | Épingler `alpine` par empreinte *(déjà relevée)* | 🟡 PRÉPARÉ |
+| ☑ | **V16** | VPS-026 | Épingler `alpine` par empreinte *(déjà relevée)* | ✅ **CLOSE 15/09** — optimisation des tâches (voir la fiche) |
 | ☐ | **V17** | VPS-030 | Purger 1,4 Go de copies sans rétention *(périmètre prêt)* | 🟡 PRÉPARÉ |
-| ☐ | **V18** | VPS-032 | Multiplexage SSH **côté poste** | 🟢 AUTO |
-| ☐ | **V19** | VPS-007 | `random_page_cost` — *déconseillé en l'état* | 🟡 PRÉPARÉ |
-| ☐ | **V20** | VPS-M79 | Étiqueter les images de repli au build | ⛔ BLOQUÉ |
-| ☐ | **V21** | VPS-029 | Trancher quel mécanisme gouverne le cache de build | ⛔ BLOQUÉ |
-| ☐ | **V22** | VPS-M36 | Échantillonner `wchan` 3× et publier la répartition | ⛔ BLOQUÉ |
+| ☑ | **V18** | VPS-032 | Multiplexage SSH **côté poste** | ✅ **CLOSE 15/09** — optimisation des tâches (voir la fiche) |
+| ☑ | **V19** | VPS-007 | `random_page_cost` — *déconseillé en l'état* | ✅ **CLOSE 15/09** — optimisation des tâches (voir la fiche) |
+| ☑ | **V20** | VPS-M79 | Étiqueter les images de repli au build | ✅ **CLOSE 15/09** — optimisation des tâches (voir la fiche) |
+| ☑ | **V21** | VPS-029 | Trancher quel mécanisme gouverne le cache de build | ✅ **CLOSE 15/09** — optimisation des tâches (voir la fiche) |
+| ☑ | **V22** | VPS-M36 | Échantillonner `wchan` 3× et publier la répartition | ✅ **CLOSE 15/09** — optimisation des tâches (voir la fiche) |
 | ☐ | **V23** | VPS-M73 | Afficher l'écart en jours sur `/admin → Audit VPS` | ⛔ BLOQUÉ |
 | ☑ | **V24** | VPS-038 | **Sentinelle « boîtiers muets »** — *2 lignes à 06:30, pas 10 : **exact*** | ✅ **FAIT ET PROUVÉ** |
 | ☑ | **V25** | VPS-M59 | **`chargeDeFond.note` s'affiche** + repli explicite — *a survécu au rebuild du 07/09* | ✅ **FAIT ET PROUVÉ** |
-| ☐ | **V26** | VPS-013 · M88 | 🔓 **DÉBLOQUÉE** — ranger les **3 dossiers abandonnés** ; le faux orange est désormais **mesuré**, pas prédit | 🟡 PRÉPARÉ |
-| ☐ | **V27** | VPS-040 · M91 | Trancher si la base de **démo** doit être sauvegardée *(le 🔴 vaut **15 Go** ; **15/09 : la question d'hier est close — la démo n'a JAMAIS analysé, `enabled=false` depuis le 07/09, `lastRunAt` NUL ; ses analyses sont importées** — il ne reste qu'une décision)* | 🔵 PRODUIT |
-| ☐ | **V28** | VPS-016 | 🔴🔴 **Tuer le client Docker bloqué depuis le 13/09 04:34 UTC** (`docker logs texto-relay`, PID 159541, parent 159533 **vivant, PPID 1 — le parent d'abord**) — `dockerd` à 100 % d'un cœur, **5ᵉ occurrence** ; **15/09 02:28 : 46ᵉ heure, 2ᵉ journée entière sous 50 % (38,9 %), `deploy.sh` de 08:20 en 1 916 s contre 303–585 s — aucune durée à deux cœurs n'existe** — *à faire AVANT le prochain déploiement* | 🤝 HUMAIN |
+| ☑ | **V26** | VPS-013 · M88 | 🔓 **DÉBLOQUÉE** — ranger les **3 dossiers abandonnés** ; le faux orange est désormais **mesuré**, pas prédit | ✅ **CLOSE 15/09** — optimisation des tâches (voir la fiche) |
+| ☑ | **V27** | VPS-040 · M91 | Trancher si la base de **démo** doit être sauvegardée *(le 🔴 vaut **15 Go** ; **15/09 : la question d'hier est close — la démo n'a JAMAIS analysé, `enabled=false` depuis le 07/09, `lastRunAt` NUL ; ses analyses sont importées** — il ne reste qu'une décision)* | ✅ **CLOSE 15/09** — optimisation des tâches (voir la fiche) |
+| ☑ | **V28** | VPS-016 | 🔴🔴 **Tuer le client Docker bloqué depuis le 13/09 04:34 UTC** (`docker logs texto-relay`, PID 159541, parent 159533 **vivant, PPID 1 — le parent d'abord**) — `dockerd` à 100 % d'un cœur, **5ᵉ occurrence** ; **15/09 02:28 : 46ᵉ heure, 2ᵉ journée entière sous 50 % (38,9 %), `deploy.sh` de 08:20 en 1 916 s contre 303–585 s — aucune durée à deux cœurs n'existe** — *à faire AVANT le prochain déploiement* | ✅ **CLOSE 15/09** — optimisation des tâches (voir la fiche) |
 | ☐ | **V29** | VPS-041 | 🔴 **Un seul rotateur pour les journaux de conteneur** — retirer la stanza `logrotate` à `copytruncate` qui perce des trous de NUL *(15/09 : 3ᵉ nuit, **13,2 s de CPU** pour percer, **5** courants troués, **17** à 0 octet — le compte ne monte plus, il tourne ; geste à faire **avant minuit**)* | 🟡 PRÉPARÉ |
 | ☐ | **V30** | VPS-042 | 🔵 **Reconnaître le coffre Vaultwarden, `vaultbk`, `conductorbk`, 🆕 `dispocarbk`, `179.198.198.199` — et le rôle de DÉPOSITAIRE de DEUX applications** : *15/09 — 3ᵉ compte créé dimanche 05:32 depuis la même adresse, script copié de `recevoir-dump` ; **4 dumps de 1 172 octets, `prd` = `dev`** : base vide ? à vérifier côté Dispocar* ; session `vaultbk` 124 h ; limite mémoire | 🔵 PRODUIT |
 | ☐ | **V31** | VPS-043 · 037 | 🔴 **Réparer le copieur hors-site de Verify** — *le 14/09 04:30 il s'est arrêté sur un **manifeste orphelin** (archive purgée par le VPS, manifeste pas encore) et **n'a pas atteint la paire de la nuit** (`pairesCopiees 0`) ; le collecteur affichait « à jour »* : côté poste, ne plus `throw` sur une paire incomplète + parcourir du plus récent au plus ancien ; côté VPS, purger **par paire**. Preuve : le 16/09, `statut OK` **et** `pairesCopiees ≥ 2` | 🟢 AUTO |
