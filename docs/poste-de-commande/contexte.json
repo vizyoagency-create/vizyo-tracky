@@ -1,7 +1,7 @@
 {
   "_comment": "Ce que le POSTE DE COMMANDE montre en plus des tâches. Les tâches, elles, viennent de docs/centre-alerte/app/taches.json et ne se recopient JAMAIS ici — voir generer.mjs. Ce fichier ne porte que ce qu'aucune tâche ne décrit : les mesures de tête, les mécaniques qui tournent seules, les décisions posées au propriétaire, et ce qui est prouvé.",
   "version": 1,
-  "releve": "15 septembre 2026, 01:40 UTC",
+  "releve": "15 septembre 2026, 17:15 UTC",
   "machines": [
     {
       "nom": "Rattrapage du recalage des tracés",
@@ -21,11 +21,11 @@
     },
     {
       "nom": "Coupe-circuit automatique — A TOURNÉ HIER SOIR sur l'ancien code",
-      "texte": "La fenêtre du 14/09 n'a pas eu lieu. Le 14/09 à 22:00 (Paris), le cron a coupé 24 véhicules CDEF31 avec le code du 11/09 — toutes les coupes acquittées par TCP en 1 à 5 s, HD-584-BF et BP-434-RD compris ; HM-769-GA différé faute de GPS. Deux véhicules déclarés « boîtier débranché » ont été coupés, et HM-733-GA remis en route à la main par son exploitant à 23:13. Ce matin 07:00 (05:00 UTC), 22 remises en route partent sur ce même code : à lire à 07:10 — toute ligne sans accusé = un véhicule immobilisé. Et ce soir 22:00, même chose, tant que le chantier n'est pas déployé (fenêtre T47) ou que les plannings ne sont pas désarmés. Le déploiement lancé à 11:40 (branche rdv) a été retenu par la garde — 45 commits de main manquent en production, dont tout le chantier.",
+      "texte": "Le 14/09 à 09:03, le gestionnaire CDEF31 a réarmé ses 30 plannings (07:00–22:00) sur l'ancien code ; la fenêtre de déploiement n'a pas eu lieu. Nuit du 14 au 15 : 24 coupes à 22:00 acquittées en 1 à 5 s ; 23 reprises à 07:00 acquittées ; UNE reprise perdue en silence — GS-928-NX, envoyée en TCP, jamais acquittée, jamais relancée, aucune alerte — conducteur bloqué à 09:46, réparée à la main par le veilleur de nuit CDEF31 à 09:56 (2 h 56). C'est le défaut que T42/T51 corrigent : le chantier est prêt (fusionné, vérifié), il attend sa fenêtre — proposée le 16/09 10:00–11:40 — avant d'armer MH Cars.",
       "fait": null,
       "total": null,
-      "pied": "30 plannings actifs sur 37 — 24 coupes hier soir, 22 remises en route ce matin, sur l'ancien code",
-      "pied2": "fenêtre T47 aujourd'hui, puis ta décision (T38) ; V28 à tuer AVANT (builds à 30 min)"
+      "pied": "30 plannings actifs sur 37 — toujours sur l'ancien code",
+      "pied2": "déployer (T47) puis armer MH Cars ; CDEF31 tourne déjà, sans filet"
     }
   ],
   "chiffres": [
@@ -284,6 +284,11 @@
     }
   ],
   "faits": [
+    {
+      "d": "15/09",
+      "quoi": "Nuit du 14 au 15 sur l'ancien code : 24/24 coupes, 23/24 reprises — GS-928-NX immobilisé 2 h 56 en silence, réparé à la main",
+      "preuve": "<code>engine_control_commands</code> : 24 CUT TCP acquittées 20:00:01–20:00:12 UTC ; 24 RESTORE TCP à 05:00–05:01 UTC, 23 acquittées en ≤ 5 s, GS-928-NX <code>SENT_UNCONFIRMED</code> à 05:40 sans relance ni SMS (<code>sms_logs</code> vide) ni ligne au centre d'alerte ; positions : boîtier connecté toute la nuit, trois tentatives de démarrage 07:46–07:53 UTC (contact 1–5 s, 0 km/h), RESTORE manuelle du veilleur de nuit à 07:56:39 acquittée en 3 s, départ à 08:01, 39 km/h à 08:09. HM-769-GA jamais coupé (hors champ GPS, report de sécurité). Deux reprises manuelles nocturnes (23:13, 23:14) servies sans re-coupe."
+    },
     {
       "d": "14/09",
       "quoi": "🔴🔴 Les 30 plannings CDEF31 ont été réarmés par le client à 09:03 — sur l'ancien code : sans déploiement, 25 coupes ce soir à 22:00 comme le 11/09",
