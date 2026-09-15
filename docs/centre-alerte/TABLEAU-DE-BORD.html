@@ -82,7 +82,7 @@
 
 <header>
   <h1>Tableau de bord des corrections — Tracky</h1>
-  <p class="sous">Genere le <b>2026-09-14</b> depuis <code>app/taches.json</code>.
+  <p class="sous">Genere le <b>2026-09-15</b> depuis <code>app/taches.json</code>.
   Le detail, le pourquoi et les pieges vivent dans <b>ROADMAP-CORRECTIFS.md</b> —
   ce tableau ne dit que <b>l'etat</b>.</p>
 </header>
@@ -90,17 +90,17 @@
 <div class="kpis">
   <div class="k ok"><div class="n">22</div><div class="l">faites et verifiees</div></div>
   <div class="k warn"><div class="n">8</div><div class="l">deployees, preuve attendue</div></div>
-  <div class="k"><div class="n">58</div><div class="l">ouvertes sur 90</div></div>
+  <div class="k"><div class="n">50</div><div class="l">ouvertes sur 96</div></div>
   <div class="k dgr"><div class="n">7</div><div class="l">ouvertes en gravite 1</div></div>
   <div class="k dgr"><div class="n">3</div><div class="l">au-dela de 7 jours</div></div>
-  <div class="k info"><div class="n">22</div><div class="l">attendent un humain</div></div>
+  <div class="k info"><div class="n">24</div><div class="l">attendent un humain</div></div>
 </div>
 
-<div class="barre" role="img" aria-label="Avancement : 22 faites, 8 deployees, 58 ouvertes sur 90">
-  <span class="s-FAIT" style="width:24%"></span>
-  <span class="s-DEPLOYE" style="width:9%"></span>
-  <span class="s-COMMITE" style="width:2%"></span>
-  <span class="s-OUVERT" style="width:64%"></span>
+<div class="barre" role="img" aria-label="Avancement : 22 faites, 8 deployees, 50 ouvertes sur 96">
+  <span class="s-FAIT" style="width:23%"></span>
+  <span class="s-DEPLOYE" style="width:8%"></span>
+  <span class="s-COMMITE" style="width:17%"></span>
+  <span class="s-OUVERT" style="width:52%"></span>
 </div>
 <p class="leg">
   <i><b>✓</b> faite ET verifiee</i>
@@ -111,17 +111,17 @@
 </p>
 
 <div class="filtres" id="f">
-  <button data-f="tout" aria-pressed="true">Tout (90)</button>
-  <button data-f="ouvert" aria-pressed="false">Ouvertes (58)</button>
+  <button data-f="tout" aria-pressed="true">Tout (96)</button>
+  <button data-f="ouvert" aria-pressed="false">Ouvertes (50)</button>
   <button data-f="g1" aria-pressed="false">Gravite 1 (7)</button>
-  <button data-f="humain" aria-pressed="false">Attendent un humain (22)</button>
-  <button data-f="code" aria-pressed="false">A faire soi-meme (24)</button>
+  <button data-f="humain" aria-pressed="false">Attendent un humain (24)</button>
+  <button data-f="code" aria-pressed="false">A faire soi-meme (15)</button>
   <button data-f="centre-alerte" aria-pressed="false">Centre d'alerte</button>
   <button data-f="vps" aria-pressed="false">VPS</button>
   <button data-f="fait" aria-pressed="false">Closes (30)</button>
 </div>
 
-<h2 class="sec">Les 90 taches — ouvertes et graves d'abord</h2>
+<h2 class="sec">Les 96 taches — ouvertes et graves d'abord</h2>
 <div id="liste">
 <article class="t etat-OUVERT g1" data-etat="OUVERT" data-partie="centre-alerte" data-classe="HUMAIN" data-g="1">
   <div class="t-h">
@@ -130,11 +130,11 @@
     <span class="fiche">TRK-066</span>
     <span class="classe">🤝 Decision ou geste humain</span>
     <span class="grav" title="gravite 1">G1</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-13">1 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-13">2 j</span>
     
   </div>
-  <h3>Remettre en service les plannings du coupe-circuit — 37 coupes depuis le 11/09, apres le chantier fiabilite</h3>
-  <p class="detail">Le 11/09 a 18h49 UTC, apres la reprise matinale manquee de 12 vehicules sur 26, tu as desactive l automatisation horaire des 37 plannings (30 cdef31, 7 mh cars) et remis en route quatre vehicules mh cars a la main. Depuis, aucune coupure ni remise en route automatique : les vehicules des deux societes ne sont plus immobilises la nuit. Le chantier fiabilite du 12/09 (docs/fiabilite-coupe-circuit-2026-09, branche codex/tracky-cutoff-reliability-2026-09-12, worktree vizyo-tracky-reliability-sep2026) pose les conditions de la remise en service : lots R1 a R7 (verite de livraison, remise en route durable et prioritaire, interlock avant coupure, file SMS regulee, tests de panne, canari terrain), aucun deploiement ni changement VPS dans ce chantier, plan de lundi 14/09 en mode supervise sans coupure automatique. La reactivation est TA decision (R7.4), progressive, apres canari. Ce que la page doit montrer d ici la : que le coupe-circuit automatique est a l arret, et depuis quand. Le 13/09 a 20h38 UTC (D8) : le proprietaire attend ce chantier avant de trancher les questions du coupe-circuit. 🆕 13/09 AU SOIR — CONTRE-EXPERTISE INDÉPENDANTE (docs/fiabilite-coupe-circuit-2026-09/19-CONTRE-EXPERTISE-INDEPENDANTE-2026-09-13.md) : verdict NO-GO en l'état — un défaut P0 introduit par la correction (RESTORE du lendemain avalée, T40, corrigé le soir même dans le worktree), un second P0 (validité des SMS CUT, T41), cinq P1 (T42 à T47) et des P2 (T48 à T53). Conditions de réactivation = T40 à T47 puis la recette T54. Lundi 14/09 : horaires toujours désactivés, production sur main 66d286f5 SANS les correctifs du chantier — vérification physique des véhicules nécessaires. 🆕 14/09 : T40 committé (d5c19a17) et T46 close — la branche du chantier est rebasée sur main, sans conflit, suites vertes ; rien n'est déployé. 🆕 14/09 : T41 committé (relais 2536ea4, Tracky 8ab1d08e) — les deux P0 de la contre-expertise sont corrigés dans les branches ; rien n'est déployé. 📏 14/09, MESURE : zero commande moteur (automatique ou manuelle) les 12 et 13/09 ; derniere commande du planificateur le 11/09. L arret est effectif.</p>
+  <h3>Remettre en service les plannings du coupe-circuit — 🔴🔴 14/09 : les 30 CDEF31 ont été RÉARMÉS PAR LE CLIENT à 09:03 sur l'ancien code (coupes ce soir 22:00 sans le chantier) — déployer cet après-midi avec le kill-switch baissé, puis ta décision</h3>
+  <p class="detail">Le 11/09 a 18h49 UTC, apres la reprise matinale manquee de 12 vehicules sur 26, tu as desactive l automatisation horaire des 37 plannings (30 cdef31, 7 mh cars) et remis en route quatre vehicules mh cars a la main. Depuis, aucune coupure ni remise en route automatique : les vehicules des deux societes ne sont plus immobilises la nuit. Le chantier fiabilite du 12/09 (docs/fiabilite-coupe-circuit-2026-09, branche codex/tracky-cutoff-reliability-2026-09-12, worktree vizyo-tracky-reliability-sep2026) pose les conditions de la remise en service : lots R1 a R7 (verite de livraison, remise en route durable et prioritaire, interlock avant coupure, file SMS regulee, tests de panne, canari terrain), aucun deploiement ni changement VPS dans ce chantier, plan de lundi 14/09 en mode supervise sans coupure automatique. La reactivation est TA decision (R7.4), progressive, apres canari. Ce que la page doit montrer d ici la : que le coupe-circuit automatique est a l arret, et depuis quand. Le 13/09 a 20h38 UTC (D8) : le proprietaire attend ce chantier avant de trancher les questions du coupe-circuit. 🆕 13/09 AU SOIR — CONTRE-EXPERTISE INDÉPENDANTE (docs/fiabilite-coupe-circuit-2026-09/19-CONTRE-EXPERTISE-INDEPENDANTE-2026-09-13.md) : verdict NO-GO en l'état — un défaut P0 introduit par la correction (RESTORE du lendemain avalée, T40, corrigé le soir même dans le worktree), un second P0 (validité des SMS CUT, T41), cinq P1 (T42 à T47) et des P2 (T48 à T53). Conditions de réactivation = T40 à T47 puis la recette T54. Lundi 14/09 : horaires toujours désactivés, production sur main 66d286f5 SANS les correctifs du chantier — vérification physique des véhicules nécessaires. 🆕 14/09 : T40 committé (d5c19a17) et T46 close — la branche du chantier est rebasée sur main, sans conflit, suites vertes ; rien n'est déployé. 🆕 14/09 : T41 committé (relais 2536ea4, Tracky 8ab1d08e) — les deux P0 de la contre-expertise sont corrigés dans les branches ; rien n'est déployé. 📏 14/09, MESURE : zero commande moteur (automatique ou manuelle) les 12 et 13/09 ; derniere commande du planificateur le 11/09. L arret est effectif. 🆕 14/09 : T42 committé (86c32fa9) — une RESTORE repart à la reconnexion du boîtier et n'est plus jamais terminale sans preuve ; rien n'est déployé. 🆕 14/09 : T44 committé (relais 784d766, Tracky 86a2fc53) — restent T45 (code), T43 (téléphone), T47 (procédure), T54 (recette) ; rien n'est déployé. 🆕 14/09 : T45 committé (relais ae17b34, Tracky 1aa1e0f9) — tout le code bloquant de la contre-expertise est dans les branches ; restent T43 (téléphone), T47 (procédure), T54 (recette) ; rien n'est déployé. 🆕 14/09 : T47 écrite (doc 25, fde25b96) — la procédure attend T43 et ta relecture ; rien n'est déployé. 🆕 14/09 : T49 committé (93dba465) — le soir où tu réactiveras les horaires avec le kill-switch encore baissé, le centre d'alerte recevra une ligne par heure, pas des dizaines. 🆕 14/09 à 07 h : TOUT le code du chantier faisable seul est committé sur la branche (T40, T41, T42, T44, T45, T48, T49, T50, T51, T52, T53, T56 ; docs 20 à 32) — 22 commits sur main, suites vertes (API 260 suites / 4 081 tests, web 732, relais 55). Restent T43 (toi), ta relecture et la fusion, la fenêtre de déploiement (doc 25), T54, puis ta décision. 🆕 14/09 08:35 : journée consacrée au S21 (T43) — relevé de départ fait, réglages au défaut confirmés côté serveur ({}), webhooks capcom6 vérifiés. 🆕 14/09 09:00 : diagnostic du S21 fait par Mobile connecté — 10 SIM injoignables par SMS (T61) : ces véhicules ne peuvent être remis en route que par TCP. 🆕 14/09 09:40 : S21 configuré (T43 fait côté téléphone, ping 60 s prouvé) ; tests SMS : 8 des 10 SIM « injoignables » répondent à nouveau, 2 restent en échec (HD-584-BF, BP-434-RD) — TCP seul pour ces deux-là. 🆕 14/09 10:00 : plus rien à coder sans toi — main porte aussi T58, T59, T60 (locaux, non poussés) ; la copie périmée du dossier du chantier a été retirée du worktree main ; la fiche de fusion (doc 34) liste les 27 + 5 commits et l'ordre de relecture. 🔀 14/09 11:00 : FUSIONNÉ — Tracky PR #138 (08c5fc2d) et relais PR #9 (724bcb8) sont sur origin/main, avec T62 (SIM injoignable = TCP seul). Reste : T63 (prérequis J-1), la fenêtre T47 ensemble, T65 (24 h de preuve, lue par la routine), T54, puis ta décision. Prod = 9afdf52a (rdv) sans le chantier. 🔴🔴 14/09 10:45 UTC, MESURÉ : les 30 plannings CDEF31 sont ACTIFS (30/30, fenêtre 07:00–22:00 Europe/Paris tous les jours) — réarmés par le gestionnaire de la flotte CDEF31 lui-même (POST /api/fleet-schedules/bulk à 07:03:16 UTC = 09:03 Paris, journal system_activity_logs ; aucun geste de Vizyo). Les 7 MH Cars restent à 0/7. La production tourne sur 9afdf52a : SANS le chantier, SANS kill-switch, SANS interlock (les deux n'existent que depuis 01756db7, jamais déployé). Conséquence si rien n'est fait : CE SOIR à 22:00 (Paris) le cron coupe 25 véhicules CDEF31 avec l'ancien code (30 moins 5 boîtiers muets depuis 13 à 25 j que la règle de dormance ignore : FS-253-HR, FS-808-CE, FZ-862-VY, DZ-034-CA, HD-292-SH), et demain 07:00 les remet en route avec le code qui a laissé 12 véhicules sur 26 immobilisés le 11/09. Aucune commande moteur depuis le 11/09 18:49 : l'armement de ce matin n'a encore rien produit (premier tick = ligne de base IN_WINDOW, sans RESTORE). Deux issues, et une seule est bonne : (a) déployer le chantier cet après-midi (T47) avec ENGINE_AUTOMATIC_CUT_ENABLED=false → ce soir les coupes sont RETENUES (une ligne DÉGRADATION par heure, T49), les RESTORE restent servies ; puis ta décision d'armer (second passage de deploy.sh avec =true avant 19:30) ; (b) désactiver de nouveau les 30 plannings depuis /fleet-schedules — mais le client les réarmera. Ne rien faire = coupes ce soir sur le code du 11/09.</p>
   <p class="attendue"><b>Preuve attendue</b> — Les plannings reactives progressivement (canari puis flotte) SANS remise en route non confirmee a 7h00 sur sept jours — mesure : zero matin ou un vehicule coupe la veille est sans RESTORE acquittee a 7h00 (Paris), et zero alerte critique de remise en route non confirmee non traitee.</p>
   <div class="badges"><span class="b b-phare">⭐ le plus rentable</span></div>
 </article>
@@ -145,12 +145,42 @@
     <span class="fiche">VPS-016</span>
     <span class="classe">🤝 Decision ou geste humain</span>
     <span class="grav" title="gravite 1">G1</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-13">1 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-13">2 j</span>
     
   </div>
-  <h3>Tuer le client Docker bloque depuis 04h34 UTC le 13/09 — 5e occurrence de VPS-016</h3>
-  <p class="detail">🔴🔴 14/09 02h27 UTC (audit VPS) — 22e HEURE, RIEN N A CHANGE SAUF LA MACHINE : PID 159533 (PPID 1, do_wait) et 159541 (futex_wait_queue) vivants, 78 814 s ; dockerd 101 %, 1 367 067 read()/s pour 0 octet, cumul 249,0 → 265,3 h (+16,3 h de CPU en 16 h 14 = un coeur entier en continu). sysstat, samedi 09-13 COMPLET : 47,7 % d inactivite contre 85-89 % les 7 jours d avant — 1re journee entiere sous le seuil 🟠 « marge entamee » du collecteur ; 09-14 partiel 40,2 %. Le journal /opt/tracky-deploiements/journal.jsonl porte SEPT deploy.sh le 09-13 (303 a 585 s, 48 min de build sur un seul coeur) : faire V28 AVANT le prochain deploiement est la seule facon de mesurer un deploy.sh a deux coeurs. Geste inchange, PID verifies a 02:27:35. || Constate par l audit du centre d alerte le 13/09 a 10h07 UTC : « docker logs --tail 60 texto-relay » (PID 159541), lance sans timeout par un « bash -c » (PID 159533, rattache a init) qui enchainait tracky-api puis texto-relay, est bloque depuis 04h34 UTC, et dockerd tourne a 100 pour cent d un coeur sur les deux de la machine (charge 1,68 ; 36,8 pour cent de temps systeme). C est exactement le motif de VPS-016 (4e occurrence le 20/08, 3 h 54 ; 3e occurrence 152 heures), et le referentiel dit depuis le 08/08 que docker logs texto-relay ne rend jamais la main sur cet hote. Ce n est PAS l audit du centre d alerte : toutes ses commandes Docker etaient bornees (timeout ET --tail, aucun docker logs). L audit VPS, qui l aurait vu a 02h21, n a pas tourne depuis le 09/09 (plafond de la CLI, T32). Geste : tuer le PARENT puis l enfant (kill 159533 159541), verifier que pgrep -x docker est vide et que dockerd redescend ; puis retrouver QUI a lance ce bash -c sans timeout — c est la source a corriger, pas le symptome. || COMPLETE PAR L AUDIT VPS DU 13/09 (10:08 UTC) : le bash -c parent (159533) est VIVANT, PPID 1, en do_wait — c est le cas du 08-20, donc LE PARENT D ABORD : verifier les PID (ps -o pid,ppid,etimes,stat,cmd -p 159533,159541) puis kill 159533 &amp;&amp; sleep 1 &amp;&amp; kill 159541 ; attendu pgrep -xc docker = 0 et dockerd &lt; 5 % dans la minute. Lance par la session SSH root 39478 depuis le poste 82.67.153.51, ouverte 04:34:00,89 UTC puis fermee ; sar : %system 3,5 → 22,3 (04:40) → 33,6 (04:50) ; cumul dockerd 241,2 → 249,0 h ; 8,2 % d inactivite pendant la collecte. Les trois routines planifiees sont EXCLUES (bloquees par le quota, reprises ensemble a 10:06). L outil n est pas nomme (VPS-M01) ; la CLASSE l est : docker logs sans timeout depuis une session qui se ferme avant lui. dockerd avait journalise « Error decoding log file: invalid character \x00 » a 04:33:52, 8 s avant, sur le premier docker logs du meme bash — voir V29 (VPS-041). ⚠️ Si dockerd reste &gt; 50 % avec 0 client apres le kill : premiere occurrence qui survit a son client — le dire, ne pas redemarrer. 🔴 14/09 01h14 UTC, TOUJOURS LA : PID 159541 et son parent 159533 vivants (etimes 74 823 s = 20 h 47), dockerd a 101 % d un coeur mesure sur 5 s dans /proc/913/stat, charge 1,35 / 1,49 / 1,53 sur deux coeurs. Rien n a change depuis le constat d hier, sinon seize heures de plus.</p>
+  <h3>Tuer le client Docker bloque depuis 04h34 UTC le 13/09 — 5e occurrence de VPS-016 (46e heure au 15/09)</h3>
+  <p class="detail">🔴🔴 15/09 02h28 UTC (audit VPS) — 46e HEURE, 2e JOURNEE ENTIERE &lt; 50 %, ET LE COUT D UN DEPLOIEMENT EST MESURE : PID 159533 (PPID 1, do_wait) et 159541 (futex_wait_queue) vivants, 165 294 s ; dockerd 100 %, 1 014 817 read()/s pour 0 octet, cumul 265,3 → 289,4 h (+24,1 h de CPU en 24 h 00 = un coeur entier). sysstat, lundi 09-14 COMPLET : 38,9 % d inactivite (47,7 samedi, 85-89 la semaine d avant), steal 2,4 → 4,1 % ; sar heure par heure 38-41 % partout, deux fosses a 7,95 % (08:20, le deploiement) et 8,37 % (11:50, le build retenu). journal.jsonl : deploy.sh de 08:20:38 (9afdf52a) en 1 916 s = 31 min 56 contre 303-585 s les 7 passages du 09-13 (x3,3 a x6,3) — ⚠️ ces 303-585 s etaient DEJA a un coeur : AUCUNE duree a deux coeurs n existe, le premier deploy.sh apres V28 sera la premiere. Demain = 3e jour &lt; 50 % = seuil 🔴 « trois jours de suite » du collecteur. Geste inchange, PID verifies a 02:28:55, parent d abord. || 🔴🔴 14/09 02h27 UTC (audit VPS) — 22e HEURE, RIEN N A CHANGE SAUF LA MACHINE : PID 159533 (PPID 1, do_wait) et 159541 (futex_wait_queue) vivants, 78 814 s ; dockerd 101 %, 1 367 067 read()/s pour 0 octet, cumul 249,0 → 265,3 h (+16,3 h de CPU en 16 h 14 = un coeur entier en continu). sysstat, samedi 09-13 COMPLET : 47,7 % d inactivite contre 85-89 % les 7 jours d avant — 1re journee entiere sous le seuil 🟠 « marge entamee » du collecteur ; 09-14 partiel 40,2 %. Le journal /opt/tracky-deploiements/journal.jsonl porte SEPT deploy.sh le 09-13 (303 a 585 s, 48 min de build sur un seul coeur) : faire V28 AVANT le prochain deploiement est la seule facon de mesurer un deploy.sh a deux coeurs. Geste inchange, PID verifies a 02:27:35. || Constate par l audit du centre d alerte le 13/09 a 10h07 UTC : « docker logs --tail 60 texto-relay » (PID 159541), lance sans timeout par un « bash -c » (PID 159533, rattache a init) qui enchainait tracky-api puis texto-relay, est bloque depuis 04h34 UTC, et dockerd tourne a 100 pour cent d un coeur sur les deux de la machine (charge 1,68 ; 36,8 pour cent de temps systeme). C est exactement le motif de VPS-016 (4e occurrence le 20/08, 3 h 54 ; 3e occurrence 152 heures), et le referentiel dit depuis le 08/08 que docker logs texto-relay ne rend jamais la main sur cet hote. Ce n est PAS l audit du centre d alerte : toutes ses commandes Docker etaient bornees (timeout ET --tail, aucun docker logs). L audit VPS, qui l aurait vu a 02h21, n a pas tourne depuis le 09/09 (plafond de la CLI, T32). Geste : tuer le PARENT puis l enfant (kill 159533 159541), verifier que pgrep -x docker est vide et que dockerd redescend ; puis retrouver QUI a lance ce bash -c sans timeout — c est la source a corriger, pas le symptome. || COMPLETE PAR L AUDIT VPS DU 13/09 (10:08 UTC) : le bash -c parent (159533) est VIVANT, PPID 1, en do_wait — c est le cas du 08-20, donc LE PARENT D ABORD : verifier les PID (ps -o pid,ppid,etimes,stat,cmd -p 159533,159541) puis kill 159533 &amp;&amp; sleep 1 &amp;&amp; kill 159541 ; attendu pgrep -xc docker = 0 et dockerd &lt; 5 % dans la minute. Lance par la session SSH root 39478 depuis le poste 82.67.153.51, ouverte 04:34:00,89 UTC puis fermee ; sar : %system 3,5 → 22,3 (04:40) → 33,6 (04:50) ; cumul dockerd 241,2 → 249,0 h ; 8,2 % d inactivite pendant la collecte. Les trois routines planifiees sont EXCLUES (bloquees par le quota, reprises ensemble a 10:06). L outil n est pas nomme (VPS-M01) ; la CLASSE l est : docker logs sans timeout depuis une session qui se ferme avant lui. dockerd avait journalise « Error decoding log file: invalid character \x00 » a 04:33:52, 8 s avant, sur le premier docker logs du meme bash — voir V29 (VPS-041). ⚠️ Si dockerd reste &gt; 50 % avec 0 client apres le kill : premiere occurrence qui survit a son client — le dire, ne pas redemarrer. 🔴 14/09 01h14 UTC, TOUJOURS LA : PID 159541 et son parent 159533 vivants (etimes 74 823 s = 20 h 47), dockerd a 101 % d un coeur mesure sur 5 s dans /proc/913/stat, charge 1,35 / 1,49 / 1,53 sur deux coeurs. Rien n a change depuis le constat d hier, sinon seize heures de plus.</p>
   <p class="attendue"><b>Preuve attendue</b> — pgrep -x docker vide, dockerd sous 10 pour cent d un coeur au repos, et l origine du bash -c identifiee.</p>
+  <div class="badges"><span class="b b-phare">⭐ le plus rentable</span></div>
+</article>
+<article class="t etat-OUVERT g2" data-etat="OUVERT" data-partie="centre-alerte" data-classe="HUMAIN" data-g="2">
+  <div class="t-h">
+    <span class="marque" title="Ouvert">☐</span>
+    <span class="id">T63</span>
+    <span class="fiche">TRK-066 · doc 25 §2</span>
+    <span class="classe">🤝 Decision ou geste humain</span>
+    <span class="grav" title="gravite 2">G2</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-14">1 j</span>
+    
+  </div>
+  <h3>C — Prérequis J-1 de la fenêtre : Device ID du S21, numéro de preuve dans l'allowlist, version capcom6, créneau, téléphone branché</h3>
+  <p class="detail">À faire AVANT la fenêtre (doc 25 §2), ensemble ou par toi : (P2) relever le Device ID du S21 dans SMSGate → Settings → Cloud server → Device ID et le numéro de sa SIM → ils iront dans le .env du relais (CAPCOM6_DEVICE_ID, jamais dans un document) ; (P3) SMS_DAILY_PROOF_RECIPIENT = le numéro de la SIM du S21 (auto-envoi prouvé le 14/09 : preuve hebdo delivered) et l'AJOUTER à l'allowlist du tenant Tracky sur le relais (entrée manuelle, sinon la preuve quotidienne sera refusée 403) ; (P5) choisir CAPCOM6_SERVER_TAG : rester v1.43.0 (l'annulation d'un SMS reste « non supportée », sans casse) ou monter à v1.47.4 dans une sous-fenêtre à part avec dump MariaDB ; (P7) fixer le créneau : hors HH:42–HH:46, hors 04:25–04:50 et 06:25–06:50, hors 19:30–22:30 et 04:30–07:30 — type 10:00–11:40 ; brancher le S21 en permanence (il tournait sur batterie le 14/09) ; (P4) fait le 14/09 : les 4 webhooks capcom6 sont vérifiés ; (P1) fait le 14/09 : téléphone configuré (T43) ; (P6) fait le 14/09 : fusions #138 et #9. 📏 14/09 10:45 UTC, MESURÉ (lecture seule) : P2 devient FACULTATIF — un seul appareil enrôlé côté capcom6 (samsung/o1sxeea, lastSeen 10:19:29 pour une lecture à 10:20:04 : ping toujours à 60 s), et le relais fusionné retient l'unique appareil quand CAPCOM6_DEVICE_ID est vide (messages.service.ts) ; le renseigner reste recommandé, l'id se lit sur le VPS pendant la fenêtre (GET /3rdparty/v1/devices) sans passer par le téléphone. P3 est DÉJÀ SATISFAIT : le numéro de la SIM du S21 est la première valeur de SMS_HEARTBEAT_RECIPIENTS du .env.prod, il figure dans l'allowlist manuelle du tenant tracky (17 entrées manuelles, 30 synchronisées), et la preuve hebdomadaire de 07:00 UTC lui a été remise ce matin (sms-heartbeat SUCCESS, 7 delivered sur 24 h côté relais) → SMS_DAILY_PROOF_RECIPIENT = copier cette valeur, rien à ajouter à l'allowlist. P5, pour AUJOURD'HUI : rester en v1.43.0 (l'annulation d'un SMS supplanté reste « non supportée », sans casse) — pas de changement de version du serveur capcom6 un jour de mise en service ; v1.47.4 dans une sous-fenêtre une autre semaine. P7 : créneau proposé AUJOURD'HUI 13:30–15:10 (Paris), hors garde et hors fenêtres véhicules ; le second passage de deploy.sh (kill-switch à true, si tu le décides) avant 17:30 pour être fini avant 19:30. Vérifié aussi : env_file .env.prod transmet TOUTES les variables au conteneur (aucune ENGINE_* n'y est aujourd'hui — normal, elles arrivent avec le chantier) ; NODE_ENV=production dans le conteneur → le kill-switch fail-closed s'applique dès le déploiement ; le .env du relais n'a aucune CAPCOM6_* (les six sont à écrire, doc 25 §4.2) ; up -d relay ne recrée pas capcom6 (le relais ne dépend que de postgres). Reste à toi : le S21 branché en permanence, et confirmer le créneau.</p>
+  <p class="attendue"><b>Preuve attendue</b> — Device ID et numéro de preuve écrits dans le .env du relais (sans les recopier ailleurs), le numéro listé par GET /admin/allowlist du relais, CAPCOM6_SERVER_TAG décidé, date et heure de la fenêtre notées, S21 sur secteur.</p>
+  <div class="badges"><span class="b b-phare">⭐ le plus rentable</span></div>
+</article>
+<article class="t etat-OUVERT g3" data-etat="OUVERT" data-partie="centre-alerte" data-classe="HUMAIN" data-g="3">
+  <div class="t-h">
+    <span class="marque" title="Ouvert">☐</span>
+    <span class="id">T61</span>
+    <span class="fiche">TRK-066 · S21 · doc 10 test B/C</span>
+    <span class="classe">🤝 Decision ou geste humain</span>
+    <span class="grav" title="gravite 3">G3</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-14">1 j</span>
+    
+  </div>
+  <h3>Deux SIM de boîtiers (HD-584-BF, BP-434-RD) restent INJOIGNABLES par SMS depuis le S21 après remise en état ; les huit autres sont revenues — test depuis un autre opérateur ou ticket WhereverSIM</h3>
+  <p class="detail">Mesuré le 14/09 (téléphone + base du relais depuis juin, lecture seule) : vers 10 numéros +34 590 1030 … (605300, 609501, 621085, 621087, 621088, 621098, 621099, 621100, 621103, 621105 — véhicules HD-597-XY, GS-014-NY, HM-779-GA, FZ-862-VY, FS-808-CE, FS-253-HR, HD-584-BF, GR-294-VW, BP-434-RD, HM-769-GA) chaque SMS du S21 échoue AU DÉPART (le réseau Free refuse la soumission : « RESULT_ERROR_GENERIC_FAILURE »), à toute heure, depuis des semaines (…621085 : 36 échecs depuis le 09/06 ; une seule remise sur …621103 le 29/08). Les voisines de la même série (605196, 605305, 605307, 605318, 621090, 621101) livrent à 100 %, dans la même seconde. Côté fournisseur (table sims) rien ne les distingue : Activée, IMSI 214074, session data en cours ; les boîtiers sont ONLINE en TCP et ces SIM ÉMETTENT des SMS. Conséquence : le secours SMS n'existe pas pour ces 10 véhicules (28 % de la flotte CDEF) — une RESTORE ne peut leur parvenir que par TCP ; une CUT par SMS y échoue (sans danger). Gestes : (1) test B/C du doc 10 — envoyer un SMS neutre (ex. « check123456 ») à …621085 depuis une SIM d'un AUTRE opérateur : s'il est remis, le blocage est chez Free (SMSC / 5G SA) ; s'il échoue aussi, il est chez WhereverSIM (SMS-MT non provisionné sur ces ICCID) ; (2) ticket WhereverSIM avec les 10 ICCID : « SMS mobile-terminated provisionné ? » ; (3) essai depuis le S21 en mode réseau « LTE/3G/2G » (sans 5G SA) vers …621085 ; (4) tant que non résolu : ces 10 véhicules restent HORS coupure automatique (ou coupure TCP seule, interlock informé), et l'écran Horaires doit le dire. Aucune de ces SIM ne doit être remplacée avant le test B/C. 🧪 14/09 09:30–09:35, TESTS AVEC TON ACCORD (check123456, aucun stop/start — 13 SMS internationaux facturés sur ta ligne, arrêt demandé ensuite) : app Messages → …621085 : 2 SMS partis, 2 réponses du boîtier (09:30, 09:31). Par le RELAIS (chemin de production) : …621085 → delivered en 8 s (09:32:19 → 09:32:27, réponse du boîtier à 09:32:28) ; puis 10 envois à 09:34 (FIFO et délais 10–15 s respectés : 09:34:16, :24, :27, :31, :40, :41, :54, 09:35:04, :17, :29) : témoin …621101 delivered ; …609501 (GS-014-NY), …621100 (GR-294-VW), …621105 (HM-769-GA), …605300 (HD-597-XY) delivered avec réponse ; …621087 (FZ-862-VY), …621088 (FS-808-CE), …621098 (FS-253-HR) sent sans remise — boîtiers éteints depuis le 31/08, attendu ; 🔴 …621099 (HD-584-BF) failed à 09:34:24 et …621103 (BP-434-RD) failed à 09:34:54, à 8 s et 30 s d'envois réussis vers leurs voisines. Vérifié dans Tracky : ces deux boîtiers sont ONLINE (positions 09:36), l'IMEI vu par le fournisseur = l'IMEI du boîtier (la SIM est bien dedans, pour les 11 testées), statut Activée, session data en cours. CONCLUSION RÉVISÉE : le refus au départ n'était pas « la destination » pour 8 SIM sur 10 — elles passent depuis que le téléphone a été remis en état (le redémarrage du 11/09 au soir, puis la reconfiguration du jour) ; il PERSISTE pour 2 SIM, sans différence visible côté fournisseur ni côté Tracky. Pour ces deux véhicules le secours SMS n'existe pas aujourd'hui : TCP seul. Gestes restants (toi, 1 SMS chacun, coût annoncé avant) : (1) un check123456 vers …621099 depuis une SIM d'un autre opérateur ; (2) sinon ticket WhereverSIM avec les 2 ICCID (SMS-MT provisionné ?). Aucun envoi de plus de ma part. 🔀 14/09 : T62 fusionné — pour ces deux véhicules, la coupe automatique n'est émise que boîtier connecté en TCP, la RESTORE repart en TCP toutes les 5 min et à chaque reconnexion, un SMS-sonde par 6 h au plus, une ligne DÉGRADATION par jour au centre d'alerte (doc 35). Le test « autre opérateur » et le remplacement de SIM restent à toi. 📏 14/09 10:45 : sms_logs de Tracky ne porte AUCUN sortant vers ces deux SIM depuis 30 j (les tests du matin sont partis du téléphone, pas du relais) → après déploiement, T62 les tiendra pour joignables jusqu'à trois échecs enregistrés PAR TRACKY ; la première coupe automatique tentera donc le SMS (refusé au départ, non facturé), la RESTORE aussi — puis « TCP seul ». À savoir avant ce soir.</p>
+  <p class="attendue"><b>Preuve attendue</b> — Un SMS neutre remis à …621085 (delivered) depuis le S21 après correction, ou la liste des 10 véhicules explicitement exclue de la coupure automatique.</p>
   <div class="badges"><span class="b b-phare">⭐ le plus rentable</span></div>
 </article>
 <article class="t etat-OUVERT g1" data-etat="OUVERT" data-partie="centre-alerte" data-classe="BLOQUE" data-g="1">
@@ -160,7 +190,7 @@
     <span class="fiche">TRK-066</span>
     <span class="classe">⛔ Bloque par un prerequis</span>
     <span class="grav" title="gravite 1">G1</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-04">10 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-04">11 j</span>
     
   </div>
   <h3>Trancher les quatre questions du coupe-circuit — ou les tenir pour tranchees par le chantier fiabilite (D8)</h3>
@@ -175,7 +205,7 @@
     <span class="fiche">TRK-035</span>
     <span class="classe">🤝 Decision ou geste humain</span>
     <span class="grav" title="gravite 1">G1</span>
-    <span class="depuis" title="ouverte depuis le 2026-08-20">25 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-08-20">26 j</span>
     
   </div>
   <h3>Ouvrir la fenetre de maintenance du role non-superutilisateur</h3>
@@ -190,7 +220,7 @@
     <span class="fiche">TRK-053</span>
     <span class="classe">🗓️ Test date : provoquer ou requalifier</span>
     <span class="grav" title="gravite 1">G1</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-01">13 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-01">14 j</span>
     
   </div>
   <h3>Provoquer ou requalifier : boitier debranche ne fait pas taire les alarmes</h3>
@@ -205,7 +235,7 @@
     <span class="fiche">TRK-066</span>
     <span class="classe">🗓️ Deploye, a guetter</span>
     <span class="grav" title="gravite 1">G1</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-04">10 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-04">11 j</span>
     
   </div>
   <h3>Guetter « SMS non remis au relais » — motif technique CONSERVE</h3>
@@ -220,11 +250,11 @@
     <span class="fiche">TRK-018</span>
     <span class="classe">⛔ Bloque par un prerequis</span>
     <span class="grav" title="gravite 1">G1</span>
-    <span class="depuis" title="ouverte depuis le 2026-08-11">34 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-08-11">35 j</span>
     
   </div>
   <h3>Accuse de remise de la passerelle SMS</h3>
-  <p class="detail">Les 4 correctifs sont livres ET prouves (313 commandes SENT tombees a 0). Reste que la passerelle n'expose aucun accuse.</p>
+  <p class="detail">Les 4 correctifs sont livres ET prouves (313 commandes SENT tombees a 0). Reste que la passerelle n'expose aucun accuse. 🆕 14/09 : débloqué dans les branches par T45 — le relais pousse désormais sent/delivered/failed/cancelled vers POST /sms/webhook/status (relais ae17b34) ; à constater en production après T47.</p>
   
   <div class="badges"></div>
 </article>
@@ -235,7 +265,7 @@
     <span class="fiche">—</span>
     <span class="classe">🔵 Action materielle</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-03">11 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-03">12 j</span>
     
   </div>
   <h3>Declarer ou depanner GLA•KC•31 et FG-669-DQ — et LEVER la declaration des trois revenus</h3>
@@ -250,7 +280,7 @@
     <span class="fiche">TRK-032</span>
     <span class="classe">🗓️ Test date : provoquer ou requalifier</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-08-21">24 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-08-21">25 j</span>
     
   </div>
   <h3>REQUALIFIER — l'occasion ne viendra pas seule</h3>
@@ -265,28 +295,13 @@
     <span class="fiche">TRK-051</span>
     <span class="classe">🗓️ Test date : provoquer ou requalifier</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-08-25">20 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-08-25">21 j</span>
     
   </div>
   <h3>Confier a un humain : le badge ambre du mode fix</h3>
   <p class="detail">16 jours d attente. Geste d interface, impossible a provoquer en lecture seule. 30 secondes pour qui a l ecran.</p>
   
   <div class="badges"><span class="b b-retard">🔴 au-dela de 7 jours</span></div>
-</article>
-<article class="t etat-OUVERT g2" data-etat="OUVERT" data-partie="centre-alerte" data-classe="A_CODER" data-g="2">
-  <div class="t-h">
-    <span class="marque" title="Ouvert">☐</span>
-    <span class="id">T42</span>
-    <span class="fiche">TRK-066 · doc 19 P1-1</span>
-    <span class="classe">🔧 A coder</span>
-    <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-13">1 j</span>
-    
-  </div>
-  <h3>Relancer une RESTORE non prouvée à la reconnexion TCP du boîtier — et ne plus la rendre terminale après trois SMS</h3>
-  <p class="detail">Aucun abonnement à une reconnexion n'existe (aucun @OnEvent hors SMS_INBOUND_EVENT, aucun emit dans socket-registry) ; l'attente TCP d'une RESTORE dont la socket est absente vaut un seul créneau de 15 s ; après trois SMS échoués la RESTORE passe FAILED et le cron, qui a déjà avancé lastEvaluatedState, ne la recrée jamais : un boîtier qui revient en TCP à 07:40 ne reçoit pas K. Contredit README (« jamais abandonnée »), doc 03 §8, doc 07 R4.1 coché, CC-003. Geste : émettre tracker.connected { imei } depuis le registre de sockets ; dans EngineControlService, @OnEvent → pour la dernière RESTORE non acquittée du boîtier plus récente que la dernière CUT, retour en PENDING / canal null / nextAttemptAt now (réarmement partagé avec T40) ; après épuisement SMS, rester en SENT avec relance TCP toutes les 30 min (pas de SMS supplémentaire) au lieu de FAILED terminal — ou garder FAILED et corriger les documents.</p>
-  <p class="attendue"><b>Preuve attendue</b> — Test : boîtier hors ligne, trois SMS échouent, reconnexion TCP → K envoyé et ACK → ACKNOWLEDGED ; et sur banc, socket coupée puis rétablie après l'échec SMS → le véhicule redémarre sans geste humain.</p>
-  <div class="badges"></div>
 </article>
 <article class="t etat-OUVERT g2" data-etat="OUVERT" data-partie="centre-alerte" data-classe="TERRAIN" data-g="2">
   <div class="t-h">
@@ -295,42 +310,12 @@
     <span class="fiche">TRK-066 · doc 19 P1-2</span>
     <span class="classe">🔵 Action materielle</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-13">1 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-13">2 j</span>
     
   </div>
-  <h3>Configurer le téléphone passerelle (ping 60 s, FIFO, délais, SIM 1) et l'environnement du relais — AVANT tout déploiement</h3>
-  <p class="detail">Mesuré le 13/09 sur le VPS (lecture seule) : lastSeen du S21 figé de 20:52:50Z à au moins 21:02:02Z (552 s) au repos — le téléphone n'a PAS d'intervalle de ping (doc 10), il ne contacte le serveur qu'au pull de secours (15 min par défaut, documentation SMS Gateway « Ping »). Avec le seuil de 120 s de la nouvelle santé, la sentinelle dirait « périmé » ~85 % du temps, alerterait en CRITICAL à chaque nouvel épisode (jusqu'à 4/h) et l'interlock resterait rouge sans panne. Gestes sur le téléphone (Settings → Ping : 60 s ; Settings → Messages : ordre FIFO, délai min 10 s / max 15 s, limite active, SIM 1 fixée) puis vérifier 30 min écran éteint que lastSeen avance (GET /v1/texto/health une fois T44 déployée, ou /3rdparty/v1/devices). Relais : CAPCOM6_DEVICE_STALE_SECONDS=240, CAPCOM6_SIM_NUMBER=1 (absent aujourd'hui de l'environnement du conteneur texto-relay), CAPCOM6_DEVICE_ID=&lt;id du S21&gt;, CAPCOM6_REQUEST_TIMEOUT_MS=5000, CAPCOM6_SEND_TIMEOUT_MS=9000 (T44). FIFO et délai min sont sans risque et peuvent être faits dès lundi.</p>
+  <h3>Téléphone passerelle S21 configuré le 14/09 (ping 60 s vérifié, FIFO, délais, limite, veille OFF) — restent les variables du relais dans la fenêtre de déploiement</h3>
+  <p class="detail">Mesuré le 13/09 sur le VPS (lecture seule) : lastSeen du S21 figé de 20:52:50Z à au moins 21:02:02Z (552 s) au repos — le téléphone n'a PAS d'intervalle de ping (doc 10), il ne contacte le serveur qu'au pull de secours (15 min par défaut, documentation SMS Gateway « Ping »). Avec le seuil de 120 s de la nouvelle santé, la sentinelle dirait « périmé » ~85 % du temps, alerterait en CRITICAL à chaque nouvel épisode (jusqu'à 4/h) et l'interlock resterait rouge sans panne. Gestes sur le téléphone (Settings → Ping : 60 s ; Settings → Messages : ordre FIFO, délai min 10 s / max 15 s, limite active, SIM 1 fixée) puis vérifier 30 min écran éteint que lastSeen avance (GET /v1/texto/health une fois T44 déployée, ou /3rdparty/v1/devices). Relais : CAPCOM6_DEVICE_STALE_SECONDS=240, CAPCOM6_SIM_NUMBER=1 (absent aujourd'hui de l'environnement du conteneur texto-relay), CAPCOM6_DEVICE_ID=&lt;id du S21&gt;, CAPCOM6_REQUEST_TIMEOUT_MS=5000, CAPCOM6_SEND_TIMEOUT_MS=9000 (T44). FIFO et délai min sont sans risque et peuvent être faits dès lundi. 🆕 14/09 (T44) : deux variables de plus à renseigner dans l'environnement du conteneur texto-relay — CAPCOM6_DEVICE_OFFLINE_SECONDS=900 et CAPCOM6_SEND_TIMEOUT_MS=9000 ; et CAPCOM6_DEVICE_ID devient le pivot du verdict de santé : sans lui, un second téléphone enrôlé rendra la santé « inconnue » (refus explicite, plus de devinette). 🆕 14/09 (T45) : renseigner SMS_DAILY_PROOF_RECIPIENT côté Tracky (recommandé : le numéro de la SIM du S21) et l'ajouter à l'allowlist du tenant Tracky sur le relais ; relire GET /3rdparty/v1/webhooks côté capcom6 pour confirmer sms:sent/delivered/failed (et ajouter sms:cancelled après la mise à jour du serveur). 🆕 14/09 (T47) : la liste exacte des gestes est en doc 25 §2 (P1 à P4) ; relever aussi la version de l'application Android du S21 (Settings → À propos) avant toute montée du serveur capcom6. 📏 14/09 06:33 UTC, RELEVÉ DE DÉPART (lecture seule, depuis le conteneur texto-relay, aucun secret affiché) : serveur capcom6 1.43.0 « pass » ; UN appareil enrôlé (samsung/o1sxeea = S21 5G) dont lastSeen date de 06:23:18Z, soit 10 min avant la lecture — le pull de secours de 15 min, rien d'autre ; GET /3rdparty/v1/settings rend {} : AUCUN réglage posé, tout est au défaut (ping désactivé, ordre LIFO, aucun délai, aucune limite, SIM = défaut OS, plages horaires désactivées) — exactement l'état du diagnostic du 12/09 (doc 10) ; les 4 webhooks sms:received/sent/delivered/failed → https://texto.vizyoagency.com/internal/capcom6/webhook sont bien enregistrés (P4 du doc 25 : VÉRIFIÉ ; sms:cancelled n'existera qu'après un serveur ≥ 1.45). GESTES DU JOUR SUR LE S21 (application SMS Gateway 1.65.0, onglet Settings) : Ping → interval 60 s (c'est AUSSI la fréquence de relève des messages : le pull passe de 15 min à 60 s, ce qui règle le retard de 1 h 06 du 11/09 quand le push FCM manque) ; Messages → send interval min 10 / max 15 s ; limit period « Per hour » / limit value 60 (les RESTORE, priorité 100, contournent délais et limite — contrat public : « High-priority messages (100-127) bypass rate limits and skip delays » — seules les COUPURES et les preuves sont freinées, ce qui est voulu) ; processing order FIFO ; SIM « If SIM number is not specified » = OS Default (une seule SIM, slot 1 ; le relais passera simNumber=1 après T44) ; Work hours DÉSACTIVÉ (vérifier) ; Webhooks → retry count 3 (sans risque) ; System → battery optimization disabled et auto-start activés (déjà vus le 12/09, revérifier). ANDROID 15 / ONE UI 7 : Paramètres → Batterie → Limites d'utilisation en arrière-plan → « Mettre en veille les applications inutilisées » OFF et SMS Gateway dans « Applications jamais en veille » ; Batterie → Paramètres supplémentaires → « Batterie adaptative » OFF ; Maintenance de l'appareil → Optimisation automatique → « Redémarrer si nécessaire » OFF (un redémarrage programmé tue le service : Android 15 a refusé son redémarrage en arrière-plan le 11/09) ; Applications → SMS Gateway → Batterie = Non restreinte, notifications ON, données en arrière-plan ON (déjà vus). Après TOUT redémarrage du téléphone : ouvrir l'application une fois à la main. PREUVE ATTENDUE : lastSeen avance de ≤ 60 s en ≤ 60 s, puis 30 min écran éteint sans trou (je relis /3rdparty/v1/devices en lecture seule). Pas de SMS envoyé, rien d'écrit sur le VPS aujourd'hui : les variables du relais (CAPCOM6_DEVICE_ID, SIM_NUMBER=1, STALE 240, OFFLINE 900, timeouts) s'écrivent dans la fenêtre de déploiement (doc 25 §4.2). 🔎 14/09 08:40–08:58, DIAGNOSTIC DU S21 PAR MOBILE CONNECTÉ (lecture seule, aucun réglage modifié, aucun SMS envoyé) — SMSGate 1.65.0 : ping NON DÉFINI, ordre LIFO, délais min/max non définis, limite désactivée, SIM = OS default, webhooks retry 15 + clé de signature posée + 4 webhooks Cloud (received/sent/delivered/failed → relais), canal de notification « Auto » (FCM puis pull), serveur privé sms.vizyoagency.com/api/mobile/v1, Start on boot ON, Battery optimization disabled, ⚠️ « Local server » AUSSI activé (serveur HTTP local inutile, à désactiver). Journal de l'app (50 dernières lignes) : uniquement des SMS entrants + webhooks réussis les 13/09 18:01–22:55, aucune erreur. File de l'app : 453 sortants, 335 delivered, 66 sent, 52 failed, 0 pending ; DERNIER SORTANT 11/09 20:49 (rien depuis). Android 15 / One UI 7 : batterie 70 % SUR BATTERIE (le téléphone n'est pas branché), Non restreinte pour SMSGate, données arrière-plan ON, économiseur de données OFF, mode économie d'énergie OFF, « Mise en veille des applis inutilisées » ON avec 0 appli protégée (67 en veille profonde — SMSGate n'y est PAS aujourd'hui, mais rien ne l'en protège), nettoyage mémoire automatique quotidien (dernier il y a 5 h), redémarrage automatique DÉSACTIVÉ, Wi-Fi Freebox + 5G SA (« 5G préféré », IMS enregistré, −91 dBm), uptime 60 h 08 → dernier redémarrage le 11/09 vers 20:45 (celui de l'incident), mode Sommeil sans programmation. Le S21 est le téléphone PERSONNEL du propriétaire (216 applis, cycle de charge quotidien, SMS personnels relayés dans la base du relais). 🔴 CE QUE LE TÉLÉPHONE MONTRE SUR LE 11/09 : les 10 RESTORE de 07:00 ont été relevés à 07:07:33 (7 min : pas de push, pull de secours), puis 5 delivered / 5 failed en 4 s — les 5 échecs sont « Send result: RESULT_ERROR_GENERIC_FAILURE » vers 5 numéros précis, et TOUTES les reprises de la journée (07:40, 07:55, 08:41, 09:35, 10:33, 10:34, 17:59, 18:00) ont échoué de la même façon vers les mêmes numéros. Croisé avec la base du relais depuis juin : 10 SIM de boîtiers n'ont JAMAIS reçu un SMS du S21 (…621085 : 36 échecs, …621087/088/098/105 : 5, …621099 : 5, …621103 : 4 après 1 remise le 29/08, …609501 : 2, …621100, …605300) alors que leurs voisines de la même série livrent à 100 % ; ces SIM sont ACTIVÉES chez le fournisseur (même IMSI 214074, même statut), en session data, boîtiers ONLINE en TCP, et ELLES envoient des SMS (…621085 : 26 entrants). Ce n'est donc ni le débit, ni la veille, ni la batterie : c'est la DESTINATION — voir T61. ✅ Vérifié au passage : l'auto-envoi S21 → sa propre SIM (+33656…) est remis (preuve hebdo des 31/08 et 07/09), donc SMS_DAILY_PROOF_RECIPIENT = la SIM du S21 est valide. Le device id pour CAPCOM6_DEVICE_ID se lit dans SMSGate → Settings → Cloud server → Device ID. ✅ 14/09 09:05–09:35, FAIT SUR LE S21 par Mobile connecté, avec ton accord : SMSGate → Ping 60 s ; Messages → FIFO, délais min 10 / max 15 s, limite « hour » / 60 ; Home → Local server OFF (Cloud server ON, Start on boot ON). Android → Batterie → Limites d'utilisation en arrière-plan : « Mise en veille des applis inutilisées » OFF (SMSGate n'est pas proposée dans « jamais en veille » parce qu'elle est déjà « Non restreinte » : normal). Le ping n'a démarré qu'après un redémarrage de l'app (Forcer l'arrêt → Ouvrir) ; l'écran noir vu ensuite venait de la diffusion d'application de Mobile connecté, pas de l'app (ouverte sur le téléphone : Home normal, ONLINE ; journal : « FCM registration finished », « SendMessagesWorker finished successfully » à 09:20:28). PREUVE : lastSeen avance de 60 s en 60 s depuis 09:23:28 (09:24:28, 09:25:28, 09:26:28, 09:27:28 … 09:35:29), lu sur /3rdparty/v1/devices. Preuve hebdo de 09:00 → delivered. NON FAIT (à ta demande d'arrêt) : les 30 min écran éteint — à lire plus tard sur lastSeen, sans toucher au téléphone ; et Webhooks retry (déjà 15, suffisant). RESTE pour la fenêtre de déploiement (doc 25 §4.2) : CAPCOM6_DEVICE_ID (lisible dans SMSGate → Settings → Cloud server → Device ID), CAPCOM6_SIM_NUMBER=1, STALE 240 / OFFLINE 900, timeouts.</p>
   <p class="attendue"><b>Preuve attendue</b> — Trois relevés espacés de 5 min de /3rdparty/v1/devices montrent un lastSeen qui avance à chaque minute, écran éteint ; les réglages FIFO / délais / SIM sont photographiés et consignés dans le dossier du chantier.</p>
-  <div class="badges"></div>
-</article>
-<article class="t etat-OUVERT g2" data-etat="OUVERT" data-partie="centre-alerte" data-classe="A_CODER" data-g="2">
-  <div class="t-h">
-    <span class="marque" title="Ouvert">☐</span>
-    <span class="id">T44</span>
-    <span class="fiche">TRK-066 · doc 19 P1-2</span>
-    <span class="classe">🔧 A coder</span>
-    <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-13">1 j</span>
-    
-  </div>
-  <h3>Sentinelle Android : hystérésis, bornes d'environnement, fraîcheur par appareil, délai d'envoi séparé du délai de santé</h3>
-  <p class="detail">Tracky sms-gateway-watchdog.service.ts:28-35 : un seul tick sain referme l'épisode et remet le rappel de 15 min à zéro → battement à chaque pull du téléphone. Texto src/config/env.ts : CAPCOM6_DEVICE_STALE_SECONDS sans borne haute (999999999 rend la fraîcheur inopérante) ; src/messages/messages.service.ts:214-224 : le plus frais de TOUS les appareils gagne (un téléphone de test masquerait un téléphone de production mort), simCards ignoré ; src/capcom6/capcom6.service.ts:112 : le nouveau timeout de 5 s s'applique aussi à l'ENVOI (« timeout mais accepté » non réconcilié). Geste : 2 ticks mauvais pour ouvrir, 3 bons pour fermer ; bornes [30, 3600] ; fraîcheur évaluée sur CAPCOM6_DEVICE_ID, simCards exposé, état à quatre valeurs (ONLINE/STALE/OFFLINE/UNKNOWN) en plus du booléen ; CAPCOM6_SEND_TIMEOUT_MS (9 000) distinct de CAPCOM6_REQUEST_TIMEOUT_MS (5 000). Tests : sain/périmé alternés → une alerte ; plusieurs appareils dont un ancien ; date future ; lastSeen absent ; valeurs d'env limites.</p>
-  <p class="attendue"><b>Preuve attendue</b> — Sur 24 h de sentinelle en production avec le téléphone configuré (T43), zéro alerte CRITICAL de passerelle hors panne réelle ; un débranchement volontaire du téléphone de 5 min produit UNE alerte puis UN réarmement.</p>
-  <div class="badges"></div>
-</article>
-<article class="t etat-OUVERT g2" data-etat="OUVERT" data-partie="centre-alerte" data-classe="A_CODER" data-g="2">
-  <div class="t-h">
-    <span class="marque" title="Ouvert">☐</span>
-    <span class="id">T45</span>
-    <span class="fiche">TRK-066 · doc 19 P1-3</span>
-    <span class="classe">🔧 A coder</span>
-    <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-13">1 j</span>
-    
-  </div>
-  <h3>Preuve SMS quotidienne réconciliée (T-30 min avant chaque fenêtre) — sans elle l'interlock refuse les coupes six jours sur sept</h3>
-  <p class="detail">engine-control.service.ts:987-1000 : l'interlock exige une remise SMS « delivered » de moins de 24 h ; la seule source régulière est la preuve de vie HEBDOMADAIRE (sms-heartbeat.service.ts:109, lundi 09:00) ; le relais ne pousse AUCUN statut sortant (src/webhooks/webhooks.controller.ts:114-124 met à jour sa table et s'arrête) et l'endpoint Tracky POST /sms/webhook/status n'a aucun émetteur — sa table sait pourtant : 13 failed, 6 sent, 6 delivered sur 7 jours quand Tracky n'en voit qu'un. Semaine TCP saine → mardi soir toutes les CUT automatiques refusées, avec CRITICAL. Geste : deux passages quotidiens de SmsHeartbeatService à 04:30 et 06:30 Europe/Paris (T-30 des fenêtres 05:00 et 07:00), SMS vers un numéro neutre ou vers la SIM du téléphone lui-même (prouve émission + réception + webhook entrant), vérification à +10 min par reconcileOutboundStatus jusqu'au terminal (~2 SMS/jour) ; et/ou faire pousser par le relais sent/delivered/failed (avec errorCode) vers &lt;callbackUrl&gt;/status via WebhookDeliveryService. 📏 14/09, MESURE COTE TRACKY : sms_logs porte 24 sortants queued sans suite (dernier le 11/09 18h49m13, les remises en route manuelles du soir) et UN seul delivered en sept jours — la preuve de vie du 07/09 07h00. Le relais ne pousse aucun statut : la table Tracky en garde la trace.</p>
-  <p class="attendue"><b>Preuve attendue</b> — Sept matins consécutifs, lastTerminalSuccessAt est daté du jour à 06:45 (Paris) ; l'écran SMS admin affiche la preuve du matin ; l'interlock rend « ok » avant chaque fenêtre.</p>
   <div class="badges"></div>
 </article>
 <article class="t etat-OUVERT g2" data-etat="OUVERT" data-partie="centre-alerte" data-classe="PREPARE" data-g="2">
@@ -340,12 +325,12 @@
     <span class="fiche">TRK-066 · doc 19 P1-5</span>
     <span class="classe">🟡 Commande ecrite, arbitrage humain</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-13">1 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-13">2 j</span>
     
   </div>
-  <h3>Procédure de déploiement du chantier : deploy.sh, migration rejouée sur copie PostgreSQL, ordre téléphone → Texto → Tracky, kill-switch false</h3>
-  <p class="detail">Doc 13 (étapes 3-5) décrit migration + déploiement « à la main » alors que la règle D1 impose deploy/vps/deploy.sh (garde HH:42–HH:46, repères de repli, déploiement hors script signalé) ; aucun document ne liste la configuration du téléphone comme prérequis ; doc 18 n'énumère pas CAPCOM6_DEVICE_STALE_SECONDS / CAPCOM6_REQUEST_TIMEOUT_MS ; la migration 20260912110000 porte un horodatage ANTÉRIEUR aux trois migrations 20260913* déjà déployées (migrate deploy l'applique comme « en attente » — à démontrer sur copie, pas à supposer ; Docker local absent pendant la revue du chantier). Ordre à écrire puis à jouer AVEC TOI : 0) T40, T41, T42, T44, T45, T46 fusionnés ; 1) sauvegardes des deux bases, .env.prod complété, kill-switch false, 0/30 et 0/7 confirmés ; 2) téléphone (T43) ; 3) Texto puis GET /v1/texto/health = operational:true, fresh:true, un appareil, SIM 1 ; 4) migration rejouée sur copie de production après 20260913*, rollback applicatif à blanc ; 5) Tracky via deploy.sh hors HH:42–HH:46, artefact vérifié DANS le conteneur, 30 min sans alerte ; 6) 24 h de preuve quotidienne verte ; 7) recette T54 ; 8) rollback = kill-switch false, horaires off, deploy.sh --repli, migration conservée, jamais vider engine_control_commands. 🆕 14/09 (T41) : ajouter à la procédure la mise à jour du conteneur capcom6-server (1.43.0 → ≥ 1.46.1) pour que l'annulation d'un SMS en attente soit effective, et renseigner CAPCOM6_DEVICE_ID (id du S21 dans /3rdparty/v1/devices).</p>
-  <p class="attendue"><b>Preuve attendue</b> — Un document de procédure relu par toi, puis un déploiement de la branche fusionnée passé par deploy.sh avec la migration appliquée, sans ligne « déploiement hors script » et sans alerte de sentinelle pendant 30 min.</p>
+  <h3>D — La fenêtre de déploiement, ENSEMBLE : sauvegardes → variables du relais → relais → migration sur copie → deploy.sh → vérification dans le conteneur (doc 25 §4–6, Go/No-Go §10)</h3>
+  <p class="detail">Doc 13 (étapes 3-5) décrit migration + déploiement « à la main » alors que la règle D1 impose deploy/vps/deploy.sh (garde HH:42–HH:46, repères de repli, déploiement hors script signalé) ; aucun document ne liste la configuration du téléphone comme prérequis ; doc 18 n'énumère pas CAPCOM6_DEVICE_STALE_SECONDS / CAPCOM6_REQUEST_TIMEOUT_MS ; la migration 20260912110000 porte un horodatage ANTÉRIEUR aux trois migrations 20260913* déjà déployées (migrate deploy l'applique comme « en attente » — à démontrer sur copie, pas à supposer ; Docker local absent pendant la revue du chantier). Ordre à écrire puis à jouer AVEC TOI : 0) T40, T41, T42, T44, T45, T46 fusionnés ; 1) sauvegardes des deux bases, .env.prod complété, kill-switch false, 0/30 et 0/7 confirmés ; 2) téléphone (T43) ; 3) Texto puis GET /v1/texto/health = operational:true, fresh:true, un appareil, SIM 1 ; 4) migration rejouée sur copie de production après 20260913*, rollback applicatif à blanc ; 5) Tracky via deploy.sh hors HH:42–HH:46, artefact vérifié DANS le conteneur, 30 min sans alerte ; 6) 24 h de preuve quotidienne verte ; 7) recette T54 ; 8) rollback = kill-switch false, horaires off, deploy.sh --repli, migration conservée, jamais vider engine_control_commands. 🆕 14/09 (T41) : ajouter à la procédure la mise à jour du conteneur capcom6-server (1.43.0 → ≥ 1.46.1) pour que l'annulation d'un SMS en attente soit effective, et renseigner CAPCOM6_DEVICE_ID (id du S21 dans /3rdparty/v1/devices). 🆕 14/09 (T45) : étape 6 « 24 h de preuve quotidienne verte » = deux verdicts OK consécutifs (04:45 et 06:45) et lastTerminalSuccessAt &lt; 24 h avant tout canari. ✅ PROCÉDURE ÉCRITE LE 14/09 : docs/fiabilite-coupe-circuit-2026-09/25-PROCEDURE-DE-DEPLOIEMENT-DU-CHANTIER-2026-09-14.md (Tracky fde25b96, relais 0bb4013). Ce qui est prêt : règles (deploy.sh seul chemin, fusion après ta relecture, kill-switch false, plannings off) ; prérequis J-1 (T43, id du S21, numéro de preuve dans l'allowlist, webhooks capcom6 à relire, fenêtre hors HH:42–HH:46 et hors preuves/fenêtres véhicules — créneau type 10:00–11:40) ; sauvegardes des TROIS bases (Tracky, relais, MariaDB capcom6) ; variables sans valeur secrète ; version du serveur capcom6 ÉPINGLÉE (CAPCOM6_SERVER_TAG, défaut v1.43.0 — latest valait v1.47.4 le 14/09, un pull aurait sauté quatre versions sans décision ; recommandation v1.47.4 dans une sous-fenêtre à part avec dump MariaDB) ; les six CAPCOM6_* enfin transmises au conteneur texto-relay (le compose ne les passait pas) ; migration rejouée sur tracky_copie avec la nouvelle image AVANT deploy.sh ; vérifications dans le conteneur ; 24 h de preuve ; rollback par couche ; liste Go/No-Go. DÉMONTRÉ en local (PostgreSQL 18 privé, Prisma 6.19.3) : la migration 20260912110000 antérieure aux 20260913* est bien appliquée comme « en attente », sans erreur, et son SQL passe sur des lignes existantes. Fusion vérifiée sans fichier commun avec main. Index du worker ajouté à schema.prisma (T53). Doc 13 corrigé (T56). NON VÉRIFIÉ : la copie PostGIS 16 réelle, le téléphone face à un serveur 1.47.x, l'auto-envoi S21→S21, les webhooks du 24/08. Reste : la JOUER, avec toi, après T43 et ta relecture des branches. 🔀 14/09 11:00 : les deux fusions sont FAITES (Tracky #138 → 08c5fc2d, relais #9 → 724bcb8) ; origin/main des deux côtés porte tout le chantier + T62. La production est à 9afdf52a (chantier rdv, déployé par toi ce matin 08:20 UTC) : le repère de repli sera avant-&lt;horodatage&gt;-9afdf52a, pas 66d286f5. CHECKLIST DE LA FENÊTRE (à cocher ensemble, dans l'ordre) : (1) prérequis T63 tous verts ; (2) sauvegardes des TROIS bases (tracky-postgres, texto-postgres, capcom6-mysql) présentes et non vides ; (3) git status propre sur /opt/vizyo-tracky et /opt/vizyo-texto ; (4) plannings 0/30 et 0/7, ENGINE_AUTOMATIC_CUT_ENABLED=false dans .env.prod, variables ENGINE_* nouvelles présentes (TCP_RETRY_MIN 30, MANUAL_RESPONSE_BUDGET_MS 20000, SMS_UNREACHABLE_STREAK 3, TCP_ONLY_RETRY_MIN 5, SMS_DAILY_PROOF_RECIPIENT) ; (5) relais : CAPCOM6_DEVICE_ID, SIM_NUMBER=1, STALE 240, OFFLINE 900, REQUEST_TIMEOUT 5000, SEND_TIMEOUT 9000, SERVER_TAG décidé ; (6) [si montée capcom6] dump MariaDB puis version attendue, pass, S21 présent et frais, 4 webhooks présents ; (7) relais déployé → GET /v1/texto/health : operational true, state ONLINE, selection configured, SIM 1 ; (8) migration 20260912110000 rejouée sur tracky_copie sans erreur, copie supprimée ; (9) deploy.sh hors HH:42–HH:46, repère de repli noté, journal écrit ; (10) artefact vérifié DANS le conteneur (T42, T45, T62 présents), _prisma_migrations à jour, 0 unhealthy ; (11) tâches de fond sans écart, écran SMS vert, 30 min sans ligne au centre d'alerte ; (12) preuve quotidienne OK à la main. Un point non coché = No-Go. 📋 ORDRE DU JOUR DU 14/09 (créneau proposé 13:30–15:10 Paris, ~1 h 15 de gestes + 30 min d'observation) : A) sauvegardes des trois bases (doc 25 §4.1) ; relever git status/log sur /opt/vizyo-tracky (propre, 9afdf52a) ; B) écrire les 13 lignes ENGINE_*/SMS_*/SCHEDULE_* dans /opt/vizyo-tracky/deploy/vps/.env.prod (SMS_DAILY_PROOF_RECIPIENT = la première valeur de SMS_HEARTBEAT_RECIPIENTS ; ENGINE_AUTOMATIC_CUT_ENABLED=false) et les 7 CAPCOM6_* dans /opt/vizyo-texto/deploy/vps/.env (CAPCOM6_SERVER_TAG=v1.43.0, CAPCOM6_DEVICE_ID lu sur place) ; C) relais : git pull --ff-only (724bcb8), build relay, up -d relay, health = operational true / ONLINE / SIM 1 ; D) Tracky : git pull --ff-only (5c708c03 ou plus récent), build api, migration rejouée sur tracky_copie (doc 25 §6.2), puis deploy.sh --attendre hors HH:42–HH:46 (~30 min, le passage de 08:20 a duré 32 min), artefact vérifié DANS le conteneur ; E) 30 min sans ligne nouvelle au centre d'alerte, GET /api/admin/sms/status avec les quatre conditions de l'interlock vertes, une preuve SMS à la main (UN SMS, coût annoncé) ; F) TA décision pour ce soir : kill-switch à true = second deploy.sh avant 17:30 → 25 coupes CDEF31 à 22:00 sous interlock (preuve &lt; 24 h, téléphone ONLINE, file &lt; 10) et 25 RESTORE à 07:00 avec relance TCP à la reconnexion, SMS cadencés, rappel toutes les 15 min ; ou false = nuit sans coupe, 24 h de preuve (T65), canari demain soir (T54). Rollback à tout moment : deploy.sh --repli avant-20260914-&lt;heure&gt;-9afdf52a, kill-switch false, migration conservée.</p>
+  <p class="attendue"><b>Preuve attendue</b> — La liste Go/No-Go du doc 25 §10 entièrement cochée pendant la fenêtre : sauvegardes non vides, plannings 0/30 et 0/7, relais operational/ONLINE/configured, migration rejouée sur tracky_copie sans erreur, deploy.sh terminé avec repère de repli noté, artefact vérifié dans le conteneur, 30 min sans ligne au centre d'alerte, preuve quotidienne OK à la main puis 24 h.</p>
   <div class="badges"></div>
 </article>
 <article class="t etat-OUVERT g2" data-etat="OUVERT" data-partie="centre-alerte" data-classe="TERRAIN" data-g="2">
@@ -355,13 +340,28 @@
     <span class="fiche">TRK-066 · doc 19 §3 phase 5</span>
     <span class="classe">🔵 Action materielle</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-13">1 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-13">2 j</span>
     
   </div>
   <h3>Recette réelle : boîtier de banc, puis un canari MH Cars, puis un CDEF31 — un à la fois, présence physique, jamais les 37</h3>
-  <p class="detail">Bloquée par T40 à T47. Sur boîtier de banc : RESTORE TCP avec ACK ; socket coupée → attente → SMS cadencé → statut terminal → ignition ; RESTORE LE LENDEMAIN sur le même boîtier (le scénario P0-1) ; redémarrage de l'API avec une RESTORE en attente ; téléphone redémarré sans déverrouillage ; CUT puis RESTORE rapprochées avec SMS retardé (P0-2) ; 22 RESTORE cadencées mesurées sur le téléphone réel (délai, file, coût). Puis un véhicule MH Cars (fenêtre 19:45–20:30), puis un CDEF31 (21:45–22:30), kill-switch true SEULEMENT pendant la fenêtre puis false ; réactivation progressive par groupes de 3 à 5 ; surveillance 04:45–05:30 et 06:45–07:30 ; liste nominative des véhicules sans preuve à 05:10 et 07:10. Rollback : kill-switch false, horaires off, deploy.sh --repli.</p>
+  <p class="detail">Bloquée par T40 à T47. Sur boîtier de banc : RESTORE TCP avec ACK ; socket coupée → attente → SMS cadencé → statut terminal → ignition ; RESTORE LE LENDEMAIN sur le même boîtier (le scénario P0-1) ; redémarrage de l'API avec une RESTORE en attente ; téléphone redémarré sans déverrouillage ; CUT puis RESTORE rapprochées avec SMS retardé (P0-2) ; 22 RESTORE cadencées mesurées sur le téléphone réel (délai, file, coût). Puis un véhicule MH Cars (fenêtre 19:45–20:30), puis un CDEF31 (21:45–22:30), kill-switch true SEULEMENT pendant la fenêtre puis false ; réactivation progressive par groupes de 3 à 5 ; surveillance 04:45–05:30 et 06:45–07:30 ; liste nominative des véhicules sans preuve à 05:10 et 07:10. Rollback : kill-switch false, horaires off, deploy.sh --repli. 🆕 14/09 : intégrer le test B/C de T61 (SMS neutre vers …621085 depuis un autre opérateur) AVANT le canari : 10 véhicules n'ont aujourd'hui aucun secours SMS. 🆕 14/09 : le test SMS de T61 est fait pour 10 SIM (8 OK, 2 KO : HD-584-BF, BP-434-RD) — ne pas le refaire en série (SMS internationaux facturés) ; il reste le test « autre opérateur » pour les 2 KO. 🆕 14/09 : le Go pour le banc = les six verdicts de T65 verts deux fois de suite.</p>
   <p class="attendue"><b>Preuve attendue</b> — Deux canaris coupés le soir et physiquement redémarrés le matin, timeline complète (intention, tentatives, ACK, ignition) archivée ; puis sept jours de sentinelle sans faux positif avant les groupes suivants.</p>
   <div class="badges"><span class="b b-bloque">⛔ prerequis</span></div>
+</article>
+<article class="t etat-OUVERT g2" data-etat="OUVERT" data-partie="centre-alerte" data-classe="AUTO" data-g="2">
+  <div class="t-h">
+    <span class="marque" title="Ouvert">☐</span>
+    <span class="id">T65</span>
+    <span class="fiche">TRK-066 · doc 25 §7 · PROCEDURE-AUDIT</span>
+    <span class="classe">🟢 Agent, seul, avec preuve</span>
+    <span class="grav" title="gravite 2">G2</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-14">1 j</span>
+    
+  </div>
+  <h3>E — Les 24 h de preuve après le déploiement, lues à chaque passage de la routine du centre d'alerte (six verdicts)</h3>
+  <p class="detail">Ajouté le 14/09 dans docs/centre-alerte/PROCEDURE-AUDIT.md (section « À PARTIR DU DÉPLOIEMENT DU CHANTIER COUPE-CIRCUIT ») et rappelé par la commande /audit-centre-alerte : dès que le sha déployé (journal.jsonl) est postérieur à la fusion, chaque passage rend SIX verdicts datés — (1) preuve SMS quotidienne partie 04:30 / 06:30 et verdict OK à +15 min, aucune ligne sms-daily-proof ; (2) sentinelle sms-gateway-watchdog muette 24 h ; (3) lastSeen du S21 &lt; 240 s, lu deux fois ; (4) GET /api/admin/sms/status : lastTerminalSuccessAt &lt; 24 h, operational, ONLINE, file &lt; 10 — les conditions exactes de l'interlock ; (5) aucune RESTORE non prouvée &gt; 15 min (plaque, canal, depuis quand) ; (6) liste des véhicules « TCP seul » (engine-control-tcp-only) connue et stable (au 14/09 : HD-584-BF, BP-434-RD). Puis, pendant la réactivation (T38) : les fenêtres 04:45–05:30 et 06:45–07:30, liste nominative des RESTORE non prouvées à 05:10 et 07:10, et les lignes engine-control-interlock de la veille. Tout en lecture seule. Le rapport les reprend dans une section « Coupe-circuit — 24 h de preuve » avant « Chiffres ». Le Go pour le banc (T54) = deux verdicts OK consécutifs et une sentinelle muette 24 h.</p>
+  <p class="attendue"><b>Preuve attendue</b> — Le premier rapport d'audit postérieur au déploiement porte la section « Coupe-circuit — 24 h de preuve » avec six verdicts datés ; 24 h plus tard, deux verdicts OK consécutifs.</p>
+  <div class="badges"></div>
 </article>
 <article class="t etat-OUVERT g2" data-etat="OUVERT" data-partie="vps" data-classe="PRODUIT" data-g="2">
   <div class="t-h">
@@ -370,11 +370,11 @@
     <span class="fiche">VPS-038</span>
     <span class="classe">🔵 Exploitant / equipe produit</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-08-31">14 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-08-31">15 j</span>
     
   </div>
   <h3>Porter les 6 IMEI muets a l'exploitant</h3>
-  <p class="detail">📏 14/09 — samedi 09-13 COMPLET = 32 (3e journee ≥ 32), registre 11/11/11 (tous &gt; 7 j desormais : du temps qui passe, VPS-M90). …6714 : 3 305 trames le 09-13, 328 ce matin, 0 position depuis le 09-11 16:19 (3e jour) — a porter A PART. Restent muets de la cohorte : …7027, …6755, …6102 (14 j). || ✅ 13/09 — VPS-038 GRAVITE 1 → 2 SUR SON SEUIL (« positions a 32 sur une journee complete ») : ven 09-11 = 33, sam 09-12 = 32. Trois des six revenus le 09-11 apres 11 jours : 864035054489431 (11:56, emet), 864035054756763 (15:54, emet), 864035054756714 (14:10, derniere position 16:19 puis des trames SANS position — s annonce, ne mesure plus). Restent muets de la cohorte : 864035054757027, 864035054756755, 864035054756102 (08-31 11:53-13:15). Registre 14 → 11, cumul &gt; 3 j 13 → 11. ⚠️ …6714 est a porter A PART : son mode de panne est different (VPS-038, 09-07). || Flotte 2ad69ac1, muets depuis 5,6 jours, avec l'heure de leur derniere trame.</p>
+  <p class="detail">📏 15/09 — lundi 09-14 COMPLET = 33 (4e journee ≥ 32) ; positions par jour 30·30·30·30·33·32·32·33 ; les 3 compteurs a 33/33/33 (premiere egalite parfaite depuis le 09-11). …6714 a produit des positions le 09-14 jusqu a 14:23:06 (premiere depuis le 09-11 16:19), puis de nouveau des trames SANS position (10 747 trames en 4 j, derniere 02:29:55) : il s annonce et mesure PAR INTERMITTENCE — a porter A PART. Registre 11/11/11, tous &gt; 7 j (9 a 102 jours). || 📏 14/09 — samedi 09-13 COMPLET = 32 (3e journee ≥ 32), registre 11/11/11 (tous &gt; 7 j desormais : du temps qui passe, VPS-M90). …6714 : 3 305 trames le 09-13, 328 ce matin, 0 position depuis le 09-11 16:19 (3e jour) — a porter A PART. Restent muets de la cohorte : …7027, …6755, …6102 (14 j). || ✅ 13/09 — VPS-038 GRAVITE 1 → 2 SUR SON SEUIL (« positions a 32 sur une journee complete ») : ven 09-11 = 33, sam 09-12 = 32. Trois des six revenus le 09-11 apres 11 jours : 864035054489431 (11:56, emet), 864035054756763 (15:54, emet), 864035054756714 (14:10, derniere position 16:19 puis des trames SANS position — s annonce, ne mesure plus). Restent muets de la cohorte : 864035054757027, 864035054756755, 864035054756102 (08-31 11:53-13:15). Registre 14 → 11, cumul &gt; 3 j 13 → 11. ⚠️ …6714 est a porter A PART : son mode de panne est different (VPS-038, 09-07). || Flotte 2ad69ac1, muets depuis 5,6 jours, avec l'heure de leur derniere trame.</p>
   
   <div class="badges"></div>
 </article>
@@ -385,7 +385,7 @@
     <span class="fiche">VPS-038</span>
     <span class="classe">🔵 Exploitant / equipe produit</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-04">10 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-04">11 j</span>
     
   </div>
   <h3>Sortir du parc les 6 boitiers muets depuis plus de 7 jours</h3>
@@ -400,7 +400,7 @@
     <span class="fiche">VPS-036 · VPS-027</span>
     <span class="classe">🔵 Exploitant / equipe produit</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-08-28">17 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-08-28">18 j</span>
     
   </div>
   <h3>Un seul ticket hebergeur pour les deux ecritures root</h3>
@@ -415,7 +415,7 @@
     <span class="fiche">VPS-010</span>
     <span class="classe">🤝 Decision ou geste humain</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-08-04">41 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-08-04">42 j</span>
     
   </div>
   <h3>Planifier un redemarrage vers 23 h 30</h3>
@@ -430,7 +430,7 @@
     <span class="fiche">VPS-M56</span>
     <span class="classe">🟡 Commande ecrite, arbitrage humain</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-08-04">41 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-08-04">42 j</span>
     
   </div>
   <h3>Arbitrer le budget de collecte</h3>
@@ -445,7 +445,7 @@
     <span class="fiche">VPS-005</span>
     <span class="classe">🤝 Decision ou geste humain</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-08-04">41 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-08-04">42 j</span>
     
   </div>
   <h3>Poser les limites memoire sur 30 conteneurs</h3>
@@ -460,7 +460,7 @@
     <span class="fiche">VPS-020</span>
     <span class="classe">🤝 Decision ou geste humain</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-08-08">37 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-08-08">38 j</span>
     
   </div>
   <h3>Separer les projets compose deploy</h3>
@@ -475,7 +475,7 @@
     <span class="fiche">VPS-012</span>
     <span class="classe">🟡 Commande ecrite, arbitrage humain</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-08-06">39 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-08-06">40 j</span>
     
   </div>
   <h3>Restreindre la cle CI github-actions-vizyo-auth</h3>
@@ -490,7 +490,7 @@
     <span class="fiche">VPS-015</span>
     <span class="classe">🟢 Agent, seul, avec preuve</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-08-05">40 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-08-05">41 j</span>
     
   </div>
   <h3>ExecStart par bash, et OnFailure sur tracky-backup</h3>
@@ -505,11 +505,11 @@
     <span class="fiche">VPS-033</span>
     <span class="classe">🟡 Commande ecrite, arbitrage humain</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-08-20">25 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-08-20">26 j</span>
     
   </div>
   <h3>Fixer l'heure du rafraichissement apt (et non reduire son alea)</h3>
-  <p class="detail">✅ 14/09 (audit VPS) — GESTE CONFIRME PAR LE CODE, ET LE TAUX D ECHEC EST PREDIT : apt-daily.timer = OnCalendar=*-*-* 6,18:00 + RandomizedDelaySec=12h (DEUX sonneries par jour), et check_stamp() de /usr/lib/apt/apt.systemd.daily compare MINUIT du jour du tampon a MINUIT d aujourd hui → la 1re sonnerie de chaque jour UTC rafraichit (13-27 s de CPU), la 2e ne fait rien (1 s). Journal : 09-13 03:01:51 rafraichit (19,9 s), 15:12 et 19:56 rien. Cache frais a 02:20 ssi la sonnerie de 18 h de la veille tombe entre 00:00 et 02:20 = 2 h 20 / 12 h ≈ 19 % ; mesure : 3 succes sur 17 = 18 %. Le geste (OnCalendar=*-*-* 01:30:00, RandomizedDelaySec=15m) est COMPATIBLE avec le tampon : a 01:30-01:45 il porte la date de la veille, donc l unique sonnerie rafraichit chaque jour, 50 min avant l audit. Ce qui ne marcherait PAS : garder deux sonneries et reduire l alea. apt-daily-upgrade (06:00 + 60 min) lit le meme tampon : inchange. Gain : 18 % → ~100 % de mesures valides, zero commande cote audit. || 🔑 RECOMMANDATION CHANGEE LE 07/09, SUR MESURE. La validite de la mesure s'est jouee a 37 MINUTES : le cache lu par le passage du 07/09 (collecte a 02:21) est EXACTEMENT celui que le passage du 06/09 (collecte a 04:05) avait declare valide — date du 06/09 02:59:53. 75 → 75 n'est donc pas une stabilite, c'est UNE mesure publiee deux fois. RandomizedDelaySec=30m RETRECIT la fenetre sans la PLACER ; ce qu'il faut est que le cache soit frais A L'HEURE DE L'AUDIT. Geste : systemctl edit apt-daily.timer → [Timer] / OnCalendar= / OnCalendar=*-*-* 01:30:00 / RandomizedDelaySec=15m. ⚠️ NE PAS mettre 0 : l'alea etale la charge sur les miroirs Ubuntu, et 15 min y suffisent.</p>
+  <p class="detail">📏 15/09 — 15e echec sur 18, CONFORME a la loi : cache rafraichi le 09-14 16:39:24 (1re sonnerie du jour UTC), 9 h a l audit ; prochaine sonnerie 04:48:13, apres l audit. Geste inchange. || ✅ 14/09 (audit VPS) — GESTE CONFIRME PAR LE CODE, ET LE TAUX D ECHEC EST PREDIT : apt-daily.timer = OnCalendar=*-*-* 6,18:00 + RandomizedDelaySec=12h (DEUX sonneries par jour), et check_stamp() de /usr/lib/apt/apt.systemd.daily compare MINUIT du jour du tampon a MINUIT d aujourd hui → la 1re sonnerie de chaque jour UTC rafraichit (13-27 s de CPU), la 2e ne fait rien (1 s). Journal : 09-13 03:01:51 rafraichit (19,9 s), 15:12 et 19:56 rien. Cache frais a 02:20 ssi la sonnerie de 18 h de la veille tombe entre 00:00 et 02:20 = 2 h 20 / 12 h ≈ 19 % ; mesure : 3 succes sur 17 = 18 %. Le geste (OnCalendar=*-*-* 01:30:00, RandomizedDelaySec=15m) est COMPATIBLE avec le tampon : a 01:30-01:45 il porte la date de la veille, donc l unique sonnerie rafraichit chaque jour, 50 min avant l audit. Ce qui ne marcherait PAS : garder deux sonneries et reduire l alea. apt-daily-upgrade (06:00 + 60 min) lit le meme tampon : inchange. Gain : 18 % → ~100 % de mesures valides, zero commande cote audit. || 🔑 RECOMMANDATION CHANGEE LE 07/09, SUR MESURE. La validite de la mesure s'est jouee a 37 MINUTES : le cache lu par le passage du 07/09 (collecte a 02:21) est EXACTEMENT celui que le passage du 06/09 (collecte a 04:05) avait declare valide — date du 06/09 02:59:53. 75 → 75 n'est donc pas une stabilite, c'est UNE mesure publiee deux fois. RandomizedDelaySec=30m RETRECIT la fenetre sans la PLACER ; ce qu'il faut est que le cache soit frais A L'HEURE DE L'AUDIT. Geste : systemctl edit apt-daily.timer → [Timer] / OnCalendar= / OnCalendar=*-*-* 01:30:00 / RandomizedDelaySec=15m. ⚠️ NE PAS mettre 0 : l'alea etale la charge sur les miroirs Ubuntu, et 15 min y suffisent.</p>
   
   <div class="badges"></div>
 </article>
@@ -520,7 +520,7 @@
     <span class="fiche">VPS-034</span>
     <span class="classe">🤝 Decision ou geste humain</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-08-21">24 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-08-21">25 j</span>
     
   </div>
   <h3>Epingler Traefik par digest</h3>
@@ -535,7 +535,7 @@
     <span class="fiche">VPS-M73</span>
     <span class="classe">⛔ Bloque par un prerequis</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-01">13 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-01">14 j</span>
     
   </div>
   <h3>Afficher l'ecart en jours sur /admin → Audit VPS</h3>
@@ -550,11 +550,11 @@
     <span class="fiche">VPS-041</span>
     <span class="classe">🟡 Commande ecrite, arbitrage humain</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-13">1 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-13">2 j</span>
     
   </div>
   <h3>Un seul rotateur pour les journaux de conteneur — retirer la stanza logrotate a copytruncate</h3>
-  <p class="detail">📏 14/09 (audit VPS) — 2e JOUR MESURE, LA STANZA A RE-PERCE : logrotate 00:00:10 → 00:00:29 ; fichiers courants troues 6 (5 hier, maestroo-dev-web s ajoute, 73-98 % de NUL), fichiers courants a 0 octet 18 (13 hier), texto-relay a 0 pour le 3e jour. ⚠️ La seule fenetre ou le geste ne coute rien est AVANT minuit : le 15/09 a 00:00 ca recommence. Chemin de retrait mis a jour : /root/logrotate.d-docker-containers.retire-2026-09-14. || DEUX ROTATEURS SUR LES MEMES FICHIERS : le pilote json-file de Docker (max-size 10m, max-file 3) ET /etc/logrotate.d/docker-containers (posee le 25/08 avec son cout mesure, copytruncate, minuit). dockerd garde son descripteur et son OFFSET : chaque rotation perce un trou d octets NUL de la taille EXACTE du fichier tronque — preuve arithmetique : tracky-api json.log.1 = 8 405 652 NUL, json.log.2 = 8 405 652 octets ; meme egalite sur maalem-dev-api (9 846 713), maestroo-dev-api (6 486 806), tracky-postgres (8 720 183). Le 13/09 : 5 fichiers COURANTS a 34-92 % de NUL (maalem-dev-web 92, maalem-dev-admin 91, maalem-dev-api 81, tracky-postgres 65, maestroo-dev-api 34), 13 fichiers courants a 0 octet avec rotations a cote (dont texto-relay). dockerd journalise « Error decoding log file: invalid character \x00 » — a 04:33:52 le 13/09, 8 s avant le client bloque de V28. GESTE (10 s, risque nul) : relire puis mv /etc/logrotate.d/docker-containers /root/logrotate.d-docker-containers.retire-2026-09-13 — AVANT toute modification de daemon.json. Gain : plus aucun trou des la nuit suivante, docker logs exact sur 5 conteneurs, une classe de declencheurs de VPS-016 en moins. Contrepartie : fenetre = max-file 3 x 10 Mo (~3 j sur tracky-api) ; si 14 j voulus, max-file dans daemon.json, applique aux conteneurs crees APRES. ❌ Ne pas reparer les fichiers troues (rm/truncate : dockerd les tient ouverts). ❌ Ne pas remplacer copytruncate par create (dockerd ecrirait dans le fichier renomme). ⚠️ Ce qui n est PAS prouve : que les NUL soient la cause necessaire du BLOCAGE de docker logs ; ce qui l est : docker logs est FAUX sur 5 conteneurs et le mecanisme est le notre. PREUVE ATTENDUE : le collecteur rend « ✅ un seul rotateur » puis, au passage suivant, « ✅ aucun fichier journal courant ne porte d octet NUL ».</p>
+  <p class="detail">📏 15/09 (audit VPS) — 3e NUIT : logrotate 00:00:04 → 00:00:36, 13,2 s de CPU (1,98 s la veille, x6,7 — copytruncate copie AVANT de tronquer). Courants troues 5 (maestroo-dev-lp ENTRE a 84 % ; tracky-postgres et maestroo-dev-api SORTENT, rotes par Docker a 10 Mo — le trou part avec le fichier et reviendra), courants a 0 octet 17 (vizyo-vault entre), texto-relay 4e jour a 0. Le compte ne monte plus, il TOURNE. Chemin de retrait mis a jour : /root/logrotate.d-docker-containers.retire-2026-09-15. Geste avant minuit. || 📏 14/09 (audit VPS) — 2e JOUR MESURE, LA STANZA A RE-PERCE : logrotate 00:00:10 → 00:00:29 ; fichiers courants troues 6 (5 hier, maestroo-dev-web s ajoute, 73-98 % de NUL), fichiers courants a 0 octet 18 (13 hier), texto-relay a 0 pour le 3e jour. ⚠️ La seule fenetre ou le geste ne coute rien est AVANT minuit : le 15/09 a 00:00 ca recommence. Chemin de retrait mis a jour : /root/logrotate.d-docker-containers.retire-2026-09-14. || DEUX ROTATEURS SUR LES MEMES FICHIERS : le pilote json-file de Docker (max-size 10m, max-file 3) ET /etc/logrotate.d/docker-containers (posee le 25/08 avec son cout mesure, copytruncate, minuit). dockerd garde son descripteur et son OFFSET : chaque rotation perce un trou d octets NUL de la taille EXACTE du fichier tronque — preuve arithmetique : tracky-api json.log.1 = 8 405 652 NUL, json.log.2 = 8 405 652 octets ; meme egalite sur maalem-dev-api (9 846 713), maestroo-dev-api (6 486 806), tracky-postgres (8 720 183). Le 13/09 : 5 fichiers COURANTS a 34-92 % de NUL (maalem-dev-web 92, maalem-dev-admin 91, maalem-dev-api 81, tracky-postgres 65, maestroo-dev-api 34), 13 fichiers courants a 0 octet avec rotations a cote (dont texto-relay). dockerd journalise « Error decoding log file: invalid character \x00 » — a 04:33:52 le 13/09, 8 s avant le client bloque de V28. GESTE (10 s, risque nul) : relire puis mv /etc/logrotate.d/docker-containers /root/logrotate.d-docker-containers.retire-2026-09-13 — AVANT toute modification de daemon.json. Gain : plus aucun trou des la nuit suivante, docker logs exact sur 5 conteneurs, une classe de declencheurs de VPS-016 en moins. Contrepartie : fenetre = max-file 3 x 10 Mo (~3 j sur tracky-api) ; si 14 j voulus, max-file dans daemon.json, applique aux conteneurs crees APRES. ❌ Ne pas reparer les fichiers troues (rm/truncate : dockerd les tient ouverts). ❌ Ne pas remplacer copytruncate par create (dockerd ecrirait dans le fichier renomme). ⚠️ Ce qui n est PAS prouve : que les NUL soient la cause necessaire du BLOCAGE de docker logs ; ce qui l est : docker logs est FAUX sur 5 conteneurs et le mecanisme est le notre. PREUVE ATTENDUE : le collecteur rend « ✅ un seul rotateur » puis, au passage suivant, « ✅ aucun fichier journal courant ne porte d octet NUL ».</p>
   
   <div class="badges"></div>
 </article>
@@ -565,12 +565,27 @@
     <span class="fiche">VPS-042</span>
     <span class="classe">🔵 Exploitant / equipe produit</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-13">1 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-13">2 j</span>
     
   </div>
-  <h3>Reconnaitre le coffre Vaultwarden, les comptes vaultbk / conductorbk et l adresse 179.198.198.199</h3>
-  <p class="detail">🔁 14/09 (audit VPS) — LA LECTURE DU 13/09 ETAIT A MOITIE FAUSSE, LES SCRIPTS LE DISENT : recevoir-dump est un DEPOT ENTRANT — Vizyo Conductor (179.198.198.199) POUSSE chaque nuit ses dumps chiffres age (instances prd et dev, une connexion chacune a 01:00-01:08 UTC) dans /var/backups/vizyo-conductor-distant/ : 14 fichiers, 26-31 Ko, retention 14 par instance ecrite dans le script, cle de dechiffrement ABSENTE de cette machine. CETTE MACHINE EST LE DEPOSITAIRE HORS-SITE DE CONDUCTOR (ce que VPS-037 reclame pour ses propres sauvegardes). vault-dump EST un tirage sortant (sqlite3 .backup + tar → stdout, ~0,6 s/nuit). La session vaultbk de 100 h ne porte AUCUNE commande (canal vide, do_poll) : ce n est pas un dump bloque ; multiplexage plausible, non prouve. Le collecteur imprimait « vizyo-conductor-distant AUCUNE SAUVEGARDE » deux passages de suite faute de connaitre .age : VPS-M99, corrige. QUESTIONS REFORMULEES : (a) reconnaitre les 4 objets ET le role de depositaire ; (b) la copie du coffre vit cote Conductor — qui la relit ? (c) fermer ou assumer la session de 100 h ; (d) limite memoire 256 Mo sur vizyo-vault (24 Mo utilises). || Apparus le 09/09 pendant les trois passages manques : conteneur vizyo-vault (vaultwarden/server epingle par empreinte ✅, vault.vizyoagency.com, healthy, memlimit 0, donnees en bind /opt/vizyo-vault/data 1,1 Mo) cree 20:56 ; compte vaultbk (22:21, groupe vaultro, cle sauvegarde-coffre@conductor avec command=/usr/local/bin/vault-dump + restrict) ; compte conductorbk (22:41, cle depot-sauvegarde@conductor avec command=/usr/local/bin/recevoir-dump + restrict). Connexions quotidiennes depuis 179.198.198.199 (conductorbk 01:00 et 01:08, vaultbk 01:35 UTC, 4 nuits sur 4) ; UNE SESSION vaultbk OUVERTE SANS INTERRUPTION depuis le 09/09 22:22:25 (3,5 j). Aucun sudo ✅. Ce qui est bien fait : ce sont les deux cles les mieux bornees de la machine (la cle root du poste n a AUCUNE option). Ce qui manque : aucun catalogue (les deux tirages sont declares dans ordonnancement ce jour, couche externe), aucune limite memoire sur le conteneur le plus sensible de la machine, une sauvegarde du coffre visible SEULEMENT par son tirage (la couverture du §11 ne voit que des bases par image), et ce que recevoir-dump ecrit sur le disque n a pas ete lu. TROIS QUESTIONS, pour le proprietaire : (a) ces objets et cette adresse sont-ils a vous ? (b) ou vit la copie du coffre, qui la relit ? (c) pourquoi une session vaultbk reste-t-elle ouverte 3,5 jours ? Puis : limite memoire (256 Mo) sur vizyo-vault, et une ligne pour le coffre dans la couverture des sauvegardes. ❌ Ne retirer ni cle ni compte avant reconnaissance (VPS-002). ❌ Ne pas tuer la session sans savoir ce qu elle porte. Le collecteur avait crie « EMPREINTE NON DECLAREE » x2 parce qu il ne lisait que /root : VPS-M98, corrige (tous les comptes + useradd).</p>
+  <h3>Reconnaitre le coffre Vaultwarden, les comptes vaultbk / conductorbk / dispocarbk, l adresse 179.198.198.199 et le role de depositaire de DEUX applications</h3>
+  <p class="detail">🆕 15/09 (audit VPS) — UN TROISIEME DEPOSANT, ET LE COLLECTEUR L A DIT DEUX FOIS : useradd 2026-09-14 05:32:03 UTC, compte dispocarbk (uid 1001, /bin/sh, commentaire « depot des dumps DISPOCAR (recevoir-dump-dispocar seulement) »), cle depot-sauvegarde@dispocar avec command=/usr/local/bin/recevoir-dump-dispocar + restrict — copie de recevoir-dump (motif prd|dev-dispocar-* seulement, plus strict). MEME adresse 179.198.198.199 (42 connexions sur 7 j = 18 vaultbk + 17 conductorbk + 7 dispocarbk). Depot /var/backups/dispocar-distant/ (dispocarbk, 700) : 4 dumps age de 1 172 OCTETS chacun, prd = dev a l octet — essais 09-14 05:32 (5 connexions en 37 s), puis 01:30 (dev) et 01:32 (prd) UTC cette nuit. Le bloc useradd (VPS-M98) l a nomme, le bloc « non reclames » (VPS-M99) l a marque « depot ecrit par dispocarbk ». ⚠️ 1 172 octets = la taille d une base VIDE (pg_dump | gzip | age) : soit Dispocar n a pas de donnees, soit le dump vise la mauvaise base — A VERIFIER COTE DISPOCAR, pas d ici. QUESTIONS ELARGIES : (e) reconnaitre dispocarbk et le role de depositaire d une SECONDE application ; (f) les 1 172 octets sont-ils voulus ? Session vaultbk : 124 h, toujours aucune commande. ordonnancement : dispocar-depot-dump ajoute. ❌ « 3 comptes en 5 jours » n est pas une derive : meme main, meme adresse, meme modele — c est le catalogue qui est en retard. || 🔁 14/09 (audit VPS) — LA LECTURE DU 13/09 ETAIT A MOITIE FAUSSE, LES SCRIPTS LE DISENT : recevoir-dump est un DEPOT ENTRANT — Vizyo Conductor (179.198.198.199) POUSSE chaque nuit ses dumps chiffres age (instances prd et dev, une connexion chacune a 01:00-01:08 UTC) dans /var/backups/vizyo-conductor-distant/ : 14 fichiers, 26-31 Ko, retention 14 par instance ecrite dans le script, cle de dechiffrement ABSENTE de cette machine. CETTE MACHINE EST LE DEPOSITAIRE HORS-SITE DE CONDUCTOR (ce que VPS-037 reclame pour ses propres sauvegardes). vault-dump EST un tirage sortant (sqlite3 .backup + tar → stdout, ~0,6 s/nuit). La session vaultbk de 100 h ne porte AUCUNE commande (canal vide, do_poll) : ce n est pas un dump bloque ; multiplexage plausible, non prouve. Le collecteur imprimait « vizyo-conductor-distant AUCUNE SAUVEGARDE » deux passages de suite faute de connaitre .age : VPS-M99, corrige. QUESTIONS REFORMULEES : (a) reconnaitre les 4 objets ET le role de depositaire ; (b) la copie du coffre vit cote Conductor — qui la relit ? (c) fermer ou assumer la session de 100 h ; (d) limite memoire 256 Mo sur vizyo-vault (24 Mo utilises). || Apparus le 09/09 pendant les trois passages manques : conteneur vizyo-vault (vaultwarden/server epingle par empreinte ✅, vault.vizyoagency.com, healthy, memlimit 0, donnees en bind /opt/vizyo-vault/data 1,1 Mo) cree 20:56 ; compte vaultbk (22:21, groupe vaultro, cle sauvegarde-coffre@conductor avec command=/usr/local/bin/vault-dump + restrict) ; compte conductorbk (22:41, cle depot-sauvegarde@conductor avec command=/usr/local/bin/recevoir-dump + restrict). Connexions quotidiennes depuis 179.198.198.199 (conductorbk 01:00 et 01:08, vaultbk 01:35 UTC, 4 nuits sur 4) ; UNE SESSION vaultbk OUVERTE SANS INTERRUPTION depuis le 09/09 22:22:25 (3,5 j). Aucun sudo ✅. Ce qui est bien fait : ce sont les deux cles les mieux bornees de la machine (la cle root du poste n a AUCUNE option). Ce qui manque : aucun catalogue (les deux tirages sont declares dans ordonnancement ce jour, couche externe), aucune limite memoire sur le conteneur le plus sensible de la machine, une sauvegarde du coffre visible SEULEMENT par son tirage (la couverture du §11 ne voit que des bases par image), et ce que recevoir-dump ecrit sur le disque n a pas ete lu. TROIS QUESTIONS, pour le proprietaire : (a) ces objets et cette adresse sont-ils a vous ? (b) ou vit la copie du coffre, qui la relit ? (c) pourquoi une session vaultbk reste-t-elle ouverte 3,5 jours ? Puis : limite memoire (256 Mo) sur vizyo-vault, et une ligne pour le coffre dans la couverture des sauvegardes. ❌ Ne retirer ni cle ni compte avant reconnaissance (VPS-002). ❌ Ne pas tuer la session sans savoir ce qu elle porte. Le collecteur avait crie « EMPREINTE NON DECLAREE » x2 parce qu il ne lisait que /root : VPS-M98, corrige (tous les comptes + useradd).</p>
   
+  <div class="badges"></div>
+</article>
+<article class="t etat-OUVERT g2" data-etat="OUVERT" data-partie="vps" data-classe="AUTO" data-g="2">
+  <div class="t-h">
+    <span class="marque" title="Ouvert">☐</span>
+    <span class="id">V31</span>
+    <span class="fiche">VPS-043 · VPS-037</span>
+    <span class="classe">🟢 Agent, seul, avec preuve</span>
+    <span class="grav" title="gravite 2">G2</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-15">0 j</span>
+    
+  </div>
+  <h3>Reparer le copieur hors-site de Vizyo Verify : ne plus s arreter sur un manifeste orphelin (cote poste), purger par paire (cote VPS)</h3>
+  <p class="detail">🆕 15/09 (audit VPS) — LA COPIE HORS-SITE A ECHOUE LE 14/09 A 04:30:06 UTC, LA PAIRE DE LA NUIT N EST QU ICI, ET LE COLLECTEUR L AFFICHAIT « A JOUR ». /var/backups/vizyo-verify/DERNIERE-COPIE-LOCALE.json : statut ECHEC, detail « telechargement de verify-db_20260830-033156.sql.gz.gpg en echec », pairesCopiees 0. Cote poste (D:\sauvegardes\vizyo-verify\copie.log) : le copieur a vu 16 paires (15 vivantes + 1 manifeste ORPHELIN), a commence par la plus ancienne, n a pas trouve son archive et s est arrete — la paire du 09-14 (03:31), plus loin dans la liste, n a jamais ete atteinte. Le 09-11 le meme mecanisme avait fait RE-telecharger la paire 08-27 (signe avant-coureur). CAUSE : deux retentions sur les memes objets — le VPS purge par TROIS find -mtime +14 separes (base, fichiers, manifeste ; -mtime tronque a la journee, 46 s entre l archive et son manifeste suffisent a ce qu ils ne partent pas la meme nuit), le poste rote sur LastWriteTime ; et copie-hors-site.ps1 leve une exception (throw) sur la premiere paire incomplete, liste triee du plus ancien au plus recent. VPS-003 et VPS-041 sous une troisieme forme. GESTE (10 min, cote poste, depot vizyo-verify — hors perimetre d ecriture de l audit) : dans deploy/local/copie-hors-site.ps1, remplacer le throw du telechargement par une trace « paire N incomplete sur le VPS, ignoree » + continue, et parcourir $manifestes du plus recent au plus ancien ; puis dans deploy/vps/backup.sh, purger PAR PAIRE (un manifeste ne part qu avec ses deux archives) ou ecrire le manifeste AVANT les archives. ORDRE : poste d abord (ferme le defaut visible), VPS ensuite (ferme la cause). TEST ECRIT D AVANCE : le 09-15 a 03:31 le VPS purge le manifeste 08-30 ; a 04:30 le copieur repasse. Si le manifeste 08-31 a lui aussi 15 j (une chance sur deux selon les secondes) → le 16/09 rend statut OK ET pairesCopiees ≥ 2 (preuve de la copie) ; sinon nouvel ECHEC sur verify-db_20260831 (preuve du mecanisme). ⚠️ OK avec pairesCopiees 0 ne prouve RIEN. ❌ Ne pas supprimer le manifeste orphelin a la main sur le VPS. ⚠️ V6 (second depositaire) ne remplace pas V31 : un second copieur a la meme logique s arreterait au meme manifeste. Le collecteur, lui, est corrige (VPS-M100 : le verdict lit le statut).</p>
+  <p class="attendue"><b>Preuve attendue</b> — DERNIERE-COPIE-LOCALE.json : statut OK avec pairesCopiees ≥ 1 APRES un jour ou un manifeste orphelin existait sur le VPS (le copieur a survecu a une paire manquante).</p>
   <div class="badges"></div>
 </article>
 <article class="t etat-OUVERT g3" data-etat="OUVERT" data-partie="centre-alerte" data-classe="HUMAIN" data-g="3">
@@ -580,7 +595,7 @@
     <span class="fiche">TRK-071</span>
     <span class="classe">🤝 Decision ou geste humain</span>
     <span class="grav" title="gravite 3">G3</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-03">11 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-03">12 j</span>
     
   </div>
   <h3>Recharger au moins UN des deux comptes IA</h3>
@@ -595,7 +610,7 @@
     <span class="fiche">TRK-060</span>
     <span class="classe">🗓️ Deploye, a guetter</span>
     <span class="grav" title="gravite 3">G3</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-02">12 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-02">13 j</span>
     
   </div>
   <h3>Guetter : « Un point de mesure systeme n'a pas pu etre enregistre »</h3>
@@ -610,7 +625,7 @@
     <span class="fiche">TRK-071</span>
     <span class="classe">🤝 Decision ou geste humain</span>
     <span class="grav" title="gravite 3">G3</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-13">1 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-13">2 j</span>
     
   </div>
   <h3>Ouvrir un second abonnement reserve aux agents du poste — quand tu le decideras (D7)</h3>
@@ -625,102 +640,12 @@
     <span class="fiche">TRK-065</span>
     <span class="classe">🤝 Decision ou geste humain</span>
     <span class="grav" title="gravite 3">G3</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-13">1 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-13">2 j</span>
     
   </div>
   <h3>Rouvrir les notifications aux clients (PUSH_ROLLOUT=ALL) quand les tests seront finis</h3>
   <p class="detail">Depuis le 13/09 au soir, seuls les super-admins recoivent des notifications push (PUSH_ROLLOUT=SUPER_ADMIN_ONLY dans /opt/vizyo-tracky/deploy/vps/.env.prod, ligne 102) — ta consigne : « je ne veux pas que les utilisateurs a part moi soient prevenus, je l activerai quand j aurai tout teste ». Avant : ALL, et trois comptes clients avaient recu 88 alertes push en 30 jours (mh cars 63 exces de vitesse). Pour rouvrir : remettre PUSH_ROLLOUT=ALL dans ce fichier puis bash /opt/vizyo-tracky/deploy/vps/deploy.sh — rien d autre a toucher, la garde est asymetrique (seule la chaine exacte ALL ouvre). A cocher le jour ou tu le fais.</p>
   
-  <div class="badges"></div>
-</article>
-<article class="t etat-OUVERT g3" data-etat="OUVERT" data-partie="centre-alerte" data-classe="A_CODER" data-g="3">
-  <div class="t-h">
-    <span class="marque" title="Ouvert">☐</span>
-    <span class="id">T48</span>
-    <span class="fiche">TRK-066 · doc 19 P2-1 · P2-4</span>
-    <span class="classe">🔧 A coder</span>
-    <span class="grav" title="gravite 3">G3</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-13">1 j</span>
-    
-  </div>
-  <h3>Course ACK/SMS : ne jamais rétrograder ACKNOWLEDGED en SENT ; dispatcher une CUT PENDING orpheline au lieu de la rendre telle quelle</h3>
-  <p class="detail">engine-control.service.ts dispatchSmsAttempt (et le chemin SMS de dispatchCommand) écrit status=SENT par update({ where: { id } }) sans garde ackedAt/status : un ACK TCP arrivé pendant trySmsFallback (jusqu'à 10 s + file) est écrasé — commande SENT avec ackedAt renseigné, UI « rallumage non confirmé » alors que le boîtier a acquitté. Et une CUT créée puis non dispatchée (crash) reste PENDING avec sa clé jusqu'à la prochaine RESTORE : la CUT antivol manuelle suivante rend 201 avec l'ancienne commande et n'envoie rien. Geste : updateMany({ where: { id, ackedAt: null, status: SENT|PENDING } }) puis relecture ; si count 0, ne rien écraser ; à la collision, une active PENDING est dispatchée (même logique que le réarmement T40). Tests : ACK simulé entre send et update ; CUT orpheline puis nouvelle CUT → envoi.</p>
-  <p class="attendue"><b>Preuve attendue</b> — Test unitaire : un ACK posé entre l'envoi SMS et la mise à jour laisse ACKNOWLEDGED ; une CUT PENDING de la veille suivie d'une CUT manuelle produit un envoi.</p>
-  <div class="badges"></div>
-</article>
-<article class="t etat-OUVERT g3" data-etat="OUVERT" data-partie="centre-alerte" data-classe="A_CODER" data-g="3">
-  <div class="t-h">
-    <span class="marque" title="Ouvert">☐</span>
-    <span class="id">T49</span>
-    <span class="fiche">TRK-066 · doc 19 P2-2</span>
-    <span class="classe">🔧 A coder</span>
-    <span class="grav" title="gravite 3">G3</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-13">1 j</span>
-    
-  </div>
-  <h3>Kill-switch et interlock : une ligne par véhicule et par heure, pas un CRITICAL par appel</h3>
-  <p class="detail">engine-control.service.ts:404-411 et :1030-1037 écrivent un CRITICAL à CHAQUE appel bloqué ; le cron retente avec backoff 2/5/15/30 min ; la dédup d'ErrorLogger ne dure que 60 s ; la vigie envoie un courriel par heure dès un CRITICAL. Un administrateur de flotte qui réactive lui-même ses horaires (droit schedules_manage) déclenche un flux nocturne de dizaines de lignes + « coupe impossible depuis N min » sans connaître le kill-switch. Geste : kill-switch → WARNING (état voulu, pas une panne), une ligne par (véhicule, cause) et par heure ; interlock → CRITICAL une fois par raison et par 15 min.</p>
-  <p class="attendue"><b>Preuve attendue</b> — Test : dix appels bloqués en cinq minutes → une ligne ; en production, une nuit avec un planning actif et le kill-switch fermé produit moins de dix lignes.</p>
-  <div class="badges"></div>
-</article>
-<article class="t etat-OUVERT g3" data-etat="OUVERT" data-partie="centre-alerte" data-classe="A_CODER" data-g="3">
-  <div class="t-h">
-    <span class="marque" title="Ouvert">☐</span>
-    <span class="id">T50</span>
-    <span class="fiche">TRK-066 · doc 19 P2-3</span>
-    <span class="classe">🔧 A coder</span>
-    <span class="grav" title="gravite 3">G3</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-13">1 j</span>
-    
-  </div>
-  <h3>Glissement de confirmation réellement volontaire : ni un clic en bout de piste, ni la touche End</h3>
-  <p class="detail">confirm-modal.component.ts:102-109 et :340-355 : &lt;input type=range&gt; natif ; un clic en bout de piste (le curseur saute) ou End au clavier produit change à 100 → onConfirm(). L'exigence « impossible de déclencher accidentellement » n'est pas tenue (la saisie de plaque l'était) ; le test du spec fixe la valeur programmatiquement et ne le voit pas. Geste : exiger un pointerdown sur le curseur puis au moins 8 événements input croissants partant de &lt; 10 avant d'accepter ≥ 98 ; ignorer End/PageUp/Home (ou offrir une confirmation clavier explicite distincte).</p>
-  <p class="attendue"><b>Preuve attendue</b> — Test composant : slider.value='100' + change sans input progressifs → refusé ; un drag simulé de 0 à 100 → confirmé une fois.</p>
-  <div class="badges"></div>
-</article>
-<article class="t etat-OUVERT g3" data-etat="OUVERT" data-partie="centre-alerte" data-classe="A_CODER" data-g="3">
-  <div class="t-h">
-    <span class="marque" title="Ouvert">☐</span>
-    <span class="id">T51</span>
-    <span class="fiche">TRK-066 · doc 19 P2-5 · P2-6</span>
-    <span class="classe">🔧 A coder</span>
-    <span class="grav" title="gravite 3">G3</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-13">1 j</span>
-    
-  </div>
-  <h3>Rappeler une RESTORE qui traîne (toutes les 15 min) et ne pas suspendre le clic manuel derrière la file SMS</h3>
-  <p class="detail">engine-control.service.ts:1696-1703 : une RESTORE en queued est repollée toutes les 30 s sans fin, alertée UNE fois (alertedAt) ; un téléphone éteint plusieurs heures produit une alerte à 60 s puis le silence. sms-gateway.service.ts:746-759 : send() ne résout qu'au départ effectif et requestCommand l'attend — avec N SMS en file (15 s chacun) le clic « Rallumer » peut dépasser le délai du proxy : toast « refusé » alors que l'intention est persistée et suivie. Geste : alertedAt plus vieux que 15 min ⇒ nouvelle ligne tant que non terminal ; après 60 min en queued, nouvelle tentative ; requestCommand (MANUAL) répond après persistance + première tentative TCP, le worker/WS finit (Promise.race 20 s).</p>
-  <p class="attendue"><b>Preuve attendue</b> — Test : une RESTORE en queued depuis 31 min a deux lignes d'alerte ; un clic pendant que 5 SMS sont en file répond en moins de 3 s avec la commande PENDING.</p>
-  <div class="badges"></div>
-</article>
-<article class="t etat-OUVERT g3" data-etat="OUVERT" data-partie="centre-alerte" data-classe="A_CODER" data-g="3">
-  <div class="t-h">
-    <span class="marque" title="Ouvert">☐</span>
-    <span class="id">T52</span>
-    <span class="fiche">TRK-066 · doc 19 P2-8 · P2-9</span>
-    <span class="classe">🔧 A coder</span>
-    <span class="grav" title="gravite 3">G3</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-13">1 j</span>
-    
-  </div>
-  <h3>Santé par appareil (deviceId, simCards) et allowlist non bloquante pour une RESTORE</h3>
-  <p class="detail">Texto messages.service.ts:214-224 : Math.max sur tous les appareils non supprimés — un second téléphone de test enregistré sous le même compte rend le verdict « frais » même si le téléphone de production est mort ; deviceId jamais passé à l'envoi ; simCards (fourni par l'API) ignoré. Et un 403 « hors allowlist » compte comme échec de soumission (sms-gateway.service.ts:1015-1048), trois fois, puis FAILED : l'allowlist reste sur le chemin de la restauration. Geste : fraîcheur et envoi sur CAPCOM6_DEVICE_ID, simCards exposé ; bypass d'allowlist pour priority=critical_restore vers un numéro connu de Tracky, ou contrôle de l'allowlist dans le préflight. ⚠️ Prérequis de T55 (second téléphone).</p>
-  <p class="attendue"><b>Preuve attendue</b> — Test : deux appareils, l'ancien frais et le configuré périmé → operational=false ; une RESTORE vers un numéro absent de l'allowlist part quand même (ou est refusée AVANT la fenêtre par le préflight).</p>
-  <div class="badges"></div>
-</article>
-<article class="t etat-OUVERT g3" data-etat="OUVERT" data-partie="centre-alerte" data-classe="A_CODER" data-g="3">
-  <div class="t-h">
-    <span class="marque" title="Ouvert">☐</span>
-    <span class="id">T53</span>
-    <span class="fiche">TRK-066 · doc 19 P2-10</span>
-    <span class="classe">🔧 A coder</span>
-    <span class="grav" title="gravite 3">G3</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-13">1 j</span>
-    
-  </div>
-  <h3>Tests : exercer la table des tentatives, index dans schema.prisma, migration rejouée sur PostgreSQL réel, changement d'heure du 25/10</h3>
-  <p class="detail">engine-control.service.ts:957-971 lit le délégué engineDeliveryAttempt en duck-typing → undefined dans tous les mocks → beginAttempt/finishAttempt inertes en test ; la contrainte CHECK (status IN … 'UNAVAILABLE' …) et l'unicité (commandId, attemptNumber) n'ont jamais tourné. engine_control_commands_restore_worker_idx (migration lignes 25-26) absent de schema.prisma (prochain migrate dev proposera de le supprimer). Aucun test de DST Europe/Paris (prochain : 25/10/2026) ; getNowInTimezone fabrique une Date locale. Aucun plan de purge pour engine_delivery_attempts. Geste : mock explicite dans le harnais ; @@index([action, status, nextAttemptAt, dispatchLeaseUntil]) ; test d'intégration sur PostgreSQL (docker) : migration après 20260913*, contraintes, crash entre create et dispatch ; test DST ; rétention à décider (180 j ?).</p>
-  <p class="attendue"><b>Preuve attendue</b> — La suite exerce engine_delivery_attempts (au moins un test échoue si CHECK ou UNIQUE est violé) ; prisma migrate diff ne rend aucune dérive ; un test couvre le 25/10/2026 03:00.</p>
   <div class="badges"></div>
 </article>
 <article class="t etat-OUVERT g3" data-etat="OUVERT" data-partie="centre-alerte" data-classe="HUMAIN" data-g="3">
@@ -730,28 +655,13 @@
     <span class="fiche">TRK-066 · doc 12 · doc 19 P2-8</span>
     <span class="classe">🤝 Decision ou geste humain</span>
     <span class="grav" title="gravite 3">G3</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-13">1 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-13">2 j</span>
     
   </div>
   <h3>Second téléphone + seconde SIM (autre opérateur) — après T52, jamais sous le même deviceId</h3>
   <p class="detail">Aujourd'hui : un Android, une SIM (Free), un opérateur, un compte capcom6 — point de panne unique du secours SMS, sans preuve d'émission quotidienne (T45) ni secours. Pas bloquant pour lundi : c'est le logiciel qui bloque (T40 à T47). Fortement recommandé à court terme, mais SEULEMENT après T52 : tel qu'écrit, un second téléphone enregistré sous le même compte rendrait la santé « fraîche » même si le S21 est mort (le plus frais gagne). Procédure : doc 12 (inventaire, version SMSGate qualifiée, réglages, identité distincte, tests sur numéro neutre, trois cycles sur banc, bascule explicite par verdict, jamais de mise à jour simultanée).</p>
   <p class="attendue"><b>Preuve attendue</b> — Un second appareil vu par /v1/texto/health sous son propre deviceId, une bascule explicite testée (S21 débranché → les RESTORE partent par le second), et un rollback signé.</p>
   <div class="badges"><span class="b b-bloque">⛔ prerequis</span></div>
-</article>
-<article class="t etat-OUVERT g3" data-etat="OUVERT" data-partie="centre-alerte" data-classe="A_CODER" data-g="3">
-  <div class="t-h">
-    <span class="marque" title="Ouvert">☐</span>
-    <span class="id">T58</span>
-    <span class="fiche">TRK-069</span>
-    <span class="classe">🔧 A coder</span>
-    <span class="grav" title="gravite 3">G3</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-14">0 j</span>
-    
-  </div>
-  <h3>La cle de refroidissement de la sentinelle des agents doit porter la CAUSE — et courrier-ia doit lire le premier objet JSON equilibre</h3>
-  <p class="detail">TROUVE LE 14/09 : le passage courrier-ia du 13/09 17h52 UTC est en echec (succes = false, erreur SyntaxError: Unexpected non-whitespace character after JSON at position 407 — le travail rapport-activite repose en tentative 2/3, puis 7 travaux livres), et le centre d alerte N EN DIT RIEN. La sentinelle l a examine a 18h50, 19h50, 20h50 et suivants ; l echec ne porte pas de cause commune, donc signaler(courrier-ia, echec) est appele — mais la cle de refroidissement (agent, motif) avait ete consommee a 02h50 par la ligne weekly limit, pour 24 h (agents-locaux-sentinelle.service.ts, signaler et cleRefroidissement). UN ECHEC D UNE AUTRE CAUSE SOUS LA MEME CLE RESTE MUET JUSQU AU LENDEMAIN. Deux gestes. (1) Sentinelle : faire entrer un hachage court de la cause (motif normalise : nombres, dates et identifiants retires) dans la cle de refroidissement, afin qu une cause nouvelle crie sans delai pendant qu une cause repetee reste a une ligne par jour ; test : deux echecs de causes differentes a une heure d intervalle produisent deux lignes, deux echecs de la meme cause n en produisent qu une. (2) Agent (outils/agent-courrier-ia.cjs:239) : remplacer l extraction gourmande \{[\s\S]*\} — qui prend du premier { au DERNIER } et englobe tout texte ajoute par le modele apres son objet — par la lecture du premier objet JSON equilibre (comptage des accolades hors chaines), ou demander une sortie structuree a la CLI ; test : une reponse objet + phrase est acceptee, une reponse sans objet est reposee. Un rapport d activite CLIENT est en jeu : la troisieme tentative tombe au passage de 04h30 UTC et un echec le passerait en echec definitif.</p>
-  <p class="attendue"><b>Preuve attendue</b> — Test date du 14/09 : une CRITICAL Dernier passage en echec : courrier-ia le 13/09/2026 a 19:52 — SyntaxError doit apparaitre au controle de 03h50 UTC (sauf reussite du passage de 04h30 avant). Apres correctif : deux echecs de causes distinctes le meme jour = deux lignes ; et le travail rapport-activite 4024ee90 livre (statut fait dans travaux_ia_locaux) sans repose pour un JSON suivi de texte.</p>
-  <div class="badges"></div>
 </article>
 <article class="t etat-OUVERT g3" data-etat="OUVERT" data-partie="vps" data-classe="PREPARE" data-g="3">
   <div class="t-h">
@@ -760,7 +670,7 @@
     <span class="fiche">VPS-037</span>
     <span class="classe">🟡 Commande ecrite, arbitrage humain</span>
     <span class="grav" title="gravite 3">G3</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-01">13 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-01">14 j</span>
     
   </div>
   <h3>Donner un second depositaire a la copie hors-site</h3>
@@ -775,7 +685,7 @@
     <span class="fiche">VPS-017</span>
     <span class="classe">🤝 Decision ou geste humain</span>
     <span class="grav" title="gravite 3">G3</span>
-    <span class="depuis" title="ouverte depuis le 2026-08-06">39 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-08-06">40 j</span>
     
   </div>
   <h3>Trancher les 4,5 Go d'outillage de developpement dans /root</h3>
@@ -790,7 +700,7 @@
     <span class="fiche">VPS-026</span>
     <span class="classe">🟡 Commande ecrite, arbitrage humain</span>
     <span class="grav" title="gravite 3">G3</span>
-    <span class="depuis" title="ouverte depuis le 2026-08-14">31 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-08-14">32 j</span>
     
   </div>
   <h3>Epingler alpine par empreinte</h3>
@@ -805,7 +715,7 @@
     <span class="fiche">VPS-030</span>
     <span class="classe">🟡 Commande ecrite, arbitrage humain</span>
     <span class="grav" title="gravite 3">G3</span>
-    <span class="depuis" title="ouverte depuis le 2026-08-19">26 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-08-19">27 j</span>
     
   </div>
   <h3>Purger 1,4 Go de copies sans retention</h3>
@@ -820,7 +730,7 @@
     <span class="fiche">VPS-032</span>
     <span class="classe">🟢 Agent, seul, avec preuve</span>
     <span class="grav" title="gravite 3">G3</span>
-    <span class="depuis" title="ouverte depuis le 2026-08-19">26 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-08-19">27 j</span>
     
   </div>
   <h3>Multiplexage SSH cote POSTE</h3>
@@ -835,7 +745,7 @@
     <span class="fiche">VPS-M79</span>
     <span class="classe">⛔ Bloque par un prerequis</span>
     <span class="grav" title="gravite 3">G3</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-02">12 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-02">13 j</span>
     
   </div>
   <h3>Etiqueter les images de repli au build</h3>
@@ -850,7 +760,7 @@
     <span class="fiche">VPS-029</span>
     <span class="classe">⛔ Bloque par un prerequis</span>
     <span class="grav" title="gravite 3">G3</span>
-    <span class="depuis" title="ouverte depuis le 2026-08-20">25 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-08-20">26 j</span>
     
   </div>
   <h3>Trancher quel mecanisme gouverne le cache de build</h3>
@@ -865,7 +775,7 @@
     <span class="fiche">VPS-M36</span>
     <span class="classe">⛔ Bloque par un prerequis</span>
     <span class="grav" title="gravite 3">G3</span>
-    <span class="depuis" title="ouverte depuis le 2026-08-15">30 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-08-15">31 j</span>
     
   </div>
   <h3>Echantillonner wchan 3 fois et publier la repartition</h3>
@@ -880,11 +790,11 @@
     <span class="fiche">VPS-013 · VPS-M88</span>
     <span class="classe">🟡 Commande ecrite, arbitrage humain</span>
     <span class="grav" title="gravite 3">G3</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-07">7 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-07">8 j</span>
     
   </div>
   <h3>Ranger les deux dossiers de sauvegarde abandonnes</h3>
-  <p class="detail">📏 14/09 — 8e JOUR : capcom6 / vizyo-manager / vizyo-texto a 237 h ⚠️ PERIMEE, sms / vizyo_manager / vizyo_texto a 8 copies chacun (21-22 h). Commandes inchangees. || 🔴 13/09 — 7e JOUR : capcom6, vizyo-manager, vizyo-texto a 221 h ⚠️ PERIMEE pendant que sms, vizyo_manager, vizyo_texto portent 8 copies chacun (3 → 8 depuis le 09/09 : le mecanisme tourne). Deux 🟠 faux par jour depuis une semaine. Commandes inchangees. || 🔓 DEBLOQUEE LE 08/09 : le test de V11 est CLOS (les trois minuteries ont declenche seules), donc le renommage ne rend plus rien indecidable. 🔴 LE FAUX ORANGE EST MESURE POUR LE 3e JOUR CONSECUTIF, et il s aggrave d une ligne : la collecte du 09/09 rend « capcom6 117 h ⚠️ PERIMEE », « vizyo-manager 117 h ⚠️ PERIMEE » et « vizyo-texto 117 h ⚠️ PERIMEE » pendant que les dossiers VIVANTS (sms, vizyo_manager, vizyo_texto) portent chacun 3 copies de 21 h — leur compte est passe de 2 a 3, donc le mecanisme tourne, c est mesure. Et la table de COUVERTURE dit l inverse sur les memes applications : « capcom6-mysql 🟠 en retard (4 j) » et « vizyo-manager-postgres 🟠 en retard (4 j) », alors que texto-postgres ressort ✅ a jour parce que le rapprochement attrape vizyo_texto. Deux 🟠 FAUX par jour cote couverture, trois lignes PERIMEE cote age. ➜ GESTE : renommer, JAMAIS supprimer — mkdir -p /var/backups/_ancien puis mv des dossiers capcom6 et vizyo-texto. ⚠️ L ORDRE COMPTE : verifier d abord que les copies fraiches sont bien en place (3 chacune au 09/09) ; deplacer avant, c est se retrouver sans aucune sauvegarde de capcom6 si le nouveau mecanisme tombe la meme nuit. ⚠️ /var/backups/vizyo-manager porte 26 copies contre 3 dans vizyo_manager : c est l historique long de cette base, et le deplacer est un geste DISTINCT, a prendre apres avoir decide si cet historique compte.</p>
+  <p class="detail">📏 15/09 — 9e JOUR : capcom6 / vizyo-manager / vizyo-texto a 261 h ⚠️ PERIMEE, sms / vizyo_manager / vizyo_texto a 9 copies chacun (21 h). Commandes inchangees. || 📏 14/09 — 8e JOUR : capcom6 / vizyo-manager / vizyo-texto a 237 h ⚠️ PERIMEE, sms / vizyo_manager / vizyo_texto a 8 copies chacun (21-22 h). Commandes inchangees. || 🔴 13/09 — 7e JOUR : capcom6, vizyo-manager, vizyo-texto a 221 h ⚠️ PERIMEE pendant que sms, vizyo_manager, vizyo_texto portent 8 copies chacun (3 → 8 depuis le 09/09 : le mecanisme tourne). Deux 🟠 faux par jour depuis une semaine. Commandes inchangees. || 🔓 DEBLOQUEE LE 08/09 : le test de V11 est CLOS (les trois minuteries ont declenche seules), donc le renommage ne rend plus rien indecidable. 🔴 LE FAUX ORANGE EST MESURE POUR LE 3e JOUR CONSECUTIF, et il s aggrave d une ligne : la collecte du 09/09 rend « capcom6 117 h ⚠️ PERIMEE », « vizyo-manager 117 h ⚠️ PERIMEE » et « vizyo-texto 117 h ⚠️ PERIMEE » pendant que les dossiers VIVANTS (sms, vizyo_manager, vizyo_texto) portent chacun 3 copies de 21 h — leur compte est passe de 2 a 3, donc le mecanisme tourne, c est mesure. Et la table de COUVERTURE dit l inverse sur les memes applications : « capcom6-mysql 🟠 en retard (4 j) » et « vizyo-manager-postgres 🟠 en retard (4 j) », alors que texto-postgres ressort ✅ a jour parce que le rapprochement attrape vizyo_texto. Deux 🟠 FAUX par jour cote couverture, trois lignes PERIMEE cote age. ➜ GESTE : renommer, JAMAIS supprimer — mkdir -p /var/backups/_ancien puis mv des dossiers capcom6 et vizyo-texto. ⚠️ L ORDRE COMPTE : verifier d abord que les copies fraiches sont bien en place (3 chacune au 09/09) ; deplacer avant, c est se retrouver sans aucune sauvegarde de capcom6 si le nouveau mecanisme tombe la meme nuit. ⚠️ /var/backups/vizyo-manager porte 26 copies contre 3 dans vizyo_manager : c est l historique long de cette base, et le deplacer est un geste DISTINCT, a prendre apres avoir decide si cet historique compte.</p>
   
   <div class="badges"></div>
 </article>
@@ -895,11 +805,11 @@
     <span class="fiche">VPS-040 · VPS-M91</span>
     <span class="classe">🔵 Exploitant / equipe produit</span>
     <span class="grav" title="gravite 3">G3</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-08">6 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-08">7 j</span>
     
   </div>
   <h3>Trancher si la base de DEMONSTRATION doit etre sauvegardee</h3>
-  <p class="detail">🆕 14/09 — QUESTION NEUVE, produit : depuis l import de dimanche 04:04, la base de demo ne produit plus AUCUNE analyse de trajet (trip_analyses 0/24 h contre 121, max computedAt = 09-12 ; l import a recopie les 11 753 analyses de production). trips continue (76/24 h). Voulu (pas d IA sur la demo) ou effet de l import ? L audit ne lit pas les reglages de tracky-demo-api. Base 514 → 518 Mo ; ne pas sauvegarder (inchange). || ✅ 13/09 — PLUS RIEN A MESURER : tracky-demo-refresh.timer a declenche SEUL dimanche 04:00:04 UTC (service 04:00:04 → 04:04:35, « Import reussi »), et demo_replay_frames passe de 112 349 a 124 340 lignes dans la minute de l import (table recalee 04:04) : L IMPORT LA REGENERE. La derniere question produit est tranchee. ➜ NE PAS sauvegarder la base : le 🔴 vaut desormais 514 Mo/jour (~15 Go a 30 j). Le verdict doit devenir ORANGE par rapprochement avec l unite qui reconstruit (VPS-M91 b), jamais vert, jamais par liste de noms. La decision reste au proprietaire. || 🔑 LA REPONSE EST QUASIMENT ACQUISE, ET ELLE A CHANGE DE NATURE LE 09/09 : la reconstructibilite de tracky_demo n est plus DOCUMENTEE (un commentaire dans demo-refresh.sh), elle est MESUREE. Le bloc etendu de VPS-M91 (a) rend ExecMainExitTimestamp = 2026-09-08 16:14:37 UTC sur tracky-demo-refresh.service, et les HUIT tables de la base portent « recale le 09-08 16:15 » : l import complet depuis la production a reellement eu lieu et a reellement reconstruit la base. ➜ RECOMMANDATION : NE PAS sauvegarder cette base. Le 🔴 « AUCUNE SAUVEGARDE » de la section 11 propose 459 Mo/jour, soit ~14 Go a 30 j de retention, sur un disque a 56 % — pour copier une copie d une source (tracky-postgres) qui est, elle, sauvegardee (43 copies, ✅ a jour). ⚠️ IL RESTE UNE SEULE QUESTION, ET ELLE EST PRODUIT, PAS MACHINE : demo_replay_frames (40 Mo, 112 349 lignes) n existe PAS en production. L import la regenere-t-il, ou a-t-elle ete construite une fois ? La commande qui tranche : grep -n replay_frames /opt/vizyo-tracky/deploy/vps/demo-refresh.sh. ⚠️ ET NE PAS eteindre le 🔴 en ajoutant tracky-demo a une liste blanche de noms : c est exactement la cause de VPS-M88, et VPS-M91 (b) l a deja refuse une fois.</p>
+  <p class="detail">✅ 15/09 (audit VPS) — LA QUESTION D HIER EST CLOSE SUR LE FAIT, ET ELLE ETAIT MAL POSEE : trip_automation_settings sur tracky_demo = enabled FALSE (regle le 09-07 14:45), lastRunAt NUL — la demo n a JAMAIS analyse un trajet. Ses 11 753 trip_analyses (max computedAt 09-12 22:48) sont IMPORTEES de la production avec leurs horodatages ; les « 121 arrivees » du 14/09 etaient des lignes copiees dont le computedAt de production tombait dans la fenetre (VPS-M101 : le collecteur imprime desormais l interrupteur par base). Ni activite, ni arret : un miroir. ➜ IL NE RESTE QU UNE DECISION : ne pas sauvegarder (525 Mo/j, reconstruite par l import). Base 518 → 525 Mo. || 🆕 14/09 — QUESTION NEUVE, produit : depuis l import de dimanche 04:04, la base de demo ne produit plus AUCUNE analyse de trajet (trip_analyses 0/24 h contre 121, max computedAt = 09-12 ; l import a recopie les 11 753 analyses de production). trips continue (76/24 h). Voulu (pas d IA sur la demo) ou effet de l import ? L audit ne lit pas les reglages de tracky-demo-api. Base 514 → 518 Mo ; ne pas sauvegarder (inchange). || ✅ 13/09 — PLUS RIEN A MESURER : tracky-demo-refresh.timer a declenche SEUL dimanche 04:00:04 UTC (service 04:00:04 → 04:04:35, « Import reussi »), et demo_replay_frames passe de 112 349 a 124 340 lignes dans la minute de l import (table recalee 04:04) : L IMPORT LA REGENERE. La derniere question produit est tranchee. ➜ NE PAS sauvegarder la base : le 🔴 vaut desormais 514 Mo/jour (~15 Go a 30 j). Le verdict doit devenir ORANGE par rapprochement avec l unite qui reconstruit (VPS-M91 b), jamais vert, jamais par liste de noms. La decision reste au proprietaire. || 🔑 LA REPONSE EST QUASIMENT ACQUISE, ET ELLE A CHANGE DE NATURE LE 09/09 : la reconstructibilite de tracky_demo n est plus DOCUMENTEE (un commentaire dans demo-refresh.sh), elle est MESUREE. Le bloc etendu de VPS-M91 (a) rend ExecMainExitTimestamp = 2026-09-08 16:14:37 UTC sur tracky-demo-refresh.service, et les HUIT tables de la base portent « recale le 09-08 16:15 » : l import complet depuis la production a reellement eu lieu et a reellement reconstruit la base. ➜ RECOMMANDATION : NE PAS sauvegarder cette base. Le 🔴 « AUCUNE SAUVEGARDE » de la section 11 propose 459 Mo/jour, soit ~14 Go a 30 j de retention, sur un disque a 56 % — pour copier une copie d une source (tracky-postgres) qui est, elle, sauvegardee (43 copies, ✅ a jour). ⚠️ IL RESTE UNE SEULE QUESTION, ET ELLE EST PRODUIT, PAS MACHINE : demo_replay_frames (40 Mo, 112 349 lignes) n existe PAS en production. L import la regenere-t-il, ou a-t-elle ete construite une fois ? La commande qui tranche : grep -n replay_frames /opt/vizyo-tracky/deploy/vps/demo-refresh.sh. ⚠️ ET NE PAS eteindre le 🔴 en ajoutant tracky-demo a une liste blanche de noms : c est exactement la cause de VPS-M88, et VPS-M91 (b) l a deja refuse une fois.</p>
   
   <div class="badges"></div>
 </article>
@@ -910,27 +820,12 @@
     <span class="fiche">TRK-001 · TRK-027</span>
     <span class="classe">🔵 Action materielle</span>
     <span class="grav" title="gravite 4">G4</span>
-    <span class="depuis" title="ouverte depuis le 2026-08-03">42 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-08-03">43 j</span>
     
   </div>
   <h3>Controler les antennes de trois vehicules</h3>
   <p class="detail">FS-253-HR, FZ-862-VY, KSR•370. Antenne intermittente, pas panne resolue : les fix se reperdent apres chaque episode referme.</p>
   
-  <div class="badges"></div>
-</article>
-<article class="t etat-OUVERT g4" data-etat="OUVERT" data-partie="centre-alerte" data-classe="DETTE_DOC" data-g="4">
-  <div class="t-h">
-    <span class="marque" title="Ouvert">☐</span>
-    <span class="id">T56</span>
-    <span class="fiche">TRK-066 · doc 19 §15</span>
-    <span class="classe">🧹 Dette de documentation</span>
-    <span class="grav" title="gravite 4">G4</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-13">1 j</span>
-    
-  </div>
-  <h3>Corriger les promesses des documents du chantier qui dépassent le code</h3>
-  <p class="detail">Doc 19 §15 : README « jamais abandonnée » vs 3 SMS puis FAILED (T42) ; doc 13/07 « webhook signé pour les statuts sortants » vs aucun émetteur (T45) ; doc 07 R4.1 coché « rejouée à la reconnexion » vs aucun hook (T42) ; doc 11 P0-4 « SIM explicitement sélectionnée » vs CAPCOM6_SIM_NUMBER absent (T43) ; doc 11 P0-6 quatre états vs un booléen (T44) ; doc 12 90 s vs code 120 s ; doc 13 déploiement « à la main » vs deploy.sh (T47) ; aucun mot sur main qui a bougé (T46). Geste : réécrire chaque phrase quand la tâche correspondante est close, sinon la marquer « non implémenté » ; indexer les documents 19 et 20 (fait dans la branche).</p>
-  <p class="attendue"><b>Preuve attendue</b> — Relecture croisée : chaque case cochée de docs 07/13/15/17/18 renvoie à un test ou à une mesure, ou est décochée.</p>
   <div class="badges"></div>
 </article>
 <article class="t etat-OUVERT g4" data-etat="OUVERT" data-partie="centre-alerte" data-classe="A_CODER" data-g="4">
@@ -940,27 +835,12 @@
     <span class="fiche">TRK-066 · doc 19 §14</span>
     <span class="classe">🔧 A coder</span>
     <span class="grav" title="gravite 4">G4</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-13">1 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-13">2 j</span>
     
   </div>
   <h3>Dépendances : lot séparé après stabilisation (maplibre critique, socket.io/ws, axios via twilio, multer)</h3>
   <p class="detail">pnpm audit --prod (Tracky) : 1 critique (maplibre-gl, XSS sanitizer bypass, web), 28 hautes (axios via twilio legacy, lodash via @nestjs/config, multer/ws/engine.io/socket.io-parser via la plateforme, tmp via exceljs, brace-expansion, js-yaml via date-holidays, ip-address via geoip-lite, deepmerge-ts via prisma), 26 modérées ; Texto : 5 hautes (multer, deepmerge-ts). Aucune introduite par les branches ; les DoS Socket.IO/ws sont les plus pertinentes pour la disponibilité de l'API (donc du worker RESTORE). Ne PAS mêler à la livraison du coupe-circuit : lot dédié, une famille à la fois, suite complète entre chaque.</p>
   <p class="attendue"><b>Preuve attendue</b> — pnpm audit --prod sans critique ni haute exploitable sur les chemins SMS/TCP/WS, suite verte, déployé par deploy.sh sans régression sur 48 h.</p>
-  <div class="badges"></div>
-</article>
-<article class="t etat-OUVERT g4" data-etat="OUVERT" data-partie="centre-alerte" data-classe="A_CODER" data-g="4">
-  <div class="t-h">
-    <span class="marque" title="Ouvert">☐</span>
-    <span class="id">T59</span>
-    <span class="fiche">TRK-079</span>
-    <span class="classe">🔧 A coder</span>
-    <span class="grav" title="gravite 4">G4</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-14">0 j</span>
-    
-  </div>
-  <h3>Ne plus remonter au centre d alerte les appels avortes par la fermeture de la page sur le canal anonyme (robots)</h3>
-  <p class="detail">TROUVE LE 14/09 : quatre lignes frontend-anon le 13/09 a 22h50 et 23h14 — deux robots (adresses Amazon EC2 us-east-1, agent iPhone falsifie : iOS 18 avec Safari 26) chargent l application sans session et l abandonnent au bout d une seconde ; les deux requetes en vol (fetch de /api/health par le service demo-mode, import differe d une route) sont annulees par la navigation et rejettent TypeError: Failed to fetch — le meme texte qu une panne de reseau — puis le rapport arrive quand meme parce qu il part en keepalive. Le chunk cite est PRESENT dans le bundle servi. Geste, dans apps/web/src/app/core/error/report-client-error.ts : ne pas remonter un TypeError de fetch ou d import quand document.visibilityState vaut hidden ou qu un pagehide a ete recu ; et sur le chemin anonyme seulement (pas de sessionId), ne remonter que les erreurs qui ne sont pas de transport. Contrepartie assumee : une vraie panne de /api/health vue par un anonyme ne produira plus de ligne sur ce canal — c est le role de la sonde des dependances. NE PAS fermer l endpoint public (les bugs JS d avant connexion sont le pire cas pour la credibilite), NE PAS bloquer les adresses.</p>
-  <p class="attendue"><b>Preuve attendue</b> — Sur sept jours apres deploiement : zero paire frontend-anon a moins de 100 ms depuis une adresse sans session, ET une erreur JS reelle pre-login (autre qu un fetch avorte) remonte toujours — si la source se tait entierement, on a ferme le canal, pas le bruit.</p>
   <div class="badges"></div>
 </article>
 <article class="t etat-OUVERT g4" data-etat="OUVERT" data-partie="vps" data-classe="HUMAIN" data-g="4">
@@ -970,7 +850,7 @@
     <span class="fiche">VPS-018</span>
     <span class="classe">🤝 Decision ou geste humain</span>
     <span class="grav" title="gravite 4">G4</span>
-    <span class="depuis" title="ouverte depuis le 2026-08-12">33 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-08-12">34 j</span>
     
   </div>
   <h3>Retirer /opt/vizyo-leads</h3>
@@ -985,7 +865,7 @@
     <span class="fiche">VPS-007</span>
     <span class="classe">🟡 Commande ecrite, arbitrage humain</span>
     <span class="grav" title="gravite 4">G4</span>
-    <span class="depuis" title="ouverte depuis le 2026-08-05">40 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-08-05">41 j</span>
     
   </div>
   <h3>random_page_cost sur 6 bases</h3>
@@ -1000,11 +880,11 @@
     <span class="fiche">TRK-066 · doc 19 P0-1</span>
     <span class="classe">🔧 A coder</span>
     <span class="grav" title="gravite 1">G1</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-13">1 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-13">2 j</span>
     <code class="commit">d5c19a17</code>
   </div>
-  <h3>P0 — La clé d'unicité RESTORE ne doit plus vivre pour toujours (RESTORE du lendemain avalée) — COMMITTÉ d5c19a17, en attente de fusion</h3>
-  <p class="detail">Contre-expertise du 13/09 (docs/fiabilite-coupe-circuit-2026-09/19-CONTRE-EXPERTISE-INDEPENDANTE-2026-09-13.md) : activeKey n'était libérée que par une preuve (ACK TCP &lt; 15 s, accusé SMS du boîtier — deux en cinq semaines —, ignition &lt; 30 min). Une RESTORE partie par SMS, remise et jamais acquittée gardait sa clé indéfiniment ; TOUTE RESTORE suivante du même boîtier (planning du lendemain, clic manuel) était dédupliquée vers elle : rien envoyé, rien réarmé, aucune alerte neuve, cron avancé. Démontré par test contre le code réel ; base : au moins une RESTORE par SMS sans accusé presque chaque jour sur 30 jours (16 le 11/09). CORRECTIF ÉCRIT LE 13/09 AU SOIR dans codex/tracky-cutoff-reliability-2026-09-12 (worktree vizyo-tracky-reliability-sep2026) (docs/fiabilite-coupe-circuit-2026-09/20-CORRECTIF-P0-CLE-RESTORE-2026-09-13.md) : à la collision, une RESTORE parquée, en attente lointaine ou muette depuis 10 min est RÉARMÉE (PENDING, TCP d'abord, SMS ensuite, budget SMS neuf, updateMany conditionnel sous ACK) ; balayage qui clôt en SENT_UNCONFIRMED et libère la clé après ENGINE_RESTORE_EXPIRY_MIN (240) hors lease ; confirmation par ignition portée de 30 min à 24 h avec garde « aucune CUT depuis » ; toast « rallumage déjà en cours, réarmé » au lieu d'« enregistrée ». 8 tests ajoutés, suites vertes. Reste : relire le diff, committer sur la branche du chantier (D10), puis T46. ✅ COMMITTÉ LE 14/09 (D10 tranchée « oui ») : commit d5c19a17 sur codex/tracky-cutoff-reliability-2026-09-12, branche rebasée sur main 049d1d11 (T46). Suites après rebase : API 259 suites / 4 002 tests, partagé 423, smoke 5, Web 727. Reste : fusion dans main (après T41/T42/T44/T45 ou en premier lot, à décider), puis déploiement selon T47.</p>
+  <h3>P0 — La clé d'unicité RESTORE ne doit plus vivre pour toujours (RESTORE du lendemain avalée) — FUSIONNÉ sur main le 14/09, à déployer</h3>
+  <p class="detail">Contre-expertise du 13/09 (docs/fiabilite-coupe-circuit-2026-09/19-CONTRE-EXPERTISE-INDEPENDANTE-2026-09-13.md) : activeKey n'était libérée que par une preuve (ACK TCP &lt; 15 s, accusé SMS du boîtier — deux en cinq semaines —, ignition &lt; 30 min). Une RESTORE partie par SMS, remise et jamais acquittée gardait sa clé indéfiniment ; TOUTE RESTORE suivante du même boîtier (planning du lendemain, clic manuel) était dédupliquée vers elle : rien envoyé, rien réarmé, aucune alerte neuve, cron avancé. Démontré par test contre le code réel ; base : au moins une RESTORE par SMS sans accusé presque chaque jour sur 30 jours (16 le 11/09). CORRECTIF ÉCRIT LE 13/09 AU SOIR dans codex/tracky-cutoff-reliability-2026-09-12 (worktree vizyo-tracky-reliability-sep2026) (docs/fiabilite-coupe-circuit-2026-09/20-CORRECTIF-P0-CLE-RESTORE-2026-09-13.md) : à la collision, une RESTORE parquée, en attente lointaine ou muette depuis 10 min est RÉARMÉE (PENDING, TCP d'abord, SMS ensuite, budget SMS neuf, updateMany conditionnel sous ACK) ; balayage qui clôt en SENT_UNCONFIRMED et libère la clé après ENGINE_RESTORE_EXPIRY_MIN (240) hors lease ; confirmation par ignition portée de 30 min à 24 h avec garde « aucune CUT depuis » ; toast « rallumage déjà en cours, réarmé » au lieu d'« enregistrée ». 8 tests ajoutés, suites vertes. Reste : relire le diff, committer sur la branche du chantier (D10), puis T46. ✅ COMMITTÉ LE 14/09 (D10 tranchée « oui ») : commit d5c19a17 sur codex/tracky-cutoff-reliability-2026-09-12, branche rebasée sur main 049d1d11 (T46). Suites après rebase : API 259 suites / 4 002 tests, partagé 423, smoke 5, Web 727. Reste : fusion dans main (après T41/T42/T44/T45 ou en premier lot, à décider), puis déploiement selon T47. 🔀 FUSIONNÉ LE 14/09 À 10:55 : PR vizyoagency-create/vizyo-tracky#138 (merge commit 08c5fc2d) ; relais PR vizyo-texto#9 (724bcb8). pnpm verify sur la branche puis sur la branche fusionnée avec origin/main : typecheck vert, smoke 5/5, partagé 423, API 262 suites / 4 145 tests, web 740. NON DÉPLOYÉ : la production reste sur 9afdf52a (déployée par toi le 14/09 08:20 UTC, chantier rdv) — la fenêtre du doc 25 reste à jouer.</p>
   <p class="attendue"><b>Preuve attendue</b> — Sur boîtier de banc : RESTORE par SMS remise sans accusé le jour J, puis RESTORE du lendemain → un envoi part (TCP puis SMS) et la commande du lendemain n'est pas l'identifiant de la veille ; le balayage passe une RESTORE SENT de plus de 4 h en SENT_UNCONFIRMED avec activeKey null ; une ignition remontée à 3 h prouve la RESTORE.</p>
   <div class="badges"><span class="b b-phare">⭐ le plus rentable</span></div>
 </article>
@@ -1015,12 +895,222 @@
     <span class="fiche">TRK-066 · doc 19 P0-2</span>
     <span class="classe">🔧 A coder</span>
     <span class="grav" title="gravite 1">G1</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-13">1 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-13">2 j</span>
     <code class="commit">8ab1d08e</code>
   </div>
-  <h3>P0 — Donner une validité aux SMS CUT (ttl), une priorité aux RESTORE, un appareil explicite, et annuler le SMS CUT supplanté — COMMITTÉ, en attente de fusion</h3>
-  <p class="detail">Le relais (codex/gateway-health-reliability-2026-09-13 (worktree vizyo-texto-reliability-sep2026), src/capcom6/capcom6.service.ts) envoie textMessage + phoneNumbers sans ttl, ni priority, ni deviceId ; Tracky ne rappelle jamais du téléphone une CUT supplantée par une RESTORE (engine-control.service.ts, supplantation en base seulement). Scénario : CUT SMS 20:00 sur téléphone endormi (retard de 1 h 06 vu le 11/09, pull de secours 15 min), RESTORE TCP 07:00, stop123456 émis à 07:30 → véhicule coupé au départ. L'API SMS Gateway (contrat public v1.75) offre ttl/validUntil, priority (&gt; 99 contourne limites et délais), deviceId et DELETE /3rdparty/v1/messages/{id} ; support sur le serveur 1.43.0 en production NON VÉRIFIÉ. Geste : SendSmsDto avec ttlSeconds/priority/simNumber ; Capcom6Service.send passe ttl, priority, deviceId (CAPCOM6_DEVICE_ID), withDeliveryReport ; route DELETE /v1/texto/:id ; Tracky : ttl 900 s sur CUT, priority 100 sur RESTORE, annulation best-effort des CUT supplantées portant un smsLogId. ✅ COMMITTÉ LE 14/09 : relais 2536ea4 (POST /v1/texto/send accepte ttlSeconds et priority ; Capcom6Service transmet ttl, priority, deviceId=CAPCOM6_DEVICE_ID et exige l'accusé de remise ; DELETE /v1/texto/:id annule un sortant en attente, best-effort, cloisonné par tenant ; 9 tests) et Tracky 8ab1d08e (CUT par SMS = ttlSeconds ENGINE_CUT_SMS_TTL_S 900 s ; RESTORE = priorité 100 sans validité ; une RESTORE qui supplante une CUT partie par SMS demande l'annulation de son SMS, sans bloquer ; 7 tests). Vérifié sur le contrat public et l'historique des versions : ttl v1.2, priority v1.20, deviceId v1.25 sont supportés par le serveur 1.43.0 de production ; l'ANNULATION n'existe que depuis v1.45.0 (07/07/2026) — mise à jour du conteneur capcom6-server à prévoir dans T47, sinon le relais répond « annulation non supportée » sans rien casser. Doc : fiabilite-coupe-circuit-2026-09/21-CORRECTIF-P0-VALIDITE-SMS-CUT-2026-09-14.md.</p>
+  <h3>P0 — Donner une validité aux SMS CUT (ttl), une priorité aux RESTORE, un appareil explicite, et annuler le SMS CUT supplanté — FUSIONNÉ sur main le 14/09, à déployer</h3>
+  <p class="detail">Le relais (codex/gateway-health-reliability-2026-09-13 (worktree vizyo-texto-reliability-sep2026), src/capcom6/capcom6.service.ts) envoie textMessage + phoneNumbers sans ttl, ni priority, ni deviceId ; Tracky ne rappelle jamais du téléphone une CUT supplantée par une RESTORE (engine-control.service.ts, supplantation en base seulement). Scénario : CUT SMS 20:00 sur téléphone endormi (retard de 1 h 06 vu le 11/09, pull de secours 15 min), RESTORE TCP 07:00, stop123456 émis à 07:30 → véhicule coupé au départ. L'API SMS Gateway (contrat public v1.75) offre ttl/validUntil, priority (&gt; 99 contourne limites et délais), deviceId et DELETE /3rdparty/v1/messages/{id} ; support sur le serveur 1.43.0 en production NON VÉRIFIÉ. Geste : SendSmsDto avec ttlSeconds/priority/simNumber ; Capcom6Service.send passe ttl, priority, deviceId (CAPCOM6_DEVICE_ID), withDeliveryReport ; route DELETE /v1/texto/:id ; Tracky : ttl 900 s sur CUT, priority 100 sur RESTORE, annulation best-effort des CUT supplantées portant un smsLogId. ✅ COMMITTÉ LE 14/09 : relais 2536ea4 (POST /v1/texto/send accepte ttlSeconds et priority ; Capcom6Service transmet ttl, priority, deviceId=CAPCOM6_DEVICE_ID et exige l'accusé de remise ; DELETE /v1/texto/:id annule un sortant en attente, best-effort, cloisonné par tenant ; 9 tests) et Tracky 8ab1d08e (CUT par SMS = ttlSeconds ENGINE_CUT_SMS_TTL_S 900 s ; RESTORE = priorité 100 sans validité ; une RESTORE qui supplante une CUT partie par SMS demande l'annulation de son SMS, sans bloquer ; 7 tests). Vérifié sur le contrat public et l'historique des versions : ttl v1.2, priority v1.20, deviceId v1.25 sont supportés par le serveur 1.43.0 de production ; l'ANNULATION n'existe que depuis v1.45.0 (07/07/2026) — mise à jour du conteneur capcom6-server à prévoir dans T47, sinon le relais répond « annulation non supportée » sans rien casser. Doc : fiabilite-coupe-circuit-2026-09/21-CORRECTIF-P0-VALIDITE-SMS-CUT-2026-09-14.md. 🔀 FUSIONNÉ LE 14/09 À 10:55 : PR vizyoagency-create/vizyo-tracky#138 (merge commit 08c5fc2d) ; relais PR vizyo-texto#9 (724bcb8). pnpm verify sur la branche puis sur la branche fusionnée avec origin/main : typecheck vert, smoke 5/5, partagé 423, API 262 suites / 4 145 tests, web 740. NON DÉPLOYÉ : la production reste sur 9afdf52a (déployée par toi le 14/09 08:20 UTC, chantier rdv) — la fenêtre du doc 25 reste à jouer.</p>
   <p class="attendue"><b>Preuve attendue</b> — Sur boîtier de banc (T54) : un stop123456 envoyé avec ttl 60 s vers un téléphone hors ligne n'est JAMAIS émis quand le téléphone revient après 2 min ; un resume123456 part avec priorité 100 ; une RESTORE supplantant une CUT encore en file produit un DELETE côté capcom6 (serveur ≥ 1.45.0) et la commande porte « SMS annulé au relais ».</p>
+  <div class="badges"></div>
+</article>
+<article class="t etat-COMMITE g2" data-etat="COMMITE" data-partie="centre-alerte" data-classe="A_CODER" data-g="2">
+  <div class="t-h">
+    <span class="marque" title="Ecrit et commite">~</span>
+    <span class="id">T42</span>
+    <span class="fiche">TRK-066 · doc 19 P1-1</span>
+    <span class="classe">🔧 A coder</span>
+    <span class="grav" title="gravite 2">G2</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-13">2 j</span>
+    <code class="commit">86c32fa9</code>
+  </div>
+  <h3>Relancer une RESTORE non prouvée à la reconnexion TCP du boîtier — et ne plus la rendre terminale après trois SMS — FUSIONNÉ sur main le 14/09, à déployer</h3>
+  <p class="detail">Aucun abonnement à une reconnexion n'existe (aucun @OnEvent hors SMS_INBOUND_EVENT, aucun emit dans socket-registry) ; l'attente TCP d'une RESTORE dont la socket est absente vaut un seul créneau de 15 s ; après trois SMS échoués la RESTORE passe FAILED et le cron, qui a déjà avancé lastEvaluatedState, ne la recrée jamais : un boîtier qui revient en TCP à 07:40 ne reçoit pas K. Contredit README (« jamais abandonnée »), doc 03 §8, doc 07 R4.1 coché, CC-003. Geste : émettre tracker.connected { imei } depuis le registre de sockets ; dans EngineControlService, @OnEvent → pour la dernière RESTORE non acquittée du boîtier plus récente que la dernière CUT, retour en PENDING / canal null / nextAttemptAt now (réarmement partagé avec T40) ; après épuisement SMS, rester en SENT avec relance TCP toutes les 30 min (pas de SMS supplémentaire) au lieu de FAILED terminal — ou garder FAILED et corriger les documents. ✅ COMMITTÉ LE 14/09 : Tracky 86c32fa9. Le registre de sockets émet tracker.connected pour toute socket neuve ; EngineControlService relance la dernière RESTORE non prouvée du boîtier (créée depuis moins de 24 h, sans COUPURE demandée depuis, pas sous lease — les FAILED et « nul ne sait » sont ravivées) en PENDING, TCP d'abord, SANS budget SMS neuf, et réveille le worker aussitôt. Le secours SMS épuisé ne ferme plus l'intention : SENT, clé conservée, K renvoyée en TCP à la reconnexion et toutes les 30 min (ENGINE_RESTORE_TCP_RETRY_MIN), plus jamais un SMS, alerte CRITICAL « secours SMS épuisé ». Invariant nouveau : une RESTORE ne transmet JAMAIS après une COUPURE plus récente (garde du worker avant chaque envoi + une CUT créée supplante les RESTORE ouvertes). L'échéance de 4 h court depuis createdAt quand rien n'a jamais été transmis. 18 tests ajoutés (1 réécrit), API 260 suites vertes, smoke DI vert, build OK. Doc : fiabilite-coupe-circuit-2026-09/22-CORRECTIF-P1-RELANCE-RESTORE-RECONNEXION-2026-09-14.md. Non exercé sur un vrai boîtier : recette T54 « 3 SMS échouent, reconnexion TCP → K acquittée ». 🔀 FUSIONNÉ LE 14/09 À 10:55 : PR vizyoagency-create/vizyo-tracky#138 (merge commit 08c5fc2d) ; relais PR vizyo-texto#9 (724bcb8). pnpm verify sur la branche puis sur la branche fusionnée avec origin/main : typecheck vert, smoke 5/5, partagé 423, API 262 suites / 4 145 tests, web 740. NON DÉPLOYÉ : la production reste sur 9afdf52a (déployée par toi le 14/09 08:20 UTC, chantier rdv) — la fenêtre du doc 25 reste à jouer.</p>
+  <p class="attendue"><b>Preuve attendue</b> — Sur boîtier de banc (T54) : téléphone passerelle éteint, boîtier hors ligne, RESTORE demandée → 3 SMS refusés, l'intention reste « envoyée » avec son alerte ; le boîtier revient en TCP → K partie dans les 15 s et acquittée (ACKNOWLEDGED), zéro SMS supplémentaire ; puis CUT du soir → la RESTORE du matin ne renvoie plus rien.</p>
+  <div class="badges"></div>
+</article>
+<article class="t etat-COMMITE g2" data-etat="COMMITE" data-partie="centre-alerte" data-classe="A_CODER" data-g="2">
+  <div class="t-h">
+    <span class="marque" title="Ecrit et commite">~</span>
+    <span class="id">T44</span>
+    <span class="fiche">TRK-066 · doc 19 P1-2</span>
+    <span class="classe">🔧 A coder</span>
+    <span class="grav" title="gravite 2">G2</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-13">2 j</span>
+    <code class="commit">86a2fc53</code>
+  </div>
+  <h3>Sentinelle Android : hystérésis, bornes d'environnement, fraîcheur par appareil, délai d'envoi séparé du délai de santé — FUSIONNÉ sur main le 14/09, à déployer</h3>
+  <p class="detail">Tracky sms-gateway-watchdog.service.ts:28-35 : un seul tick sain referme l'épisode et remet le rappel de 15 min à zéro → battement à chaque pull du téléphone. Texto src/config/env.ts : CAPCOM6_DEVICE_STALE_SECONDS sans borne haute (999999999 rend la fraîcheur inopérante) ; src/messages/messages.service.ts:214-224 : le plus frais de TOUS les appareils gagne (un téléphone de test masquerait un téléphone de production mort), simCards ignoré ; src/capcom6/capcom6.service.ts:112 : le nouveau timeout de 5 s s'applique aussi à l'ENVOI (« timeout mais accepté » non réconcilié). Geste : 2 ticks mauvais pour ouvrir, 3 bons pour fermer ; bornes [30, 3600] ; fraîcheur évaluée sur CAPCOM6_DEVICE_ID, simCards exposé, état à quatre valeurs (ONLINE/STALE/OFFLINE/UNKNOWN) en plus du booléen ; CAPCOM6_SEND_TIMEOUT_MS (9 000) distinct de CAPCOM6_REQUEST_TIMEOUT_MS (5 000). Tests : sain/périmé alternés → une alerte ; plusieurs appareils dont un ancien ; date future ; lastSeen absent ; valeurs d'env limites. ✅ COMMITTÉ LE 14/09 : relais 784d766 (verdict de santé sur UN appareil — CAPCOM6_DEVICE_ID ou l'unique enrôlé, plusieurs sans identifiant = refus ; device.state ONLINE/STALE/OFFLINE/UNKNOWN, fresh conservé ; sim.cards et configuredPresent, SIM configurée absente = refus, null si le serveur ne les expose pas ; réglages bornés : stale [30, 3600], offline [60, 86400] (CAPCOM6_DEVICE_OFFLINE_SECONDS=900), lectures [1, 30] s, envoi [1, 60] s ; CAPCOM6_SEND_TIMEOUT_MS=9000 distinct des lectures ; 6 suites / 47 tests) et Tracky 86a2fc53 (sentinelle : 2 contrôles mauvais pour ouvrir, 3 sains pour fermer, rappel 15 min, contrôle qui lève = mauvais, alerte non persistée retentée au tick suivant ; écran /admin → SMS qui dit pourquoi et nomme l'appareil du verdict ; doc 13 liste enfin les variables du relais ; 9 tests ; API 260 suites / 4 035 tests, Web 727). Doc : fiabilite-coupe-circuit-2026-09/23-CORRECTIF-P1-SENTINELLE-ANDROID-2026-09-14.md. ⚠️ Sans T43 (ping 60 s), le téléphone reste STALE la plupart du temps : T44 rend la sentinelle honnête (une alerte au lieu de quatre par heure), T43 rend le téléphone joignable. simCards non vérifié sur le serveur 1.43.0 de production (contrat public seulement) — d'où le null qui ne refuse jamais. 🔀 FUSIONNÉ LE 14/09 À 10:55 : PR vizyoagency-create/vizyo-tracky#138 (merge commit 08c5fc2d) ; relais PR vizyo-texto#9 (724bcb8). pnpm verify sur la branche puis sur la branche fusionnée avec origin/main : typecheck vert, smoke 5/5, partagé 423, API 262 suites / 4 145 tests, web 740. NON DÉPLOYÉ : la production reste sur 9afdf52a (déployée par toi le 14/09 08:20 UTC, chantier rdv) — la fenêtre du doc 25 reste à jouer.</p>
+  <p class="attendue"><b>Preuve attendue</b> — Après T43, 30 min écran éteint : GET /v1/texto/health rend device.state=ONLINE en continu, selection=configured, sim.configuredPresent=true ; le centre d'alerte ne reçoit plus de ligne sms-gateway-watchdog. Puis téléphone éteint 10 min : UNE ligne CRITICAL à la 2e minute, un rappel à +15 min, et la fermeture seulement après 3 contrôles sains une fois rallumé.</p>
+  <div class="badges"></div>
+</article>
+<article class="t etat-COMMITE g2" data-etat="COMMITE" data-partie="centre-alerte" data-classe="A_CODER" data-g="2">
+  <div class="t-h">
+    <span class="marque" title="Ecrit et commite">~</span>
+    <span class="id">T45</span>
+    <span class="fiche">TRK-066 · doc 19 P1-3</span>
+    <span class="classe">🔧 A coder</span>
+    <span class="grav" title="gravite 2">G2</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-13">2 j</span>
+    <code class="commit">1aa1e0f9</code>
+  </div>
+  <h3>Preuve SMS quotidienne réconciliée (T-30 min avant chaque fenêtre) — et le relais pousse ses statuts — FUSIONNÉ sur main le 14/09, à déployer</h3>
+  <p class="detail">engine-control.service.ts:987-1000 : l'interlock exige une remise SMS « delivered » de moins de 24 h ; la seule source régulière est la preuve de vie HEBDOMADAIRE (sms-heartbeat.service.ts:109, lundi 09:00) ; le relais ne pousse AUCUN statut sortant (src/webhooks/webhooks.controller.ts:114-124 met à jour sa table et s'arrête) et l'endpoint Tracky POST /sms/webhook/status n'a aucun émetteur — sa table sait pourtant : 13 failed, 6 sent, 6 delivered sur 7 jours quand Tracky n'en voit qu'un. Semaine TCP saine → mardi soir toutes les CUT automatiques refusées, avec CRITICAL. Geste : deux passages quotidiens de SmsHeartbeatService à 04:30 et 06:30 Europe/Paris (T-30 des fenêtres 05:00 et 07:00), SMS vers un numéro neutre ou vers la SIM du téléphone lui-même (prouve émission + réception + webhook entrant), vérification à +10 min par reconcileOutboundStatus jusqu'au terminal (~2 SMS/jour) ; et/ou faire pousser par le relais sent/delivered/failed (avec errorCode) vers &lt;callbackUrl&gt;/status via WebhookDeliveryService. 📏 14/09, MESURE COTE TRACKY : sms_logs porte 24 sortants queued sans suite (dernier le 11/09 18h49m13, les remises en route manuelles du soir) et UN seul delivered en sept jours — la preuve de vie du 07/09 07h00. Le relais ne pousse aucun statut : la table Tracky en garde la trace. ✅ COMMITTÉ LE 14/09 : relais ae17b34 (sms:sent/delivered/failed/cancelled : ligne mise à jour sans rétrograder un terminal, raison du téléphone gardée, puis statut POUSSÉ au tenant sur &lt;callbackUrl&gt;/status avec la même signature et la même file persistante que les entrants — pas de migration ; 8 tests, 7 suites / 55 tests) et Tracky 1aa1e0f9 (preuve QUOTIDIENNE : crons sms-daily-proof à 04:30 et 06:30 Europe/Paris et sms-daily-proof-verify à 04:45 et 06:45, vers UN numéro neutre SMS_DAILY_PROOF_RECIPIENT — recommandé : la SIM du téléphone passerelle, l'écho entrant marque le sortant « received » ; verdicts OK muet / INDETERMINE en ERROR / ECHEC et NON_EMIS en CRITICAL, chaque ligne dit la conséquence pour les coupes du soir ; un `cancelled` voulu (T41) n'alerte plus ; admin ?kind=quotidien ; catalogues à jour ; +12 tests, API 260 suites / 4 047 tests). Doc : fiabilite-coupe-circuit-2026-09/24-CORRECTIF-P1-PREUVE-SMS-QUOTIDIENNE-2026-09-14.md. Coût : 2 SMS/jour. ⚠️ NON VÉRIFIÉ : qu'un SMS du S21 vers son propre numéro lui soit remis par Free (sinon l'accusé delivered poussé suffit) ; et que les webhooks sms:sent/delivered/failed soient encore enregistrés côté capcom6 (posés le 24/08, à relire dans GET /3rdparty/v1/webhooks). Prérequis T43/T47 : SMS_DAILY_PROOF_RECIPIENT dans l'allowlist Tracky du relais. 🔀 FUSIONNÉ LE 14/09 À 10:55 : PR vizyoagency-create/vizyo-tracky#138 (merge commit 08c5fc2d) ; relais PR vizyo-texto#9 (724bcb8). pnpm verify sur la branche puis sur la branche fusionnée avec origin/main : typecheck vert, smoke 5/5, partagé 423, API 262 suites / 4 145 tests, web 740. NON DÉPLOYÉ : la production reste sur 9afdf52a (déployée par toi le 14/09 08:20 UTC, chantier rdv) — la fenêtre du doc 25 reste à jouer.</p>
+  <p class="attendue"><b>Preuve attendue</b> — Après déploiement : à 04:45 puis 06:45, ligne « verdict=OK » dans les journaux et AUCUNE ligne sms-daily-proof au centre d'alerte ; sms_logs porte deux sortants gateway_daily_proof par jour en delivered ou received ; lastTerminalSuccessAt &lt; 24 h en permanence ; l'interlock ne refuse plus aucune coupe pour « preuve trop ancienne ». Téléphone éteint à 04:20 → CRITICAL « ECHEC » ou ERROR « INDETERMINEE » à 04:45.</p>
+  <div class="badges"></div>
+</article>
+<article class="t etat-COMMITE g2" data-etat="COMMITE" data-partie="centre-alerte" data-classe="A_CODER" data-g="2">
+  <div class="t-h">
+    <span class="marque" title="Ecrit et commite">~</span>
+    <span class="id">T62</span>
+    <span class="fiche">TRK-066 · doc 35</span>
+    <span class="classe">🔧 A coder</span>
+    <span class="grav" title="gravite 2">G2</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-14">1 j</span>
+    <code class="commit">b3ee67e2</code>
+  </div>
+  <h3>Une SIM injoignable par SMS met le véhicule en « TCP seul » : coupe auto seulement boîtier connecté, RESTORE en TCP toutes les 5 min, un SMS-sonde par 6 h — FUSIONNÉ sur main le 14/09, à déployer</h3>
+  <p class="detail">Réponse du 14/09 à « pourquoi deux boîtiers et pas les autres, comment fiabiliser, prio TCP » (doc 35). Verdict lu dans sms_logs : les 3 derniers sortants à issue connue vers la SIM tous failed → injoignable (queued ignorés, un succès rompt la série, sans numéro ou base illisible → joignable, cache 60 s). Coupe AUTOMATIQUE : sur une SIM injoignable, seulement boîtier vivant en TCP (socket + trame &lt; 5 min), sinon report comme « boîtier muet » ; jamais un SMS dépensé par le planificateur vers ces SIM ; une coupe MANUELLE tente sa chance. Worker RESTORE : TCP toutes les ENGINE_TCP_ONLY_RETRY_MIN (5) et à chaque reconnexion, un SMS-sonde au plus toutes les 6 h. Une ligne DÉGRADATION par véhicule et par jour (engine-control-tcp-only) avec les gestes à faire. Variables ENGINE_SMS_UNREACHABLE_STREAK=3, ENGINE_TCP_ONLY_RETRY_MIN=5. Le verdict n'est actif qu'avec les statuts poussés par le relais (T45) : inerte avant le déploiement du chantier complet, et c'est voulu. Commit b3ee67e2, 9 tests (engine-control 148), fusionné dans #138. 🔀 FUSIONNÉ LE 14/09 À 10:55 : PR vizyoagency-create/vizyo-tracky#138 (merge commit 08c5fc2d) ; relais PR vizyo-texto#9 (724bcb8). pnpm verify sur la branche puis sur la branche fusionnée avec origin/main : typecheck vert, smoke 5/5, partagé 423, API 262 suites / 4 145 tests, web 740. NON DÉPLOYÉ : la production reste sur 9afdf52a (déployée par toi le 14/09 08:20 UTC, chantier rdv) — la fenêtre du doc 25 reste à jouer.</p>
+  <p class="attendue"><b>Preuve attendue</b> — Après déploiement : une ligne engine-control-tcp-only par jour pour HD-584-BF et BP-434-RD ; aucune commande SMS du planificateur vers leurs SIM ; une coupe automatique reportée quand l'un d'eux est hors TCP ; une RESTORE relancée en TCP toutes les 5 min.</p>
+  <div class="badges"></div>
+</article>
+<article class="t etat-COMMITE g3" data-etat="COMMITE" data-partie="centre-alerte" data-classe="A_CODER" data-g="3">
+  <div class="t-h">
+    <span class="marque" title="Ecrit et commite">~</span>
+    <span class="id">T48</span>
+    <span class="fiche">TRK-066 · doc 19 P2-1 · P2-4</span>
+    <span class="classe">🔧 A coder</span>
+    <span class="grav" title="gravite 3">G3</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-13">2 j</span>
+    <code class="commit">8a8cb2c4</code>
+  </div>
+  <h3>Course ACK/SMS : ne jamais rétrograder ACKNOWLEDGED en SENT ; dispatcher une CUT PENDING orpheline au lieu de la rendre telle quelle — FUSIONNÉ sur main le 14/09, à déployer</h3>
+  <p class="detail">engine-control.service.ts dispatchSmsAttempt (et le chemin SMS de dispatchCommand) écrit status=SENT par update({ where: { id } }) sans garde ackedAt/status : un ACK TCP arrivé pendant trySmsFallback (jusqu'à 10 s + file) est écrasé — commande SENT avec ackedAt renseigné, UI « rallumage non confirmé » alors que le boîtier a acquitté. Et une CUT créée puis non dispatchée (crash) reste PENDING avec sa clé jusqu'à la prochaine RESTORE : la CUT antivol manuelle suivante rend 201 avec l'ancienne commande et n'envoie rien. Geste : updateMany({ where: { id, ackedAt: null, status: SENT|PENDING } }) puis relecture ; si count 0, ne rien écraser ; à la collision, une active PENDING est dispatchée (même logique que le réarmement T40). Tests : ACK simulé entre send et update ; CUT orpheline puis nouvelle CUT → envoi. ✅ COMMITTÉ LE 14/09 : 8a8cb2c4. Les trois écritures « envoyée » (SMS initial, TCP, SMS du worker) sont conditionnelles (updateMany sous ackedAt IS NULL et statut PENDING|SENT) ; si la garde ne tient plus, la ligne est relue et rendue telle quelle et le SMS accepté pour rien est annulé au relais (T41). L'acquittement par écho TCP est conditionnel lui aussi. À la collision d'unicité, une CUT PENDING hors bail et plus vieille que le bail (60 s) est dispatchée (isOrphanPending) ; un clic concurrent ou une intention sous bail restent rendus tels quels. 5 tests, 3 assertions migrées. Doc : fiabilite-coupe-circuit-2026-09/27-CORRECTIF-P2-PREUVE-JAMAIS-RETROGRADEE-2026-09-14.md. Non vérifié : l'annulation effective du SMS côté téléphone exige capcom6 ≥ 1.45.0 (doc 25). 🔀 FUSIONNÉ LE 14/09 À 10:55 : PR vizyoagency-create/vizyo-tracky#138 (merge commit 08c5fc2d) ; relais PR vizyo-texto#9 (724bcb8). pnpm verify sur la branche puis sur la branche fusionnée avec origin/main : typecheck vert, smoke 5/5, partagé 423, API 262 suites / 4 145 tests, web 740. NON DÉPLOYÉ : la production reste sur 9afdf52a (déployée par toi le 14/09 08:20 UTC, chantier rdv) — la fenêtre du doc 25 reste à jouer.</p>
+  <p class="attendue"><b>Preuve attendue</b> — Test unitaire : un ACK posé entre l'envoi SMS et la mise à jour laisse ACKNOWLEDGED ; une CUT PENDING de la veille suivie d'une CUT manuelle produit un envoi.</p>
+  <div class="badges"></div>
+</article>
+<article class="t etat-COMMITE g3" data-etat="COMMITE" data-partie="centre-alerte" data-classe="A_CODER" data-g="3">
+  <div class="t-h">
+    <span class="marque" title="Ecrit et commite">~</span>
+    <span class="id">T49</span>
+    <span class="fiche">TRK-066 · doc 19 P2-2</span>
+    <span class="classe">🔧 A coder</span>
+    <span class="grav" title="gravite 3">G3</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-13">2 j</span>
+    <code class="commit">93dba465</code>
+  </div>
+  <h3>Kill-switch et interlock : une ligne par cause et espacée, pas un CRITICAL par appel — FUSIONNÉ sur main le 14/09, à déployer</h3>
+  <p class="detail">engine-control.service.ts:404-411 et :1030-1037 écrivent un CRITICAL à CHAQUE appel bloqué ; le cron retente avec backoff 2/5/15/30 min ; la dédup d'ErrorLogger ne dure que 60 s ; la vigie envoie un courriel par heure dès un CRITICAL. Un administrateur de flotte qui réactive lui-même ses horaires (droit schedules_manage) déclenche un flux nocturne de dizaines de lignes + « coupe impossible depuis N min » sans connaître le kill-switch. Geste : kill-switch → WARNING (état voulu, pas une panne), une ligne par (véhicule, cause) et par heure ; interlock → CRITICAL une fois par raison et par 15 min. ✅ COMMITTÉ LE 14/09 : Tracky 93dba465. Le refus est typé (AutomaticCutWithheldException, cause kill-switch | interlock) ; une ligne par CAUSE, espacée, qui compte les refus et nomme les plaques depuis la ligne précédente : kill-switch = état voulu → niveau DÉGRADATION (TRK-037 : non compté, pas de vigie), une ligne par heure au plus ; interlock = panne → CRITICAL, une par raison et par quart d'heure. Le cron des horaires ne compte plus une coupe retenue comme un blocage (aucune ligne « coupe impossible » par véhicule, palier habituel conservé). Choix assumé : une ligne par cause (avec le compte et les plaques) plutôt que par véhicule — trente lignes disent trente fois la même chose. 8 tests, API 260 suites / 4 055 tests. Doc : fiabilite-coupe-circuit-2026-09/26-CORRECTIF-P2-KILL-SWITCH-SANS-RAFALE-2026-09-14.md. Reste hors périmètre : rendre le kill-switch VISIBLE sur la page Horaires (T56/T3). 🔀 FUSIONNÉ LE 14/09 À 10:55 : PR vizyoagency-create/vizyo-tracky#138 (merge commit 08c5fc2d) ; relais PR vizyo-texto#9 (724bcb8). pnpm verify sur la branche puis sur la branche fusionnée avec origin/main : typecheck vert, smoke 5/5, partagé 423, API 262 suites / 4 145 tests, web 740. NON DÉPLOYÉ : la production reste sur 9afdf52a (déployée par toi le 14/09 08:20 UTC, chantier rdv) — la fenêtre du doc 25 reste à jouer.</p>
+  <p class="attendue"><b>Preuve attendue</b> — En recette T54, kill-switch encore false et un planning réactivé : à 20:00, UNE ligne DÉGRADATION « coupes automatiques retenues » au centre d'alerte, zéro CRITICAL, zéro « coupe impossible » par véhicule, zéro courriel ; la ligne suivante au plus tôt une heure après, avec le compte des refus.</p>
+  <div class="badges"></div>
+</article>
+<article class="t etat-COMMITE g3" data-etat="COMMITE" data-partie="centre-alerte" data-classe="A_CODER" data-g="3">
+  <div class="t-h">
+    <span class="marque" title="Ecrit et commite">~</span>
+    <span class="id">T50</span>
+    <span class="fiche">TRK-066 · doc 19 P2-3</span>
+    <span class="classe">🔧 A coder</span>
+    <span class="grav" title="gravite 3">G3</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-13">2 j</span>
+    <code class="commit">8bb24ca7</code>
+  </div>
+  <h3>Glissement de confirmation réellement volontaire : ni un clic en bout de piste, ni la touche End — FUSIONNÉ sur main le 14/09, à déployer</h3>
+  <p class="detail">confirm-modal.component.ts:102-109 et :340-355 : &lt;input type=range&gt; natif ; un clic en bout de piste (le curseur saute) ou End au clavier produit change à 100 → onConfirm(). L'exigence « impossible de déclencher accidentellement » n'est pas tenue (la saisie de plaque l'était) ; le test du spec fixe la valeur programmatiquement et ne le voit pas. Geste : exiger un pointerdown sur le curseur puis au moins 8 événements input croissants partant de &lt; 10 avant d'accepter ≥ 98 ; ignorer End/PageUp/Home (ou offrir une confirmation clavier explicite distincte). ✅ COMMITTÉ LE 14/09 : 8bb24ca7. La confirmation exige un geste PROGRESSIF : au moins 8 valeurs input strictement croissantes, la première sous 10, la dernière ≥ 98 ; retours en arrière tolérés ; End/Home/PageUp/PageDown neutralisées ; une flèche droite maintenue reste un chemin clavier valide (le pointerdown proposé aurait fermé le clavier — écarté) ; aria-description. 5 tests nouveaux + le test existant devenu un vrai geste ; rejoués contre l'ancien composant : 3 rouges. Suite web 732/732. Doc : 30-CORRECTIF-P2-GLISSEMENT-VOLONTAIRE-2026-09-14.md. 🔀 FUSIONNÉ LE 14/09 À 10:55 : PR vizyoagency-create/vizyo-tracky#138 (merge commit 08c5fc2d) ; relais PR vizyo-texto#9 (724bcb8). pnpm verify sur la branche puis sur la branche fusionnée avec origin/main : typecheck vert, smoke 5/5, partagé 423, API 262 suites / 4 145 tests, web 740. NON DÉPLOYÉ : la production reste sur 9afdf52a (déployée par toi le 14/09 08:20 UTC, chantier rdv) — la fenêtre du doc 25 reste à jouer.</p>
+  <p class="attendue"><b>Preuve attendue</b> — Test composant : slider.value='100' + change sans input progressifs → refusé ; un drag simulé de 0 à 100 → confirmé une fois.</p>
+  <div class="badges"></div>
+</article>
+<article class="t etat-COMMITE g3" data-etat="COMMITE" data-partie="centre-alerte" data-classe="A_CODER" data-g="3">
+  <div class="t-h">
+    <span class="marque" title="Ecrit et commite">~</span>
+    <span class="id">T51</span>
+    <span class="fiche">TRK-066 · doc 19 P2-5 · P2-6</span>
+    <span class="classe">🔧 A coder</span>
+    <span class="grav" title="gravite 3">G3</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-13">2 j</span>
+    <code class="commit">b582fbf6</code>
+  </div>
+  <h3>Rappeler une RESTORE qui traîne (toutes les 15 min) et ne pas suspendre le clic manuel derrière la file SMS — FUSIONNÉ sur main le 14/09, à déployer</h3>
+  <p class="detail">engine-control.service.ts:1696-1703 : une RESTORE en queued est repollée toutes les 30 s sans fin, alertée UNE fois (alertedAt) ; un téléphone éteint plusieurs heures produit une alerte à 60 s puis le silence. sms-gateway.service.ts:746-759 : send() ne résout qu'au départ effectif et requestCommand l'attend — avec N SMS en file (15 s chacun) le clic « Rallumer » peut dépasser le délai du proxy : toast « refusé » alors que l'intention est persistée et suivie. Geste : alertedAt plus vieux que 15 min ⇒ nouvelle ligne tant que non terminal ; après 60 min en queued, nouvelle tentative ; requestCommand (MANUAL) répond après persistance + première tentative TCP, le worker/WS finit (Promise.race 20 s). ✅ COMMITTÉ LE 14/09 : b582fbf6. Sentinelle : jamais alertée OU alertée il y a plus de 15 min → nouvelle ligne CRITICAL « toujours non confirmée depuis N min », par comparaison-et-échange sur alertedAt (deux instances ne rappellent pas deux fois). Worker : un SMS en file depuis plus de 60 min est annulé au relais puis retenté au tick suivant (le budget de 3 le compte). dispatchBounded : un clic MANUEL répond au plus tard après ENGINE_MANUAL_RESPONSE_BUDGET_MS (20 s, env) avec l'intention persistée, l'envoi finit en arrière-plan ; le planificateur attend toujours. 4 tests. Doc : 28-CORRECTIF-P2-RESTORE-QUI-TRAINE-SE-RAPPELLE-2026-09-14.md. 🔀 FUSIONNÉ LE 14/09 À 10:55 : PR vizyoagency-create/vizyo-tracky#138 (merge commit 08c5fc2d) ; relais PR vizyo-texto#9 (724bcb8). pnpm verify sur la branche puis sur la branche fusionnée avec origin/main : typecheck vert, smoke 5/5, partagé 423, API 262 suites / 4 145 tests, web 740. NON DÉPLOYÉ : la production reste sur 9afdf52a (déployée par toi le 14/09 08:20 UTC, chantier rdv) — la fenêtre du doc 25 reste à jouer.</p>
+  <p class="attendue"><b>Preuve attendue</b> — Test : une RESTORE en queued depuis 31 min a deux lignes d'alerte ; un clic pendant que 5 SMS sont en file répond en moins de 3 s avec la commande PENDING.</p>
+  <div class="badges"></div>
+</article>
+<article class="t etat-COMMITE g3" data-etat="COMMITE" data-partie="centre-alerte" data-classe="A_CODER" data-g="3">
+  <div class="t-h">
+    <span class="marque" title="Ecrit et commite">~</span>
+    <span class="id">T52</span>
+    <span class="fiche">TRK-066 · doc 19 P2-8 · P2-9</span>
+    <span class="classe">🔧 A coder</span>
+    <span class="grav" title="gravite 3">G3</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-13">2 j</span>
+    <code class="commit">428d1f39</code>
+  </div>
+  <h3>Santé par appareil (deviceId, simCards) et allowlist non bloquante pour une RESTORE — FUSIONNÉ sur main le 14/09, à déployer</h3>
+  <p class="detail">Texto messages.service.ts:214-224 : Math.max sur tous les appareils non supprimés — un second téléphone de test enregistré sous le même compte rend le verdict « frais » même si le téléphone de production est mort ; deviceId jamais passé à l'envoi ; simCards (fourni par l'API) ignoré. Et un 403 « hors allowlist » compte comme échec de soumission (sms-gateway.service.ts:1015-1048), trois fois, puis FAILED : l'allowlist reste sur le chemin de la restauration. Geste : fraîcheur et envoi sur CAPCOM6_DEVICE_ID, simCards exposé ; bypass d'allowlist pour priority=critical_restore vers un numéro connu de Tracky, ou contrôle de l'allowlist dans le préflight. ⚠️ Prérequis de T55 (second téléphone). 🆕 14/09 : la moitié « santé par appareil (deviceId, simCards) » est faite par T44 (relais 784d766) ; reste l'allowlist non bloquante pour une RESTORE. ✅ COMMITTÉ LE 14/09 : 428d1f39 (l'allowlist) — la moitié « santé par appareil » était déjà faite par T44 (relais 784d766). Sur un 403 « allowlist » pour un envoi priority=critical_restore, Tracky ajoute le numéro du boîtier à l'allowlist du relais (AllowlistService.add, injecté en @Optional), retente UNE fois et écrit une ligne « Allowlist du relais incomplète » ; une CUT hors allowlist reste refusée ; ajout impossible → échec ordinaire. 5 tests. Doc : 29-CORRECTIF-P2-ALLOWLIST-NE-BLOQUE-PAS-RESTORE-2026-09-14.md. 🔀 FUSIONNÉ LE 14/09 À 10:55 : PR vizyoagency-create/vizyo-tracky#138 (merge commit 08c5fc2d) ; relais PR vizyo-texto#9 (724bcb8). pnpm verify sur la branche puis sur la branche fusionnée avec origin/main : typecheck vert, smoke 5/5, partagé 423, API 262 suites / 4 145 tests, web 740. NON DÉPLOYÉ : la production reste sur 9afdf52a (déployée par toi le 14/09 08:20 UTC, chantier rdv) — la fenêtre du doc 25 reste à jouer.</p>
+  <p class="attendue"><b>Preuve attendue</b> — Test : deux appareils, l'ancien frais et le configuré périmé → operational=false ; une RESTORE vers un numéro absent de l'allowlist part quand même (ou est refusée AVANT la fenêtre par le préflight).</p>
+  <div class="badges"></div>
+</article>
+<article class="t etat-COMMITE g3" data-etat="COMMITE" data-partie="centre-alerte" data-classe="A_CODER" data-g="3">
+  <div class="t-h">
+    <span class="marque" title="Ecrit et commite">~</span>
+    <span class="id">T53</span>
+    <span class="fiche">TRK-066 · doc 19 P2-10</span>
+    <span class="classe">🔧 A coder</span>
+    <span class="grav" title="gravite 3">G3</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-13">2 j</span>
+    <code class="commit">b407481a</code>
+  </div>
+  <h3>Tests : exercer la table des tentatives, index dans schema.prisma, migration rejouée sur PostgreSQL réel, changement d'heure du 25/10 — FUSIONNÉ sur main le 14/09, à déployer</h3>
+  <p class="detail">engine-control.service.ts:957-971 lit le délégué engineDeliveryAttempt en duck-typing → undefined dans tous les mocks → beginAttempt/finishAttempt inertes en test ; la contrainte CHECK (status IN … 'UNAVAILABLE' …) et l'unicité (commandId, attemptNumber) n'ont jamais tourné. engine_control_commands_restore_worker_idx (migration lignes 25-26) absent de schema.prisma (prochain migrate dev proposera de le supprimer). Aucun test de DST Europe/Paris (prochain : 25/10/2026) ; getNowInTimezone fabrique une Date locale. Aucun plan de purge pour engine_delivery_attempts. Geste : mock explicite dans le harnais ; @@index([action, status, nextAttemptAt, dispatchLeaseUntil]) ; test d'intégration sur PostgreSQL (docker) : migration après 20260913*, contraintes, crash entre create et dispatch ; test DST ; rétention à décider (180 j ?). 🆕 14/09 (T47) : l'index engine_control_commands_restore_worker_idx est dans schema.prisma (fde25b96, map explicite) ; la migration a été rejouée sur un PostgreSQL 18 réel (5 000 commandes, 3 000 sms_logs) avec Prisma 6.19.3 — reste la copie PostGIS 16 (doc 25 §6.2, sur le VPS), le mock des tentatives et le test du 25/10. ✅ COMMITTÉ LE 14/09 : b407481a + e1634c97. Le harnais engine-control porte un faux délégué engineDeliveryAttempt présent dans TOUS les tests, qui lit les deux listes CHECK dans le SQL de la migration et refuse un statut/canal hors liste (23514) ou un doublon (commandId, attemptNumber) (P2002) ; les 132 tests existants passent avec les contraintes actives ; garde anti-dérive statique (chaque littéral passé à beginAttempt/finishAttempt ∈ CHECK) ; TCP WRITTEN→ACKNOWLEDGED, TCP UNAVAILABLE, SMS QUEUED→ACCEPTED corrélée, n°1 puis n°2 sans collision. Changement d'heure : 5 tests Europe/Paris (25/10/2026 et 28/03/2027) — heure murale, fenêtre 06:00 à 04:00Z puis 05:00Z, computeNextTransition à travers la bascule, heure répétée (plage de nuit refermée deux fois : connu, documenté, non corrigé), heure sautée. 12 tests. Doc : 31-CORRECTIF-P2-JOURNAL-DES-TENTATIVES-EXERCE-2026-09-14.md. ⚠️ RESTE, non vérifié ici : rejeu des migrations sur PostgreSQL/PostGIS 16 réel (Docker non démarré sur ce poste ; doc 25 §6 sur le VPS), prisma migrate diff (base fantôme), rétention de engine_delivery_attempts (décision : 180 j ?). 🔀 FUSIONNÉ LE 14/09 À 10:55 : PR vizyoagency-create/vizyo-tracky#138 (merge commit 08c5fc2d) ; relais PR vizyo-texto#9 (724bcb8). pnpm verify sur la branche puis sur la branche fusionnée avec origin/main : typecheck vert, smoke 5/5, partagé 423, API 262 suites / 4 145 tests, web 740. NON DÉPLOYÉ : la production reste sur 9afdf52a (déployée par toi le 14/09 08:20 UTC, chantier rdv) — la fenêtre du doc 25 reste à jouer.</p>
+  <p class="attendue"><b>Preuve attendue</b> — La suite exerce engine_delivery_attempts (au moins un test échoue si CHECK ou UNIQUE est violé) ; prisma migrate diff ne rend aucune dérive ; un test couvre le 25/10/2026 03:00.</p>
+  <div class="badges"></div>
+</article>
+<article class="t etat-COMMITE g3" data-etat="COMMITE" data-partie="centre-alerte" data-classe="A_CODER" data-g="3">
+  <div class="t-h">
+    <span class="marque" title="Ecrit et commite">~</span>
+    <span class="id">T58</span>
+    <span class="fiche">TRK-069</span>
+    <span class="classe">🔧 A coder</span>
+    <span class="grav" title="gravite 3">G3</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-14">1 j</span>
+    <code class="commit">1539674c</code>
+  </div>
+  <h3>La cle de refroidissement de la sentinelle des agents doit porter la CAUSE — et courrier-ia doit lire le premier objet JSON equilibre — sur main, FUSIONNÉ et poussé le 14/09, à déployer</h3>
+  <p class="detail">TROUVE LE 14/09 : le passage courrier-ia du 13/09 17h52 UTC est en echec (succes = false, erreur SyntaxError: Unexpected non-whitespace character after JSON at position 407 — le travail rapport-activite repose en tentative 2/3, puis 7 travaux livres), et le centre d alerte N EN DIT RIEN. La sentinelle l a examine a 18h50, 19h50, 20h50 et suivants ; l echec ne porte pas de cause commune, donc signaler(courrier-ia, echec) est appele — mais la cle de refroidissement (agent, motif) avait ete consommee a 02h50 par la ligne weekly limit, pour 24 h (agents-locaux-sentinelle.service.ts, signaler et cleRefroidissement). UN ECHEC D UNE AUTRE CAUSE SOUS LA MEME CLE RESTE MUET JUSQU AU LENDEMAIN. Deux gestes. (1) Sentinelle : faire entrer un hachage court de la cause (motif normalise : nombres, dates et identifiants retires) dans la cle de refroidissement, afin qu une cause nouvelle crie sans delai pendant qu une cause repetee reste a une ligne par jour ; test : deux echecs de causes differentes a une heure d intervalle produisent deux lignes, deux echecs de la meme cause n en produisent qu une. (2) Agent (outils/agent-courrier-ia.cjs:239) : remplacer l extraction gourmande \{[\s\S]*\} — qui prend du premier { au DERNIER } et englobe tout texte ajoute par le modele apres son objet — par la lecture du premier objet JSON equilibre (comptage des accolades hors chaines), ou demander une sortie structuree a la CLI ; test : une reponse objet + phrase est acceptee, une reponse sans objet est reposee. Un rapport d activite CLIENT est en jeu : la troisieme tentative tombe au passage de 04h30 UTC et un echec le passerait en echec definitif. ✅ COMMITTÉ LE 14/09 sur main (local, non poussé, non déployé) : 1539674c. (1) empreinteCause(motif) = sha1 court du motif normalisé (chiffres, dates, identifiants hex/uuid retirés) ; cleRefroidissement(agent, 'echec', cause) l'ajoute à la clé → une cause répétée = une ligne par jour, une cause nouvelle crie sans délai ; RefroidissementAlerteService.oublierAvant(prefixe, avant) : un passage réussi oublie toute la famille des clés d'échec antérieures (le préfixe couvre aussi l'ancienne clé sans empreinte). (2) outils/json-equilibre.cjs : premier objet JSON équilibré (accolades hors chaînes, échappements) à la place du gourmand /\{[\s\S]*\}/ ; agent-courrier-ia.cjs l'utilise. Tests : sentinelle +4, refroidissement +2 (56 verts), json-equilibre 7 (node --test), cli-claude/pause-agents 46 inchangés. Reste : déploiement (deploy.sh) pour la sentinelle ; l'agent courrier-ia est un script du POSTE (pris en compte au prochain passage, sans déploiement). 🔀 14/09 11:00 : rebasé sur origin/main (hachage 1539674c) et POUSSÉ ; en production au prochain deploy.sh.</p>
+  <p class="attendue"><b>Preuve attendue</b> — Test date du 14/09 : une CRITICAL Dernier passage en echec : courrier-ia le 13/09/2026 a 19:52 — SyntaxError doit apparaitre au controle de 03h50 UTC (sauf reussite du passage de 04h30 avant). Apres correctif : deux echecs de causes distinctes le meme jour = deux lignes ; et le travail rapport-activite 4024ee90 livre (statut fait dans travaux_ia_locaux) sans repose pour un JSON suivi de texte.</p>
+  <div class="badges"></div>
+</article>
+<article class="t etat-COMMITE g4" data-etat="COMMITE" data-partie="centre-alerte" data-classe="DETTE_DOC" data-g="4">
+  <div class="t-h">
+    <span class="marque" title="Ecrit et commite">~</span>
+    <span class="id">T56</span>
+    <span class="fiche">TRK-066 · doc 19 §15</span>
+    <span class="classe">🧹 Dette de documentation</span>
+    <span class="grav" title="gravite 4">G4</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-13">2 j</span>
+    <code class="commit">0677cd05</code>
+  </div>
+  <h3>Corriger les promesses des documents du chantier qui dépassent le code — FUSIONNÉ sur main le 14/09, à déployer</h3>
+  <p class="detail">Doc 19 §15 : README « jamais abandonnée » vs 3 SMS puis FAILED (T42) ; doc 13/07 « webhook signé pour les statuts sortants » vs aucun émetteur (T45) ; doc 07 R4.1 coché « rejouée à la reconnexion » vs aucun hook (T42) ; doc 11 P0-4 « SIM explicitement sélectionnée » vs CAPCOM6_SIM_NUMBER absent (T43) ; doc 11 P0-6 quatre états vs un booléen (T44) ; doc 12 90 s vs code 120 s ; doc 13 déploiement « à la main » vs deploy.sh (T47) ; aucun mot sur main qui a bougé (T46). Geste : réécrire chaque phrase quand la tâche correspondante est close, sinon la marquer « non implémenté » ; indexer les documents 19 et 20 (fait dans la branche). 🆕 14/09 (T42) : trois promesses sont désormais TENUES par le code — README « jamais abandonnée », doc 03 orchestrateur points 3/4/8 (attachée au prochain login, retentée aux reconnexions, K renvoyée tant que non prouvée), doc 07 R4.1 / CC-003 « rejouer dès la reconnexion ». Restent à réécrire : « file TCP persistante » (c'est l'intention en base, pas une file), doc 02 CC-003 « socket absente force un SMS » (vrai après 15 s au premier dispatch, choix conservé), et les autres points de T56. 🆕 14/09 (T44) : doc 11 P0-6 « quatre états » est désormais VRAI (device.state) ; doc 13 liste les variables du relais. 🆕 14/09 (T45) : doc 13/07 « webhook signé pour les statuts sortants » est désormais VRAI (relais → &lt;callbackUrl&gt;/status). 🆕 14/09 (T47) : doc 13 étapes 3-5 corrigées (deploy.sh + renvoi au doc 25) ; le téléphone et les variables du relais sont enfin listés (doc 13, doc 25). ✅ COMMITTÉ LE 14/09 : 0677cd05 (doc 32). Le tableau du doc 19 §15 est repris ligne par ligne avec l'état au 14/09, et chaque phrase corrigée dans son document : README (ce que « jamais abandonnée » veut dire ; intention en base, pas une « file TCP » ; main a bougé ; suites du 14/09), doc 02 CC-003, doc 03 (état par point de l'orchestrateur : point 5 tenu autrement, point 7 non implémenté), doc 07 (renvoi de chaque case cochée ; R6.2b/R7.2b/R7.4 restent ouvertes ; seuils 120 s / 900 s ; webhook sortant tenu depuis T45), doc 11 (P0-4 SIM non faite en production → T43 ; P0-6 tenu), doc 12 (90 s → 120 s ; second téléphone non implémenté), doc 13 (émetteur des statuts sortants), doc 17 (chiffres datés). Non corrigé, noté : le libellé « relais SMS injoignable : … (HTTP 404) » d'un relais joignable mais ancien ; le kill-switch reste invisible sur la page Horaires (T3). 🔀 FUSIONNÉ LE 14/09 À 10:55 : PR vizyoagency-create/vizyo-tracky#138 (merge commit 08c5fc2d) ; relais PR vizyo-texto#9 (724bcb8). pnpm verify sur la branche puis sur la branche fusionnée avec origin/main : typecheck vert, smoke 5/5, partagé 423, API 262 suites / 4 145 tests, web 740. NON DÉPLOYÉ : la production reste sur 9afdf52a (déployée par toi le 14/09 08:20 UTC, chantier rdv) — la fenêtre du doc 25 reste à jouer.</p>
+  <p class="attendue"><b>Preuve attendue</b> — Relecture croisée : chaque case cochée de docs 07/13/15/17/18 renvoie à un test ou à une mesure, ou est décochée.</p>
+  <div class="badges"></div>
+</article>
+<article class="t etat-COMMITE g4" data-etat="COMMITE" data-partie="centre-alerte" data-classe="A_CODER" data-g="4">
+  <div class="t-h">
+    <span class="marque" title="Ecrit et commite">~</span>
+    <span class="id">T59</span>
+    <span class="fiche">TRK-079</span>
+    <span class="classe">🔧 A coder</span>
+    <span class="grav" title="gravite 4">G4</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-14">1 j</span>
+    <code class="commit">314e4193</code>
+  </div>
+  <h3>Ne plus remonter au centre d alerte les appels avortes par la fermeture de la page sur le canal anonyme (robots) — sur main, FUSIONNÉ et poussé le 14/09, à déployer</h3>
+  <p class="detail">TROUVE LE 14/09 : quatre lignes frontend-anon le 13/09 a 22h50 et 23h14 — deux robots (adresses Amazon EC2 us-east-1, agent iPhone falsifie : iOS 18 avec Safari 26) chargent l application sans session et l abandonnent au bout d une seconde ; les deux requetes en vol (fetch de /api/health par le service demo-mode, import differe d une route) sont annulees par la navigation et rejettent TypeError: Failed to fetch — le meme texte qu une panne de reseau — puis le rapport arrive quand meme parce qu il part en keepalive. Le chunk cite est PRESENT dans le bundle servi. Geste, dans apps/web/src/app/core/error/report-client-error.ts : ne pas remonter un TypeError de fetch ou d import quand document.visibilityState vaut hidden ou qu un pagehide a ete recu ; et sur le chemin anonyme seulement (pas de sessionId), ne remonter que les erreurs qui ne sont pas de transport. Contrepartie assumee : une vraie panne de /api/health vue par un anonyme ne produira plus de ligne sur ce canal — c est le role de la sonde des dependances. NE PAS fermer l endpoint public (les bugs JS d avant connexion sont le pire cas pour la credibilite), NE PAS bloquer les adresses. ✅ COMMITTÉ LE 14/09 sur main (local, non poussé, non déployé) : 314e4193. report-client-error.ts : estErreurDeTransport (TypeError de fetch ou d'import de module, libellés Chrome/Firefox/Safari) ; une erreur de transport page cachée ou après pagehide (rouvert par pageshow) n'est pas remontée ; sur le canal anonyme, seules les erreurs qui ne sont pas de transport remontent — l'endpoint public reste ouvert, un bug JS avant connexion remonte toujours. Tests : report-client-error.spec.ts (8, les deux sens), suite web main 729/729. Preuve attendue après déploiement : sept jours sans paire frontend-anon à moins de 100 ms depuis une adresse sans session, ET au moins une erreur JS réelle pré-login remontée. 🔀 14/09 11:00 : rebasé sur origin/main (hachage 314e4193) et POUSSÉ ; en production au prochain deploy.sh.</p>
+  <p class="attendue"><b>Preuve attendue</b> — Sur sept jours apres deploiement : zero paire frontend-anon a moins de 100 ms depuis une adresse sans session, ET une erreur JS reelle pre-login (autre qu un fetch avorte) remonte toujours — si la source se tait entierement, on a ferme le canal, pas le bruit.</p>
+  <div class="badges"></div>
+</article>
+<article class="t etat-COMMITE g4" data-etat="COMMITE" data-partie="centre-alerte" data-classe="A_CODER" data-g="4">
+  <div class="t-h">
+    <span class="marque" title="Ecrit et commite">~</span>
+    <span class="id">T60</span>
+    <span class="fiche">main · 152883ec</span>
+    <span class="classe">🔧 A coder</span>
+    <span class="grav" title="gravite 4">G4</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-14">1 j</span>
+    <code class="commit">979fdfec</code>
+  </div>
+  <h3>Test fenetre-utile.spec.ts (trajets, sur main) tient à la milliseconde : deux Date.now() distincts — à figer — sur main, FUSIONNÉ et poussé le 14/09, à déployer</h3>
+  <p class="detail">Vu le 14/09 en lançant la suite API complète du chantier (260 suites) : « une rétention portée à 90 jours reste exploitable de bout en bout » compare demandee (Date.now() − 89 j) à la valeur rendue par utile(), calculée sur un second Date.now() : sous charge, 1 ms d'écart → rouge (Expected 1781671598952, Received …953). Vert relancé seul (règle CLAUDE.md). Fichier apps/api/src/trip-analysis/fenetre-utile.spec.ts, commit 152883ec (main, hors chantier). Geste : jest.useFakeTimers({ now }) ou une seule lecture d'horloge injectée ; ne pas toucher au code de production. ✅ COMMITTÉ LE 14/09 sur main (local) : 979fdfec — horloge figée par jest.useFakeTimers({ now }) pour toute la suite ; 3 exécutions consécutives vertes. 🔀 14/09 11:00 : rebasé sur origin/main (hachage 979fdfec) et POUSSÉ ; en production au prochain deploy.sh.</p>
+  <p class="attendue"><b>Preuve attendue</b> — Le test ne lit plus l'horloge deux fois ; 20 exécutions consécutives vertes sous charge.</p>
   <div class="badges"></div>
 </article>
 <article class="t etat-DEPLOYE g2" data-etat="DEPLOYE" data-partie="centre-alerte" data-classe="A_CODER" data-g="2">
@@ -1030,7 +1120,7 @@
     <span class="fiche">TRK-070</span>
     <span class="classe">🔧 A coder</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-06">8 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-06">9 j</span>
     <code class="commit">2112e9ae</code>
   </div>
   <h3>Le niveau de l'escalade doit suivre la CAUSE, pas la gravite</h3>
@@ -1045,7 +1135,7 @@
     <span class="fiche">TRK-078</span>
     <span class="classe">🔧 A coder</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-13">1 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-13">2 j</span>
     <code class="commit">229b7861</code>
   </div>
   <h3>Dedupliquer l alerte d exces de vitesse sur l EXCES, pas sur l identifiant de trajet</h3>
@@ -1060,7 +1150,7 @@
     <span class="fiche">TRK-069 · TRK-071</span>
     <span class="classe">🔧 A coder</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-13">1 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-13">2 j</span>
     <code class="commit">02d985c3</code>
   </div>
   <h3>Le poste sait qu il est au plafond : les agents s arretent seuls, un courriel part, un bouton relance tout — decision D5</h3>
@@ -1075,7 +1165,7 @@
     <span class="fiche">TRK-016</span>
     <span class="classe">🏗️ Chantier, hors passe</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-08-09">36 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-08-09">37 j</span>
     <code class="commit">4d1c4cb5</code>
   </div>
   <h3>Recalage cartographique : flux neuf repare, mesure a redefinir, historique a rattraper</h3>
@@ -1090,7 +1180,7 @@
     <span class="fiche">TRK-076</span>
     <span class="classe">🔧 A coder</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-07">7 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-07">8 j</span>
     
   </div>
   <h3>La carte survit a une perte de contexte WebGL</h3>
@@ -1105,7 +1195,7 @@
     <span class="fiche">TRK-016</span>
     <span class="classe">🔧 A coder</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-09">5 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-09">6 j</span>
     <code class="commit">4d1c4cb5</code>
   </div>
   <h3>Redefinir la mesure du recalage : a la cloture, sur une fenetre fermee</h3>
@@ -1120,7 +1210,7 @@
     <span class="fiche">TRK-077</span>
     <span class="classe">🔧 A coder</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-10">4 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-10">5 j</span>
     <code class="commit">18c975ee</code>
   </div>
   <h3>Relire la garde du deploiement au moment ou elle va tuer, pas au moment ou l on decide</h3>
@@ -1135,7 +1225,7 @@
     <span class="fiche">TRK-069</span>
     <span class="classe">🔧 A coder</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-13">1 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-13">2 j</span>
     <code class="commit">507f0763</code>
   </div>
   <h3>Les agents du poste meurent d un Ctrl-C qui ne leur est pas destine — fenetre cachee, CLI isolee, limite corrigee</h3>
@@ -1150,7 +1240,7 @@
     <span class="fiche">TRK-075</span>
     <span class="classe">🔧 A coder</span>
     <span class="grav" title="gravite 1">G1</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-08">6 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-08">7 j</span>
     
   </div>
   <h3>Remonter la decision d alerter au bon etage, et borner le rejeu par la retention</h3>
@@ -1165,7 +1255,7 @@
     <span class="fiche">TRK-071 · TRK-069</span>
     <span class="classe">🤝 Decision ou geste humain</span>
     <span class="grav" title="gravite 1">G1</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-13">1 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-13">2 j</span>
     
   </div>
   <h3>Decider la parade au plafond hebdomadaire de la CLI du poste — le repli du repli n avait pas de plan</h3>
@@ -1180,7 +1270,7 @@
     <span class="fiche">VPS-013</span>
     <span class="classe">🟢 Agent, seul, avec preuve</span>
     <span class="grav" title="gravite 1">G1</span>
-    <span class="depuis" title="ouverte depuis le 2026-08-05">40 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-08-05">41 j</span>
     
   </div>
   <h3>Trois bases de PRODUCTION sans sauvegarde reproductible</h3>
@@ -1195,7 +1285,7 @@
     <span class="fiche">TRK-064</span>
     <span class="classe">🗓️ Deploye, a guetter</span>
     <span class="grav" title="gravite 1">G1</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-04">10 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-04">11 j</span>
     
   </div>
   <h3>CLOSE — la sentinelle de vitesse designe des vehicules, et elle sait se taire</h3>
@@ -1210,7 +1300,7 @@
     <span class="fiche">TRK-073</span>
     <span class="classe">🔧 A coder</span>
     <span class="grav" title="gravite 1">G1</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-06">8 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-06">9 j</span>
     
   </div>
   <h3>Marquer le passage au DEPART, pas a l arrivee</h3>
@@ -1225,7 +1315,7 @@
     <span class="fiche">—</span>
     <span class="classe">🟢 Agent, seul, avec preuve</span>
     <span class="grav" title="gravite 1">G1</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-06">8 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-06">9 j</span>
     
   </div>
   <h3>Verser docs/vps-audit sur main</h3>
@@ -1240,7 +1330,7 @@
     <span class="fiche">VPS-038</span>
     <span class="classe">🟢 Agent, seul, avec preuve</span>
     <span class="grav" title="gravite 1">G1</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-06">8 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-06">9 j</span>
     <code class="commit">fb0642f8</code>
   </div>
   <h3>Sentinelle « boitiers muets »</h3>
@@ -1255,7 +1345,7 @@
     <span class="fiche">TRK-069</span>
     <span class="classe">🔵 Action materielle</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-05">9 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-05">10 j</span>
     
   </div>
   <h3>Rallumer le poste et lire le motif de agent-recit-trajet</h3>
@@ -1270,7 +1360,7 @@
     <span class="fiche">TRK-072</span>
     <span class="classe">🤝 Decision ou geste humain</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-06">8 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-06">9 j</span>
     
   </div>
   <h3>Calibrer les notifications d exces de vitesse — qui doit les recevoir (D9)</h3>
@@ -1285,7 +1375,7 @@
     <span class="fiche">TRK-062</span>
     <span class="classe">🔧 A coder</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-03">11 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-03">12 j</span>
     <code class="commit">66d286f5</code>
   </div>
   <h3>SENT_UNCONFIRMED pour les commandes de boitier parties par SMS — la migration autorisee, la borne posee</h3>
@@ -1300,7 +1390,7 @@
     <span class="fiche">TRK-068</span>
     <span class="classe">🔧 A coder</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-04">10 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-04">11 j</span>
     <code class="commit">c80632ba</code>
   </div>
   <h3>Borner le fetch vers Vizyo Auth, et son jumeau</h3>
@@ -1315,7 +1405,7 @@
     <span class="fiche">TRK-022</span>
     <span class="classe">🔧 A coder</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-08-13">32 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-08-13">33 j</span>
     
   </div>
   <h3>Deduplication GENERIQUE des alarmes du boitier</h3>
@@ -1330,7 +1420,7 @@
     <span class="fiche">TRK-074</span>
     <span class="classe">🔧 A coder</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-06">8 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-06">9 j</span>
     <code class="commit">171857fc</code>
   </div>
   <h3>Donner une resolution automatique au temoin des taches planifiees</h3>
@@ -1345,7 +1435,7 @@
     <span class="fiche">TRK-069</span>
     <span class="classe">🔧 A coder</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-13">1 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-13">2 j</span>
     <code class="commit">a8f9575e</code>
   </div>
   <h3>Une cause commune aux agents du poste doit produire UNE ligne, pas vingt-cinq CRITICAL</h3>
@@ -1360,7 +1450,7 @@
     <span class="fiche">TRK-077</span>
     <span class="classe">🔧 A coder</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-13">1 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-13">2 j</span>
     <code class="commit">18c975ee</code>
   </div>
   <h3>Rendre le script de deploiement INCONTOURNABLE — decision D1 du proprietaire</h3>
@@ -1375,7 +1465,7 @@
     <span class="fiche">TRK-066 · doc 19 P1-4</span>
     <span class="classe">🔧 A coder</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-13">1 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-13">2 j</span>
     <code class="commit">d5c19a17</code>
   </div>
   <h3>Nettoyer le diff du chantier (reformatage prettier), rebaser sur main, résoudre le conflit — la production est déjà sur 66d286f5</h3>
@@ -1390,7 +1480,7 @@
     <span class="fiche">VPS-M59</span>
     <span class="classe">🟢 Agent, seul, avec preuve</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-06">8 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-06">9 j</span>
     <code class="commit">9dce59ec</code>
   </div>
   <h3>chargeDeFond.note s'affiche, avec un repli explicite</h3>
@@ -1405,7 +1495,7 @@
     <span class="fiche">TRK-065</span>
     <span class="classe">🤝 Decision ou geste humain</span>
     <span class="grav" title="gravite 3">G3</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-04">10 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-04">11 j</span>
     
   </div>
   <h3>Prevenir le titulaire de compte sans appareil — VOULU : les notifications sont en phase de test</h3>
@@ -1420,7 +1510,7 @@
     <span class="fiche">TRK-065</span>
     <span class="classe">🗓️ Deploye, a guetter</span>
     <span class="grav" title="gravite 3">G3</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-04">10 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-04">11 j</span>
     
   </div>
   <h3>Guetter la ligne hebdomadaire : le compte technique doit etre ecarte</h3>
@@ -1435,7 +1525,7 @@
     <span class="fiche">TRK-014</span>
     <span class="classe">🧹 Dette de documentation</span>
     <span class="grav" title="gravite 3">G3</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-06">8 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-06">9 j</span>
     
   </div>
   <h3>Rectifier le quoiFaire de TRK-014</h3>
@@ -1450,7 +1540,7 @@
     <span class="fiche">TRK-071</span>
     <span class="classe">🟢 Agent, seul, avec preuve</span>
     <span class="grav" title="gravite 3">G3</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-13">1 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-13">2 j</span>
     
   </div>
   <h3>Rattraper les recits des trois jours de plafond — tous les trajets, decision D4</h3>
@@ -1465,7 +1555,7 @@
     <span class="fiche">—</span>
     <span class="classe">🧹 Dette de documentation</span>
     <span class="grav" title="gravite 4">G4</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-06">8 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-06">9 j</span>
     
   </div>
   <h3>Creer ou dereferencer TACHES-AMELIORATION.md</h3>

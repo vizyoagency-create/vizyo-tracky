@@ -63,10 +63,52 @@ d'une section à l'autre sans le dire, ou cocher `[x]` sur la foi d'une fiche pl
 
 ---
 
-## 🗂️ Tableau de bord — 90 tâches, l'avancement d'un coup d'œil
+## 🗂️ Tableau de bord — 96 tâches, l'avancement d'un coup d'œil
 
-**Au 2026-09-14 (audit du centre d'alerte, 01 h 12 UTC — premier passage après les huit déploiements du 13/09) : 22 faites ·
-8 déployées, preuve attendue · 2 commitées · 58 ouvertes** *(dont 7 en gravité 1, 3 au-delà de 7 j)*.
+**Au 2026-09-15 (audit VPS, 02 h 22 UTC) : 22 faites ·
+8 déployées, preuve attendue · 50 ouvertes** *(dont 7 en gravité 1, 3 au-delà de 7 j)* — *le compte fait foi dans `app/taches.json`.*
+
+> 🔴 **LE FAIT VPS DU 15/09 : 46ᵉ HEURE, DEUXIÈME JOURNÉE ENTIÈRE SOUS 50 %, ET LE PREMIER
+> DÉPLOIEMENT MESURÉ SUR UN SEUL CŒUR A PRIS 32 MINUTES.** Le client de V28 et son parent sont
+> vivants à 02 h 28 UTC (**165 294 s**), `dockerd` à 100 % (cumul **+24,1 h de CPU en 24 h 00**),
+> `sysstat` rend **38,9 % d'inactivité sur le lundi 09-14 complet** (47,7 % samedi, 85–89 % la
+> semaine d'avant) et le `steal` a doublé ; `journal.jsonl` porte `deploy.sh` de 08 h 20 en
+> **1 916 s** contre 303–585 s la veille — *et aucune durée à deux cœurs n'existe encore*. Demain
+> sera le 3ᵉ jour < 50 % : le seuil 🔴 du collecteur. 🔴 **La copie hors-site de Vizyo Verify a
+> ÉCHOUÉ le 14/09 à 04 h 30** (`pairesCopiees 0`) : le copieur du poste s'est arrêté sur un
+> **manifeste orphelin** (archive purgée par le VPS, manifeste pas encore — trois `find -mtime +14`
+> séparés) et **n'a jamais atteint la paire du 09-14**, qui n'existe que sur le disque qu'elle
+> protège — 🆕 **VPS-043 → V31** (côté poste, dépôt `vizyo-verify`) ; et le collecteur affichait
+> « à jour » sur une ligne qui disait ÉCHEC (🆕 **VPS-M100**, corrigé). 🆕 **Un troisième compte de
+> dépôt, `dispocarbk`**, créé dimanche 05 h 32 depuis la même adresse (`179.198.198.199`), script
+> copié de `recevoir-dump` : **4 dumps de 1 172 octets, `prd` = `dev` à l'octet** — probablement
+> deux bases vides, à vérifier côté Dispocar (V30 élargie). ✅ **V27 est tranchée sur le fait** : la
+> démo **n'a jamais analysé** (`enabled=false` depuis le 07/09, `lastRunAt` NUL) — les « 121
+> analyses » d'hier étaient importées de la production avec leurs horodatages (🆕 **VPS-M101**,
+> corrigé). ✅ Le ménage a rendu les 3 paires du 09-13 (34 → 31 images) ; `tracky-api:latest`
+> (11 h 47) **n'a jamais été déployé** — le conteneur tourne sur `avant-…-1140` (🆕 bloc du
+> collecteur : journal T33 + « ce qui tourne contre `latest` », qui aurait sonné sur T66). Lundi
+> complet **33 émetteurs**, 3 compteurs à 33, 7 sauvegardes sur 7. 🔧 3 correctifs au collecteur.
+
+> 🔴🔴 **LE FAIT DU 15/09 : LE COUPE-CIRCUIT A TOURNÉ HIER SOIR SUR L'ANCIEN CODE, ET LA MISE EN PRODUCTION
+> DE 11:40 N'A PAS EU LIEU.** La fenêtre T47 n'a pas eu lieu ; les 30 plannings CDEF31 réarmés par le client
+> ont produit **24 `CUT` `SCHEDULER` à 20:00 UTC, toutes acquittées par TCP en 1 à 5 s** (HD-584-BF et BP-434-RD
+> compris), le 25ᵉ (HM-769-GA) différé « hors champ GPS » — **et deux véhicules déclarés « boîtier débranché »**
+> ont été coupés, dont **HM-733-GA rallumé à la main par son exploitant à 23:13** (T9 / **T14 : requalifier** —
+> la déclaration retient les alarmes, pas le planificateur). **Les 22 `RESTORE` du matin partent à 05:00 UTC sur
+> le même code : à lire à 07:10 Paris.** Et `deploy.sh`, lancé à 11:40 sur `feat/rdv-installation-v2`, a posé
+> `avant-20260914-1140-9afdf52a`, construit jusqu'à 11:47:34, **puis la seconde lecture de la garde (T29) a
+> retenu la recréation** — passage 11:45 → 12:44 (59 min) — sans qu'aucune trace ne le dise : `journal.jsonl`
+> muet, conteneur intact, `leadDays` absent, et `origin/main` porte « **correctif déployé sur prod** ».
+> *Le garde-fou marche ; son silence, non* → 🆕 **T66**. 45 commits de `main` hors production. ✅ **T27 → FAIT**
+> (TRK-076, échéance du 15/09 atteinte : 180 h sans ligne, le même compte revenu 5 jours sur 6). ✅ TRK-069 :
+> le test daté est tombé à 01:50 et **les 13 `CRITICAL` d'agents se sont archivées seules à 04:50** (22 / 22
+> passages réussis). 📏 **T28** : le 13/09 retrouvé **86 / 86 / 66 / 20 / 0** (1 sur 2) ; 14/09 = 244 / 244 / 233 /
+> 0 / 0. 📏 **T30** : lundi = 1 excès qualifié, 1 alerte, 0 doublon — détection saine, déduplication non
+> exercée. 🆕 **TRK-080** : la sentinelle nº 9 parle pour la première fois, sur un réglage écrit **hors
+> application** (T6) — faux positif d'intention, gravité 4. 🔴 **V28 : 44 h 38**, `dockerd` à 100 %, **7 passages
+> d'automatisation > 45 min le 14/09** (3, 3, 0 les jours d'avant) et un déploiement de 32 min — *tant qu'il
+> dure, la garde de T29 n'a de fenêtre qu'entre :35 et :42.*
 
 > ✅ **LE FAIT DU 14/09 : LA BAISSE DU CENTRE D'ALERTE VIENT, POUR LA PREMIÈRE FOIS, DE CORRECTIFS QUI
 > REFERMENT SEULS.** 202 → 198 actives : les 4 `CRITICAL` du témoin des tâches se sont archivées
@@ -278,7 +320,7 @@ d'une section à l'autre sans le dire, ou cocher `[x]` sur la foi d'une fiche pl
 | ~ | **T56** | TRK-066 · doc 19 §15 | Promesses des documents 01–18 datées « tenu / tenu autrement / non implémenté » (doc 32) | ~ **FUSIONNÉ** `0677cd05` (#138) — *à déployer* |
 | ☐ | **T57** | TRK-066 · doc 19 §14 | Dépendances : lot séparé après stabilisation (maplibre critique, socket.io/ws, axios via twilio, multer) | 🔧 À CODER |
 
-### Partie II — VPS *(31 tâches)*
+### Partie II — VPS *(32 tâches)*
 
 | | ID | Fiche | La tâche | État |
 |:--:|:--:|---|---|---|
@@ -309,10 +351,11 @@ d'une section à l'autre sans le dire, ou cocher `[x]` sur la foi d'une fiche pl
 | ☑ | **V24** | VPS-038 | **Sentinelle « boîtiers muets »** — *2 lignes à 06:30, pas 10 : **exact*** | ✅ **FAIT ET PROUVÉ** |
 | ☑ | **V25** | VPS-M59 | **`chargeDeFond.note` s'affiche** + repli explicite — *a survécu au rebuild du 07/09* | ✅ **FAIT ET PROUVÉ** |
 | ☐ | **V26** | VPS-013 · M88 | 🔓 **DÉBLOQUÉE** — ranger les **3 dossiers abandonnés** ; le faux orange est désormais **mesuré**, pas prédit | 🟡 PRÉPARÉ |
-| ☐ | **V27** | VPS-040 · M91 | Trancher si la base de **démo** doit être sauvegardée *(le 🔴 vaut **15 Go** ; 13/09 : **plus rien à mesurer**, l'import régénère `demo_replay_frames`)* | 🔵 PRODUIT |
-| ☐ | **V28** | VPS-016 | 🔴🔴 **Tuer le client Docker bloqué depuis le 13/09 04:34 UTC** (`docker logs texto-relay`, PID 159541, parent 159533 **vivant, PPID 1 — le parent d'abord**) — `dockerd` à 100 % d'un cœur, **5ᵉ occurrence** ; **14/09 02:27 : 22ᵉ heure, 1ʳᵉ journée entière sous 50 % d'inactivité (47,7 %), 7 `deploy.sh` de 303 à 585 s passés dessus** — *à faire AVANT le prochain déploiement* | 🤝 HUMAIN |
-| ☐ | **V29** | VPS-041 | 🔴 **Un seul rotateur pour les journaux de conteneur** — retirer la stanza `logrotate` à `copytruncate` qui perce des trous de NUL *(14/09 : re-percé à 00:00, **6** fichiers courants troués, **18** à 0 octet — geste à faire **avant minuit**)* | 🟡 PRÉPARÉ |
-| ☐ | **V30** | VPS-042 | 🔵 **Reconnaître le coffre Vaultwarden, `vaultbk`, `conductorbk`, `179.198.198.199` — et le rôle de DÉPOSITAIRE** : *14/09, lecture corrigée — `recevoir-dump` est un dépôt entrant, 14 dumps `age` de Conductor dans `/var/backups/vizyo-conductor-distant/` ; la session `vaultbk` de 100 h ne porte aucune commande* ; limite mémoire | 🔵 PRODUIT |
+| ☐ | **V27** | VPS-040 · M91 | Trancher si la base de **démo** doit être sauvegardée *(le 🔴 vaut **15 Go** ; **15/09 : la question d'hier est close — la démo n'a JAMAIS analysé, `enabled=false` depuis le 07/09, `lastRunAt` NUL ; ses analyses sont importées** — il ne reste qu'une décision)* | 🔵 PRODUIT |
+| ☐ | **V28** | VPS-016 | 🔴🔴 **Tuer le client Docker bloqué depuis le 13/09 04:34 UTC** (`docker logs texto-relay`, PID 159541, parent 159533 **vivant, PPID 1 — le parent d'abord**) — `dockerd` à 100 % d'un cœur, **5ᵉ occurrence** ; **15/09 02:28 : 46ᵉ heure, 2ᵉ journée entière sous 50 % (38,9 %), `deploy.sh` de 08:20 en 1 916 s contre 303–585 s — aucune durée à deux cœurs n'existe** — *à faire AVANT le prochain déploiement* | 🤝 HUMAIN |
+| ☐ | **V29** | VPS-041 | 🔴 **Un seul rotateur pour les journaux de conteneur** — retirer la stanza `logrotate` à `copytruncate` qui perce des trous de NUL *(15/09 : 3ᵉ nuit, **13,2 s de CPU** pour percer, **5** courants troués, **17** à 0 octet — le compte ne monte plus, il tourne ; geste à faire **avant minuit**)* | 🟡 PRÉPARÉ |
+| ☐ | **V30** | VPS-042 | 🔵 **Reconnaître le coffre Vaultwarden, `vaultbk`, `conductorbk`, 🆕 `dispocarbk`, `179.198.198.199` — et le rôle de DÉPOSITAIRE de DEUX applications** : *15/09 — 3ᵉ compte créé dimanche 05:32 depuis la même adresse, script copié de `recevoir-dump` ; **4 dumps de 1 172 octets, `prd` = `dev`** : base vide ? à vérifier côté Dispocar* ; session `vaultbk` 124 h ; limite mémoire | 🔵 PRODUIT |
+| ☐ | **V31** | VPS-043 · 037 | 🔴 **Réparer le copieur hors-site de Verify** — *le 14/09 04:30 il s'est arrêté sur un **manifeste orphelin** (archive purgée par le VPS, manifeste pas encore) et **n'a pas atteint la paire de la nuit** (`pairesCopiees 0`) ; le collecteur affichait « à jour »* : côté poste, ne plus `throw` sur une paire incomplète + parcourir du plus récent au plus ancien ; côté VPS, purger **par paire**. Preuve : le 16/09, `statut OK` **et** `pairesCopiees ≥ 2` | 🟢 AUTO |
 
 
 
@@ -627,6 +670,8 @@ rien ne bouge** — c'est l'absence de mouvement qui fait la preuve.*
 | **09/09** | 56 % | 42 % | 147 s | 30 | Deux tests datés indécidables — la rétention efface le point de référence *(🆕 VPS-M94)* ; `apt` enfin mesurable |
 | *10–12/09* | — | — | — | — | **Trois passages manqués** — quota hebdomadaire de l'agent, pas le poste éteint *(VPS-M73)* |
 | **13/09** | 54 % | 45 % | **186 s** | **32** | **`dockerd` brûle un cœur depuis 04 h 34 (VPS-016, 5ᵉ), client nommé à la seconde ; deux rotateurs percent les journaux** *(🆕 VPS-041)* ; coffre + 2 comptes apparus le 09/09 *(🆕 VPS-042)* ; VPS-038 **gravité 1 → 2** |
+| **14/09** | 57 % | 39 % | 189 s | 32 | 22ᵉ heure de VPS-016, **1ʳᵉ journée entière < 50 %** ; le VPS est le **dépôt** hors-site de Conductor, pas un tirage *(🆕 VPS-M99)* ; la loi de `apt` lue dans le code
+| **15/09** | 58 % | 42 % | 182 s | **33** | **46ᵉ heure, 2ᵉ journée < 50 %, `deploy.sh` à 1 916 s** ; **la copie hors-site de Verify a échoué sur un manifeste orphelin et le collecteur disait « à jour »** *(🆕 VPS-043, VPS-M100)* ; 3ᵉ compte de dépôt `dispocarbk` ; la démo n'a jamais analysé *(🆕 VPS-M101)*
 
 **Ce que la série raconte** — **la machine va bien et n'a jamais mal été** : 33/33 conteneurs sur
 les huit passages, **0 OOM en 30 jours**, PSI `full` à 0,00, disque **stable à 53 %** avec 46 Go
@@ -1054,6 +1099,11 @@ feront perdre une heure le jour où quelqu'un les suivra.*
 
 | Date | ID | Tâche | État | Commit | La preuve |
 |---|:--:|---|:--:|---|---|
+| **15/09** *(VPS)* | **V28** | VPS-016 — le client Docker bloqué, 46ᵉ heure | ☐ **OUVERT — 165 294 s** | — | 🔴🔴 PID **159541** et parent **159533** vivants à **02:28:55 UTC**, `dockerd` **100 %** (cumul 265,3 → **289,4 h**, **+24,1 h de CPU en 24 h 00**), `sysstat` lundi 09-14 **complet : 38,9 % d'inactivité** (2ᵉ journée entière < 50 %), `steal` 2,4 → **4,1 %** ; `sar` 38–41 % à chaque relevé, fosses à 7,95 % (08:20) et 8,37 % (11:50). 🆕 **Coût mesuré** : `journal.jsonl` porte `deploy.sh` du 09-14 08:20:38 (`9afdf52a`) en **1 916 s = 31 min 56** contre 303–585 s les 7 passages du 09-13 — *ces 303–585 s étaient déjà à un cœur : aucune durée à deux cœurs n'existe, le premier `deploy.sh` après V28 sera la première*. Demain = 3ᵉ jour < 50 % = seuil 🔴 du collecteur. Geste inchangé, parent d'abord |
+| **15/09** *(VPS)* | 🆕 **V31** · 🆕 **VPS-043** · 🆕 **VPS-M100** | [VPS-043](../vps-audit/REFERENCE-CONSTATS.md) — la copie hors-site de Verify s'est arrêtée sur un manifeste orphelin | ☐ **OUVERTE** + 🔧 **collecteur corrigé** | *(voir commit du jour)* | `DERNIERE-COPIE-LOCALE.json` (09-14 **04:30:06** UTC) : `statut ECHEC`, *« téléchargement de `verify-db_20260830-033156.sql.gz.gpg` en échec »*, **`pairesCopiees 0`**. `copie.log` du poste : 16 paires vues (15 + **1 manifeste orphelin** — le VPS purge par **trois `find -mtime +14` séparés**, l'archive part, le manifeste reste 46 s de plus), le copieur commence par la plus ancienne, `throw`, **la paire du 09-14 n'est jamais atteinte**. Le 09-11 le même mécanisme avait fait re-télécharger la paire 08-27 (signe avant-coureur). 🔑 Le collecteur imprimait `vizyo-verify ECHEC 21 h a jour` — le verdict ne lisait que l'âge de la **tentative** (VPS-M84 sur une ligne) → **VPS-M100, corrigé** (le statut décide, `detail` + `pairesCopiees` imprimés). **Test écrit d'avance** : le 16/09, `OK` + `pairesCopiees ≥ 2` (une chance sur deux, selon les secondes du manifeste 08-31) ou nouvel `ECHEC` sur `20260831` ; `OK` + 0 ne prouve rien. ⚠️ V6 ne remplace pas V31 |
+| **15/09** *(VPS)* | **V30** | [VPS-042](../vps-audit/REFERENCE-CONSTATS.md) — un troisième compte de dépôt | 🔁 **ÉLARGIE** | — | `useradd` **09-14 05:32:03 UTC** : `dispocarbk` (uid 1001), clé `depot-sauvegarde@dispocar` avec `command="/usr/local/bin/recevoir-dump-dispocar",restrict` — **copie de `recevoir-dump`** (`diff` : motif `prd|dev-dispocar-*` seulement), **même adresse `179.198.198.199`** (42 connexions / 7 j = 18 + 17 + 7). Dépôt `/var/backups/dispocar-distant/` : **4 dumps `age` de 1 172 octets**, `prd` **=** `dev` à l'octet — essais 05:32 (5 connexions en 37 s), puis **01:30 / 01:32 UTC** cette nuit. Vu par le bloc `useradd` (VPS-M98) **et** le bloc « non réclamés » (VPS-M99) : la leçon des deux passages précédents a rendu. ⚠️ 1 172 o = la taille d'une **base vide** — à vérifier côté Dispocar, pas d'ici. `ordonnancement` : `dispocar-depot-dump` ajouté |
+| **15/09** *(VPS)* | **V27** · 🆕 **VPS-M101** | [VPS-040](../vps-audit/REFERENCE-CONSTATS.md) — la démo n'a jamais analysé | ✅ **QUESTION CLOSE SUR LE FAIT** + 🔧 **collecteur corrigé** | *(voir commit du jour)* | `trip_automation_settings` sur `tracky_demo` : **`enabled = false`** (réglé **09-07 14:45**), **`lastRunAt` NUL**. Les 11 753 `trip_analyses` (max `computedAt` 09-12 22:48) sont **importées** de la production avec leurs horodatages : les « 121 arrivées » d'hier étaient des lignes copiées, le « 0 » d'aujourd'hui l'absence d'import — *ni activité ni arrêt, un miroir*. Le collecteur imprime désormais l'interrupteur par base (banc : prod `ACTIVE, dernier run 01:50` ; démo `COUPEE, dernier run JAMAIS`). Ne reste que la décision : ne pas sauvegarder (525 Mo/j) |
+| **15/09** *(VPS)* | **V29** · **V26** · **V14** · **V1** | Les tâches VPS re-mesurées | ☐ **OUVERTES** | — | **V29 — 3ᵉ nuit** : `logrotate` 00:00:04 → 00:00:36, **13,2 s de CPU** (1,98 hier), **5** courants troués (`maestroo-dev-lp` entre, 2 sortent par rotation Docker), **17** à 0 octet, `texto-relay` 4ᵉ jour — *le compte tourne*. **V26 — 9ᵉ jour**, 261 h PÉRIMÉE ×3, 9 copies côté vivant. **V14** — 15ᵉ échec / 18, cache de 9 h (16:39), conforme à la loi. **V1** — lundi complet **33** (4ᵉ jour ≥ 32), 3 compteurs **33 / 33 / 33** ; `…6714` a produit des positions le 09-14 jusqu'à 14:23 puis trames seules (intermittent). ✅ Ménage 00:40 : 34 → **31** images (les 3 paires du 09-13 parties comme écrit) — `avant-0811` a survécu : le filtre `until` date **l'étiquette**, pas le build ; attendu 16/09 : **27 images, plus de `tracky-api:latest`** (jamais déployé, 11:47 — 🆕 bloc « ce qui tourne contre `latest` », qui aurait sonné sur T66). Collecte à l'heure (02:22:55), seule, 182 s |
 | **14/09** *(VPS)* | **V28** | VPS-016 — le client Docker bloqué, 22ᵉ heure | ☐ **OUVERT — 78 814 s** | — | 🔴🔴 PID **159541** et parent **159533** vivants à **02:27:35 UTC**, `dockerd` **101 %** (cumul 249,0 → **265,3 h**, +16,3 h de CPU en 16 h 14 = un cœur entier), `sysstat` samedi 09-13 **complet : 47,7 % d'inactivité** (85–89 % les 7 jours d'avant) — **1ʳᵉ journée entière sous le seuil 🟠 du collecteur** ; 09-14 partiel 40,2 %. Le journal `/opt/tracky-deploiements/journal.jsonl` (T33) porte **7 `deploy.sh` le 09-13, 303 à 585 s** — 48 min de build sur un seul cœur ; aucune durée à deux cœurs n'existe : **faire V28 avant le prochain déploiement**. Geste inchangé, parent d'abord |
 | **14/09** *(VPS)* | **V30** · 🆕 **VPS-M99** | [VPS-042](../vps-audit/REFERENCE-CONSTATS.md) — la lecture du 13/09 corrigée par les scripts | 🔁 **REFORMULÉE** + 🔧 **collecteur corrigé** | *(voir commit du jour)* | `recevoir-dump` (lu) est un **DÉPÔT ENTRANT** : Vizyo Conductor (179.198.198.199) **pousse** chaque nuit ses dumps chiffrés `age` — instances `prd` et `dev`, une connexion chacune 01:00–01:08 UTC — dans `/var/backups/vizyo-conductor-distant/` (**14 fichiers**, 26–31 Ko, rétention 14 par instance, clé de déchiffrement absente d'ici). **Cette machine est le dépositaire hors-site de Conductor.** `vault-dump` (lu) **est** un tirage sortant (`sqlite3 .backup` + `tar` → stdout, 0,6 s/nuit). La session `vaultbk` de **100 h** ne porte **aucune commande** (canal vide, `do_poll`) : pas un dump bloqué. 🔑 Le collecteur imprimait `vizyo-conductor-distant AUCUNE SAUVEGARDE` le 13 **et** le 14/09 — filtre `.gz`/`.gpg` seulement, VPS-M88 un cran plus bas — **VPS-M99, corrigé** (`.age`, propriétaire du dossier, 3ᵉ lecture « dépôt d'une autre machine »), banc 1,7 s. V30 reformulée : reconnaître **le rôle** ; qui relit la copie du coffre côté Conductor ; fermer ou assumer la session ; 256 Mo sur `vizyo-vault` |
 | **14/09** *(VPS)* | **V14** | [VPS-033](../vps-audit/REFERENCE-CONSTATS.md) — la mesure `apt` | ✅ **GESTE CONFIRMÉ PAR LE CODE** | — | `apt-daily.timer` : `OnCalendar=*-*-* 6,18:00` + `RandomizedDelaySec=12h` ; `check_stamp()` compare **minuit du jour du tampon à minuit d'aujourd'hui** → la **1ʳᵉ sonnerie de chaque jour UTC rafraîchit** (13–27 s de CPU), la 2ᵉ ne fait rien (1 s) — journal : 09-13 03:01:51 rafraîchit, 15:12 et 19:56 rien ; `LastTriggerUSec` ne montre que la dernière. Cache frais à 02:20 **ssi** la sonnerie de 18 h tombe entre 00:00 et 02:20 = **2 h 20 / 12 h ≈ 19 %** ; mesuré **3 succès / 17 = 18 %**. Le geste (`OnCalendar=*-*-* 01:30:00`, `RandomizedDelaySec=15m`) est compatible avec le tampon : rafraîchit chaque jour 50 min avant l'audit. *Ne marcherait pas : garder deux sonneries et réduire l'aléa* |

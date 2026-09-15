@@ -1399,6 +1399,79 @@ if [ -n "$IMGS" ]; then
 else
   echo "  ⚠️ liste d images VIDE — mesure NON FAITE, PAS « aucune image » (VPS-M02)."
 fi
+# ⚠️ AJOUTE LE 2026-09-15 — ANGLE MORT N° 3 DU RAPPORT DU 14/09 (1er report), ET IL A PAYE LE
+# JOUR MEME. Le bloc ci-dessus dit QUELLES images sont nees ; il ne dit pas si elles ont ETE
+# DEPLOYEES. Le 14/09 a 11:40, `deploy.sh` a construit tracky-api:latest (11:47:34), puis la
+# seconde lecture de la garde (TRK-077 / T29) a RETENU la recreation : image etiquetee `latest`,
+# jamais lancee, AUCUNE ligne dans le journal (T66), et le conteneur tourne sur l image de 08:18
+# — celle que le meme script venait d etiqueter `avant-…-1140`. `:latest` n est donc PAS ce qui
+# tourne. Un `docker compose up` a la main (interdit par D1) aurait lance une image jamais
+# deployee, et le menage de 00:40 supprimera `latest` le 16/09 (inutilisee > 24 h).
+# Deux lectures, gratuites : (1) le journal `/opt/tracky-deploiements/journal.jsonl` (T33) sur
+# 48 h — c est la seule source qui dit QUI a deploye QUOI en combien de temps, et la serie des
+# `dureeS` mesurera l effet de V28 ; (2) pour tracky-api et tracky-web, l image du CONTENEUR
+# contre l image que porte l etiquette `latest` — un ecart est la signature d un build sans
+# deploiement (ou d un `docker tag` en retard).
+sub "Journal des deploiements (T33, 48 h) — et ce qui TOURNE contre ce qui est etiquete latest"
+JDEP=/opt/tracky-deploiements/journal.jsonl
+if [ -s "$JDEP" ]; then
+  SEUIL_48H=$(date -u -d '48 hours ago' '+%Y-%m-%dT%H:%M:%SZ' 2>/dev/null)
+  # Champs lus par sed, pas par jq : jq est deja utilise ailleurs mais une ligne malformee ne
+  # doit pas taire le bloc entier (VPS-M02) — on imprime ce qu on lit, ligne par ligne.
+  NDEP=0; NBUILD=0; NDEP24=0
+  SEUIL_24H_J=$(date -u -d '24 hours ago' '+%Y-%m-%dT%H:%M:%SZ' 2>/dev/null)
+  while IFS= read -r l; do
+    at=$(printf '%s' "$l" | sed -n 's/.*"at":"\([^"]*\)".*/\1/p')
+    [ -n "$SEUIL_48H" ] && [ "$at" \< "$SEUIL_48H" ] && continue
+    NDEP=$((NDEP+1))
+    { [ -z "$SEUIL_24H_J" ] || [ ! "$at" \< "$SEUIL_24H_J" ]; } && NDEP24=$((NDEP24+1))
+    printf '  %s  sha=%s  branche=%s  duree=%ss  attente=%s  force=%s  repli=%s  par=%s\n' \
+      "$at" \
+      "$(printf '%s' "$l" | sed -n 's/.*"sha":"\([^"]*\)".*/\1/p')" \
+      "$(printf '%s' "$l" | sed -n 's/.*"branche":"\([^"]*\)".*/\1/p')" \
+      "$(printf '%s' "$l" | sed -n 's/.*"dureeS":\([0-9]*\).*/\1/p')" \
+      "$(printf '%s' "$l" | sed -n 's/.*"attente":\([a-z]*\).*/\1/p')" \
+      "$(printf '%s' "$l" | sed -n 's/.*"force":\([a-z]*\).*/\1/p')" \
+      "$(printf '%s' "$l" | sed -n 's/.*"repli":\([^,}]*\).*/\1/p')" \
+      "$(printf '%s' "$l" | sed -n 's/.*"par":"\([^"]*\)".*/\1/p')"
+  done < "$JDEP"
+  [ "$NDEP" -eq 0 ] && echo "  (aucune ligne depuis $SEUIL_48H — aucun deploiement journalise sur 48 h)"
+  # Builds de tracky-api sur 24 h (par date de creation d image, meme source que le bloc
+  # precedent) contre lignes de journal sur 24 h : plus de builds que de lignes = un build qui
+  # n a PAS ete deploye. ⚠️ 24 h et pas 48 : le menage de 00:40 supprime les images de repli
+  # au-dela de 24 h, donc sur 48 h le compte d images est AMPUTE et le test ne peut plus sonner
+  # (banc du 15/09 : 3 images sur 48 h pour 8 lignes — alors que 2 builds / 1 ligne sur 24 h).
+  if [ -n "$IMGS" ] && [ -n "$SEUIL_24H" ]; then
+    # Une image porte souvent DEUX etiquettes (latest + avant-…) : on compte les dates de
+    # creation distinctes (a la seconde), pas les lignes — c est le nombre de BUILDS.
+    NBUILD=$(printf '%s\n' "$IMGS" | awk -F'\t' -v s="$SEUIL_24H" 'NF>3 && $2 ~ /^tracky-api:/ && substr($4,1,19) >= s {print substr($4,1,19)}' | sort -u | wc -l)
+    printf '  → sur 24 h : %s deploiement(s) journalise(s) pour %s build(s) tracky-api distinct(s)  (48 h : %s lignes ci-dessus)\n' "$NDEP24" "$NBUILD" "$NDEP"
+    if [ "$NBUILD" -gt "$NDEP24" ]; then
+      echo "     🟠 PLUS DE BUILDS QUE DE DEPLOIEMENTS : au moins un build n a pas ete suivi d une"
+      echo "        recreation (garde TRK-077 qui retient, ou passage abandonne) — et rien ne l a ecrit (T66)."
+    fi
+  fi
+else
+  echo "  ⚠️ $JDEP ABSENT ou vide — mesure NON FAITE (le journal est pose par deploy.sh depuis le 13/09)."
+fi
+for c in tracky-api tracky-web; do
+  IMG_RUN=$(timeout 15 docker inspect --format '{{.Image}}' "$c" 2>/dev/null)
+  IMG_LATEST=$(timeout 15 docker image inspect --format '{{.Id}} {{.Created}}' "$c:latest" 2>/dev/null)
+  ID_LATEST=${IMG_LATEST%% *}; CREE_LATEST=${IMG_LATEST#* }
+  if [ -z "$IMG_RUN" ]; then
+    printf '  %-11s ⚠️ conteneur non lu (docker inspect muet) — mesure NON FAITE\n' "$c"
+  elif [ -z "$ID_LATEST" ]; then
+    printf '  %-11s 🟠 AUCUNE image etiquetee latest — le conteneur tourne sur %s\n' "$c" "${IMG_RUN:7:12}"
+  elif [ "$IMG_RUN" = "$ID_LATEST" ]; then
+    printf '  %-11s ✅ tourne sur l image etiquetee latest (%s)\n' "$c" "${IMG_RUN:7:12}"
+  else
+    ETIQ=$(timeout 15 docker image inspect --format '{{join .RepoTags " "}}' "$IMG_RUN" 2>/dev/null)
+    printf '  %-11s 🟠 latest N EST PAS ce qui tourne : conteneur=%s (%s)  latest=%s construite %s\n' \
+      "$c" "${IMG_RUN:7:12}" "${ETIQ:-sans etiquette}" "${ID_LATEST:7:12}" "${CREE_LATEST:0:19}"
+    echo "              → un build a ete etiquete latest SANS etre deploye : compose up a la main"
+    echo "                lancerait cette image ; le menage de 00:40 la supprime au-dela de 24 h."
+  fi
+done
 sub "Volumes orphelins (aucun conteneur ne les monte)"
 # ⚠️ « orphelin » ne veut PAS dire « jetable » : un volume Postgres detache reste une base.
 # Toujours afficher la TAILLE pour qu'un humain juge avant de supprimer.
@@ -2160,6 +2233,34 @@ for pg in $(db_conteneurs "$MOTEURS_PG"); do
     "SELECT '  reglage '||name||' = '||setting||coalesce(unit,'') FROM pg_settings
      WHERE name IN ('shared_buffers','work_mem','effective_cache_size','random_page_cost');" 2>/dev/null)
   [ -n "$REGLAGES" ] && printf '%s\n' "$REGLAGES"
+  # ⚠️ AJOUTE LE 2026-09-15 (VPS-M101) — ANGLE MORT N° 4 DU 14/09, ET LE RAPPORT D HIER S EST
+  # TROMPE DESSUS. Il a lu « trip_analyses : 0 arrivee sur 24 h contre 121 » sur la base de DEMO
+  # et ecrit « la demo n analyse plus rien depuis l import ». Faux dans les deux sens : la demo
+  # n a JAMAIS analyse (trip_automation_settings.enabled=false depuis le 07/09, lastRunAt NUL),
+  # et les 121 « arrivees » etaient des lignes COPIEES de la production par l import du dimanche,
+  # avec leurs computedAt de production. Un debit lu sur une base RECONSTRUITE PAR IMPORT mesure
+  # l horodatage de la SOURCE, pas l activite de la copie. La table de reglage tranche en une
+  # ligne — on l imprime quand elle existe (prod ET demo), sans jamais la deviner.
+  AUTOM=$(docker exec "$pg" psql -U "$U" -d "$D" -t -A -F'|' -c \
+    "SELECT enabled, frequency, hour, \"lookbackHours\", \"narrateEnabled\",
+            coalesce(to_char(\"lastRunAt\" AT TIME ZONE 'UTC','YYYY-MM-DD HH24:MI'),'JAMAIS'),
+            to_char(\"updatedAt\" AT TIME ZONE 'UTC','YYYY-MM-DD HH24:MI')
+     FROM trip_automation_settings ORDER BY \"updatedAt\" DESC LIMIT 1;" 2>/dev/null)
+  if [ -n "$AUTOM" ]; then
+    a_en=$(printf '%s' "$AUTOM" | cut -d'|' -f1);  a_fq=$(printf '%s' "$AUTOM" | cut -d'|' -f2)
+    a_h=$(printf '%s' "$AUTOM" | cut -d'|' -f3);   a_lb=$(printf '%s' "$AUTOM" | cut -d'|' -f4)
+    a_na=$(printf '%s' "$AUTOM" | cut -d'|' -f5);  a_last=$(printf '%s' "$AUTOM" | cut -d'|' -f6)
+    a_upd=$(printf '%s' "$AUTOM" | cut -d'|' -f7)
+    if [ "$a_en" = "t" ]; then
+      printf '   automatisation des trajets : ✅ ACTIVE (%s, h=%s, fenetre %s h, recits=%s) — dernier run %s UTC, reglee le %s\n' \
+        "$a_fq" "$a_h" "$a_lb" "$a_na" "$a_last" "$a_upd"
+    else
+      printf '   automatisation des trajets : ⏸ COUPEE (enabled=false, reglee le %s) — dernier run %s\n' "$a_upd" "$a_last"
+      printf '     → les trip_analyses de cette base ne sont PAS produites ici : si elles arrivent, elles\n'
+      printf '       sont IMPORTEES avec les horodatages de leur source (VPS-M101). Ne pas lire leur\n'
+      printf '       debit comme une activite de cette base.\n'
+    fi
+  fi
   RPC_UN=$(printf '%s\n' "$REGLAGES" | awk '/random_page_cost/ {print $NF}')
   [ -n "$RPC_UN" ] && RPC_CACHE="${RPC_CACHE}${pg}=${RPC_UN}
 "
@@ -4029,9 +4130,26 @@ for f in /var/backups/*/DERNIERE-COPIE-LOCALE.json; do
   n() { grep -o "\"$1\": *[0-9]*" "$f" | head -1 | grep -o '[0-9]*$'; }
   age_h=$(( (MAINTENANT - $(date -d "$(v horodatage)" +%s 2>/dev/null || echo "$MAINTENANT")) / 3600 ))
   if [ "$age_h" -gt 48 ]; then verdict="⚠️ PERIMEE (> 48 h)"; else verdict="a jour"; fi
+  # ⚠️⚠️ CORRIGE LE 2026-09-15 (VPS-M100) — LE VERDICT NE LISAIT JAMAIS LE STATUT, ET IL A
+  # IMPRIME « ECHEC … a jour » SUR LA MEME LIGNE. Le 14/09 a 04:30 UTC le copieur a ECHOUE
+  # (`telechargement de verify-db_20260830-… en echec`, pairesCopiees=0 : la paire de la nuit
+  # N EST PAS hors-site), il a bien reecrit ce fichier avec statut=ECHEC — et le verdict, qui
+  # ne jugeait que l AGE de la tentative, a rendu « a jour ». C est VPS-M84 sur une seule ligne :
+  # deux verdicts, et c est le rassurant qu on lit. La fraicheur d une TENTATIVE ne prouve rien ;
+  # seul le statut dit si quelque chose a ete copie. L age ne juge plus qu APRES un statut OK.
+  statut=$(v statut)
+  if [ "$statut" != "OK" ]; then
+    verdict="🔴 ECHEC — RIEN de copie a cette tentative"
+  fi
   printf '  %-22s %-14s %3s h  %s  (%s copies locales)\n' \
-    "$(v application)" "$(v statut)" "$age_h" "$verdict" "$(n pairesLocales)"
+    "$(v application)" "$statut" "$age_h" "$verdict" "$(n pairesLocales)"
   printf '    destination : %s\n' "$(v copieHorsSite)"
+  if [ "$statut" != "OK" ]; then
+    printf '    🔴 detail du copieur : %s  (paires copiees : %s)\n' "$(v detail)" "$(n pairesCopiees)"
+    printf '       → la sauvegarde produite depuis la derniere copie REUSSIE n existe qu ICI, sur le\n'
+    printf '         disque qu elle protege. Un copieur qui s arrete sur la PREMIERE paire manquante\n'
+    printf '         ne copie pas les suivantes (liste triee du plus ancien au plus recent, VPS-043).\n'
+  fi
   # ⚠️⚠️ AJOUTE LE 2026-08-07 — CE VERDICT MENTAIT ENCORE CE MATIN, POUR LA DEUXIEME FOIS.
   # VPS-015 l'avait deja nomme le 2026-08-06 : « un copieur qui n'a rien a copier REUSSIT ».
   # La ligne a quand meme affiche « vizyo-verify OK 21 h a jour » alors que la sauvegarde
