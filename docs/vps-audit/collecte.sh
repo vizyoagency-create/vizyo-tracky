@@ -1079,6 +1079,39 @@ else
   echo "  ⚠️ manifeste $MANIF illisible ou jq absent : comparaison NON FAITE (pas « inchange »)"
 fi
 
+# ⚠️⚠️ AJOUTE LE 2026-09-16 (angle mort n° 2 du 13/09, reporte 3 fois) — LE PERIMETRE, CE N'EST
+# PAS QUE LES CONTENEURS. Le 09-14 a 05:32, un compte de service (`dispocarbk`) et un dossier de
+# depot (`dispocar-distant`) sont apparus. Ils ont ete VUS — par le bloc `useradd` (une fenetre de
+# journal de 7 jours, apres quoi le compte devient « ancien ») et par le proprietaire du dossier.
+# Un compte cree pendant 8 jours de passages manques (VPS-M73 : c'est arrive du 10 au 13/09)
+# ne serait vu par AUCUN des deux. Meme mecanique que ci-dessus : difference d'ensembles contre
+# le dernier manifeste publie, sur DEUX listes de plus — les comptes qui peuvent se connecter
+# (uid ≥ 1000, ou un shell qui n'est pas nologin/false) et les dossiers de /var/backups.
+# ⚠️ COUT : un `awk` sur /etc/passwd, un `ls`, deux `jq` sur le meme fichier local. Zero appel Docker.
+# ⚠️ Premiere pose : la comparaison est NON FAITE tant que le manifeste ne porte pas les cles.
+COMPTES_NOW=$(awk -F: '($3>=1000 || $7 ~ /sh$/) && $1!="root" && $1!="nobody" {print $1}' /etc/passwd | sort -u)
+DOSSIERS_NOW=$(ls -1d /var/backups/*/ 2>/dev/null | xargs -n1 basename 2>/dev/null | sort -u)
+echo "  comptesListe (a reporter tel quel dans chiffres)           : $(printf '%s\n' "$COMPTES_NOW" | paste -sd, -)"
+echo "  dossiersSauvegardeListe (a reporter tel quel dans chiffres) : $(printf '%s\n' "$DOSSIERS_NOW" | paste -sd, -)"
+if [ -r "$MANIF" ] && command -v jq >/dev/null 2>&1; then
+  for _cle in comptesListe dossiersSauvegardeListe; do
+    case "$_cle" in comptesListe) _now=$COMPTES_NOW; _quoi="compte(s)" ;; *) _now=$DOSSIERS_NOW; _quoi="dossier(s) de /var/backups" ;; esac
+    _ref=$(jq -r ".passages[0].chiffres.$_cle // empty" "$MANIF" 2>/dev/null | tr ',' '\n' | sed '/^$/d' | sort -u)
+    if [ -z "$_ref" ]; then
+      echo "  ⚠️ $_cle : le manifeste publie (${REF_DATE:-?}) ne la porte pas encore — comparaison NON FAITE (premiere pose)"
+      continue
+    fi
+    _n=$(comm -13 <(printf '%s\n' "$_ref") <(printf '%s\n' "$_now") | paste -sd, -)
+    _p=$(comm -23 <(printf '%s\n' "$_ref") <(printf '%s\n' "$_now") | paste -sd, -)
+    if [ -z "$_n" ] && [ -z "$_p" ]; then
+      echo "  ✅ $_quoi : IDENTIQUES au manifeste du $REF_DATE ($(printf '%s\n' "$_now" | grep -c .))"
+    else
+      [ -n "$_n" ] && echo "  🟠 $_quoi NEUF(S) depuis le manifeste du $REF_DATE : $_n  → a reconnaitre (VPS-042) : qui, pourquoi, quelle cle, quel script force"
+      [ -n "$_p" ] && echo "  🟠 $_quoi DISPARU(S) depuis le manifeste du $REF_DATE : $_p"
+    fi
+  done
+fi
+
 # ── Qui sert quel domaine ? (angle mort n° 2 des rapports du 08-06 au 08-08) ──
 # ⚠️ POURQUOI CETTE TABLE EXISTE. VPS-021 — « foodsqan-traefik tient les ports 80/443 de TOUTE
 # la production » — a ete trouve A LA MAIN, par trois commandes lancees en marge, apres cinq
@@ -3712,8 +3745,20 @@ for cont in $(db_conteneurs "$MOTEURS_TOUS"); do
   fi
   # Une base de DEVELOPPEMENT sans sauvegarde est un choix, pas un defaut : on le dit, plutot
   # que de produire une alerte quotidienne que tout le monde apprendra a ignorer.
-  case "$cont" in *-dev-*) nature="(developpement — sans enjeu)" ;; *) nature="" ;; esac
-  if [ -z "$trouve" ]; then
+  # ⚠️ AJOUTE LE 2026-09-16 (VPS-M91 b, « reconstructible », 6e report) : la base de DEMONSTRATION
+  # est regeneree chaque dimanche par tracky-demo-refresh.timer (prouve le 13/09 : l'import a
+  # recree demo_replay_frames dans la minute) et V27 a ete tranchee le 15/09 — « ne pas la
+  # sauvegarder ». Un 🔴 quotidien sur une decision prise apprend a ignorer la ligne 🔴 d'a cote.
+  # ⚠️ Le nom `-demo-` est une convention maison (VPS-M88) : si une base de production venait a
+  #    porter « demo » dans son nom, elle serait etiquetee a tort. C'est dit, et c'est le prix.
+  case "$cont" in
+    *-dev-*)  nature="(developpement — sans enjeu)" ;;
+    *-demo-*) nature="(demonstration — regeneree par l import du dimanche ; decision V27 du 15/09 : PAS de sauvegarde)" ;;
+    *)        nature="" ;;
+  esac
+  if [ -z "$trouve" ] && [ -n "$nature" ]; then
+    verdict="⬜ aucune sauvegarde — VOULU"
+  elif [ -z "$trouve" ]; then
     verdict="🔴 AUCUNE SAUVEGARDE"
   elif [ -z "$agemax_h" ]; then
     verdict="🔴 dossier VIDE"
@@ -3853,8 +3898,60 @@ for d in /var/backups/*/; do
     *-[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]) verdict="instantane ponctuel (garde volontairement)" ;;
     *) if [ "$age_h" -gt 30 ]; then verdict="⚠️ PERIMEE (> 30 h)"; else verdict="a jour"; fi ;;
   esac
-  printf '  %-26s %3s h  %-42s %2d copies, %s  %s%s\n' "$app" "$age_h" "$verdict" "$nb" "$taille" "$(basename "$fic")" "$_dep"
+  # ⚠️ AJOUTE LE 2026-09-16 (angle mort n° 4 du 15/09) : la FRAICHEUR d'un fichier ne dit pas
+  # qu'il contient quelque chose. Le 09-14, un depot entrant (dispocar-distant) a recu des dumps
+  # `pg_dump | gzip | age` de 1 172 octets, prd = dev a l'octet, trois nuits de suite — la
+  # taille d'une base VIDE (schema seul ~600 o gzippes + en-tete age ~200 o). Le bloc les
+  # affichait « a jour » sans rien dire. Un fichier de 1 172 o recu a l'heure est FRAIS ; il n'a
+  # pas pour autant fait ce qu'il pretend (cf. question ouverte du 15/09 : tentative ≠ resultat).
+  # Le seuil de 2 Ko est un ordre de grandeur, pas une loi : il ne se verifie que cote EXPEDITEUR
+  # (VPS-M01 : cette machine ne porte pas la cle age). COUT : un `stat` sur un fichier deja trouve.
+  _oct=$(stat -c %s "$fic" 2>/dev/null || echo 0)
+  _vide=""; [ "$_oct" -gt 0 ] && [ "$_oct" -lt 2048 ] && _vide="  🟠 ${_oct} o : probablement une base VIDE (ou la mauvaise base) — a verifier cote expediteur"
+  printf '  %-26s %3s h  %-42s %2d copies, %s  %s%s%s\n' "$app" "$age_h" "$verdict" "$nb" "$taille" "$(basename "$fic")" "$_dep" "$_vide"
 done
+
+# ── Fichiers poses a la RACINE de /var/backups — hors de tout dossier, donc hors de toute retention ──
+# ⚠️⚠️ AJOUTE LE 2026-09-16. Le 15/09 a 17:21 UTC, la fenetre du chantier coupe-circuit a pose
+# deux dumps de pre-deploiement (`vizyo-texto-avant-chantier-*.dump`, `capcom6-sms-avant-chantier-*.sql`)
+# DIRECTEMENT dans /var/backups/, pas dans un sous-dossier. Aucun bloc ne les voyait : la boucle
+# ci-dessus ne lit que /var/backups/*/, et le balayage « HORS de /var/backups » (plus bas) exclut
+# /var/backups en entier ET ne retient que les fichiers > 50 Mo. Un fichier a la racine tombe donc
+# entre les deux — et aucune retention de la machine ne couvre la racine : il y restera pour
+# toujours, comme les 1,7 Go de /root/backups (VPS-030). COUT : un `find -maxdepth 1`.
+# ⚠️ Le banc du 16/09 a attrape ma premiere redaction : la racine de /var/backups est AUSSI
+#    l'emplacement standard de Debian pour `dpkg-db-backup` (dpkg.status.N, dpkg.diversions.N,
+#    dpkg.statoverride.N, dpkg.arch.N, apt.extended_states.N, alternatives.tar.N) — 43 fichiers
+#    rotes .0 → .6 par le service, donc SOUS retention. Le bloc criait 🟠 sur chacun. On les
+#    exclut PAR NOM — et oui, c'est une liste ecrite a la main (VPS-M88) ; elle est legitime ici
+#    parce qu'elle designe une convention que Debian garantit (man dpkg-db-backup), pas une
+#    convention maison que personne ne garantit. Un nom nouveau de Debian s'affichera en 🟠 :
+#    c'est le bon sens de l'erreur.
+_racine=$(find /var/backups -maxdepth 1 -type f ! -name '*.json' \
+  ! -name 'dpkg.*' ! -name 'apt.extended_states.*' ! -name 'alternatives.tar.*' \
+  -printf '%TY-%Tm-%Td %TH:%TM  %8s o  %f\n' 2>/dev/null | sort)
+if [ -n "$_racine" ]; then
+  printf '\n  ── Fichiers a la RACINE de /var/backups (hors de tout dossier, donc hors de toute retention) ──\n'
+  printf '     (les sauvegardes systeme dpkg.*, apt.extended_states.*, alternatives.tar.* — rotees par\n'
+  printf '      dpkg-db-backup — sont exclues : elles ont une retention)\n'
+  printf '%s\n' "$_racine" | sed 's/^/    🟠 /'
+  printf '    → %s fichier(s), %s au total. Rien ne les enlevera : les ranger dans un dossier date\n' \
+    "$(printf '%s\n' "$_racine" | grep -c .)" "$(find /var/backups -maxdepth 1 -type f ! -name '*.json' ! -name 'dpkg.*' ! -name 'apt.extended_states.*' ! -name 'alternatives.tar.*' -printf '%s\n' 2>/dev/null | awk '{s+=$1} END {printf "%.1f Mo", s/1048576}')"
+  printf '      (« instantane ponctuel », garde volontairement) ou les retirer une fois le deploiement\n'
+  printf '      qu ils protegeaient juge acquis — voir VPS-030 avant tout geste.\n'
+fi
+# ⚠️ Et le meme angle mort UN CRAN PLUS BAS, trouve la meme nuit : le dump Tracky de la fenetre
+#    (161 Mo, `avant-chantier-20260915-1720.dump`) est DANS /var/backups/vizyo-tracky/, mais en
+#    `.dump` — hors du motif `.gz/.gpg/.age` de la boucle ci-dessus (VPS-M99, troisieme extension
+#    oubliee) ET hors du motif de retention de backup-db.sh (`tracky_prod_*.sql.gz`). Il ne sera
+#    ni compte, ni purge. On ne l'ajoute PAS au motif de la boucle : il deviendrait « la derniere
+#    copie » de vizyo-tracky et masquerait la fraicheur de la serie quotidienne. On le liste a part.
+_horsmotif=$(find /var/backups -mindepth 2 -maxdepth 2 -type f \( -name '*.dump' -o -name '*.sql' -o -name '*.tar' -o -name '*.bak' \) -printf '%TY-%Tm-%Td %TH:%TM  %8s o  %h/%f\n' 2>/dev/null | sort)
+if [ -n "$_horsmotif" ]; then
+  printf '\n  ── Archives dans un dossier de /var/backups mais HORS du motif .gz/.gpg/.age — donc hors retention ──\n'
+  printf '%s\n' "$_horsmotif" | sed 's/^/    🟠 /'
+  printf '    → ni comptees dans « copies », ni purgees par le script du dossier : a ranger ou a retirer (VPS-030).\n'
+fi
 
 # ── VPS-M88, second volet : QUEL dossier n'a ete reclame par AUCUN conteneur ? ─────────────
 # Le rapprochement de la table de couverture se fait par SOUS-CHAINE du nom du conteneur
@@ -4388,6 +4485,23 @@ DUREE=$(( $(date +%s) - T_DEBUT ))
 CHARGE_FIN=$(cut -d' ' -f1 /proc/loadavg)
 printf '\n\n═════ BUDGET DE LA COLLECTE ═════\n'
 printf '  duree totale : %s s   (budget impose : %s s)\n' "$DUREE" "${BUDGET:-90}"
+# ⚠️ AJOUTE LE 2026-09-16 (VPS-M73) : le passage est planifie a 02:22 UTC cote poste. Ce matin il a
+# demarre a 04:36 — le poste dormait (sorti de veille 02:20:46Z, rendormi dans la seconde, reveille
+# 04:34:19Z) — et RIEN dans cette sortie ne le disait : « ✅ ma collecte etait SEULE » se lit
+# « tout est normal ». Un retard de deux heures deplace TOUTES les fenetres « 24 h » de deux heures
+# (une comparaison a la veille n est plus a la veille), et il est le meme symptome que la copie
+# hors-site manquee le meme matin (le poste dort = un seul planificateur pour deux devoirs).
+# COUT : une soustraction. La valeur attendue est ecrite ici, pas derivee : si l heure planifiee
+# change cote poste, changer cette ligne — sinon elle criera a tort, ce qui vaut mieux que se taire.
+_att_h=2; _att_m=22
+_ecart_min=$(( ( (10#$(date -u -d "@$T_DEBUT" +%H) * 60 + 10#$(date -u -d "@$T_DEBUT" +%M)) - (_att_h * 60 + _att_m) ) ))
+if [ "$_ecart_min" -gt 20 ] || [ "$_ecart_min" -lt -20 ]; then
+  printf '  🟠 HEURE DE DEPART : %s UTC, soit %+d min sur l heure planifiee (%02d:%02d). Le poste a dormi,\n' "$(date -u -d "@$T_DEBUT" +%H:%M)" "$_ecart_min" "$_att_h" "$_att_m"
+  printf '     ou un quota l a retenu (VPS-M73) : toutes les fenetres « 24 h » de cette sortie sont decalees\n'
+  printf '     d autant, et la copie hors-site (04:30 UTC, meme poste) a probablement ete manquee AUSSI.\n'
+else
+  printf '  ✅ heure de depart : %s UTC (%+d min sur l heure planifiee %02d:%02d)\n' "$(date -u -d "@$T_DEBUT" +%H:%M)" "$_ecart_min" "$_att_h" "$_att_m"
+fi
 printf '  charge 1 min : %s au DEBUT  →  %s a la FIN   (limite imposee : 2.0 sur 2 coeurs)\n' \
        "$CHARGE_DEBUT" "$CHARGE_FIN"
 # ⚠️ VPS-M27 : c'est le DELTA qui arbitre, pas la valeur finale. Une charge finale elevee peut

@@ -627,6 +627,12 @@ cache jetable et une base de données.
 ## VPS-010 — Noyau non redémarré, 59 paquets en retard
 
 - **Domaine** : sécurité · **Gravité** : 2 · **Statut** : `A_TRAITER` — **désaggravé le 2026-08-12 sur le volet paquets, toujours ouvert sur le noyau**
+- **Vu : 2026-09-16 — V4 DÉBLOQUÉE (V28 faite), uptime 42,3 j.** Noyau actif **6.8.0-136**,
+  installés -137 / -138 / -139 ; 6 services sous `libc6` remplacée ; **3 correctifs de sécurité en
+  attente** (mesure valide, VPS-033) — installateur à 06 h 52. Créneau : **23 h 30**, hors HH:42–HH:46
+  (automatisation), hors 02 h 20–02 h 30 (audit), hors 03 h 00–04 h 55 (sauvegardes) ; 38 / 38 en
+  `unless-stopped`. ⚠️ `live-restore: true` est posé : les conteneurs survivent à un redémarrage
+  de `dockerd`, pas de la machine.
 - 🔴 **Vu : 2026-09-03 — LE VOLET « BIBLIOTHÈQUE REMPLACÉE » PASSE DE 4 À 6 SERVICES, ET LA CAUSE
   EST DATÉE.** `needrestart` nomme désormais : `dbus.service`, **`docker.service`**,
   `getty@tty1.service`, `serial-getty@ttyS0.service`, `systemd-logind.service`,
@@ -1607,7 +1613,23 @@ déploiement. C'est la différence entre fermer un incident et fermer sa cause.
 
 ## VPS-016 — `dockerd` tourne en boucle et brûle un cœur depuis 24 heures
 
-- **Domaine** : docker · **Gravité** : 1 · **Statut** : 🔴 **`A_TRAITER` — ROUVERT le 2026-09-13 : 5ᵉ OCCURRENCE EN COURS depuis 04 h 34 UTC, 46ᵉ heure au 2026-09-15** *(4ᵉ occurrence close le 2026-08-20 à 05 h 08 min 14, sans interruption · ⚠️ sa première remédiation avait échoué, VPS-M51)*
+- **Domaine** : docker · **Gravité** : **2** (1 → 2 le 2026-09-16 : occurrence close) · **Statut** : `SURVEILLANCE` — **5ᵉ occurrence CLOSE le 2026-09-15 à 17 h 20 UTC (V28, propriétaire, 60 h 46), la CLASSE reste ouverte (VPS-041 / V29)** *(4ᵉ occurrence close le 2026-08-20 à 05 h 08 min 14 · ⚠️ sa première remédiation avait échoué, VPS-M51)*
+- ✅ **Vu : 2026-09-16 — LA 5ᵉ OCCURRENCE EST CLOSE, ET LA PREUVE EST VENUE EN QUATRE LECTURES
+  INDÉPENDANTES.** V28 faite le 15/09 à **17 h 20 UTC** par le propriétaire pendant la fenêtre du
+  chantier coupe-circuit (doc 25 §12 : *« V28 tué : build API 32 min → 4 min 21 »*). (1) `sar` 09-15 :
+  **37,2–40,0 %** d'inactivité de 00 h 40 à 16 h 40 (17 relevés), **48,56 %** à 17 h 40 (`sys` 32,6 →
+  15,3), **86,31 %** à 18 h 40, 86,5–88,9 % jusqu'à minuit ; 09-16 partiel **87,0 %**. (2) `dockerd` :
+  cumul **289,4 → 304,6 h** (+15,2 h = 02 h 23 → 17 h 23, **trois minutes** du journal du
+  propriétaire), puis **0,7 %** ce matin. (3) **0 client `docker`, 0 connexion sur la socket**.
+  (4) `journal.jsonl` : **`deploy.sh` fa9ff1d1 en 226 s** (17 h 35) — **la première durée à deux
+  cœurs** — contre 303–585 s (09-13, un cœur) et 1 916 s (09-14) ; `trip_automation_runs` 34 · 13 ·
+  29 min avant 17 h 20 → 15 · 16 · 10 · 5 · 6 · 10 · 3 · 7 · 1 · 2 min après. La journée du 09-15
+  finit à **50,78 %** : le seuil 🔴 « trois jours de suite » **n'a pas été franchi**, à 0,78 point.
+  **Pas fermé : la classe** — 4 `docker logs` à la main sur 5 occurrences, sur des journaux troués
+  par la stanza (VPS-041, 6 fichiers `-dev-` à 82–97 % de NUL ce matin). **Seuil de réescalade** :
+  `A_TRAITER` gravité 1 dès qu'un client `docker` vit > 60 s dans la section « Clients docker
+  BLOQUÉS », ou que `dockerd` dépasse 50 % d'un cœur sur un relevé `sar`. ⚠️ Ne pas lire le
+  50,78 % comme « la marge est revenue » : 17 h à 39 % + 7 h à 87 %. **V4 débloquée.**
 - 🔴 **Vu : 2026-09-15 — 46ᵉ HEURE, DEUXIÈME JOURNÉE ENTIÈRE SOUS 50 %, ET LE COÛT D'UN DÉPLOIEMENT
   EST ENFIN MESURÉ.** À 02 h 28 min 55 UTC, `159533` (PPID 1, `do_wait`) et `159541`
   (`futex_wait_queue`) sont **vivants, 165 294 s** ; `dockerd` **100,0 %**, **1 014 817 `read()`/s
@@ -4296,6 +4318,20 @@ pas supposé (même famille que VPS-M04, le crontab Alpine).
 ## VPS-030 — 1,70 Go de sauvegardes empilées hors de toute rétention, dans **deux** dossiers, et hors de tous les contrôles
 
 - **Domaine** : disque · **Gravité** : 3 · **Statut** : `A_TRAITER`
+- 🔴 **Vu : 2026-09-16 — 1,70 → 1,86 Go, 13 → 17 FICHIERS : LA FENÊTRE DU CHANTIER A DÉPOSÉ
+  161 Mo HORS DE TOUTE RÉTENTION, ET LE COLLECTEUR NE LES VOYAIT PAS.** À 17 h 21 UTC le 15/09
+  (doc 25 §12, étape 1 « sauvegardes des trois bases ») : `/var/backups/vizyo-tracky/avant-chantier-20260915-1720.dump`
+  (**161 208 797 o**) — dans le dossier de la série quotidienne, mais en `.dump` : **hors du motif
+  `tracky_prod_*.sql.gz` de la rétention de `backup-db.sh`** ; `/var/backups/capcom6-sms-avant-chantier-20260915-1721.sql`
+  (73 Ko) et `/var/backups/vizyo-texto-avant-chantier-20260915-1721.dump` (99 Ko) **à la racine**
+  de `/var/backups`, sous aucun dossier ; et, découvert du même coup,
+  `/var/backups/vizyo_leads_pre_multiclient_20260321.sql.gz` (5 Ko, **mars 2026**, jamais vu). Les
+  quatre étaient invisibles : la boucle « âge par dossier » ne lit que `*/` et `.gz/.gpg/.age` ; le
+  balayage « hors de `/var/backups` » exclut `/var/backups` et ne retient que > 50 Mo. **Corrigé
+  ce passage** (deux blocs : racine, et extensions hors motif dans les dossiers — le banc a
+  d'abord attrapé 43 faux positifs sur les sauvegardes `dpkg` de Debian, exclues par nom).
+  Geste : dans **V17**, un dossier daté `_instantanes-2026-09-15-chantier` (déplacer, jamais
+  supprimer) — et la question : à qui est le dump `vizyo_leads` de mars ?
 - **Vu : 2026-08-26** · **Mesure du jour** : **inchange — 13 fichiers, 1,70 Go, deux endroits** (`/root/backups` 1 679,3 Mo en 12 fichiers ; `/opt/backups/tracky` 57,0 Mo en 1 fichier, **36 jours**). Aucune retention de la machine ne couvre ces chemins : ces octets ne seront enleves par **rien**. Gain recuperable inchange : **~1,5 Go** sur `/root/backups` seul.
 - 🔴 **Vu : 2026-08-25 — IL Y A UN SECOND DOSSIER, ET LE CONSTAT NE LE NOMMAIT PAS.** Le balayage **par contenu** ajouté ce passage (angle mort n° 4, fermé au 5ᵉ report) rend **13 fichiers, 1,70 Go, en DEUX endroits** :
 
@@ -4488,6 +4524,14 @@ mesurant le phénomène (VPS-M12, nouvelle forme).
 
 - **Domaine** : sécurité · **Gravité** : 2 · **Statut** : `A_TRAITER` — **cause entièrement lue dans
   le code le 2026-09-14, geste V14 confirmé**
+- ✅ **Vu : 2026-09-16 — MESURE VALIDE (4ᵉ / 19), ET LA PREMIÈRE AVEC UN CORRECTIF DE SÉCURITÉ
+  > 0.** Cache rafraîchi **01 h 26 min 38** (1ʳᵉ sonnerie du jour UTC, conforme à la loi du 14/09) :
+  **73 paquets en retard, dont 3 estampillés sécurité** ; `update-notifier` 01 h 26 min 54 : 64
+  dont 3 (+ 1 ESM non souscrit, écarté — VPS-M97). ⚠️ Obtenue à 04 h 36 (poste en retard), **mais
+  elle l'aurait été à 02 h 22 aussi** (01 h 26 < 02 h 22) : c'est le tirage qui a été bon, pas le
+  retard. Position dans le cycle (VPS-M74) : dernière installation **15/09 06 h 34 min 56**, prochaine
+  **16/09 06 h 52 min 12** → **test daté demain** : si 3 → 0, le canal marche ; si 3 → 3 après
+  06 h 52, panne établie. V14 inchangée (60 s).
 - **Vu : 2026-09-15 — 15ᵉ échec sur 18, CONFORME À LA LOI DU 14/09.** Cache rafraîchi le **09-14
   16 h 39 min 24** (la 1ʳᵉ sonnerie du jour UTC, `apt-daily.service` 16 h 39 min 20 → 54) → **9 h**
   à l'audit, NON MESURABLE ; prochaine sonnerie **04 h 48 min 13** — *après* l'audit, elle
@@ -5026,8 +5070,27 @@ confondre les deux ferait accuser le mauvais coupable.
 
 ## VPS-037 — La copie hors-site des sauvegardes dépend du même poste de travail que l'audit, et elle a dépassé son seuil
 
-- **Domaine** : sauvegardes · **Gravité** : 3 · **Statut** : `A_TRAITER` — **volet SYMPTÔME refermé
-  le 2026-09-03, volet CAUSE intact — et AGGRAVÉ le 2026-09-15 par VPS-043**
+- **Domaine** : sauvegardes · **Gravité** : **2** (3 → 2 le 2026-09-16) · **Statut** : `A_TRAITER` — **volet SYMPTÔME refermé
+  le 2026-09-03, volet CAUSE intact — AGGRAVÉ le 2026-09-15 par VPS-043, et MESURÉ COMME PANNE COMMUNE le 2026-09-16**
+- 🔴 **Vu : 2026-09-16 — LE POSTE DORMAIT À 06 H 30 : PAS DE COPIE, ET C'EST LA DEUXIÈME PAIRE
+  DE NUIT SANS COPIE EN TROIS JOURS — POUR UNE CAUSE DIFFÉRENTE.** Journal Windows : sortie de
+  veille **02 h 20 min 45 UTC** (l'heure de l'audit), **rendormi dans la seconde** (l'horloge saute
+  de 02 h 20 min 46 à 04 h 34 min 19), réveil **04 h 34 min 19**. Conséquences : cet audit à
+  **04 h 36** (+134 min) ; la tâche `Vizyo-Verify-Copie-HorsSite` (04 h 30 UTC) **n'a pas tourné**
+  — `copie.log` s'arrête au 15/09 06 h 30 min 11, `DERNIERE-COPIE-LOCALE.json` sur le VPS date du
+  **15/09 04 h 30 min 10** ; la tâche montre `LastRunTime 15/09`, `NextRunTime **17/09**`,
+  `StartWhenAvailable = True` (**n'a rien rattrapé en 30 min de veille**), **`WakeToRun = False`**.
+  **La paire `verify_20260916-033130` n'existe que sur le disque qu'elle protège.** Ce constat
+  disait « même poste » depuis le 03/09 comme une *dépendance* ; ce matin c'est une **panne
+  commune mesurée** : les deux devoirs du poste (auditer à 02 h 22, copier à 04 h 30) manqués ou
+  retardés par le même sommeil. 09-14 : mécanisme (VPS-043) ; 09-16 : sommeil — *deux causes, un
+  effet, la couche est trop mince.* **Invisible côté VPS avant 30 h** (âge du JSON : 24 h ce matin
+  → « à jour »). **QUOI FAIRE** : (1) côté poste, 30 s : `WakeToRun` sur la tâche (et sur celle de
+  l'audit) — preuve demain : JSON du **17/09 04 h 30** avec `pairesCopiees 2` ; (2) **V6**, un
+  dépositaire qui n'est pas ce poste — cette machine **reçoit déjà** les dumps de deux autres
+  applications (VPS-042) par `recevoir-dump` + clé `command=` : le mécanisme inverse existe. ❌ Ne
+  pas lancer le copieur à la main « pour rattraper » : geste (VPS-M81), et ça masquerait la mesure
+  de demain. **Seuil** : gravité 1 à la 3ᵉ paire sans copie sur 7 jours.
 - 🔴 **Vu : 2026-09-15 — LE SEUL COPIEUR A ÉCHOUÉ (09-14 04 h 30, `pairesCopiees 0`), ET IL N'Y A
   PERSONNE DERRIÈRE.** Ce que ce constat dit depuis le 09-01 — *la copie hors-site dépend d'un seul
   poste* — devient concret : le copieur s'est arrêté sur un manifeste orphelin (**VPS-043**), la
@@ -5074,6 +5137,14 @@ confondre les deux ferait accuser le mauvais coupable.
 
 - **Domaine** : données · **Gravité** : **2** (montée à 1 le 2026-09-05 sur le seuil écrit le 09-03 ;
   **redescendue à 2 le 2026-09-13 sur le seuil écrit le 09-05**) · **Statut** : `A_TRAITER`
+- ✅ **Vu : 2026-09-16 — MARDI 09-15 COMPLET = 33, CINQUIÈME JOURNÉE ≥ 32 ; `…6714` EN EST À SON
+  3ᵉ ÉPISODE « TRAMES SANS POSITION ».** `positions` par jour calendaire (UTC) : 30 · 30 · 30 · 30 ·
+  33 · 32 · 32 · 33 · **33** · (09-16 partiel 32). Registre **11 / 11 / 11** sur 44. Les trois
+  compteurs **33 / 33 / 33** (2ᵉ égalité). **`864035054756714`** : `lastSeenAt` **04 h 42** ce
+  matin, dernière position **09-15 15 h 09 min 15**, **1 599 trames en 24 h** — il s'annonce et ne
+  mesure plus, comme du 09-11 16 h 19 au 09-14 14 h 23. ⚠️ Le collecteur affiche `🔴 SILENCE : 10
+  emetteurs` sur `positions` (> 6 h) et **0 sur `wire_logs`** : ce sont des véhicules **garés la
+  nuit** dont l'échantillonnage n'insère pas de position (le bloc l'écrit lui-même) — pas une panne.
 - ✅ **Vu : 2026-09-15 — LE LUNDI 09-14 COMPLET REND 33 : QUATRIÈME JOURNÉE ≥ 32, ET LES TROIS
   COMPTEURS S'ACCORDENT.** `positions` par jour calendaire : 30 · 30 · 30 · 30 · 33 · 32 · 32 ·
   **33** ; sur 24 h, `positions` **33** / `wire_logs` **33** / `position_sampling_decisions` **33** —
@@ -5534,6 +5605,19 @@ confondre les deux ferait accuser le mauvais coupable.
 ## VPS-041 — Deux rotateurs se partagent les journaux de conteneur, et l'un des deux perce des trous d'octets NUL
 
 - **Domaine** : docker · **Gravité** : 2 · **Statut** : `A_TRAITER` (geste 🟡 PRÉPARÉ — **V29**)
+- **Vu : 2026-09-16 — 4ᵉ NUIT : 1,63 s DE CPU, 6 TROUÉS, TOUS DES `-dev-`.** `logrotate.service`
+  **00 h 00 min 00 → 37**, **1,626 s** de CPU (13,2 s hier : les fichiers de production ont été
+  recréés à 17 h 24 / 17 h 35 / 18 h 14, donc petits). Courants troués **6** : `maalem-dev-api`
+  92 %, `maalem-dev-web` 97 %, `maalem-dev-admin` 97 %, `maestroo-dev-api` 82 %,
+  `maestroo-dev-web` 94 %, `maestroo-dev-lp` 88 % — **les trois de production du 13/09 sont sortis
+  par recréation** (`tracky-api`, `tracky-web`, `texto-relay` : journaux neufs) ; ils reviendront
+  à la prochaine rotation. Courants à 0 octet : **8** — ⚠️ mesuré à **04 h 37** et non 02 h 23, deux
+  heures de journalisation de plus (VPS-M18) : **ne se compare pas** aux 17 d'hier. 🔑 **La stanza
+  relue ce matin dit elle-même sa raison d'être** : `rotate 14` posé le 25/08 **pour TRK-035**
+  (nommer un tiers après coup via `log_connections` de `tracky-postgres`). Retirer la stanza
+  ramène cette mémoire à `max-file 3` × 10 Mo → **compenser par `max-file: 14` dans les
+  `logging.options` du seul `tracky-postgres`** (un rotateur, 14 fichiers, pas de `copytruncate`).
+  V28 étant faite, **V29 est la seule remédiation ouverte sur la classe de VPS-016.**
 - 🔴 **Vu : 2026-09-15 — TROISIÈME NUIT : 13,2 s DE CPU POUR PERCER, ET LE COMPTE NE MONTE PLUS,
   IL TOURNE.** `logrotate.service` **00 h 00 min 04 → 00 h 00 min 36**, **13,224 s de CPU** (1,98 s
   la veille, ×6,7 — `copytruncate` copie *avant* de tronquer, et les fichiers étaient plus gros).
@@ -5624,6 +5708,16 @@ confondre les deux ferait accuser le mauvais coupable.
   **V30**, élargie le 2026-09-15 à un **troisième compte**) · ⚠️ **le titre est à moitié faux
   depuis le 2026-09-14** : *seul un tirage extérieur les sauvegarde* vaut pour le **coffre** ; pour
   Conductor **et désormais Dispocar**, c'est **cette machine qui est le dépôt**.
+- **Vu : 2026-09-16 — TROISIÈME NUIT DE DISPOCAR À 1 172 OCTETS, ET LE COLLECTEUR LE DIT
+  DÉSORMAIS.** `dispocar-distant` : **6 dumps** (09-14 05 h 32, 09-15 01 h 30 / 01 h 32, 09-16
+  **01 h 32 / 01 h 34**), **1 172 octets chacun**, `prd` = `dev` à l'octet — le bloc « âge par
+  dossier » imprime `🟠 1172 o : probablement une base VIDE (ou la mauvaise base) — a verifier cote
+  expediteur` (angle mort n° 4 du 15/09, corrigé). `vizyo-conductor-distant` **18 fichiers**
+  (01 h 03 / 01 h 05, 26–31 Ko) ; tirage `vaultbk` **01 h 43** ; **session `vaultbk` 150 h**, aucune
+  commande. Comptes pouvant se connecter : **4** (`conductorbk`, `dispocarbk`, `ubuntu`,
+  `vaultbk`) — 🆕 **`comptesListe` et `dossiersSauvegardeListe` posées au manifeste** ce passage
+  (angle mort n° 2 du 13/09) : dès demain, un compte ou un dossier neuf sort en 🟠 par différence
+  d'ensembles, sans dépendre de la fenêtre de 7 j du journal `useradd`. V30 inchangée.
 - 🆕 **Vu : 2026-09-15 — UN TROISIÈME DÉPOSANT EST ARRIVÉ DIMANCHE À 05 H 32, ET CETTE FOIS LE
   COLLECTEUR L'A DIT DEUX FOIS.** `useradd` **2026-09-14 05 h 32 min 03 UTC** : compte
   **`dispocarbk`** (uid 1001, `/bin/sh`, commentaire *« depot des dumps DISPOCAR
@@ -5728,7 +5822,19 @@ confondre les deux ferait accuser le mauvais coupable.
 ## VPS-043 — La copie hors-site s'est arrêtée sur un manifeste orphelin, la paire de la nuit n'existe que sur le disque qu'elle protège, et rien ne l'a dit
 
 - **Domaine** : sauvegardes · **Gravité** : 2 · **Statut** : `A_TRAITER` (🟢 AUTO côté poste —
-  **V31**, dépôt `vizyo-verify`, hors périmètre d'écriture de cet audit)
+  **V31**, dépôt `vizyo-verify`, hors périmètre d'écriture de cet audit) — **test du 15/09 tombé du côté « preuve de la copie », mécanisme intact**
+- ✅ **Vu : 2026-09-16 — LE TEST ÉCRIT D'AVANCE EST TOMBÉ DU BON CÔTÉ, ET ÇA NE FERME RIEN.**
+  `DERNIERE-COPIE-LOCALE.json` **15/09 04 h 30 min 10 UTC** : `statut OK`, **`pairesCopiees 2`**
+  (09-14 + 09-15), `pairesLocales 17`, `plusRecente verify-db_20260915-033056` ; côté poste,
+  `copie.log` 06 h 30 min 05 : *« 15 paire(s) disponible(s) sur le VPS »* — le manifeste 08-31 est
+  parti à 03 h 31 avec le 08-30 (une chance sur deux, gagnée : les plus anciens sur le VPS sont
+  désormais 09-02). **Branche « preuve de la copie »** : le copieur a atteint la paire de la nuit
+  parce que **plus aucun manifeste orphelin ne le précédait** — pas parce qu'il sait en enjamber
+  un. Le `throw` est intact ; le prochain orphelin (deux `find -mtime +14` qui tombent de part et
+  d'autre d'une seconde) rejouera l'arrêt. ⚠️ **Et le 16/09 il n'y a pas eu de tentative du
+  tout** : le poste dormait à 04 h 30 — **VPS-037**, pas ce constat. *Le seuil « APPLIQUE quand le
+  copieur a survécu à une paire manquante » n'est pas atteint : il n'y avait plus de paire
+  manquante.*
 - **Vu** : 2026-09-15 (1ᵉʳ passage ; l'échec date du **09-14 04 h 30 min 06 UTC**) · **Mesure** :
   `/var/backups/vizyo-verify/DERNIERE-COPIE-LOCALE.json` → `statut: ECHEC`, `detail:
   "téléchargement de verify-db_20260830-033156.sql.gz.gpg en échec"`, **`pairesCopiees: 0`**,
@@ -5783,7 +5889,83 @@ confondre les deux ferait accuser le mauvais coupable.
 
 ---
 
+## VPS-044 — Le repère de repli du chantier a été effacé par le ménage 6 h 25 après le déploiement, et les étiquettes qui restent pointent des images qui n'ont jamais tourné
+
+- **Domaine** : docker · **Gravité** : 3 · **Statut** : `A_TRAITER` (🟡 PRÉPARÉ côté VPS, 10 s — **V32 (a)** ; 🔧 à coder côté `deploy.sh` — **V32 (b)**)
+- **Vu** : 2026-09-16 (1ᵉʳ passage ; l'effacement date du **09-16 00 h 40 min 01 UTC**) · **Mesure** :
+  `docker image inspect 5da87fd11e72` → **`No such image`** — c'est l'image de `9afdf52a`, en
+  service du 09-14 08 h 20 au 09-15 17 h 35, étiquetée `avant-20260914-1140-9afdf52a` à 11 h 40 le
+  09-14 (**37 h** au ménage) ; la doc 25 §12 la nommait comme voie de retour : *« Repli = deploy.sh
+  --repli avant-20260914-1140-9afdf52a »*. Ce qui reste : `tracky-api:avant-20260915-1731-fa9ff1d1`
+  = `82d57a7d4cb7` **créée 17 h 28 min 41** et `avant-…-1741` = `e4ef62c83bec` (même horodatage,
+  cache) — **les images pré-construites de fa9ff1d1**, pas ce qui tournait ;
+  `tracky-web:avant-20260915-1731` = `394201914de5` **créée 09-14 11 h 46** = le build
+  `rdv-installation-v2` **jamais déployé** (retenu par la garde TRK-077). Le conteneur tourne sur
+  `cc1fec4a6ebb` (0c9672c9) ✅.
+- **QUOI — deux mécanismes qui ne se connaissent pas.** (1) **`deploy.sh` étiquette `:latest`
+  comme « avant »**, pas l'image du conteneur en service. Juste quand `latest` = ce qui tourne
+  (09-14 11 h 40) ; faux dès qu'une image a été pré-construite (doc 25, étape 4, 17 h 28) ou
+  construite puis retenue (09-14 11 h 47) — le propriétaire l'a noté dans la doc 25 le soir même
+  (*« l'étiquette avant-20260915-1731-fa9ff1d1 pointe l'image PRÉ-construite, pas l'ancienne »*).
+  (2) **Le ménage de 00 h 40** (`docker image prune -af --filter until=24h`) supprime toute image
+  dont l'étiquette a plus de 24 h et qu'aucun conteneur n'utilise — donc tout repère de repli **le
+  lendemain de son dépôt**, dès que le déploiement suivant a eu lieu. Fenêtre de repli par
+  étiquette : **≤ 24 h après le déploiement suivant** ; **6 h 25** ce jour-là.
+- **`pourquoiInvisible`** : le bloc « ce qui tourne contre `latest` » (15/09) regarde **l'avant**
+  ; personne ne regarde **l'arrière** — l'étiquette de repli existe-t-elle encore, et pointe-t-elle
+  ce qui tournait ? Et VPS-M79 avait prédit *« `avant-0811` ×2 et `latest` ×2 partent »* sans dire
+  que `avant-1140` remplissait la même condition : une règle juste appliquée à la moitié des objets.
+- **QUOI FAIRE — V32.** **(a) Côté VPS, 10 s** : `sed -i 's/until=24h/until=72h/'
+  /etc/cron.d/docker-image-prune` (relire avant). **Gain** : une étiquette `avant-*` survit 3
+  nuits. **Contrepartie** : ~4 Go d'images 2 jours de plus (2 builds × 1,84 Go) sur 44 Go libres.
+  **Risque** : nul. ⚠️ Ne corrige pas l'étiquette qui ment. **(b) Côté `deploy.sh`** (code
+  applicatif, hors périmètre de cet audit) : étiqueter **l'image du conteneur en service**
+  (`docker inspect --format '{{.Image}}' tracky-api`), pas `:latest`. **Preuve** : le collecteur
+  vérifiera que l'ID de la dernière `avant-*` = l'ID que portait le conteneur au passage précédent
+  (`journal.jsonl` porte `apiContainerId`) — angle mort n° 1 du 16/09.
+- **`aNePasFaire`** : ❌ ne pas re-étiqueter à la main une image « juste » : 9afdf52a n'existe plus.
+  ❌ Ne pas exclure `avant-*` du ménage par une liste de noms : `docker image prune` ne filtre que
+  par `label`, posé au build — c'est (b). ⚠️ **Le retour reste possible** : `deploy.sh` sur le SHA
+  `9afdf52a` reconstruit l'image en ~4 min (V28 faite) — mais les migrations du chantier restent
+  appliquées : c'est un retour du **code**, pas de l'**état**.
+- **Seuil** : `APPLIQUE` quand deux passages de suite rendent une étiquette `avant-*` qui existe
+  **et** dont l'ID = l'image du conteneur au passage précédent.
+
+---
+
+
 ## Constats de méthode (sur l'audit lui-même)
+
+### VPS-M102 — L'audit a lancé un `find /` non borné et non nicé en marge, 3 min 30 à charge 2,84, pour un chiffre que trois `ls` donnaient
+
+- **Domaine** : méthode · **Gravité** : 3 · **Statut** : `A_TRAITER` (la règle existe, la garde manque)
+- **Vu** : 2026-09-16 · **Mesure** : `find / -xdev -newermt "2026-09-15 17:00" ! -newermt "2026-09-15
+  17:35" -type f -size +50M`, lancé à **04 h 44 min 40 UTC** pour retrouver le dump Tracky de 161 Mo
+  de la fenêtre du chantier ; **terminé à 04 h 48 min 11 (3 min 31)**, charge **1,75 → 2,84** sur
+  2 cœurs, en priorité normale, pendant que la production tournait. Il a rendu **un** chemin utile
+  (`/var/backups/vizyo-tracky/avant-chantier-20260915-1720.dump`) que le `ls -la` du même bloc
+  avait déjà imprimé, et un blob containerd sans intérêt.
+- **QUOI** : la procédure §0 dit *« tout parcours de disque est borné »*, et `collecte.sh` le tient
+  depuis le 04/08 (`$LOW = nice -n 19 ionice -c3`, `timeout` par sous-dossier, `/var/lib/docker`
+  exclu). **Mais les vérifications en marge — une dizaine par passage — ne passent par aucune
+  garde** : elles sont tapées dans un heredoc SSH, et la règle repose sur l'habitude de qui les
+  tape. Le rapport du 15/09 listait déjà 10 vérifications en marge (A → J) sans qu'aucune ait été
+  bornée autrement que par son objet.
+- **`pourquoiInvisible`** : le coût d'une vérification en marge n'est **mesuré nulle part** — le
+  bloc « BUDGET DE LA COLLECTE » ne compte que `collecte.sh`. Sans le `timeout` de l'outil côté
+  poste (60 s), qui a basculé la commande en arrière-plan, le `find` aurait fini sans laisser
+  d'autre trace qu'un pic de charge inexpliqué dans `sar` — que le passage suivant aurait dû
+  expliquer (VPS-M47).
+- **Ce que je n'ai PAS fait** : le tuer. Aucun `kill` sur le VPS, même sur son propre processus
+  — la règle ne distingue pas, et la distinguer est le premier pas vers l'exception. Il a fini seul.
+- **QUOI FAIRE** : préfixer **toute** commande de vérification en marge par `nice -n 19 ionice -c3
+  timeout 20` ; ne jamais `find` au-dessus de `/var/backups`, `/root`, `/opt/<un dossier>` ; et
+  lire le `ls` avant de chercher plus loin. *Piste d'outillage* : un `verif.sh` de 5 lignes qui
+  impose le préfixe — angle mort n° 8 du 16/09.
+- **`aNePasFaire`** : ❌ ne pas « compenser » en ajoutant ce `find` au collecteur pour qu'il soit
+  au moins nicé : le chiffre qu'il cherchait est désormais rendu par le bloc « hors motif » à
+  `-maxdepth 2`.
+
 
 ### VPS-M101 — Un débit lu sur une base reconstruite par import mesure l'horodatage de la SOURCE, et il a été publié comme l'activité de la copie
 
@@ -6207,7 +6389,17 @@ confondre les deux ferait accuser le mauvais coupable.
 ### VPS-M91 — La couverture des sauvegardes ne connaît pas « reconstructible », et le verdict « jamais exécutée » ne couvre que les unités `*-backup`
 
 - **Domaine** : méthode · **Gravité** : 2 · **Statut** : ✅ **volet (a) `APPLIQUE` le 2026-09-09**
-  (banc sur la machine, coût **négatif**) · **volet (b) `A_TRAITER`, intact — 4ᵉ report le 2026-09-14**
+  (banc sur la machine, coût **négatif**) · **volet (b) `APPLIQUE` le 2026-09-16 — par NOM, sur décision**
+- ✅ **Vu : 2026-09-16 — volet (b) fermé par une décision, pas par une notion générale.** V27 a été
+  tranchée le 15/09 (*ne pas sauvegarder la démo : 525 Mo/j, régénérée par l'import du dimanche*).
+  Le collecteur rendait pourtant `🔴 AUCUNE SAUVEGARDE` sur `tracky-demo-postgres` chaque matin
+  (6ᵉ report) — un 🔴 sur une décision prise apprend à ignorer le 🔴 d'à côté. **Corrigé** :
+  `*-demo-*` → `⬜ aucune sauvegarde — VOULU (demonstration — regeneree par l import du dimanche ;
+  decision V27 du 15/09)`, et les bases `-dev-` (déjà « sans enjeu ») passent aussi en ⬜ ; la
+  requête « coûterait N Mo/jour » n'est plus lancée pour elles. ⚠️ **C'est une convention de nom**
+  (VPS-M88) : une base de production nommée « demo » serait étiquetée à tort — assumé, écrit dans le
+  script. La notion générale de « reconstructible » (détecter qu'un timer régénère une base) reste
+  non écrite ; elle n'a plus de cas ouvert.
 - 🔴 **Vu : 2026-09-14 — volet (b), 4ᵉ report** : le 🔴 « AUCUNE SAUVEGARDE » sur
   `tracky-demo-postgres` vaut **518 Mo/jour** ; les deux moitiés (l'unité qui reconstruit, la base
   reconstruite) sont dans la même collecte, le rapprochement n'est toujours pas écrit. 🔑 *Et
@@ -6840,6 +7032,18 @@ confondre les deux ferait accuser le mauvais coupable.
 ### VPS-M79 — Une disparition attribuée au seul mécanisme visible, alors qu'un ménage quotidien la produit et jette sa trace
 
 - **Domaine** : méthode · **Gravité** : 2 · **Statut** : 🟠 `A_TRAITER` (la remédiation modifie le VPS)
+- 🟠 **Vu : 2026-09-16 — LA PRÉDICTION TIENT 3 SUR 4, LA RÈGLE EST CONFIRMÉE DEUX FOIS DE PLUS —
+  ET ELLE A EMPORTÉ LE REPLI (🆕 VPS-044).** CRON 00 h 40 min 01 : **31 − 5 + 6 = 32 images**. Partis :
+  `avant-20260914-0811` ×2 ✅ (prédit), `a0ce1c80` (le `latest` api du 09-14 11 h 47, jamais
+  déployé) ✅ (prédit), **et `avant-20260914-1140-9afdf52a` ×2** — l'image **qui tournait jusqu'à
+  17 h 35** (`5da87fd11e72`), étiquetée à 11 h 40 la veille → **37 h** au ménage : *non prédit*.
+  Survivant non prédit : `tracky-web` 11 h 46 (jamais déployé) — **re-étiqueté `avant-…-1731` à
+  17 h 31 par `deploy.sh`**, donc 7 h au ménage. Deux confirmations de « `until` date l'étiquette,
+  pas le build », dans les deux sens. Arrivés : 6 (`vizyo-texto` 17 h 23 ; api ×3 et web ×2 de la
+  fenêtre). 🔑 La prédiction d'hier listait ce qui partait sans dire que **`avant-1140` — le seul
+  repli utile — remplissait la même condition** : une règle juste, appliquée à la moitié des
+  objets. Disque **−3 Go** (56 → 53) malgré +1 image nette : les 2 × 1,84 Go partis ne partageaient
+  pas leurs couches, les 6 arrivés les partagent.
 - ✅ **Vu : 2026-09-15 — LA PRÉDICTION DU 14/09 EST TENUE, ET LA RÈGLE DU MÉNAGE EST AFFINÉE.**
   CRON `docker image prune -af --filter until=24h` **00 h 40 min 01 → 28** : **34 → 31 images**, les
   trois paires `avant-20260913-{1758,1957,2018}` sont parties comme écrit. 🔑 **Mais
@@ -7262,6 +7466,19 @@ lecture — et c'est exactement ce que VPS-M31 punit.
 ### VPS-M73 — Cinq passages manqués, et une conséquence que le raisonnement écrit n'avait pas prévue
 
 - **Domaine** : méthode · **Gravité** : 3 · **Statut** : `A_TRAITER`
+- 🟠 **Vu : 2026-09-16 — +134 MIN : LE POSTE DORMAIT, ET LE COLLECTEUR NE LE DISAIT PAS.**
+  Collecte démarrée à **04 h 36 min 41 UTC** pour 02 h 22 : le poste est sorti de veille à
+  02 h 20 min 45 (événement Windows 107), **s'est rendormi dans la seconde** (l'horloge saute de
+  02 h 20 min 46 à 04 h 34 min 19), et n'a repris qu'à 04 h 34 min 19. Seule (centre d'alerte
+  01 h 13 → 01 h 25). **Le même sommeil a fait sauter la copie hors-site de 04 h 30** (VPS-037 ↑) et
+  deux agents Tracky du poste (`RecitTrajet` 03 h 15, `QualiteGPS` 05 h 00 : `LastRunTime 15/09`,
+  `NextRunTime 17/09`). Et la sortie disait seulement `✅ ma collecte etait SEULE` — « tout est
+  normal ». **Corrigé** : le bloc budget imprime `🟠 HEURE DE DEPART : 04:36 UTC, soit +134 min sur
+  l heure planifiee (02:22)` au-delà de ±20 min, avec le rappel que la copie hors-site du même
+  poste a probablement été manquée aussi (banc : +134 → 🟠, 02 h 22 → ✅ ; l'heure attendue est
+  écrite en dur, à changer avec la planification). Conséquence de méthode : toutes les fenêtres
+  « 24 h » de cette collecte sont décalées de 2 h 14 — les comparaisons à la veille de la section 5
+  restent lisibles (débits stables ×1,00–1,06), celle des fichiers à 0 octet (VPS-041) ne l'est pas.
 - ✅ **Vu : 2026-09-14 — RETOUR AU RÉGIME : collecte à 02 h 22 min 31, seule, à l'heure habituelle.**
   La question (4) laissée le 13/09 (*« si la routine tourne à 02:20, la fenêtre 24 h redevient
   comparable »*) est **close** : les fenêtres glissantes couvrent de nouveau les mêmes heures que
@@ -8075,6 +8292,17 @@ traiter la machine.* ⚠️ **Et ne pas en conclure que VPS-M56 est annulé** : 
 ### VPS-M56 — Le budget de 90 s est dépassé 8 fois sur 9 ~~sans aucune cause extérieure~~
 
 - **Domaine** : méthode · **Gravité** : 2 · **Statut** : `A_TRAITER` — **arbitrage humain requis, il n'est pas technique**
+- ✅ **Vu : 2026-09-16 — 143 s (1,6×), 26ᵉ DÉPASSEMENT — ET LA PREMIÈRE VENTILATION SANS
+  `dockerd` NOMME ENFIN LE POSTE N° 1.** Charge 1,23 → 2,39 ; **audit 20,9 % · `dockerd` 4,8 % ·
+  reste 35,3 % · inactif 39,0 %** ; attente (iowait 6,8 + steal 5,2) 12,0 % ; inexpliqué 23,3 %.
+  **143 s ≈ les 147 s du 09-09**, avant l'incident : `dockerd` à un cœur n'expliquait **pas** le
+  dépassement, il l'aggravait de ~40 s. Le poste n° 1 est **le parcours `/opt` : 42 s sur 143
+  (29 %)** — `vizyo-auth` 7,1 s, `vizyo-leads` 6,1 s (pile supprimée), `vizyo-tracky` 5,8 s,
+  `vizyo-manager` 4,5 s, **`maalem` 12,0 s pour un chiffre absent** (délai, VPS-M95) ; `iowait`
+  6,8 % pendant la collecte est ce parcours. **V5 se tranche maintenant** : taille de `maalem`
+  écrite en dur avec sa date (−12 s, et une somme `/opt` comparable), et `/opt` un jour sur sept
+  (−36 s × 6 : le disque bouge par Docker, pas par `/opt`). Sections : disque 46 s, données 30 s,
+  Docker 24 s, planification 12 s, sauvegardes 9 s.
 - 🔴 **Vu : 2026-09-15 — 182 s (2,0×), 25ᵉ dépassement, MÊME CAUSE EXTÉRIEURE.** Charge 1,69 → 2,92 ;
   ventilation : **audit 14,4 % · `dockerd` 45,4 % · reste 32,7 % · inactif 7,5 %** ; inexpliqué
   22,9 pt (70 % du reste). Sections : DISQUE 45 s (`maalem` en délai), DOCKER 35 s, DONNÉES 51 s,
