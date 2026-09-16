@@ -14,7 +14,7 @@
 > `centre-alerte/app/taches.json` + `poste-de-commande/contexte.json`. Ce fichier-ci est rendu des mêmes sources ;
 > quand ils divergent, **`taches.json` fait foi**.
 
-*Dernière mise à jour : 2026-09-14 (relevé du 15 septembre 2026, 20h15 Paris) · dépôt sur `main`*
+*Dernière mise à jour : 2026-09-14 (relevé du 16 septembre 2026, 07h24 Paris) · dépôt sur `main`*
 
 ---
 
@@ -59,9 +59,11 @@ puis le téléphone (T43), la procédure (T47), la recette sur boîtier et les c
 | ☐ | **T61** | Deux SIM de boîtiers (HD-584-BF, BP-434-RD) restent INJOIGNABLES par SMS depuis le S21 après remise en état ; les huit autres sont revenues — test depuis un autre opérateur ou ticket WhereverSIM | TRK-066 · S21 · doc 10 test B/C | 🤝 humain |
 | » | **T62** | 🔴 Une SIM injoignable par SMS met le véhicule en « TCP seul » : coupe auto seulement boîtier connecté, RESTORE en TCP toutes les 5 min, un SMS-sonde par 6 h — DÉPLOYÉ le 15/09 | TRK-066 · doc 35 | 🔧 à coder `b3ee67e2` |
 | ☑ | **T63** | 🔴 C — Prérequis J-1 — FAITS le 15/09 (Device ID, numéro de preuve, v1.43.0, créneau) ; reste : le S21 branché EN PERMANENCE | TRK-066 · doc 25 §2 | 🤝 humain |
-| ☐ | **T65** | 🔴 E — Les 24 h de preuve après le déploiement, lues à chaque passage de la routine du centre d'alerte (six verdicts) | TRK-066 · doc 25 §7 · PROCEDURE-AUDIT | 🟢 auto |
+| » | **T65** | 🔴 E — Les 24 h de preuve après le déploiement, lues à chaque passage de la routine du centre d'alerte (six verdicts) | TRK-066 · doc 25 §7 · PROCEDURE-AUDIT | 🟢 auto |
 | ☐ | **T66** | 🔴 deploy.sh journalise ses REFUS et ses abandons, et la sentinelle « deploiement » les dit — un refus qui ne s ecrit nulle part se lit comme un succes | TRK-077 | 🔧 à coder |
 | » | **T67** | 🔴 La sentinelle des RESTORE non prouvées relit l'historique entier après la migration — bornée à 24 h (0c9672c9), DÉPLOYÉ le 15/09 | TRK-066 · T51 | 🔧 à coder `0c9672c9` |
+| ☐ | **T68** | L interlock rouge toute une nuit ne doit ecrire qu UN CRITICAL, des rappels DEGRADATION horaires et une ligne de cloture — pas un CRITICAL par quart d heure et un e-mail par heure | TRK-081 · T49 | 🔧 à coder |
+| » | **T69** | 🔴 Preuve SMS aussi à 21:30 (verdict 21:45) et notifications push aux super-admins quand le coupe-circuit est bloqué — DÉPLOYÉ le 16/09 | TRK-066 · T45 · T49 · T51 · T44 | 🔧 à coder `87ae29c9` |
 
 ---
 
@@ -69,16 +71,16 @@ puis le téléphone (T43), la procédure (T47), la recette sur boîtier et les c
 
 | Ce qui tourne | Où ça en est | Note |
 |---|---|---|
-| Rattrapage du recalage des tracés | 12 186 restants (6 139 dans la fenêtre de 60 j) | ≈ 34 jours à 15 par heure — 435 traces depuis le 13/09 |
+| Rattrapage du recalage des tracés | 11 887 restants (5 644 dans la fenêtre de 60 j) | ≈ 33 jours à 15 par heure — 734 traces depuis le 13/09 |
 | Reprise des analyses d’avant le 4 septembre | 25 par passage | s’éteint seule |
-| Coupe-circuit automatique — LE CHANTIER EST EN PRODUCTION depuis ce soir 19:35 | 30 plannings actifs sur 37 — sur le chantier, kill-switch true | ce soir : preuve SMS à la main, coupes 22:00 sous interlock ; demain 07:00 : reprises relancées |
+| Coupe-circuit automatique — 1re nuit sur le chantier : reprises 24/24, coupes retenues jusqu'à la preuve de 04:30 | 30 plannings actifs sur 37 — chantier + T69 | ce soir 21:30 preuve → 21:45 verdict → 22:00 coupes ; demain 07:00 reprises |
 
 | Chiffre | |
 |---|---|
-| **3** | défauts nés au centre d'alerte sur 24 h (sur 11 lignes ; 13 CRITICAL d'agents refermées seules, 4 CRITICAL restent) |
-| **1092/1092** | trajets clos depuis le correctif du 08/09 suivent la route |
+| **24** | défauts nés au centre d'alerte sur 24 h (sur 32 lignes — dont 20 fois le même refus de l'interlock, toutes les 15 min : TRK-081 ; 28 CRITICAL) |
+| **1355/1355** | trajets clos depuis le correctif du 08/09 suivent la route |
 | **8** | gestes qui n’avancent que par toi |
-| **98** | fiches suivies dans la roadmap |
+| **101** | fiches suivies dans la roadmap |
 
 ---
 
@@ -87,7 +89,7 @@ puis le téléphone (T43), la procédure (T47), la recette sur boîtier et les c
 | | # | Quoi | Fiche | Classe |
 |:--:|:--:|---|---|---|
 | ☐ | **T7** | 🔴🔴 Ouvrir la fenetre de maintenance du role non-superutilisateur | TRK-035 | 🤝 humain |
-| ☐ | **T38** | 🔴🔴 Remettre en service les plannings du coupe-circuit — 🚀 15/09 19:35 : chantier EN PRODUCTION (kill-switch true) ; CDEF31 armé par le client, MH Cars à armer après une nuit propre | TRK-066 | 🤝 humain |
+| ☐ | **T38** | 🔴🔴 Remettre en service les plannings du coupe-circuit — 1re nuit sur le chantier : coupes retenues jusqu'à la preuve de 04:30 puis 24/24, reprises 24/24 en ≤ 5 s ; ce soir 22:00 sous preuve de 21:30 ; MH Cars à armer | TRK-066 | 🤝 humain |
 | ☐ | **T9** | 🔴 Boîtiers muets, antennes et déclarations — UNE fiche terrain : lever la déclaration des trois HM-… qui roulent alertes coupées ; déclarer ou dépanner GLA•KC•31, FG-669-DQ, FS-253-HR, FS-808-CE, FZ-862-VY, DZ-034-CA, HD-292-SH, KSR•370 ; porter les 6 IMEI muets à l'exploitant ou les sortir du parc (statut, pas DELETE) | — | 🔵 terrain |
 | ☐ | **T55** | 🔴 Téléphone passerelle : le S21 branché EN PERMANENCE et déverrouillé (hors ligne 15:49→19:51 le 15/09), puis un second téléphone + seconde SIM (autre opérateur), jamais sous le même deviceId | TRK-066 · doc 12 · doc 19 P2-8 | 🤝 humain |
 | ☐ | **T1** | Recharger au moins UN des deux comptes IA | TRK-071 | 🤝 humain |
@@ -101,13 +103,13 @@ puis le téléphone (T43), la procédure (T47), la recette sur boîtier et les c
 
 | | # | Quoi | Fiche | Classe |
 |:--:|:--:|---|---|---|
-| ☐ | **T65** | 🔴 E — Les 24 h de preuve après le déploiement, lues à chaque passage de la routine du centre d'alerte (six verdicts) | TRK-066 · doc 25 §7 · PROCEDURE-AUDIT | 🟢 auto |
 | ☐ | **T66** | 🔴 deploy.sh journalise ses REFUS et ses abandons, et la sentinelle « deploiement » les dit — un refus qui ne s ecrit nulle part se lit comme un succes | TRK-077 | 🔧 à coder |
+| ☐ | **T68** | L interlock rouge toute une nuit ne doit ecrire qu UN CRITICAL, des rappels DEGRADATION horaires et une ligne de cloture — pas un CRITICAL par quart d heure et un e-mail par heure | TRK-081 · T49 | 🔧 à coder |
 | ☐ | **T57** | Dépendances : lot séparé après stabilisation (maplibre critique, socket.io/ws, axios via twilio, multer) | TRK-066 · doc 19 §14 | 🔧 à coder |
 
 ---
 
-## 👁️ CE QU'ON GUETTE — rien à faire, la mesure tombe toute seule *(23)*
+## 👁️ CE QU'ON GUETTE — rien à faire, la mesure tombe toute seule *(25)*
 
 | | # | Quoi | Quand |
 |:--:|:--:|---|---|
@@ -124,7 +126,9 @@ puis le téléphone (T43), la procédure (T47), la recette sur boîtier et les c
 | » | **T44** | Sentinelle Android : hystérésis, bornes d'environnement, fraîcheur par appareil, délai d'envoi séparé du délai de santé — DÉPLOYÉ le 15/09 | occasion |
 | » | **T45** | Preuve SMS quotidienne réconciliée (T-30 min avant chaque fenêtre) — et le relais pousse ses statuts — DÉPLOYÉ le 15/09 | occasion |
 | » | **T62** | Une SIM injoignable par SMS met le véhicule en « TCP seul » : coupe auto seulement boîtier connecté, RESTORE en TCP toutes les 5 min, un SMS-sonde par 6 h — DÉPLOYÉ le 15/09 | occasion |
+| » | **T65** | E — Les 24 h de preuve après le déploiement, lues à chaque passage de la routine du centre d'alerte (six verdicts) | occasion |
 | » | **T67** | La sentinelle des RESTORE non prouvées relit l'historique entier après la migration — bornée à 24 h (0c9672c9), DÉPLOYÉ le 15/09 | occasion |
+| » | **T69** | Preuve SMS aussi à 21:30 (verdict 21:45) et notifications push aux super-admins quand le coupe-circuit est bloqué — DÉPLOYÉ le 16/09 | occasion |
 | » | **T48** | Course ACK/SMS : ne jamais rétrograder ACKNOWLEDGED en SENT ; dispatcher une CUT PENDING orpheline au lieu de la rendre telle quelle — DÉPLOYÉ le 15/09 | occasion |
 | » | **T49** | Kill-switch et interlock : une ligne par cause et espacée, pas un CRITICAL par appel — DÉPLOYÉ le 15/09 | occasion |
 | » | **T50** | Glissement de confirmation réellement volontaire : ni un clic en bout de piste, ni la touche End — DÉPLOYÉ le 15/09 | occasion |
@@ -137,7 +141,7 @@ puis le téléphone (T43), la procédure (T47), la recette sur boîtier et les c
 
 ---
 
-## 🖥️ CÔTÉ VPS — *15 constats, presque tous des gestes d'infrastructure*
+## 🖥️ CÔTÉ VPS — *16 constats, presque tous des gestes d'infrastructure*
 
 *Le détail est en [Partie II de la roadmap](./centre-alerte/ROADMAP-CORRECTIFS.md).*
 
@@ -146,6 +150,7 @@ puis le téléphone (T43), la procédure (T47), la recette sur boîtier et les c
 | ☐ | **V3** | Un seul ticket hebergeur pour les deux ecritures root |
 | ☐ | **V4** | Planifier un redemarrage vers 23 h 30 |
 | ☐ | **V5** | Arbitrer le budget de collecte |
+| ☐ | **V6** | Donner un second depositaire a la copie hors-site — et, en attendant, reveiller le poste (WakeToRun) |
 | ☐ | **V7** | Poser les limites memoire sur 30 conteneurs |
 | ☐ | **V8** | Separer les projets compose deploy |
 | ☐ | **V12** | Restreindre la cle CI github-actions-vizyo-auth |
@@ -157,7 +162,7 @@ puis le téléphone (T43), la procédure (T47), la recette sur boîtier et les c
 | ☐ | **V29** | Un seul rotateur pour les journaux de conteneur — retirer la stanza logrotate a copytruncate |
 | ☐ | **V30** | Reconnaitre le coffre Vaultwarden, les comptes vaultbk / conductorbk / dispocarbk, l adresse 179.198.198.199 et le role de depositaire de DEUX applications |
 | ☐ | **V31** | Reparer le copieur hors-site de Vizyo Verify : ne plus s arreter sur un manifeste orphelin (cote poste), purger par paire (cote VPS) |
-| ☐ | **V6** | Donner un second depositaire a la copie hors-site |
+| ☐ | **V32** | Rendre le repere de repli reel : (a) until=72h sur le menage des images (10 s), (b) deploy.sh etiquette l image du CONTENEUR, pas :latest (a coder) |
 
 ---
 
@@ -184,6 +189,7 @@ puis le téléphone (T43), la procédure (T47), la recette sur boîtier et les c
 
 | Date | Quoi | La preuve |
 |---|---|---|
+| 16/09 | **Première nuit sur le chantier : 24/24 reprises acquittées à 07:00 en ≤ 5 s ; les coupes ont attendu la preuve de 04:30 — d'où T69 (preuve à 21:30 + push au propriétaire), déployé ce matin** | `engine_control_commands` : 24 CUT 02:31–02:59 UTC acquittés (0–5 s), 24 RESTORE 05:00:01–05:00:10 UTC acquittés (0–5 s, moyenne 3,1 s), 0 SMS, 0 relance ; `sms_logs` : `gateway_daily_proof` delivered à 02:30 et 04:30 UTC ; `error_logs` : 26 lignes `engine-control-interlock` de 20:00 à 02:24 UTC (une par quart d'heure), aucune `sms-daily-proof` ni `sms-gateway-watchdog` ni `engine-control-restore`. T69 = `87ae29c9` : 263 suites / 4 157 tests, déployé par `deploy.sh`. |
 | 15/09 | **Le chantier coupe-circuit est EN PRODUCTION : fenêtre jouée de 19:20 à 20:15 (prod fa9ff1d1 puis 0c9672c9, relais 724bcb8, kill-switch true)** | `journal.jsonl` : `fa9ff1d1` à 17:35:05 UTC (226 s) ; migrations `20260912110000` et `20260914150000` appliquées ; artefact vérifié dans le conteneur (T42, T45, T62, kill-switch) ; `/api/health` 200 ; 33 boîtiers reconnectés en TCP ; relais : `selection: configured`, SIM 1. Migration démontrée avant sur `tracky_copie` (0 erreur). Deux écarts vus et traités : le S21 hors ligne depuis 15:49 (sentinelle T44 en CRITICAL à 19:37, ping repris 19:51 après déblocage) ; la sentinelle T51 réveillant ~50 RESTORE FAILED historiques (correctif `0c9672c9` borné à 24 h, 148 tests, redéployé). Le build API est passé de 32 min à 4 min 21 une fois V28 tué. |
 | 15/09 | **Les tâches ont été optimisées : 20 fiches closes, 8 fusionnées dans 3 — il reste ce qui protège quelque chose et a un geste** | Closes parce que tranchées par le chantier déployé (T3, T21, T18, T43, T56, T54), non exerçables ou cosmétiques (T15, T19, T20, T14), faites ce soir (V28), déconseillées ou impossibles (V19, V22, V18), sans propriétaire (V20, V21), closes sur le fait (V27). Fusions : boîtiers muets / antennes / déclarations → T9 ; téléphone passerelle → T55 ; ménage du VPS → V17. V4 et V5 débloquées par V28. |
 | 15/09 | **Nuit du 14 au 15 sur l'ancien code : 24/24 coupes, 23/24 reprises — GS-928-NX immobilisé 2 h 56 en silence, réparé à la main** | `engine_control_commands` : 24 CUT TCP acquittées 20:00:01–20:00:12 UTC ; 24 RESTORE TCP à 05:00–05:01 UTC, 23 acquittées en ≤ 5 s, GS-928-NX `SENT_UNCONFIRMED` à 05:40 sans relance ni SMS (`sms_logs` vide) ni ligne au centre d'alerte ; positions : boîtier connecté toute la nuit, trois tentatives de démarrage 07:46–07:53 UTC (contact 1–5 s, 0 km/h), RESTORE manuelle du veilleur de nuit à 07:56:39 acquittée en 3 s, départ à 08:01, 39 km/h à 08:09. HM-769-GA jamais coupé (hors champ GPS, report de sécurité). Deux reprises manuelles nocturnes (23:13, 23:14) servies sans re-coupe. |

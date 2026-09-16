@@ -1,7 +1,7 @@
 {
   "_comment": "Ce que le POSTE DE COMMANDE montre en plus des tâches. Les tâches, elles, viennent de docs/centre-alerte/app/taches.json et ne se recopient JAMAIS ici — voir generer.mjs. Ce fichier ne porte que ce qu'aucune tâche ne décrit : les mesures de tête, les mécaniques qui tournent seules, les décisions posées au propriétaire, et ce qui est prouvé.",
   "version": 1,
-  "releve": "16 septembre 2026, 03h30 Paris",
+  "releve": "16 septembre 2026, 07h24 Paris",
   "machines": [
     {
       "nom": "Rattrapage du recalage des tracés",
@@ -20,12 +20,12 @@
       "pied2": "s’éteint seule"
     },
     {
-      "nom": "Coupe-circuit automatique — LE CHANTIER EST EN PRODUCTION depuis ce soir 19:35",
-      "texte": "Fenêtre jouée le 15/09 de 19:20 à 20:15 : V28 tué, trois sauvegardes, variables, relais 724bcb8, migration rejouée sur copie, deploy.sh → fa9ff1d1 (19:35) puis 0c9672c9 (correctif de la sentinelle T51, qui relisait tout l'historique). Kill-switch TRUE : les coupes automatiques ne partent que si la preuve SMS a moins de 24 h, le S21 est en ligne et la file est courte — sinon elles sont retenues, une ligne par quart d'heure. Le S21 était hors ligne de 15:49 à 19:51 (téléphone verrouillé) : la sentinelle l'a dit, tu l'as débloqué. CDEF31 (30 plannings) tourne ce soir sur le NOUVEAU code ; MH Cars s'arme après une nuit propre. Relectures : 22:07 et 07:10.",
+      "nom": "Coupe-circuit automatique — 1re nuit sur le chantier : reprises 24/24, coupes retenues jusqu'à la preuve de 04:30",
+      "texte": "Nuit du 15 au 16 : à 22:00 l'interlock a retenu les 24 coupes (dernière remise SMS prouvée : 37 h — les preuves quotidiennes n'existaient pas avant 19:35), puis la preuve de 04:30 est passée et les 24 coupes sont parties, acquittées en ≤ 5 s ; à 07:00 les 24 reprises acquittées en ≤ 5 s, 0 SMS, 0 relance, 0 alerte, 0 véhicule resté coupé. Le fail-closed a tenu, mais personne n'a été prévenu : depuis ce matin (T69, 07:24), la preuve part aussi à 21:30 et toute cause bloquante pousse une notification au propriétaire. Ce soir 22:00 : coupes sous preuve de 21:30. MH Cars s'arme aujourd'hui.",
       "fait": null,
       "total": null,
-      "pied": "30 plannings actifs sur 37 — sur le chantier, kill-switch true, interlock ROUGE cette nuit",
-      "pied2": "nuit du 15→16 : 25 coupes RETENUES par l'interlock (aucune preuve SMS < 24 h, la preuve manuelle du soir n'a pas été envoyée) — 0 coupe, 0 reprise due ; preuve automatique à 04:30 / 06:30 Paris, à lire à 04:45"
+      "pied": "30 plannings actifs sur 37 — chantier + T69",
+      "pied2": "ce soir 21:30 preuve → 21:45 verdict → 22:00 coupes ; demain 07:00 reprises"
     }
   ],
   "chiffres": [
@@ -285,6 +285,11 @@
     }
   ],
   "faits": [
+    {
+      "d": "16/09",
+      "quoi": "Première nuit sur le chantier : 24/24 reprises acquittées à 07:00 en ≤ 5 s ; les coupes ont attendu la preuve de 04:30 — d'où T69 (preuve à 21:30 + push au propriétaire), déployé ce matin",
+      "preuve": "<code>engine_control_commands</code> : 24 CUT 02:31–02:59 UTC acquittés (0–5 s), 24 RESTORE 05:00:01–05:00:10 UTC acquittés (0–5 s, moyenne 3,1 s), 0 SMS, 0 relance ; <code>sms_logs</code> : <code>gateway_daily_proof</code> delivered à 02:30 et 04:30 UTC ; <code>error_logs</code> : 26 lignes <code>engine-control-interlock</code> de 20:00 à 02:24 UTC (une par quart d'heure), aucune <code>sms-daily-proof</code> ni <code>sms-gateway-watchdog</code> ni <code>engine-control-restore</code>. T69 = <code>87ae29c9</code> : 263 suites / 4 157 tests, déployé par <code>deploy.sh</code>."
+    },
     {
       "d": "15/09",
       "quoi": "Le chantier coupe-circuit est EN PRODUCTION : fenêtre jouée de 19:20 à 20:15 (prod fa9ff1d1 puis 0c9672c9, relais 724bcb8, kill-switch true)",
