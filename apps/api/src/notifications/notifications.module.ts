@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
 import { SmsModule } from '../sms/sms.module';
 import { AlertRulesService } from './alert-rules.service';
+import { CoupeCircuitPushService } from './coupe-circuit-push.service';
 import { EscalationCronService } from './escalation-cron.service';
 import { NotificationEligibilityService } from './notification-eligibility.service';
 import { NotificationDispatchService } from './notification-dispatch.service';
@@ -38,6 +39,9 @@ import { WebPushService } from './web-push.service';
     EscalationCronService,
     NotificationPreferencesService,
     NotificationEligibilityService,
+    // Coupe-circuit : coupes retenues, preuve SMS en défaut, téléphone hors ligne, remise en
+    // route non confirmée — poussés aux super-admins par le socle (événements coupe-circuit.push).
+    CoupeCircuitPushService,
   ],
   exports: [
     WebPushService,

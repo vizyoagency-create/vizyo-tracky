@@ -1,5 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Cron } from '@nestjs/schedule';
+import { COUPE_CIRCUIT_PUSH_EVENT, type CoupeCircuitPushEvent } from '../notifications/coupe-circuit-push.events';
 import { ErrorLogger } from '../observability/error-logger.service';
 import { SmsGatewayService } from './sms-gateway.service';
 
@@ -22,6 +24,8 @@ import { SmsGatewayService } from './sms-gateway.service';
 const OPEN_AFTER_BAD_TICKS = 2;
 const CLOSE_AFTER_GOOD_TICKS = 3;
 const REMINDER_MS = 15 * 60_000;
+/** Push aux super-admins pendant un épisode : ouverture, puis une fois par heure. */
+const PUSH_SPACING_MS = 60 * 60_000;
 
 @Injectable()
 export class SmsGatewayWatchdogService {
@@ -32,9 +36,13 @@ export class SmsGatewayWatchdogService {
   private goodTicks = 0;
   private running = false;
 
+  /** Push aux super-admins : à l'ouverture de l'épisode, puis une fois par heure tant qu'il dure. */
+  private lastPushAt = 0;
+
   constructor(
     private readonly sms: SmsGatewayService,
     private readonly errorLogger: ErrorLogger,
+    private readonly events: EventEmitter2,
   ) {}
 
   @Cron('0 * * * * *', { name: 'sms-gateway-watchdog' })
@@ -74,6 +82,15 @@ export class SmsGatewayWatchdogService {
     }
   }
 
+  /** Événement `coupe-circuit.push` → `CoupeCircuitPushService` (super-admins). Ne lève jamais. */
+  private pousser(event: CoupeCircuitPushEvent): void {
+    try {
+      this.events.emit(COUPE_CIRCUIT_PUSH_EVENT, event);
+    } catch (err) {
+      this.logger.warn(`push coupe-circuit non émis (${event.kind}) : ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
   private onGoodTick(): void {
     this.badTicks = 0;
     if (!this.incidentOpen) return;
@@ -95,10 +112,22 @@ export class SmsGatewayWatchdogService {
       return;
     }
     if (this.incidentOpen && Date.now() - this.lastReportAt < REMINDER_MS) return;
+    const ouverture = !this.incidentOpen;
     this.incidentOpen = true;
     try {
       await this.errorLogger.record(message, 'sms-gateway-watchdog', context, 'CRITICAL');
       this.lastReportAt = Date.now();
+      // Prévenir — le 15/09 le S21 est resté hors ligne de 15:49 à 19:51, CRITICAL au centre
+      // d'alerte et personne d'averti. À l'ouverture, puis toutes les heures.
+      if (ouverture || Date.now() - this.lastPushAt >= PUSH_SPACING_MS) {
+        this.lastPushAt = Date.now();
+        this.pousser({
+          kind: 'passerelle-sms',
+          subjectKey: 'passerelle',
+          title: 'Téléphone passerelle SMS hors ligne',
+          body: `${message} Brancher / déverrouiller le S21 et ouvrir SMS Gateway.`,
+        });
+      }
     } catch (err) {
       // Jamais « signalé » si le centre d'alerte n'a rien persisté : lastReportAt reste à zéro,
       // le prochain tick retente au lieu d'attendre le rappel de 15 min.

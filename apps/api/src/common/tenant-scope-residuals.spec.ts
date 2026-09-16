@@ -32,6 +32,7 @@ describe('tenant-scope résiduels (fail-closed)', () => {
         {} as never,
         {} as never, // deadZones — non sollicité par listCommands
         {} as never,
+        {} as never, // events (EventEmitter2, 16/09) — push coupe-circuit, non sollicité par listCommands
       );
 
     it('non-super sans fleetId → [] et aucune requête DB', async () => {

@@ -1,3 +1,4 @@
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Test } from '@nestjs/testing';
 import { ErrorLogger } from '../observability/error-logger.service';
 import { SmsGatewayService } from './sms-gateway.service';
@@ -13,6 +14,7 @@ describe('SmsGatewayWatchdogService', () => {
   let service: SmsGatewayWatchdogService;
   let healthCheck: jest.Mock;
   let record: jest.Mock;
+  let emit: jest.Mock;
 
   const stale = {
     reachable: true,
@@ -35,6 +37,7 @@ describe('SmsGatewayWatchdogService', () => {
   beforeEach(async () => {
     healthCheck = jest.fn();
     record = jest.fn().mockResolvedValue('alert-id');
+    emit = jest.fn();
     const module = await Test.createTestingModule({
       providers: [
         SmsGatewayWatchdogService,
@@ -43,6 +46,7 @@ describe('SmsGatewayWatchdogService', () => {
           useValue: { currentProvider: () => 'vizyo-texto', healthCheck },
         },
         { provide: ErrorLogger, useValue: { record } },
+        { provide: EventEmitter2, useValue: { emit } },
       ],
     }).compile();
     service = module.get(SmsGatewayWatchdogService);
@@ -116,12 +120,27 @@ describe('SmsGatewayWatchdogService', () => {
     expect(record).toHaveBeenCalledTimes(2);
   });
 
+  it('16/09 — l ouverture d un épisode POUSSE une notification aux super-admins, puis se tait pendant une heure', async () => {
+    await ticks('bad', 'bad', 'bad', 'bad', 'bad');
+    expect(emit).toHaveBeenCalledTimes(1);
+    expect(emit).toHaveBeenCalledWith(
+      'coupe-circuit.push',
+      expect.objectContaining({ kind: 'passerelle-sms', subjectKey: 'passerelle', title: expect.stringContaining('hors ligne') }),
+    );
+    // le rappel du centre d'alerte (15 min) ne pousse pas de nouveau : une heure entre deux push
+    jest.spyOn(Date, 'now').mockReturnValue(Date.now() + 16 * 60_000);
+    await ticks('bad');
+    expect(record).toHaveBeenCalledTimes(2);
+    expect(emit).toHaveBeenCalledTimes(1);
+  });
+
   it('ne fait rien quand le fournisseur SMS n est pas le relais', async () => {
     const module = await Test.createTestingModule({
       providers: [
         SmsGatewayWatchdogService,
         { provide: SmsGatewayService, useValue: { currentProvider: () => 'twilio', healthCheck } },
         { provide: ErrorLogger, useValue: { record } },
+        { provide: EventEmitter2, useValue: { emit } },
       ],
     }).compile();
     await module.get(SmsGatewayWatchdogService).inspect();

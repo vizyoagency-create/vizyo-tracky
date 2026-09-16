@@ -8,7 +8,7 @@ import {
   OnModuleDestroy,
   ServiceUnavailableException,
 } from '@nestjs/common';
-import { OnEvent } from '@nestjs/event-emitter';
+import { EventEmitter2, OnEvent } from '@nestjs/event-emitter';
 import { Cron } from '@nestjs/schedule';
 import { CommandStatus, EngineAction, GpsDeadZoneStatus, Prisma, UserRole } from '@prisma/client';
 import type { EngineControlCommand, GpsDeadZone } from '@prisma/client';
@@ -23,6 +23,7 @@ import {
 import { CobanWireLogger } from '../observability/coban-wire-logger.service';
 import { ErrorLogger } from '../observability/error-logger.service';
 import { NIVEAU_DEGRADATION } from '../observability/niveaux-erreur';
+import { COUPE_CIRCUIT_PUSH_EVENT, type CoupeCircuitPushEvent } from '../notifications/coupe-circuit-push.events';
 import { resolveTenantScope } from '../common/tenant-scope';
 import { PrismaService } from '../prisma/prisma.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
@@ -288,6 +289,13 @@ const ENGINE_RESTORE_REALERT_MS = 15 * 60_000;
  */
 const ENGINE_RESTORE_ALERT_WINDOW_MS = 24 * 60 * 60_000;
 const ENGINE_RESTORE_SMS_STUCK_MS = 60 * 60_000;
+/**
+ * Push aux super-admins quand des coupes sont retenues : à l'ouverture de l'épisode (première
+ * ligne par cause), puis une fois par heure tant qu'il dure. Le centre d'alerte garde ses lignes
+ * toutes les 15 min ; le téléphone du propriétaire, lui, n'a pas à vibrer quatre fois par heure
+ * pour une cause déjà connue.
+ */
+const ENGINE_WITHHELD_PUSH_SPACING_MS = 60 * 60_000;
 /** Lu à chaque appel (pas au chargement) : les tests le règlent sans recharger le module. */
 const manualResponseBudgetMs = (): number =>
   Math.max(1_000, Number(process.env['ENGINE_MANUAL_RESPONSE_BUDGET_MS']) || 20_000);
@@ -342,7 +350,7 @@ export class EngineControlService implements OnModuleDestroy {
   /** T49 — par cause de refus : dernière ligne écrite, refus et véhicules accumulés depuis. */
   private readonly withheldCuts = new Map<
     string,
-    { lastAt: number; refusals: number; vehicles: Set<string> }
+    { lastAt: number; refusals: number; vehicles: Set<string>; lastPushAt?: number }
   >();
   /** T62 — verdict de joignabilité SMS par numéro (60 s) et dernière ligne « TCP seul » par boîtier. */
   private readonly smsReachabilityCache = new Map<string, { expiresAt: number; verdict: SmsReachability }>();
@@ -372,6 +380,7 @@ export class EngineControlService implements OnModuleDestroy {
     private readonly sms: SmsGatewayService,
     private readonly deadZones: GpsDeadZonesService,
     private readonly systemActivity: SystemActivityService,
+    private readonly events: EventEmitter2,
   ) {}
 
   /**
@@ -1729,6 +1738,28 @@ export class EngineControlService implements OnModuleDestroy {
       },
       cause === 'kill-switch' ? NIVEAU_DEGRADATION : 'CRITICAL',
     ).catch(() => undefined);
+
+    // Prévenir — nuit du 15 au 16/09 : 24 coupes retenues de 22:00 à 04:30, une ligne toutes les
+    // 15 min au centre d'alerte, et personne d'averti. Une fois par cause à l'ouverture, puis
+    // toutes les heures ; le socle applique encore ses propres bornes.
+    if (now - (entry.lastPushAt ?? 0) >= ENGINE_WITHHELD_PUSH_SPACING_MS) {
+      entry.lastPushAt = now;
+      this.pousserCoupeCircuit({
+        kind: 'coupe-retenue',
+        subjectKey: key,
+        title: cause === 'kill-switch' ? 'Coupes automatiques retenues (kill-switch)' : 'Coupes automatiques retenues',
+        body: `${reason} — ${refusals} refus${vehicles.length > 0 ? ` : ${vehicles.slice(0, 6).join(', ')}${vehicles.length > 6 ? '…' : ''}` : ''}. Rien ne coupe tant que la cause n'est pas levée.`,
+      });
+    }
+  }
+
+  /** Événement `coupe-circuit.push` → `CoupeCircuitPushService` (super-admins). Ne lève jamais. */
+  private pousserCoupeCircuit(event: CoupeCircuitPushEvent): void {
+    try {
+      this.events.emit(COUPE_CIRCUIT_PUSH_EVENT, event);
+    } catch (err) {
+      this.logger.warn({ kind: event.kind, error: err instanceof Error ? err.message : String(err) }, 'push coupe-circuit non émis');
+    }
   }
 
   private async beginAttempt(
@@ -2568,6 +2599,21 @@ export class EngineControlService implements OnModuleDestroy {
           },
           'CRITICAL',
         );
+        // Prévenir — hier GS-928-NX est resté immobilisé 2 h 56 : la première alerte, l'échec
+        // terminal, puis un rappel par heure (le centre d'alerte, lui, rappelle tous les quarts
+        // d'heure). C'est le cas où un conducteur attend devant un véhicule qui ne démarre pas.
+        const terminal = command.status === CommandStatus.FAILED;
+        if (!previousAlertAt || terminal || ageMin % 60 < Math.round(ENGINE_RESTORE_REALERT_MS / 60_000)) {
+          const plaque = command.tracker.vehicle?.plate ?? command.tracker.imei;
+          this.pousserCoupeCircuit({
+            kind: 'restore-non-prouvee',
+            subjectKey: command.id,
+            title: terminal ? `Remise en route en échec — ${plaque}` : `Remise en route non confirmée — ${plaque}`,
+            body: terminal
+              ? `Le véhicule est peut-être immobilisé : intervention manuelle (${command.lastError ?? 'sans détail'}).`
+              : `Non confirmée depuis ${ageMin} min (canal ${command.channel ?? '?'}, ${command.attemptCount} tentative(s)) — relances en cours, vérifier le véhicule.`,
+          });
+        }
       } catch (err) {
         // Ne jamais mémoriser « alerté » si le centre d'alertes n'a rien persisté.
         // La remise à null autorise le prochain passage à retenter.

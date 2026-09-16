@@ -5,6 +5,7 @@ import {
   NotFoundException,
   ServiceUnavailableException,
 } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Test, type TestingModule } from '@nestjs/testing';
 import { CommandStatus, EngineAction, UserRole } from '@prisma/client';
 import { CobanWireLogger } from '../observability/coban-wire-logger.service';
@@ -199,6 +200,7 @@ describe('EngineControlService', () => {
   let ackWaiter: { waitForAck: jest.Mock; cancelAll: jest.Mock };
   let gateway: { emitEngineCommandUpdate: jest.Mock };
   let errorLogger: { record: jest.Mock };
+  let events: { emit: jest.Mock };
 
   beforeEach(async () => {
     prisma = {
@@ -237,6 +239,8 @@ describe('EngineControlService', () => {
       emitEngineCommandUpdate: jest.fn(),
     };
 
+    events = { emit: jest.fn() };
+
     errorLogger = { record: jest.fn().mockResolvedValue('error-id') };
 
     testModule = await Test.createTestingModule({
@@ -268,6 +272,7 @@ describe('EngineControlService', () => {
         // surchargent matchZoneForPoint.
         { provide: GpsDeadZonesService, useValue: { matchZoneForPoint: jest.fn().mockResolvedValue(null) } },
         { provide: SystemActivityService, useValue: { record: jest.fn() } },
+        { provide: EventEmitter2, useValue: events },
       ],
     }).compile();
 
@@ -1806,6 +1811,12 @@ describe('EngineControlService', () => {
         await refus(); // le quart d'heure est passé : une ligne, avec le compte
         expect(errorLogger.record).toHaveBeenCalledTimes(2);
         expect(errorLogger.record.mock.calls[1][2]).toMatchObject({ cause: 'interlock', refusalsSinceLastLine: 3, spacingMin: 15 });
+        // 16/09 — la nuit du 15 au 16 : 24 coupes retenues, une ligne par quart d'heure, personne
+        // d'averti. Désormais : UN push à l'ouverture de la cause, pas un par ligne.
+        const pushes = () => events.emit.mock.calls.filter(([nom]) => nom === 'coupe-circuit.push');
+        expect(pushes()).toHaveLength(1);
+        expect(pushes()[0][1]).toMatchObject({ kind: 'coupe-retenue', subjectKey: 'interlock|téléphone Android/SIM indisponible : téléphone périmé' });
+        expect(String(pushes()[0][1].body)).toContain('1 refus');
 
         // Une raison DIFFÉRENTE (le cache de santé expire à 30 s : on le pousse au-delà) a sa propre ligne, tout de suite.
         sms.healthCheck.mockResolvedValue({ ...sante(true), deliveryProofAvailable: false });
@@ -1815,6 +1826,13 @@ describe('EngineControlService', () => {
         expect((err as AutomaticCutWithheldException).reason).toContain('aucune preuve de remise');
         expect(errorLogger.record).toHaveBeenCalledTimes(3);
         expect(errorLogger.record.mock.calls[2][2]).toMatchObject({ cause: 'interlock', refusalsSinceLastLine: 1 });
+        // une raison nouvelle = un sujet nouveau = un push de plus (le socle cloisonne par subjectKey)
+        expect(pushes()).toHaveLength(2);
+        expect(pushes()[1][1].subjectKey).toContain('aucune preuve de remise');
+        // une heure plus tard, la même raison pousse de nouveau (rappel horaire, pas par quart d'heure)
+        now.mockReturnValue(t0 + 17 * 60_000 + 61 * 60_000);
+        await refus();
+        expect(pushes()).toHaveLength(3);
       });
 
       it('le refus est typé, avec sa cause et sa raison — le cron discrimine par TYPE, jamais par texte', async () => {
@@ -2868,6 +2886,36 @@ describe('EngineControlService', () => {
         expect.objectContaining({ reminder: true, plate: 'AB-123-CD' }),
         'CRITICAL',
       );
+      // 16/09 — GS-928-NX immobilisé 2 h 56 sans que personne ne soit averti : un rappel à 120 min
+      // (multiple de l'heure) pousse aux super-admins ; le socle borne à un par quart d'heure par commande.
+      expect(events.emit).toHaveBeenCalledWith(
+        'coupe-circuit.push',
+        expect.objectContaining({ kind: 'restore-non-prouvee', title: expect.stringContaining('AB-123-CD'), body: expect.stringContaining('120 min') }),
+      );
+    });
+
+    it('16/09 : la PREMIÈRE alerte d une RESTORE non prouvée pousse aux super-admins ; un rappel à 135 min ne pousse pas', async () => {
+      prisma.engineControlCommand.findMany
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([{
+          ...createdCommand({ action: EngineAction.RESTORE, status: CommandStatus.SENT, channel: 'TCP', attemptCount: 1, alertedAt: null, createdAt: new Date(Date.now() - 2 * 60_000) }),
+          tracker: { imei: trackerWithVehicle.imei, vehicle: trackerWithVehicle.vehicle },
+        }]);
+      await service.processPendingRestores();
+      expect(events.emit).toHaveBeenCalledWith(
+        'coupe-circuit.push',
+        expect.objectContaining({ kind: 'restore-non-prouvee', title: 'Remise en route non confirmée — AB-123-CD' }),
+      );
+      events.emit.mockClear();
+      prisma.engineControlCommand.findMany
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([{
+          ...createdCommand({ action: EngineAction.RESTORE, status: CommandStatus.SENT, channel: 'TCP', attemptCount: 3, alertedAt: new Date(Date.now() - 16 * 60_000), createdAt: new Date(Date.now() - 135 * 60_000) }),
+          tracker: { imei: trackerWithVehicle.imei, vehicle: trackerWithVehicle.vehicle },
+        }]);
+      await service.processPendingRestores();
+      expect(errorLogger.record).toHaveBeenCalledWith(expect.stringContaining('toujours non confirmée depuis 135 min'), 'engine-control-restore', expect.anything(), 'CRITICAL');
+      expect(events.emit).not.toHaveBeenCalled();
     });
 
     it('T51 : un SMS en file depuis plus d une heure est annulé au relais et retenté', async () => {

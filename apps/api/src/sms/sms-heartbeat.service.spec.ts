@@ -1,3 +1,4 @@
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Test } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
 import { ErrorLogger } from '../observability/error-logger.service';
@@ -11,6 +12,7 @@ describe('SmsHeartbeatService', () => {
   let reconcile: jest.Mock;
   let record: jest.Mock;
   let findMany: jest.Mock;
+  let emit: jest.Mock;
   let update: jest.Mock;
   let recipientsEnv: string;
   /** T45 — destinataire de la preuve quotidienne (SMS_DAILY_PROOF_RECIPIENT). */
@@ -34,6 +36,7 @@ describe('SmsHeartbeatService', () => {
     );
     record = jest.fn().mockResolvedValue('error-log-id');
     findMany = jest.fn().mockResolvedValue([]);
+    emit = jest.fn();
 
     const module = await Test.createTestingModule({
       providers: [
@@ -47,6 +50,7 @@ describe('SmsHeartbeatService', () => {
           },
         },
         { provide: ErrorLogger, useValue: { record } },
+        { provide: EventEmitter2, useValue: { emit } },
         { provide: PrismaService, useValue: { smsLog: { findMany, update } } },
         {
           provide: ConfigService,
@@ -353,6 +357,33 @@ describe('SmsHeartbeatService', () => {
       await service.verifyDailyProofScheduled();
       expect(run).toHaveBeenCalledWith('quotidien');
       expect(verify).toHaveBeenCalledWith(expect.any(Date), 'quotidien');
+    });
+
+    // ── 16/09 — la nuit du 15 au 16 : preuve > 24 h à 22:00, 24 coupes retenues, personne d'averti ──
+    it('la preuve quotidienne part aussi à 21:30 et se vérifie à 21:45 — T-30 min de la fenêtre de coupe du soir', () => {
+      const crons = Reflect.getMetadata('SCHEDULE_CRON_OPTIONS', service.runDailyProofScheduled) ?? {};
+      const verifs = Reflect.getMetadata('SCHEDULE_CRON_OPTIONS', service.verifyDailyProofScheduled) ?? {};
+      expect(crons.cronTime).toBe('0 30 4,6,21 * * *');
+      expect(verifs.cronTime).toBe('0 45 4,6,21 * * *');
+      expect(crons.timeZone).toBe('Europe/Paris');
+    });
+
+    it('un verdict ≠ OK du cron de vérification POUSSE une notification aux super-admins (événement coupe-circuit.push)', async () => {
+      dailyRecipientEnv = '+33700000000';
+      findMany.mockResolvedValueOnce([{ id: 'log-1', status: 'queued', toNumber: '+337', createdAt: at(15), body: `${PREFIX} x` }]).mockResolvedValueOnce([]);
+      await service.verifyDailyProofScheduled();
+      expect(emit).toHaveBeenCalledWith(
+        'coupe-circuit.push',
+        expect.objectContaining({ kind: 'preuve-sms', subjectKey: 'quotidien|INDETERMINE', title: expect.stringContaining('INDETERMINE') }),
+      );
+    });
+
+    it('un verdict OK ne pousse rien', async () => {
+      dailyRecipientEnv = '+33700000000';
+      findMany.mockResolvedValueOnce([{ id: 'log-1', status: 'queued', toNumber: '+337', createdAt: at(15), body: `${PREFIX} x` }]).mockResolvedValueOnce([]);
+      reconcile.mockResolvedValue({ outcome: 'delivered', status: 'delivered' });
+      await service.verifyDailyProofScheduled();
+      expect(emit).not.toHaveBeenCalled();
     });
   });
 });

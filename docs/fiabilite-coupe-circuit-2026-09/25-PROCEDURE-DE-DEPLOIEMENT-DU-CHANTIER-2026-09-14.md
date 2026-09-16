@@ -328,8 +328,8 @@ client Prisma ignore les colonnes qu'il ne connaît pas. Ne jamais vider `engine
 
 | Heure (Paris) | Ce qu'on attend | Où le lire |
 |---|---|---|
-| 04:30 / 06:30 | envoi de la preuve quotidienne | journal API : « Preuve SMS quotidienne via vizyo-texto — 1/1 acceptee » |
-| 04:45 / 06:45 | `verdict=OK` | journal API ; **aucune** ligne `sms-daily-proof` au centre d'alerte |
+| 04:30 / 06:30 / **21:30** | envoi de la preuve quotidienne (21:30 depuis le 16/09 : T-30 min de la fenêtre de coupe du soir) | journal API : « Preuve SMS quotidienne via vizyo-texto — 1/1 acceptee » |
+| 04:45 / 06:45 / **21:45** | `verdict=OK` — un verdict ≠ OK pousse une notification aux super-admins | journal API ; **aucune** ligne `sms-daily-proof` au centre d'alerte |
 | en continu | `lastTerminalSuccessAt` < 24 h, `gateway.operational: true`, file < 10 | `GET /api/admin/sms/status` — ce sont les conditions exactes de l'interlock |
 | en continu | sentinelle silencieuse | `sms-gateway-watchdog` : 0 ligne en 24 h (T44 + T43) |
 | lundi 09:00/09:20 | la preuve hebdo inchangée | `verdict=OK` |

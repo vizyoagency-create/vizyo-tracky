@@ -1,8 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Cron } from '@nestjs/schedule';
 import type { Env } from '../config/env.validation';
 import type { SmsTemplateId } from '../communications/communications.catalog';
+import { COUPE_CIRCUIT_PUSH_EVENT, type CoupeCircuitPushEvent } from '../notifications/coupe-circuit-push.events';
 import { ErrorLogger } from '../observability/error-logger.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { SmsGatewayService, smsOutcomeFromStatus, type SmsOutcome } from './sms-gateway.service';
@@ -30,7 +32,7 @@ export interface HeartbeatResult {
 /**
  * T45 (contre-expertise du 13/09, P1-3) — deux sondes, un même code.
  *  - `hebdo`     : la preuve de vie historique, lundi 09:00, vers les numéros des admins ;
- *  - `quotidien` : la preuve QUOTIDIENNE, 04:30 et 06:30 Europe/Paris — T-30 min des fenêtres de
+ *  - `quotidien` : la preuve QUOTIDIENNE, 04:30, 06:30 et 21:30 Europe/Paris — T-30 min des fenêtres de
  *                  remise en route de 05:00 et 07:00 — vers UN numéro neutre (`SMS_DAILY_PROOF_RECIPIENT`,
  *                  recommandé : la SIM du téléphone passerelle lui-même, ce qui prouve l'émission, la
  *                  réception ET le webhook entrant). Sans remise prouvée depuis moins de 24 h,
@@ -125,6 +127,7 @@ export class SmsHeartbeatService {
     private readonly errorLogger: ErrorLogger,
     private readonly prisma: PrismaService,
     private readonly config: ConfigService<Env, true>,
+    private readonly events: EventEmitter2,
   ) {
     const h = Number(process.env['SMS_HEARTBEAT_VERIFY_WINDOW_H']);
     this.verifyWindowMs = (Number.isFinite(h) && h > 0 ? h : 3) * 3_600_000;
@@ -174,12 +177,17 @@ export class SmsHeartbeatService {
   }
 
   /**
-   * T45 — preuve quotidienne, 04:30 et 06:30 Europe/Paris : T-30 min des fenêtres de remise en
-   * route (05:00 MH Cars, 07:00 CDEF 31). Assez tôt pour qu'un humain agisse avant le départ des
-   * véhicules si la chaîne SMS est morte ; assez récent pour que l'interlock du soir (remise
-   * prouvée < 24 h) trouve sa preuve. Deux passages : le second rattrape un premier raté.
+   * T45 — preuve quotidienne, 04:30, 06:30 et 21:30 Europe/Paris : T-30 min des fenêtres de
+   * remise en route (05:00 MH Cars, 07:00 CDEF 31) ET de la fenêtre de coupe du soir (20:00 /
+   * 22:00). Assez tôt pour qu'un humain agisse avant le départ des véhicules si la chaîne SMS est
+   * morte ; assez récent pour que l'interlock (remise prouvée < 24 h) trouve sa preuve.
+   *
+   * Le passage de 21:30 est né de la nuit du 15 au 16/09/2026 : à 22:00 la dernière remise prouvée
+   * avait 37 h (la preuve du lundi), l'interlock a retenu les 24 coupes jusqu'à la preuve de 04:30
+   * — juste, mais invisible avant l'heure. Une preuve trente minutes avant la coupe, vérifiée
+   * quinze minutes après, rend le défaut visible AVANT 22:00, quand il est encore corrigeable.
    */
-  @Cron('0 30 4,6 * * *', { name: 'sms-daily-proof', timeZone: 'Europe/Paris' })
+  @Cron('0 30 4,6,21 * * *', { name: 'sms-daily-proof', timeZone: 'Europe/Paris' })
   async runDailyProofScheduled(): Promise<void> {
     const result = await this.runHeartbeat('quotidien');
     if (result.skipped) {
@@ -192,14 +200,37 @@ export class SmsHeartbeatService {
     );
   }
 
-  /** T45 — 04:45 et 06:45 Europe/Paris : verdict de la preuve quotidienne, 15 min après l'envoi. */
-  @Cron('0 45 4,6 * * *', { name: 'sms-daily-proof-verify', timeZone: 'Europe/Paris' })
+  /** T45 — 04:45, 06:45 et 21:45 Europe/Paris : verdict de la preuve quotidienne, 15 min après l'envoi. */
+  @Cron('0 45 4,6,21 * * *', { name: 'sms-daily-proof-verify', timeZone: 'Europe/Paris' })
   async verifyDailyProofScheduled(): Promise<void> {
     const v = await this.verifyHeartbeat(new Date(), 'quotidien');
     this.logger.log(
       `Preuve SMS quotidienne — verdict=${v.verdict} ` +
         `(${v.delivered} remis, ${v.echo} recu(s) en echo, ${v.failed} echecs, ${v.indeterminate} indetermines sur ${v.checked}).`,
     );
+    // Prévenir les super-admins : la ligne du centre d'alerte ne suffit pas quand il reste
+    // quinze minutes pour brancher ou déverrouiller le téléphone avant la fenêtre.
+    if (v.verdict !== 'OK' && v.verdict !== 'SANS_OBJET') {
+      const heure = new Date().toLocaleTimeString('fr-FR', { timeZone: 'Europe/Paris', hour: '2-digit', minute: '2-digit' });
+      this.pousser({
+        kind: 'preuve-sms',
+        subjectKey: `quotidien|${v.verdict}`,
+        title: `Preuve SMS quotidienne ${v.verdict} (${heure})`,
+        body:
+          v.verdict === 'NON_EMIS'
+            ? 'Aucune preuve envoyée — vérifier SMS_DAILY_PROOF_RECIPIENT et le relais. Sans remise prouvée < 24 h, les coupes automatiques seront retenues.'
+            : `${v.delivered} remis, ${v.failed} échecs, ${v.indeterminate} indéterminés — vérifier le téléphone passerelle (branché, déverrouillé, appli ouverte). Sans remise prouvée < 24 h, les coupes automatiques seront retenues.`,
+      });
+    }
+  }
+
+  /** Événement `coupe-circuit.push` → `CoupeCircuitPushService` (super-admins). Ne lève jamais. */
+  private pousser(event: CoupeCircuitPushEvent): void {
+    try {
+      this.events.emit(COUPE_CIRCUIT_PUSH_EVENT, event);
+    } catch (err) {
+      this.logger.warn(`push coupe-circuit non émis (${event.kind}) : ${err instanceof Error ? err.message : String(err)}`);
+    }
   }
 
   /** T45 — destinataire unique de la preuve quotidienne (E.164), ou null si non configuré. */
