@@ -304,4 +304,44 @@ WHERE t."lastSeenAt" > now() - interval '30 minutes'
 ORDER BY t."lastPositionAt"
 LIMIT 30;
 
+\echo ### SECTION recalage_journees_closes
+-- T28 / TRK-016 (2026-09-16) : la mesure « recalage à la clôture, sur la journée close » vivait
+-- dans la tête de l'agent et pas dans ce fichier. Résultat mesuré le 16/09 : la journée du 14/09
+-- rendait 244 trajets la veille et 259 le lendemain SANS qu'aucun trajet soit né entre-temps —
+-- quatre définitions de la « journée » essayées, aucune ne retrouvait 244. Une mesure dont la
+-- requête n'est pas versionnée n'est pas reproductible, donc pas une mesure (règle VPS-M94).
+-- DÉFINITION FIXÉE ICI : journée CIVILE de Paris, par `endedAt` (la clôture, pas le départ).
+-- ⚠️ `endedAt` est un `timestamp without time zone` qui porte de l'UTC : il faut
+--    `AT TIME ZONE 'UTC' AT TIME ZONE 'Europe/Paris'`. Un simple `AT TIME ZONE 'Europe/Paris'`
+--    lit la valeur comme de l'heure de Paris et DÉCALE la journée de 4 h (bornes à 02:00 UTC) —
+--    c'est la variante qui rendait 86 / 66 / 20 pour le 13/09, et 259 pour le 14/09.
+-- Les journées sont closes (J-1 → J-3) : le chiffre d'une même journée doit être IDENTIQUE d'un
+-- passage à l'autre. S'il bouge, c'est le passé qui a bougé (recalcul, fusion de trajets) — à
+-- dire tel quel, jamais à lire comme une amélioration ou une dégradation du recalage.
+-- Série (nouvelle définition) : 13/09 = 88 / 88 / 60 / 28 / 0 · 14/09 = 250 / 250 / 239 / 0 / 0
+--                                · 15/09 = 273 / 273 / 263 / 0 / 0.
+WITH j AS (
+  SELECT (("endedAt" AT TIME ZONE 'UTC' AT TIME ZONE 'Europe/Paris')::date) AS jour_paris, *
+  FROM trips
+  WHERE "endedAt" IS NOT NULL
+    AND "endedAt" >= (date_trunc('day', now() AT TIME ZONE 'Europe/Paris') - interval '3 days') AT TIME ZONE 'Europe/Paris'
+    AND "endedAt" <  (date_trunc('day', now() AT TIME ZONE 'Europe/Paris')) AT TIME ZONE 'Europe/Paris'
+)
+SELECT jour_paris,
+       count(*)                                                                    AS trajets,
+       count(*) FILTER (WHERE "polylineMatched" IS NOT NULL)                       AS recales,
+       count(*) FILTER (WHERE "polylineMatchedSource" = 'cloture'
+                          AND "polylineMatchedAt" - "endedAt" < interval '2 hours') AS cloture_moins_2h,
+       count(*) FILTER (WHERE "polylineMatched" IS NOT NULL
+                          AND "polylineMatchedAt" IS NULL)                          AS origine_inconnue,
+       count(*) FILTER (WHERE "polylineMatched" IS NULL)                            AS sans_recalage,
+       count(*) FILTER (WHERE "polylineMatchedSource" = 'rattrapage')               AS par_rattrapage,
+       round(avg(extract(epoch FROM ("polylineMatchedAt" - "endedAt")) / 60)
+             FILTER (WHERE "polylineMatchedSource" = 'cloture'))                   AS delai_cloture_moy_min,
+       round(max(extract(epoch FROM ("polylineMatchedAt" - "endedAt")) / 60)
+             FILTER (WHERE "polylineMatchedSource" = 'cloture'))                   AS delai_cloture_max_min
+FROM j
+GROUP BY 1
+ORDER BY 1;
+
 \echo ### SECTION fin
