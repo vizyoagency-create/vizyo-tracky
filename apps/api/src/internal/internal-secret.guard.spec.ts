@@ -54,6 +54,15 @@ describe('InternalSecretGuard — HMAC', () => {
     expect(() => garde(null).canActivate(contexte({ 'x-app-id': 'manager', 'x-app-timestamp': String(ts), 'x-app-signature': signer(ts, '{}') }, {}))).toThrow(/not configured/);
   });
 
+  it('TRANSITION : Manager envoie HMAC + secret statique ; Tracky sans VIZYO_MANAGER_APP_SECRET juge sur le statique', () => {
+    const ts = maintenant();
+    const deux = { 'x-app-id': 'manager', 'x-app-timestamp': String(ts), 'x-app-signature': signer(ts, '{}'), 'x-internal-secret': STATIQUE };
+    expect(garde(null).canActivate(contexte(deux, {}))).toBe(true);
+    // …mais une fois le secret HMAC posé, c'est la signature qui juge — le statique ne rattrape plus une fausse signature.
+    const fausse = { ...deux, 'x-app-signature': signer(ts, '{"autre":1}') };
+    expect(() => garde().canActivate(contexte(fausse, {}))).toThrow(/Invalid signature/);
+  });
+
   it('en-têtes HMAC incomplets → 401 (« Missing HMAC headers »)', () => {
     expect(() => garde().canActivate(contexte({ 'x-app-id': 'manager' }, {}))).toThrow(/Missing/);
   });

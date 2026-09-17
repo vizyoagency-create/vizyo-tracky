@@ -168,12 +168,12 @@ Toutes derrière la garde du § 4.2. Corps JSON ; réponses d'erreur `{ error: {
 
 | Route | Corps | Réponse | Effet |
 |---|---|---|---|
-| `GET fleets?unlinked=true` | — | `[{ fleetId, name, createdAt, vehicles, users, admins:[{email,name}] }]` | flottes sans `clientId`, non archivées (« Adopter ») |
+| `GET fleets?unlinked=true` | — | `[{ id, name, adminEmail, fleetId, createdAt, vehicles, users, admins:[{email,name}] }]` | flottes sans `clientId`, non archivées (« Adopter ») — `id` + `adminEmail` = ce que Manager lit |
 | `PATCH fleet/:fleetId` | `{ name?, contact?: { firstName?, lastName?, phone? }, notificationEmail?, adminEmail?, clientId? }` — n'envoyer que ce qui change ; `null` efface `phone` / `notificationEmail` | `{ fleetId, name, clientId, adminUserId, adminEmail, managedByManagerAt, changed: [...] }` | `fleet.name`, `fleet.contactPhone`, `fleet.weeklyReportEmail`, admin `firstName/lastName/phone/email` ; pose `managedByManagerAt` et marque l'admin `managedByManager` |
-| `PUT fleet/:fleetId` | `{ name, clientId, contact?, notificationEmail?, adminEmail?, active? }` | idem + `authFailures` | état complet, idempotent (« Resynchroniser ») ; `clientId` posé si absent (« Adopter ») ; `active:false/true` suspend / réactive **tous** les membres, Vizyo Auth aligné (C11) |
+| `PUT fleet/:fleetId` | `{ name, clientId, contact?, notificationEmail?, isActive?, archived?, adminEmail? }` | idem + `authFailures` | état complet, idempotent (« Resynchroniser ») ; `clientId` posé si absent (« Adopter ») ; `isActive:false/true` suspend / réactive **tous** les membres, Vizyo Auth aligné (C11) ; `archived:true/false` archive / désarchive (l'archive prime sur `isActive`) |
 | `POST fleet/:fleetId/archive` | `{ by? }` | `{ status:'archived', authFailures, alreadyArchived }` | `archivedAt/By`, membres suspendus (Auth aligné), liens de réservation fermés ; rejouable |
 | `POST fleet/:fleetId/unarchive` | `{ by? }` | `{ status:'active', authFailures, wasArchived }` | membres réactivés (liens restent fermés) |
-| `DELETE fleet/:fleetId` | `{ confirmName, by? }` | `{ status:'deleted', deleted:{…}, authRemoved, authFailures }` | **depuis l'archive seulement**, nom exact retapé ; efface positions/trajets des boîtiers, tables à `fleetId` dénormalisé, la flotte et ses cascades ; **boîtiers et SIM dissociés, pas détruits** ; comptes retirés de l'appli Tracky dans Vizyo Auth ; journaux conservés |
+| `DELETE fleet/:fleetId` | — (ou `{ confirmName?, by? }`) | `{ status:'deleted', deleted:{…}, authRemoved, authFailures }` | **depuis l'archive seulement** (409 sinon) ; si `confirmName` est envoyé, il doit être le nom exact ; efface positions/trajets des boîtiers, tables à `fleetId` dénormalisé, la flotte et ses cascades ; **boîtiers et SIM dissociés, pas détruits** ; comptes retirés de l'appli Tracky dans Vizyo Auth ; journaux conservés ; 404 si déjà absente |
 | `POST fleet/suspend` · `activate` | `{ fleetId }` (existants) | — | flotte entière (déjà le cas) |
 | `POST fleet/provision` | (§ 1.2) | `{ fleetId, existed }` | l'admin créé est `managedByManager`, la flotte `managedByManagerAt` |
 
@@ -187,8 +187,20 @@ mot d'explication) — « Manager gagne ».
 `InternalSecretGuard` accepte **soit** `X-App-Id: manager` + `X-App-Timestamp` (± 300 s) + `X-App-Signature`
 (HMAC-SHA256 de `${ts}.${JSON.stringify(corps)}` avec `VIZYO_MANAGER_APP_SECRET` — la valeur que Manager a déjà),
 **soit** `X-Internal-Secret` (ancien) avec un avertissement journalisé. Sans corps, `${ts}.` et `${ts}.{}` sont tous
-deux acceptés. Un appel présenté en HMAC est jugé en HMAC (pas de repli sur le secret statique si la signature est
-fausse). Le secret statique sera retiré une fois Manager déployé en HMAC.
+deux acceptés. Manager envoie **les deux preuves ensemble** pendant la transition : tant que Tracky n'a pas
+`VIZYO_MANAGER_APP_SECRET`, c'est le secret statique qui juge (avertissement « poser la variable ») ; une fois posé,
+c'est la signature qui juge — une fausse signature n'est plus rattrapée par le secret statique. Fin de transition :
+Manager retire `VIZYO_TRACKY_INTERNAL_SECRET` de son `.env.prod`, puis Tracky retire l'acceptation du secret statique.
+
+### 4.3 Synchronisation avec la session Manager (17/09, après lecture de `docs/LOT_D_TRACKY_INTERNAL_CLIENTS.md`)
+Manager a livré le § 3 sur `feat/lot-d-manager-tracky-internal-clients` (`59f0c89`), non poussé, non déployé.
+Écarts relevés entre son contrat sortant et mes routes — **tous alignés côté Tracky** (`9476a1cc` → commit suivant) :
+`PUT` envoie `isActive` + `archived` (j'avais `active`) ; `DELETE` part sans corps ; `GET fleets?unlinked` doit rendre
+`{ id, name, adminEmail }` ; HMAC + secret statique envoyés ensemble. Décisions Manager validées du point de vue Tracky :
+idempotence de `POST /internal/clients` sur `(origin, externalRef)` (Tracky envoie `externalRef = id de la demande`) ;
+409 explicite si l'e-mail est déjà client d'une autre fiche (Tracky affiche le message) ; pas d'essai TRACKY ; C11 par les
+routes existantes `fleet/activate` / `suspend` ; `adminEmail` seulement par le `PATCH` d'`updateEmail()`. Remarque
+Manager appliquée : un `message` en tableau (pipe de validation) est désormais joint et affiché.
 
 ### 4.3 Écran `/admin/societes` (lot E, pas D) — seulement ce que D impose : rien.
 
@@ -214,16 +226,19 @@ arrière sinon — cf. `docs/fiabilite-coupe-circuit-2026-09/31-INCIDENT-DEPLOIE
 
 0. **Tracky § 4** (branche `feat/rdv-lot-d-tracky`) peut partir **à tout moment** : compatible avec le Manager
    d'aujourd'hui (secret statique encore accepté), routes nouvelles inutilisées tant que Manager ne les appelle pas.
-   Variable à poser dans `deploy/vps/.env.prod` de Tracky avant : `VIZYO_MANAGER_APP_SECRET` (= la valeur Manager).
-1. **Manager § 3.1–3.4 + 3.6** (aucune dépendance Tracky : `fleet/provision` accepte déjà tout). Déployer Manager.
+   Poser `VIZYO_MANAGER_APP_SECRET` dans `deploy/vps/.env.prod` de Tracky (= `VIZYO_MANAGER_APP_SECRET` de Manager) —
+   avant ou après, la garde s'adapte (§ 4.2).
+1. **Manager § 3.1–3.4 + 3.6** (aucune dépendance Tracky : `fleet/provision` accepte déjà tout). Déployer Manager
+   avec `INTERNAL_ALLOWED_APPS=leads,tracky`, `TRACKY_SYNC_ENABLED` absent (= false).
    Recette : depuis l'écran Tracky de prod, valider une demande d'un lien prospect créé sur « Client test » ?
    ⚠️ Non — la création passe par Manager et crée un **vrai client** (Vizyo Auth, e-mails) : recetter avec un client
    de test nommé « TEST lot D — à supprimer », puis l'effacer dans Manager **et** dans Tracky (`DELETE fleet/:id`
    n'existe pas encore : suppression Tracky par l'API admin après le § 4, ou à la main d'ici là — le noter).
 2. **Tracky `.env.prod` : `MANAGER_INTERNAL_URL`**, puis `deploy.sh` (hors fenêtre du matin). Le bouton devient un clic.
-3. **Tracky § 4** (routes + HMAC en double acceptation) → `deploy.sh`.
-4. **Manager § 3.5** (synchro sortante signée HMAC) → déploiement Manager.
-5. **Tracky** : retrait du secret statique → `deploy.sh`.
+3. **Tracky § 4** déjà en prod (étape 0) : poser `TRACKY_SYNC_ENABLED=true` côté Manager → la synchro sortante
+   (§ 3.5) s'active sans redéploiement de code. Recette § 7 (renommer, désactiver/réactiver, archiver, effacer).
+4. **Manager** : retirer `VIZYO_TRACKY_INTERNAL_SECRET` de son `.env.prod` (HMAC seul).
+5. **Tracky** : retrait de l'acceptation du secret statique → `deploy.sh`.
 
 ---
 

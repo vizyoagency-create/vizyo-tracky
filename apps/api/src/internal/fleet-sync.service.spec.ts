@@ -98,13 +98,32 @@ describe('FleetSyncService — PATCH : ce qui a changé dans Manager', () => {
 });
 
 describe('FleetSyncService — PUT : l’état complet, et le statut de la flotte ENTIÈRE (C11)', () => {
-  it('`active: false` suspend tous les membres, Vizyo Auth aligné compte par compte', async () => {
+  it('`isActive: false` suspend tous les membres, Vizyo Auth aligné compte par compte', async () => {
     const { svc, prisma, accountSync } = service();
-    const r = await svc.put(FLEET, { name: 'Transports Legrand', clientId: 'cli-1', active: false });
+    const r = await svc.put(FLEET, { name: 'Transports Legrand', clientId: 'cli-1', isActive: false });
     expect(prisma.user.updateMany).toHaveBeenCalledWith({ where: { fleetId: FLEET }, data: { isActive: false } });
     expect(accountSync.applyStatus).toHaveBeenCalledWith('auth-1', false, 'fleet_resync:marc@legrand.fr');
     expect(r.changed).toContain('suspended');
     expect(r.authFailures).toBe(0);
+  });
+
+  it('`archived: true` archive (et prime sur `isActive`) ; `archived: false` désarchive — idempotent', async () => {
+    const { svc, prisma } = service();
+    const r = await svc.put(FLEET, { name: 'Transports Legrand', clientId: 'cli-1', isActive: true, archived: true });
+    expect(prisma.fleet.update).toHaveBeenCalledWith({ where: { id: FLEET }, data: { archivedAt: expect.any(Date), archivedBy: 'vizyo-manager' } });
+    expect(r.changed).toContain('archived');
+    expect(r.changed).not.toContain('active');
+    // Une flotte déjà archivée : rejouer `archived: true` ne change rien.
+    const deja = service({ flotte: { archivedAt: new Date() } });
+    const r2 = await deja.svc.put(FLEET, { name: 'Transports Legrand', clientId: 'cli-1', archived: true });
+    expect(r2.changed).not.toContain('archived');
+  });
+
+  it('la liste des flottes non reliées porte `id` et `adminEmail` (le contrat lu par Manager)', async () => {
+    const { svc, prisma } = service();
+    prisma.fleet.findMany.mockResolvedValue([{ id: FLEET, name: 'Legrand', createdAt: new Date(), _count: { vehicles: 3, users: 2 }, users: [{ email: 'marc@legrand.fr', firstName: 'Marc', lastName: null }] }]);
+    const [f] = await svc.unlinked();
+    expect(f).toEqual(expect.objectContaining({ id: FLEET, fleetId: FLEET, name: 'Legrand', adminEmail: 'marc@legrand.fr', vehicles: 3 }));
   });
 });
 
@@ -133,9 +152,17 @@ describe('FleetSyncService — archiver, désarchiver (Q12)', () => {
 describe('FleetSyncService — effacer définitivement (§ 8.4)', () => {
   const archivee = { archivedAt: new Date(), users: [{ authUserId: 'auth-1', email: 'marc@legrand.fr' }, { authUserId: null, email: 'b@legrand.fr' }], vehicles: [{ id: 'v1', tracker: { id: 't1' } }, { id: 'v2', tracker: null }] };
 
-  it('refusé tant que la société n’est pas archivée, ou si le nom retapé ne correspond pas', async () => {
+  it('refusé tant que la société n’est pas archivée (avec ou sans nom), ou si le nom retapé ne correspond pas', async () => {
     await expect(service({ flotte: { archivedAt: null, users: [], vehicles: [] } }).svc.destroy(FLEET, { confirmName: 'Transports Legrand' })).rejects.toThrow(/archivez/);
+    await expect(service({ flotte: { archivedAt: null, users: [], vehicles: [] } }).svc.destroy(FLEET, {})).rejects.toThrow(/archivez/);
     await expect(service({ flotte: archivee }).svc.destroy(FLEET, { confirmName: 'Autre' })).rejects.toThrow(/nom retapé/);
+  });
+
+  it('sans corps (contrat de `deleteClient()` de Manager) : l’archive suffit', async () => {
+    const { svc, prisma } = service({ flotte: archivee });
+    const r = await svc.destroy(FLEET, {});
+    expect(prisma.fleet.delete).toHaveBeenCalledWith({ where: { id: FLEET } });
+    expect(r.status).toBe('deleted');
   });
 
   it('efface positions (par lots), tables dénormalisées, dissocie les SIM, supprime la flotte, retire les comptes de Vizyo Auth, journalise', async () => {

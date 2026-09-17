@@ -104,7 +104,11 @@ export class ManagerClientService {
     }
     const corps = (await reponse.json().catch(() => ({}))) as Record<string, unknown>;
     if (!reponse.ok) {
-      const message = typeof corps['message'] === 'string' ? corps['message'] : `Vizyo Manager a refusé la création (${reponse.status}).`;
+      // Un 400 de la pipe de validation de Manager porte un TABLEAU de messages : on les montre tous.
+      const brut = corps['message'];
+      const message = typeof brut === 'string' ? brut
+        : Array.isArray(brut) && brut.length > 0 ? brut.map(String).join(' ; ')
+        : `Vizyo Manager a refusé la création (${reponse.status}).`;
       this.logger.warn(`Création de client refusée par Manager (${reponse.status}) : ${message}`);
       throw new ServiceUnavailableException(message);
     }

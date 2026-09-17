@@ -43,15 +43,29 @@ export class InternalSecretGuard implements CanActivate {
     const appId = premierEnTete(req.headers['x-app-id']);
     const timestamp = premierEnTete(req.headers['x-app-timestamp']);
     const signature = premierEnTete(req.headers['x-app-signature']);
+    const statique = premierEnTete(req.headers['x-internal-secret']);
+    const statiqueValide = !!statique && egalSansFuite(statique, this.secretStatique);
+
     if (appId || timestamp || signature) {
-      // Un appel qui se présente en HMAC est jugé en HMAC — jamais de repli silencieux sur le
-      // secret statique quand la signature est fausse.
+      if (!this.secretHmac) {
+        // Manager envoie DÉJÀ les deux preuves (HMAC + secret statique) pendant la transition ; tant
+        // que Tracky n'a pas son `VIZYO_MANAGER_APP_SECRET`, c'est le secret statique qui juge —
+        // en le disant, pour qu'on pose la variable.
+        if (statiqueValide) {
+          this.logger.warn(`${route} : HMAC reçu mais VIZYO_MANAGER_APP_SECRET absent — accepté sur le secret statique ; poser la variable (lot D, C7)`);
+          return true;
+        }
+        this.logger.error(`${route} : appel HMAC reçu, VIZYO_MANAGER_APP_SECRET absent et pas de secret statique valide`);
+        throw new UnauthorizedException('App not configured');
+      }
+      // HMAC configuré : un appel qui se présente en HMAC est jugé en HMAC — jamais de repli
+      // silencieux sur le secret statique quand la signature est fausse (ce serait cacher une
+      // mauvaise configuration derrière un secret qu'on veut retirer).
       this.verifierHmac(appId, timestamp, signature, req.body, route);
       return true;
     }
 
-    const statique = premierEnTete(req.headers['x-internal-secret']);
-    if (statique && egalSansFuite(statique, this.secretStatique)) {
+    if (statiqueValide) {
       this.logger.warn(`${route} : appel en secret statique (X-Internal-Secret) — à passer en HMAC (lot D, C7)`);
       return true;
     }
@@ -64,10 +78,7 @@ export class InternalSecretGuard implements CanActivate {
       this.logger.warn(`${route} : appli HMAC refusée « ${appId} »`);
       throw new UnauthorizedException('App not allowed');
     }
-    if (!this.secretHmac) {
-      this.logger.error(`${route} : appel HMAC reçu mais VIZYO_MANAGER_APP_SECRET n'est pas configuré`);
-      throw new UnauthorizedException('App not configured');
-    }
+    if (!this.secretHmac) throw new UnauthorizedException('App not configured');
     const ts = Number.parseInt(timestamp, 10);
     const maintenant = Math.floor(Date.now() / 1000);
     if (!Number.isFinite(ts) || Math.abs(maintenant - ts) > InternalSecretGuard.TOLERANCE_S) {

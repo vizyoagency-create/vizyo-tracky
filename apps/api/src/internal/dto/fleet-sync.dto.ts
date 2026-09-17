@@ -95,7 +95,12 @@ export class PutFleetDto {
   /** Statut du client dans Manager : `false` = flotte suspendue (membres désactivés), `true` = active. */
   @IsOptional()
   @IsBoolean()
-  active?: boolean;
+  isActive?: boolean;
+
+  /** Client archivé dans Manager (Q12) : `true` archive la flotte, `false` la désarchive — idempotent. */
+  @IsOptional()
+  @IsBoolean()
+  archived?: boolean;
 }
 
 export class ArchiveFleetDto {
@@ -107,11 +112,16 @@ export class ArchiveFleetDto {
 }
 
 export class DestroyFleetDto {
-  /** Le nom EXACT de la société, retapé : la même confirmation que l'écran d'archive (Q12). */
+  /**
+   * Le nom EXACT de la société, retapé — vérification supplémentaire quand Manager l'envoie ; le contrat
+   * de Manager (`deleteClient()`) appelle sans corps : la garde qui reste toujours, c'est « depuis
+   * l'archive seulement ».
+   */
+  @IsOptional()
   @IsString()
   @MinLength(1)
   @MaxLength(200)
-  confirmName!: string;
+  confirmName?: string;
 
   @IsOptional()
   @IsString()

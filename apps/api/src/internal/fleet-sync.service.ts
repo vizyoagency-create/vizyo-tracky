@@ -64,9 +64,12 @@ export class FleetSyncService {
         users: { where: { role: UserRole.FLEET_ADMIN }, select: { email: true, firstName: true, lastName: true }, orderBy: { createdAt: 'asc' }, take: 3 },
       },
     });
+    // `id` + `adminEmail` : le contrat lu par Manager (« Adopter ») ; le reste aide l'opérateur à choisir.
     return rows.map((f) => ({
+      id: f.id,
       fleetId: f.id,
       name: f.name,
+      adminEmail: f.users[0]?.email ?? null,
       createdAt: f.createdAt.toISOString(),
       vehicles: f._count.vehicles,
       users: f._count.users,
@@ -89,9 +92,21 @@ export class FleetSyncService {
   async put(fleetId: string, dto: PutFleetDto): Promise<FleetSyncResult & { authFailures: number }> {
     const resultat = await this.appliquer(fleetId, dto, 'fleet_resynced');
     let authFailures = 0;
-    if (dto.active !== undefined) {
-      authFailures = await this.alignerStatut(fleetId, dto.active, 'fleet_resync');
-      if (dto.active) resultat.changed.push('active'); else resultat.changed.push('suspended');
+    if (dto.archived !== undefined) {
+      if (dto.archived) {
+        const r = await this.archive(fleetId, {});
+        authFailures += r.authFailures;
+        if (!r.alreadyArchived) resultat.changed.push('archived');
+      } else {
+        const r = await this.unarchive(fleetId, {});
+        authFailures += r.authFailures;
+        if (r.wasArchived) resultat.changed.push('unarchived');
+      }
+    }
+    // Une flotte archivée reste suspendue quoi que dise `isActive` (l'archive prime, Q12).
+    if (dto.isActive !== undefined && !dto.archived) {
+      authFailures += await this.alignerStatut(fleetId, dto.isActive, 'fleet_resync');
+      resultat.changed.push(dto.isActive ? 'active' : 'suspended');
     }
     return { ...resultat, authFailures };
   }
@@ -264,7 +279,7 @@ export class FleetSyncService {
     });
     if (!fleet) throw new NotFoundException('Flotte introuvable.');
     if (!fleet.archivedAt) throw new ConflictException("Une société s'efface depuis l'archive : archivez-la d'abord.");
-    if (dto.confirmName.trim() !== fleet.name) {
+    if (dto.confirmName !== undefined && dto.confirmName.trim() !== fleet.name) {
       throw new ConflictException('Le nom retapé ne correspond pas au nom de la société.');
     }
     const trackerIds = fleet.vehicles.map((v) => v.tracker?.id).filter((id): id is string => !!id);
