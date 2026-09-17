@@ -240,6 +240,8 @@ export class FleetSchedulesComponent implements OnInit, OnDestroy {
     if (isRefresh) this.refreshing.set(true);
     else this.loading.set(true);
     try {
+      // Capturé AVANT la lecture : un événement WS arrivé pendant le round-trip gardera la main.
+      const coupeAvant = this.realtime.cutStateSnapshot();
       const res = await firstValueFrom(this.api.listFleet());
       this.rows.set(res.items);
       this.fleetNames.set(Object.fromEntries((res.fleets ?? []).map((f) => [f.id, f.name])));
@@ -252,6 +254,12 @@ export class FleetSchedulesComponent implements OnInit, OnDestroy {
       // manqué (ou une reconnexion socket) ne laisse plus un véhicule figé sur « roule encore ».
       this.realtime.seedMovingState(
         res.items.filter((r) => r.trackerId).map((r) => ({ trackerId: r.trackerId as string, moving: r.moving })),
+      );
+      // Incident du 17/09 : l'overlay « coupé » suit aussi la source de vérité relue — sinon une
+      // reprise manquée pendant une déconnexion laissait « 2 coupés » sur des véhicules rallumés.
+      this.realtime.seedCutState(
+        res.items.filter((r) => r.trackerId).map((r) => ({ trackerId: r.trackerId as string, state: r.engineCutState })),
+        coupeAvant,
       );
       this.nowMs.set(Date.now());
       this.lastUpdated.set(Date.now());

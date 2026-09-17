@@ -64,10 +64,20 @@ Plusieurs sessions y travaillent en même temps — mesuré le 2026-09-07 : **7 
   et journalise le conteneur créé. **Un conteneur qu'il n'a pas créé est signalé au centre
   d'alerte** (« déploiement hors script ») : contourner, ça se voit.
 - Pousser sur `origin/main` d'abord : le script fait `git pull --ff-only` sur le VPS.
+- **Depuis l'incident du 17/09** (migration ratée → API à terre 56 min → véhicules coupés au réveil) :
+  le script **migre AVANT de recréer** le conteneur (conteneur éphémère de l'image neuve ; échec =
+  rien n'est recréé, sortie 3), **attend que l'API soit `healthy`** et **revient seul à l'image
+  d'avant** sinon (sortie 4), et **refuse de déployer entre 05:30 et 09:00 Paris** (les reprises du
+  coupe-circuit dépendent de l'API ; `--force` passe outre, `--repli` n'est jamais retenu).
+  Attendre le **verdict** du script en premier plan — jamais un guetteur `pgrep -f` qui se trouve
+  lui-même. Récit : `docs/fiabilite-coupe-circuit-2026-09/31-INCIDENT-DEPLOIEMENT-2026-09-17-API-A-TERRE-56-MIN.md`.
 - Après le déploiement, vérifier **l'artefact compilé dans le conteneur**, pas `docker ps`.
-- Le script se teste à blanc : `pnpm verif:deploiement`.
+- Le script se teste à blanc : `pnpm verif:deploiement`. Les migrations se rejouent à blanc :
+  `pnpm verif:migrations` (dans `pnpm verify`).
 
 ## ✅ Vérification
 
-`pnpm verify` (typecheck + tests + smoke-boot DI). ⚠️ Si la suite est instable, **la relancer
-SEULE** avant de conclure quoi que ce soit.
+`pnpm verify` (typecheck + rejeu des migrations + smoke-boot DI + tests). ⚠️ Si la suite est
+instable, **la relancer SEULE** avant de conclure quoi que ce soit. ⚠️ Une migration éditée après
+avoir été appliquée sur la base de dev doit être **rejouée en entier** (`pnpm verif:migrations`) —
+jamais « les deux instructions à la main » (incident du 17/09).

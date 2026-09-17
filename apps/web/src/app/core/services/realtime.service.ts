@@ -511,6 +511,43 @@ export class RealtimeService {
     this._movingTrackerIds.set(next);
   }
 
+  /**
+   * Incident du 2026-09-17 — réaligne l'état coupe TRI-ÉTAT sur une liste REST fraîche.
+   *
+   * L'overlay temps réel (`cutActiveTrackerIds` / `cutPendingTrackerIds`) n'était corrigé que par
+   * les événements WS et l'hydratation du snapshot. Une reprise (`RESTORE` acquittée) reçue
+   * pendant que l'onglet était déconnecté de l'API (56 min de panne ce matin-là) lui échappait :
+   * la page Horaires affichait « 2 coupés » pour des véhicules rallumés, et ses rechargements
+   * périodiques ne changeaient rien puisque l'overlay passait AVANT la ligne relue.
+   *
+   * Idempotent, borné aux trackers fournis. `apresLecture` : les trackers modifiés par un
+   * événement WS PENDANT la lecture REST gardent la vérité du live (même précaution que
+   * l'hydratation du snapshot) — le REST peut être antérieur à un événement arrivé entre-temps.
+   */
+  seedCutState(
+    entries: { trackerId: string; state: 'normal' | 'pending' | 'cut' | null | undefined }[],
+    avantLecture?: { cut: Set<string>; pending: Set<string> },
+  ): void {
+    const cut = new Set(this._cutActiveTrackerIds());
+    const pending = new Set(this._cutPendingTrackerIds());
+    const bougeDepuis = (id: string): boolean =>
+      !!avantLecture && (avantLecture.cut.has(id) !== cut.has(id) || avantLecture.pending.has(id) !== pending.has(id));
+    for (const e of entries) {
+      if (bougeDepuis(e.trackerId)) continue;
+      cut.delete(e.trackerId);
+      pending.delete(e.trackerId);
+      if (e.state === 'cut') cut.add(e.trackerId);
+      else if (e.state === 'pending') pending.add(e.trackerId);
+    }
+    this._cutActiveTrackerIds.set(cut);
+    this._cutPendingTrackerIds.set(pending);
+  }
+
+  /** L'instantané de l'overlay coupe, à capturer AVANT une lecture REST (cf. `seedCutState`). */
+  cutStateSnapshot(): { cut: Set<string>; pending: Set<string> } {
+    return { cut: new Set(this._cutActiveTrackerIds()), pending: new Set(this._cutPendingTrackerIds()) };
+  }
+
   dismissAlert(id: string): void {
     this._alerts.update((list) => list.filter((a) => a.id !== id));
   }

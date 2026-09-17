@@ -7,8 +7,24 @@ a coûté une panne d'ingestion GPS en production.
 pnpm verify
 ```
 
-équivaut à `pnpm typecheck && pnpm smoke && pnpm test`. Détail de ce que chacune couvre —
-et surtout de ce qu'elle **ne** couvre pas.
+équivaut à `pnpm typecheck && pnpm verif:migrations && pnpm smoke && pnpm test`. Détail de ce que
+chacune couvre — et surtout de ce qu'elle **ne** couvre pas.
+
+> **17/09/2026** — `pnpm verif:migrations` a été ajouté après l'incident du matin : une migration
+> avec un bloc en double, jamais rejouée en entier, a tenu l'API à terre 56 minutes en production
+> (P3009 en boucle) pendant l'ouverture des plages du coupe-circuit — 28 véhicules coupés au réveil.
+> Rien d'autre dans `verify` ne lit le SQL. Récit et sécurités :
+> [`fiabilite-coupe-circuit-2026-09/31-INCIDENT-DEPLOIEMENT-2026-09-17-API-A-TERRE-56-MIN.md`](./fiabilite-coupe-circuit-2026-09/31-INCIDENT-DEPLOIEMENT-2026-09-17-API-A-TERRE-56-MIN.md).
+
+## 0. `pnpm verif:migrations` — les migrations se rejouent (~15 s, Postgres de dev)
+
+Analyse chaque `migration.sql` (une contrainte, un index, une table, un type créés deux fois dans le
+même fichier = échec nommé), puis **rejoue les 147 migrations sur une base vierge temporaire** et
+compare le résultat à `schema.prisma`. Tout écart nouveau est un échec ; la dérive historique connue
+est listée dans le script (`DERIVE_CONNUE`), à résorber par une migration dédiée.
+
+**Ne voit pas** : une migration valide mais lente (verrou long) — ça se juge à la lecture du SQL.
+`--statique` pour la seule analyse des fichiers, sans base.
 
 ---
 

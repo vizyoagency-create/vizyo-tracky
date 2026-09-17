@@ -10,6 +10,13 @@
 -- 3. La pose : `bookingId` — plusieurs poses par demande ; l'ancien `installation_bookings.taskId`
 --    (1:1) est OBSOLETE, conserve pour le repli d'image, plus ecrit.
 --
+-- ⚠️ INCIDENT DU 17/09 04:56 UTC : ce fichier portait le bloc « fleetId_fkey » EN DOUBLE (un
+-- script de patch joue deux fois) et n'avait jamais ete rejoue de bout en bout sur une base
+-- (les deux instructions ajoutees avaient ete passees a la main sur la base de dev). En prod,
+-- Postgres a tout annule (rien d'applique), Prisma a marque la migration « echouee », et l'API
+-- a refuse de demarrer 56 min (P3009). Depuis : `pnpm verif:migrations` rejoue chaque migration
+-- sur une base vierge, et `deploy.sh` migre AVANT de recreer le conteneur.
+--
 -- Tout est ADDITIF (colonnes nullables ou a defaut, une table) : l'image precedente lit encore
 -- chaque table. Aucune reecriture de ligne, aucun verrou long. Les contraintes de cle etrangere
 -- ajoutees sur `createdBy` / `confirmedBy` supposent des identifiants existants : la production
@@ -38,12 +45,6 @@ ALTER TABLE "installation_bookings" ADD CONSTRAINT "installation_bookings_linkId
   FOREIGN KEY ("linkId") REFERENCES "installation_booking_links"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 ALTER TABLE "installation_bookings" ADD CONSTRAINT "installation_bookings_confirmedBy_fkey"
   FOREIGN KEY ("confirmedBy") REFERENCES "users"("id") ON DELETE SET NULL ON UPDATE CASCADE;
--- `fleetId` etait denormalise SANS cle etrangere : une flotte supprimee laissait son identifiant.
-ALTER TABLE "installation_bookings" ADD CONSTRAINT "installation_bookings_fleetId_fkey"
-  FOREIGN KEY ("fleetId") REFERENCES "fleets"("id") ON DELETE SET NULL ON UPDATE CASCADE;
-
--- 2 ter. Visites d'un lien prospect : pas de flotte
-ALTER TABLE "installation_booking_link_visits" ALTER COLUMN "fleetId" DROP NOT NULL;
 -- `fleetId` etait denormalise SANS cle etrangere : une flotte supprimee laissait son identifiant.
 ALTER TABLE "installation_bookings" ADD CONSTRAINT "installation_bookings_fleetId_fkey"
   FOREIGN KEY ("fleetId") REFERENCES "fleets"("id") ON DELETE SET NULL ON UPDATE CASCADE;

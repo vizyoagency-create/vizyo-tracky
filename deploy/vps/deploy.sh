@@ -49,6 +49,29 @@
 # ⚠️ Le refus n'est pas un blocage : `--attendre` patiente, `--force` passe outre en le disant.
 # Un correctif urgent vaut parfois un passage perdu — mais ce doit être un choix, pas une
 # surprise.
+#
+# ── INCIDENT DU 2026-09-17 : UNE MIGRATION RATÉE A COUPÉ L'API 56 MINUTES, LES VÉHICULES
+#    N'ONT PAS DÉMARRÉ ──────────────────────────────────────────────────────────────────────
+#
+# À 04:56 UTC, le conteneur neuf a joué `prisma migrate deploy` AU DÉMARRAGE ; la migration a
+# échoué (une instruction en double dans le fichier), Prisma l'a marquée « échouée », et l'API
+# a refusé de démarrer en boucle (P3009) jusqu'au repli manuel à 05:52. Or c'est l'API, et elle
+# seule, qui envoie les REPRISES du coupe-circuit à l'ouverture des plages horaires du matin :
+# 28 véhicules sont restés coupés. Et ce script avait rendu la main sur « Déploiement terminé »
+# avec l'API en `health: starting` — il ne regardait pas si elle devenait saine.
+#
+# Trois sécurités depuis :
+#   1. LA MIGRATION AVANT LA RECRÉATION (`migrer_avant`) : jouée dans un conteneur éphémère de
+#      l'image neuve pendant que l'API en place tourne. Si elle échoue, rien n'est recréé, et la
+#      migration est aussitôt marquée « annulée » (`migrate resolve --rolled-back`) pour que
+#      l'API en place puisse redémarrer si besoin. Au démarrage du conteneur neuf, la migration
+#      est déjà appliquée : `migrate deploy` n'a plus rien à faire.
+#   2. L'ATTENTE DE SANTÉ (`attendre_sante`) : après `up -d`, on attend `healthy` (150 s au
+#      plus). Un redémarrage, un arrêt ou un délai dépassé = REPLI AUTOMATIQUE vers le repère
+#      posé au départ, et sortie en erreur. Le script ne dit plus « terminé » sans l'avoir vu.
+#   3. LA FENÊTRE DU MATIN (`fenetre_du_matin`) : pas de déploiement entre 05:30 et 09:00
+#      (Europe/Paris), quand les reprises dépendent de l'API — sauf `--force`, et jamais pour
+#      un `--repli`, qui lui rétablit le service.
 set -euo pipefail
 
 RACINE="${RACINE:-/opt/vizyo-tracky}"
@@ -70,6 +93,14 @@ FENETRE_DEBUT=42
 FENETRE_FIN=46
 # Repères de repli conservés par image, le nouveau compris.
 REPLIS_A_GARDER=3
+# Santé après recréation : start-period 60 s + 3 sondes de 30 s (Dockerfile.api), avec marge.
+SANTE_MAX_S=150
+SANTE_PAS_S=5
+# Fenêtre du matin (Europe/Paris, HHMM) : les reprises du coupe-circuit dépendent de l'API.
+MATIN_DEBUT=0530
+MATIN_FIN=0900
+# Le repère posé par CE passage — c'est vers lui que le repli automatique revient.
+ETIQUETTE_POSEE=""
 
 dire() { echo "[$(date -u +%H:%M:%S) UTC] $*"; }
 
@@ -79,6 +110,8 @@ seconde_utc()  { local s; s="$(date -u +%S)"; echo "${s#0}"; }
 epoch_s()      { date -u +%s; }
 horodatage_etiquette() { date -u +%Y%m%d-%H%M; }
 maintenant_iso() { date -u +%Y-%m-%dT%H:%M:%SZ; }
+heure_paris_hhmm() { TZ=Europe/Paris date +%H%M; }
+journal_conteneur() { timeout 15 docker logs --tail 20 tracky-api 2>&1 || true; }
 
 lire_options() {
   local attend_valeur=""
@@ -120,6 +153,36 @@ passage_en_cours() {
 dans_la_fenetre() {
   local m; m="$(minute_utc)"
   [ "$m" -ge "$FENETRE_DEBUT" ] && [ "$m" -lt "$FENETRE_FIN" ]
+}
+
+# ── LA FENÊTRE DU MATIN — les reprises du coupe-circuit dépendent de l'API ─────────────────
+#
+# Le 17/09, une API morte de 06:56 à 07:52 (Paris) a laissé 28 véhicules coupés au moment où
+# leurs conducteurs partaient. Un déploiement ne se lance pas à cette heure-là : s'il tourne
+# mal, il n'y a personne pour rallumer. `--force` passe outre en le disant ; un `--repli`, qui
+# RÉTABLIT le service, n'est jamais retenu.
+fenetre_du_matin() {
+  local h; h="$(heure_paris_hhmm)"; h="${h#0}"; h="${h#0}"
+  local d="${MATIN_DEBUT#0}"; d="${d#0}"
+  local f="${MATIN_FIN#0}"; f="${f#0}"
+  [ "${h:-0}" -ge "${d:-0}" ] && [ "${h:-0}" -lt "${f:-0}" ]
+}
+
+garde_matin() {
+  local moment="$1"
+  [ -n "$REPLI" ] && return 0
+  if fenetre_du_matin; then
+    local h; h="$(heure_paris_hhmm)"
+    if [ "$FORCE" -eq 1 ]; then
+      dire "⚠️  Il est ${h:0:2}:${h:2:2} à Paris — fenêtre du matin (${MATIN_DEBUT:0:2}:${MATIN_DEBUT:2:2}–${MATIN_FIN:0:2}:${MATIN_FIN:2:2}) : les reprises du coupe-circuit dépendent de l'API. --force : on continue quand même."
+      return 0
+    fi
+    dire "⛔ Déploiement REFUSÉ ($moment) : il est ${h:0:2}:${h:2:2} à Paris, dans la fenêtre du matin (${MATIN_DEBUT:0:2}:${MATIN_DEBUT:2:2}–${MATIN_FIN:0:2}:${MATIN_FIN:2:2})."
+    dire "   Les reprises du coupe-circuit sont envoyées par l'API à l'ouverture des plages : une API qui tombe maintenant"
+    dire "   laisse les véhicules coupés (incident du 17/09). Relancer après ${MATIN_FIN:0:2}:${MATIN_FIN:2:2}, ou --force en le sachant."
+    exit 1
+  fi
+  return 0
 }
 
 # ── LA GARDE — jouée au départ (économiser un pull et un build) ET juste avant la recréation ─
@@ -187,6 +250,7 @@ garde() {
 # étiquetée `latest` ; les couches devenues orphelines partent avec l'élagage habituel du VPS.
 etiqueter_repli() {
   local etiquette="avant-$(horodatage_etiquette)-$(git -C "$RACINE" rev-parse --short HEAD)"
+  ETIQUETTE_POSEE="$etiquette"
   local image
   for image in $IMAGES; do
     if ! docker image inspect "$image:latest" >/dev/null 2>&1; then
@@ -223,9 +287,95 @@ reprendre_repli() {
   done
 }
 
+# ── LA MIGRATION AVANT LA RECRÉATION ───────────────────────────────────────────────────────
+#
+# Jouée dans un conteneur éphémère de l'image NEUVE (celle que `build` vient de produire),
+# pendant que l'API en place continue de servir. Elle échoue ? Rien n'est recréé — et la
+# migration est aussitôt marquée « annulée » pour que l'API en place puisse redémarrer si
+# besoin (une migration « échouée » non résolue bloque TOUT démarrage, P3009 : c'est ce qui
+# a tenu l'API à terre 56 min le 17/09). Sur PostgreSQL, Prisma joue chaque migration dans
+# une transaction : « annulée » est exact, rien n'est resté à moitié appliqué.
+migrer_avant() {
+  cd "$RACINE/deploy/vps"
+  dire "prisma migrate deploy — image neuve, conteneur éphémère ; l'API en place n'est pas touchée"
+  local sortie
+  if sortie="$(docker compose --env-file .env.prod -f "$COMPOSE_PROD" run --rm --no-deps --entrypoint sh api -c "pnpm prisma migrate deploy" 2>&1)"; then
+    echo "$sortie" | grep -E "migration|applied|No pending|Database schema is up to date" | tail -n 4 | sed 's/^/   /' || true
+    return 0
+  fi
+  echo "$sortie" | tail -n 25 | sed 's/^/   /'
+  local nom; nom="$(echo "$sortie" | grep -oE "The \`[^\`]+\` migration" | head -n 1 | sed 's/The `//; s/` migration//')"
+  dire "⛔ MIGRATION EN ÉCHEC — l'API en place n'a PAS été touchée, rien n'est recréé."
+  if [ -n "$nom" ]; then
+    dire "   migration : $nom — on la marque « annulée » pour ne pas bloquer un redémarrage de l'API en place"
+    if docker compose --env-file .env.prod -f "$COMPOSE_PROD" run --rm --no-deps --entrypoint sh api -c "pnpm prisma migrate resolve --rolled-back $nom" >/dev/null 2>&1; then
+      dire "   marquée annulée. Corriger le fichier, rejouer les migrations sur une copie du schéma (pnpm verif:migrations), puis redéployer."
+    else
+      dire "   ⚠️ impossible de la marquer annulée : à faire à la main AVANT tout redémarrage de l'API :"
+      dire "      docker compose --env-file .env.prod -f $COMPOSE_PROD run --rm --no-deps --entrypoint sh api -c \"pnpm prisma migrate resolve --rolled-back $nom\""
+    fi
+  fi
+  exit 3
+}
+
+# ── L'ATTENTE DE SANTÉ — le script ne dit plus « terminé » sans l'avoir vu ──────────────────
+#
+#   $1 = libellé pour les messages. Rend 0 quand l'API est `healthy` ; 1 sinon (redémarrage,
+#   arrêt, ou délai dépassé), après avoir montré les dernières lignes du journal du conteneur.
+attendre_sante() {
+  local quoi="$1"
+  local t0; t0="$(epoch_s)"
+  dire "attente de santé de tracky-api ($quoi, ${SANTE_MAX_S} s au plus)…"
+  while :; do
+    local etat; etat="$(docker inspect -f '{{.State.Status}} {{.State.Health.Status}} {{.RestartCount}}' tracky-api 2>/dev/null || echo 'absent ? 0')"
+    local statut sante redemarrages
+    statut="$(echo "$etat" | cut -d' ' -f1)"; sante="$(echo "$etat" | cut -d' ' -f2)"; redemarrages="$(echo "$etat" | cut -d' ' -f3)"
+    if [ "$sante" = "healthy" ] && [ "${redemarrages:-0}" -eq 0 ]; then
+      dire "✅ tracky-api est saine ($(( $(epoch_s) - t0 )) s, 0 redémarrage)."
+      return 0
+    fi
+    local raison=""
+    if [ "${redemarrages:-0}" -gt 0 ]; then raison="redémarrée $redemarrages fois"
+    elif [ "$statut" != "running" ]; then raison="état « $statut »"
+    elif [ "$sante" = "unhealthy" ]; then raison="sonde en échec (unhealthy)"
+    elif [ $(( $(epoch_s) - t0 )) -ge "$SANTE_MAX_S" ]; then raison="toujours « $sante » après ${SANTE_MAX_S} s"
+    fi
+    if [ -n "$raison" ]; then
+      dire "⛔ tracky-api N'EST PAS SAINE : $raison. Dernières lignes du conteneur :"
+      journal_conteneur | sed 's/^/   /'
+      return 1
+    fi
+    sleep "$SANTE_PAS_S"
+  done
+}
+
+# Le repli automatique : le repère posé par ce passage redevient `latest`, on recrée, on attend.
+repli_automatique() {
+  if [ -z "$ETIQUETTE_POSEE" ]; then
+    dire "⛔ Pas de repère posé par ce passage : pas de repli automatique possible. Repères disponibles :"
+    docker images tracky-api --format '   {{.Repository}}:{{.Tag}}  ({{.CreatedSince}})' | grep 'avant-' || dire "   (aucun)"
+    return 1
+  fi
+  local image
+  for image in $IMAGES; do
+    if ! docker image inspect "$image:$ETIQUETTE_POSEE" >/dev/null 2>&1; then
+      dire "⛔ Repère $image:$ETIQUETTE_POSEE introuvable : pas de repli automatique possible."
+      return 1
+    fi
+  done
+  dire "↩️  REPLI AUTOMATIQUE vers $ETIQUETTE_POSEE"
+  for image in $IMAGES; do
+    docker tag "$image:$ETIQUETTE_POSEE" "$image:latest"
+    dire "   $image:$ETIQUETTE_POSEE → $image:latest"
+  done
+  cd "$RACINE/deploy/vps"
+  docker compose --env-file .env.prod -f "$COMPOSE_PROD" up -d
+  attendre_sante "après repli automatique"
+}
+
 # ── LE JOURNAL — ce qui rend un contournement visible ────────────────────────────────────────
 journaliser() {
-  local sha="$1" duree="$2"
+  local sha="$1" duree="$2" sante="${3:-healthy}"
   local id_api id_web
   id_api="$(docker inspect --format '{{.Id}}' tracky-api 2>/dev/null || echo '')"
   id_web="$(docker inspect --format '{{.Id}}' tracky-web 2>/dev/null || echo '')"
@@ -238,8 +388,8 @@ journaliser() {
   [ "$ATTENDRE" -eq 1 ] && attente=true
   [ -n "$REPLI" ] && repli="\"$REPLI\""
   mkdir -p "$(dirname "$JOURNAL")"
-  printf '{"at":"%s","sha":"%s","branche":"%s","apiContainerId":"%s","webContainerId":"%s","force":%s,"attente":%s,"repli":%s,"par":"%s","dureeS":%s}\n' \
-    "$(maintenant_iso)" "$sha" "$BRANCHE" "$id_api" "$id_web" "$force" "$attente" "$repli" "$par" "$duree" >> "$JOURNAL"
+  printf '{"at":"%s","sha":"%s","branche":"%s","apiContainerId":"%s","webContainerId":"%s","force":%s,"attente":%s,"repli":%s,"par":"%s","dureeS":%s,"sante":"%s"}\n' \
+    "$(maintenant_iso)" "$sha" "$BRANCHE" "$id_api" "$id_web" "$force" "$attente" "$repli" "$par" "$duree" "$sante" >> "$JOURNAL"
   dire "   journal : $JOURNAL"
 }
 
@@ -247,6 +397,8 @@ main() {
   lire_options "$@" || exit $?
   local t0; t0="$(epoch_s)"
 
+  # ── 0. la fenêtre du matin : pas de déploiement quand les reprises dépendent de l'API ──
+  garde_matin depart
   # ── 1. la garde, une première fois : inutile de tirer et de construire pour rien ──
   garde depart
 
@@ -275,10 +427,14 @@ main() {
     cd "$RACINE/deploy/vps"
     dire "docker compose build (prod)"
     docker compose --env-file .env.prod -f "$COMPOSE_PROD" build
+
+    # ── 3 bis. LA MIGRATION, AVANT DE TOUCHER À L'API (incident du 17/09) ──
+    migrer_avant
   fi
 
   # ── 4. LA GARDE, À NOUVEAU — c'est maintenant que ça tue (TRK-077) ──
   cd "$RACINE/deploy/vps"
+  garde_matin recreation
   garde recreation
 
   # ── 5. RECRÉER — court : les images sont prêtes ──
@@ -292,14 +448,33 @@ main() {
     docker compose --env-file .env.demo -f "$COMPOSE_DEMO" up -d
   fi
 
-  # ── 6. LE JOURNAL, puis ce qui tourne vraiment ──
-  journaliser "$sha" "$(( $(epoch_s) - t0 ))"
+  # ── 6. LA SANTÉ — et le repli automatique si elle ne vient pas (incident du 17/09) ──
+  local sante=healthy
+  if ! attendre_sante "après recréation"; then
+    if [ -n "$REPLI" ]; then
+      journaliser "$sha" "$(( $(epoch_s) - t0 ))" "malade-apres-repli"
+      dire "⛔ Le repli lui-même ne donne pas une API saine. Rien d'automatique au-delà : regarder le journal du conteneur ci-dessus."
+      exit 5
+    fi
+    if repli_automatique; then
+      journaliser "$sha" "$(( $(epoch_s) - t0 ))" "repli-auto"
+      dire "⛔ DÉPLOIEMENT ANNULÉ : l'API neuve n'était pas saine, l'image d'avant ($ETIQUETTE_POSEE) est de retour et saine."
+      dire "   Le code déployé reste sur $BRANCHE : corriger, puis redéployer."
+    else
+      journaliser "$sha" "$(( $(epoch_s) - t0 ))" "malade-sans-repli"
+      dire "⛔ DÉPLOIEMENT EN ÉCHEC et repli automatique impossible : intervenir à la main (--repli <repère>)."
+    fi
+    exit 4
+  fi
+
+  # ── 7. LE JOURNAL, puis ce qui tourne vraiment ──
+  journaliser "$sha" "$(( $(epoch_s) - t0 ))" "$sante"
   # ⚠️ Un `up -d` peut rendre la main en exit 0 SANS avoir recréé les conteneurs (mesuré le
   # 2026-09-07). L'âge affiché ici est la seule preuve : « Up 4 weeks » après un déploiement
   # veut dire que rien n'a été remplacé.
   dire "état des conteneurs :"
   docker ps --format '  {{.Names}} — {{.Status}}' | grep -E 'tracky-(api|web|demo-api|demo-web)' || true
-  dire "Déploiement terminé. Vérifier l'artefact compilé, pas seulement docker ps."
+  dire "Déploiement terminé : API saine. Vérifier l'artefact compilé, pas seulement docker ps."
 }
 
 # Exécuté : on déploie. Sourcé (deploy.test.sh) : on expose les fonctions, rien de plus.

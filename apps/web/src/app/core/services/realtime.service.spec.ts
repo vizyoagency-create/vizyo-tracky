@@ -243,3 +243,62 @@ describe('TRK-050 — câblage : le vrai handler connect_error', () => {
     expect(router.navigate).toHaveBeenCalledWith(['/login'], {});
   });
 });
+
+/**
+ * ══ INCIDENT DU 2026-09-17 — L'OVERLAY « COUPÉ » SUIT LA SOURCE DE VÉRITÉ RELUE ═══════════════
+ *
+ * Pendant 56 min de panne de l'API, les reprises acquittées ont échappé aux onglets ouverts :
+ * la page Horaires affichait « 2 coupés » pour des véhicules rallumés, et ses rechargements
+ * périodiques ne corrigeaient rien puisque l'overlay temps réel passait AVANT la ligne relue.
+ * `seedCutState` réaligne l'overlay sur la liste REST — sauf pour un tracker qu'un événement
+ * WS a modifié PENDANT la lecture (le live est alors plus frais que le REST).
+ */
+describe('Incident du 17/09 — seedCutState réaligne l’overlay coupe sur la liste relue', () => {
+  let service: RealtimeServiceTestable;
+
+  beforeEach(() => {
+    TestBed.configureTestingModule({
+      providers: [
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        { provide: AuthService, useValue: { tryRefresh: async () => null, refreshUnavailable: () => false, logout: () => undefined, token: 't' } },
+        { provide: Router, useValue: { navigate: async () => true, url: '/fleet-schedules' } },
+        { provide: FleetFilterService, useValue: { matches: () => true, isActive: signal(false), selectedFleetId: signal(null) } },
+        { provide: NotificationsApiService, useValue: { clearAppBadge: () => undefined, setAppBadge: () => undefined } },
+        { provide: PreferencesService, useValue: { prefs: signal({ notifications: {} }) } },
+        { provide: VisibilityService, useValue: { isVisible: signal(true), isUserActive: signal(true), lastHiddenDurationMs: () => null } },
+        { provide: ToastService, useValue: { error: () => undefined, success: () => undefined, info: () => undefined } },
+        RealtimeServiceTestable,
+      ],
+    });
+    service = TestBed.inject(RealtimeServiceTestable);
+  });
+
+  it('un véhicule « coupé » dans l’overlay mais « normal » dans la liste relue est RETIRÉ (la reprise manquée)', () => {
+    service.seedCutState([{ trackerId: 't1', state: 'cut' }, { trackerId: 't2', state: 'cut' }]);
+    expect([...service.cutActiveTrackerIds()].sort()).toEqual(['t1', 't2']);
+
+    // 20 s plus tard, la liste relue dit : t1 rallumé, t2 toujours coupé, t3 coupe envoyée.
+    service.seedCutState([
+      { trackerId: 't1', state: 'normal' }, { trackerId: 't2', state: 'cut' }, { trackerId: 't3', state: 'pending' },
+    ]);
+    expect([...service.cutActiveTrackerIds()]).toEqual(['t2']);
+    expect([...service.cutPendingTrackerIds()]).toEqual(['t3']);
+  });
+
+  it('un tracker absent de la liste relue n’est pas touché (autre société, autre filtre)', () => {
+    service.seedCutState([{ trackerId: 'ailleurs', state: 'cut' }]);
+    service.seedCutState([{ trackerId: 't1', state: 'normal' }]);
+    expect([...service.cutActiveTrackerIds()]).toEqual(['ailleurs']);
+  });
+
+  it('un événement WS arrivé PENDANT la lecture REST garde la main sur la ligne relue', () => {
+    // Capture avant la lecture : rien de coupé.
+    const avant = service.cutStateSnapshot();
+    // Pendant le round-trip, le live annonce une coupe confirmée sur t1.
+    service.seedCutState([{ trackerId: 't1', state: 'cut' }]);
+    // La réponse REST (calculée AVANT l'événement) dit encore « normal » : elle ne doit pas l'écraser.
+    service.seedCutState([{ trackerId: 't1', state: 'normal' }, { trackerId: 't2', state: 'normal' }], avant);
+    expect([...service.cutActiveTrackerIds()]).toEqual(['t1']);
+  });
+});

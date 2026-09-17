@@ -117,7 +117,19 @@ d'une exception (`consequences`, `urlManager`) **qu'avec un `code`** explicite �
 
 ## 6. Déploiement
 
-_(rempli à la fin du lot)_
+**Premier passage, 17/09 04:56 UTC : ÉCHEC, API à terre 56 minutes, véhicules coupés au réveil.** La
+migration portait un bloc en double (script de patch joué deux fois) et n'avait jamais été rejouée
+en entier ; le conteneur neuf a refusé de démarrer (P3009) et le script de déploiement n'attendait
+pas la santé. Repli manuel à 05:52, reprises envoyées, tout rallumé à 06:07. Récit complet et
+sécurités ajoutées : [`31-INCIDENT-DEPLOIEMENT-2026-09-17-API-A-TERRE-56-MIN.md`](../fiabilite-coupe-circuit-2026-09/31-INCIDENT-DEPLOIEMENT-2026-09-17-API-A-TERRE-56-MIN.md).
+
+Second passage : migration dédoublonnée et **rejouée sur une copie du schéma de production**, `deploy.sh`
+durci (migration avant recréation, attente de santé + repli automatique, fenêtre du matin),
+`pnpm verif:migrations` dans `pnpm verify`. _(résultat du second passage : voir § 6.1)_
+
+### 6.1 Second passage
+
+_(rempli après le déploiement)_
 
 ---
 
