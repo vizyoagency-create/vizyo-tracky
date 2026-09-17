@@ -318,6 +318,13 @@ const envSchema = z.object({
     (v) => (v === '' || v === undefined || v === null ? undefined : v),
     z.string().url().optional(),
   ),
+  // Lot D (C7) — secret de l'appli « manager » dans Vizyo Auth, pour la garde HMAC ENTRANTE des routes
+  // /api/internal/* (meme schema que la garde de Manager). Vide = seul l'ancien secret statique
+  // (`X-Internal-Secret`) est accepte ; pose, les deux le sont pendant la transition.
+  VIZYO_MANAGER_APP_SECRET: z.preprocess(
+    (v) => (v === '' || v === undefined || v === null ? undefined : v),
+    z.string().min(16).optional(),
+  ),
   // L'interface de Manager, pour le bouton « Creer dans Vizyo Manager » (formulaire prerempli).
   MANAGER_WEB_URL: z.preprocess(
     (v) => (v === '' || v === undefined || v === null ? undefined : v),

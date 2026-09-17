@@ -1,7 +1,7 @@
 import { NO_FLEET, requiredFleetScope } from '../common/tenant-scope';
 import { AuthAccountSyncService } from './auth-account-sync.service';
 import {
-  BadRequestException, Body, Controller, Delete, ForbiddenException, Get, HttpCode, HttpStatus,
+  BadRequestException, Body, ConflictException, Controller, Delete, ForbiddenException, Get, HttpCode, HttpStatus,
   Logger, NotFoundException, Optional, Param, ParseUUIDPipe, Patch, Post, Put, Query, Req, UseGuards,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -467,6 +467,8 @@ export class UsersController {
         permissions: true,
         fleetId: true,
         isActive: true,
+        // Lot D — l'identité de cet admin est pilotée par Vizyo Manager (l'écran la verrouille).
+        managedByManager: true,
         createdAt: true,
       },
       orderBy: { createdAt: 'desc' },
@@ -654,6 +656,18 @@ export class UsersController {
       );
     }
 
+    // Lot D (RDV v2, § 2.5) — « Manager gagne » : l'identité d'un admin provisionné par Vizyo Manager
+    // se modifie DANS Manager, qui la pousse ensuite ici. La corriger à la main dans Tracky serait
+    // écrasée à la prochaine poussée : on le dit tout de suite plutôt que de laisser croire.
+    const identiteTouchee = (dto.firstName !== undefined && dto.firstName !== user.firstName)
+      || (dto.lastName !== undefined && dto.lastName !== user.lastName);
+    if (user.managedByManager && identiteTouchee) {
+      throw new ConflictException({
+        code: 'GERE_PAR_MANAGER',
+        message: 'Le prénom et le nom de ce compte sont gérés dans Vizyo Manager : modifiez-les là-bas, ils seront synchronisés ici.',
+      });
+    }
+
     // Only SUPER_ADMIN can reassign fleet
     const fleetIdUpdate = dto.fleetId !== undefined && req.user.role === UserRole.SUPER_ADMIN
       ? { fleetId: dto.fleetId }
@@ -685,7 +699,7 @@ export class UsersController {
         ...(dto.isActive !== undefined ? { isActive: dto.isActive } : {}),
         ...fleetIdUpdate,
       },
-      select: { id: true, email: true, firstName: true, lastName: true, role: true, permissions: true, fleetId: true, isActive: true, createdAt: true },
+      select: { id: true, email: true, firstName: true, lastName: true, role: true, permissions: true, fleetId: true, isActive: true, managedByManager: true, createdAt: true },
     });
 
     // ══ REACTIVATION / SUSPENSION — Vizyo Auth doit suivre ════════════════════════

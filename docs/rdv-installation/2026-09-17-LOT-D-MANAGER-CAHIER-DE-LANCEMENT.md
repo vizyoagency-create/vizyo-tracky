@@ -29,10 +29,9 @@ formulaire Manager prérempli (`/admin/clients/new?companyName=…&email=…&pho
 4. **Prod** : `INTERNAL_ALLOWED_APPS += tracky` et `VIZYO_TRACKY_APP_SECRET` côté Manager ; `MANAGER_INTERNAL_URL` côté
    Tracky. Le bouton devient un clic.
 
-**Deux dépôts, deux sessions** : la session Manager (celle qui lit ceci) fait **§ 3** (Manager) et rédige le contrat des
-appels sortants de **§ 4** ; la session Tracky fait **§ 4** (routes internes, HMAC entrant, archivage) dans un worktree
-Tracky. **Ordre de déploiement : § 6** — rien ne casse si Manager est déployé avant Tracky, à condition de respecter
-la transition du secret (§ 4.2).
+**Deux dépôts, deux sessions** : la session Manager (celle qui lit ceci) fait **§ 3** (Manager) ; la session Tracky a
+**déjà fait § 4** (routes internes, HMAC entrant à double acceptation, archivage, effacement — branche
+`feat/rdv-lot-d-tracky`, non déployée au moment d'écrire). **Ordre de déploiement : § 6**.
 
 ---
 
@@ -162,25 +161,34 @@ Lire `companyName`, `email`, `phone`, `tracky=1` dans les query params (c'est le
 
 ---
 
-## 4. Côté Tracky (`vizyo-tracky`, worktree dédié) — ce que fait la session Tracky, après le § 3.1
+## 4. Côté Tracky — FAIT le 17/09 (branche `feat/rdv-lot-d-tracky`), contrat des routes pour Manager
 
-### 4.1 Routes internes (`apps/api/src/internal/internal.controller.ts`)
-| Route | Effet |
-|---|---|
-| `PATCH fleet/:fleetId` | `fleet.name`, admin `firstName/lastName/phone`, `weeklyReportEmail` (notificationEmail), `user.email` de l'admin si `adminEmail` ; pose `managedByManagerAt` |
-| `PUT fleet/:fleetId` | état complet, idempotent (resynchronisation) ; peut poser `clientId` (adoption) |
-| `POST fleet/:fleetId/archive` · `unarchive` | § 8.4 de la conception : `archivedAt/By`, membres suspendus (Vizyo Auth aligné), liens fermés, plannings masqués |
-| `DELETE fleet/:fleetId` | effacement définitif, cascade, journal Système `INTERNAL` |
-| `GET fleets?unlinked=true` | flottes sans `clientId` (« Adopter ») |
-Modèle : `fleets.managedByManagerAt`, `archivedAt`, `archivedBy`, `contactPhone` ; `users.managedByManager`.
-Champs pilotés par Manager **non modifiables** dans Tracky quand `clientId` est posé (« synchronisé depuis Vizyo Manager
-le … », lien « modifier dans Manager »).
+### 4.1 Routes internes (`apps/api/src/internal/`, service `FleetSyncService`)
+Toutes derrière la garde du § 4.2. Corps JSON ; réponses d'erreur `{ error: { code, message, requestId } }`.
 
-### 4.2 HMAC entrant (C7) — transition sans coupure
-Nouvelle garde `InternalHmacGuard` côté Tracky (même schéma, appli `manager`, secret = `VIZYO_MANAGER_APP_SECRET`
-à ajouter au `.env.prod` de Tracky = la valeur que Manager a déjà). **Pendant la transition, la garde accepte les deux** :
-HMAC valide **ou** `X-Internal-Secret` valide, avec une ligne de journal « appel en secret statique » ; le secret statique
-est retiré une fois Manager déployé en HMAC (un déploiement Tracky de plus, plus tard).
+| Route | Corps | Réponse | Effet |
+|---|---|---|---|
+| `GET fleets?unlinked=true` | — | `[{ fleetId, name, createdAt, vehicles, users, admins:[{email,name}] }]` | flottes sans `clientId`, non archivées (« Adopter ») |
+| `PATCH fleet/:fleetId` | `{ name?, contact?: { firstName?, lastName?, phone? }, notificationEmail?, adminEmail?, clientId? }` — n'envoyer que ce qui change ; `null` efface `phone` / `notificationEmail` | `{ fleetId, name, clientId, adminUserId, adminEmail, managedByManagerAt, changed: [...] }` | `fleet.name`, `fleet.contactPhone`, `fleet.weeklyReportEmail`, admin `firstName/lastName/phone/email` ; pose `managedByManagerAt` et marque l'admin `managedByManager` |
+| `PUT fleet/:fleetId` | `{ name, clientId, contact?, notificationEmail?, adminEmail?, active? }` | idem + `authFailures` | état complet, idempotent (« Resynchroniser ») ; `clientId` posé si absent (« Adopter ») ; `active:false/true` suspend / réactive **tous** les membres, Vizyo Auth aligné (C11) |
+| `POST fleet/:fleetId/archive` | `{ by? }` | `{ status:'archived', authFailures, alreadyArchived }` | `archivedAt/By`, membres suspendus (Auth aligné), liens de réservation fermés ; rejouable |
+| `POST fleet/:fleetId/unarchive` | `{ by? }` | `{ status:'active', authFailures, wasArchived }` | membres réactivés (liens restent fermés) |
+| `DELETE fleet/:fleetId` | `{ confirmName, by? }` | `{ status:'deleted', deleted:{…}, authRemoved, authFailures }` | **depuis l'archive seulement**, nom exact retapé ; efface positions/trajets des boîtiers, tables à `fleetId` dénormalisé, la flotte et ses cascades ; **boîtiers et SIM dissociés, pas détruits** ; comptes retirés de l'appli Tracky dans Vizyo Auth ; journaux conservés |
+| `POST fleet/suspend` · `activate` | `{ fleetId }` (existants) | — | flotte entière (déjà le cas) |
+| `POST fleet/provision` | (§ 1.2) | `{ fleetId, existed }` | l'admin créé est `managedByManager`, la flotte `managedByManagerAt` |
+
+Règles : le `clientId` se pose mais ne se **réécrit jamais** (409 si différent : doublon côté Manager) ; `adminEmail`
+déjà pris par un autre compte → 409 ; téléphone illisible → 409 ; flotte inconnue → 404. Chaque poussée écrit une
+ligne au journal Système (catégorie `INTERNAL`, `changed`), y compris « déjà à jour ». Côté Tracky, le prénom/nom d'un
+admin `managedByManager` ne se modifie plus dans l'écran Utilisateurs (409 `GERE_PAR_MANAGER`, champs grisés avec un
+mot d'explication) — « Manager gagne ».
+
+### 4.2 Garde HMAC entrante (C7) — double acceptation pendant la transition
+`InternalSecretGuard` accepte **soit** `X-App-Id: manager` + `X-App-Timestamp` (± 300 s) + `X-App-Signature`
+(HMAC-SHA256 de `${ts}.${JSON.stringify(corps)}` avec `VIZYO_MANAGER_APP_SECRET` — la valeur que Manager a déjà),
+**soit** `X-Internal-Secret` (ancien) avec un avertissement journalisé. Sans corps, `${ts}.` et `${ts}.{}` sont tous
+deux acceptés. Un appel présenté en HMAC est jugé en HMAC (pas de repli sur le secret statique si la signature est
+fausse). Le secret statique sera retiré une fois Manager déployé en HMAC.
 
 ### 4.3 Écran `/admin/societes` (lot E, pas D) — seulement ce que D impose : rien.
 
@@ -204,6 +212,9 @@ arrière sinon — cf. `docs/fiabilite-coupe-circuit-2026-09/31-INCIDENT-DEPLOIE
 
 ## 6. Ordre de déploiement (sans rien casser)
 
+0. **Tracky § 4** (branche `feat/rdv-lot-d-tracky`) peut partir **à tout moment** : compatible avec le Manager
+   d'aujourd'hui (secret statique encore accepté), routes nouvelles inutilisées tant que Manager ne les appelle pas.
+   Variable à poser dans `deploy/vps/.env.prod` de Tracky avant : `VIZYO_MANAGER_APP_SECRET` (= la valeur Manager).
 1. **Manager § 3.1–3.4 + 3.6** (aucune dépendance Tracky : `fleet/provision` accepte déjà tout). Déployer Manager.
    Recette : depuis l'écran Tracky de prod, valider une demande d'un lien prospect créé sur « Client test » ?
    ⚠️ Non — la création passe par Manager et crée un **vrai client** (Vizyo Auth, e-mails) : recetter avec un client

@@ -1,12 +1,14 @@
-import { Body, ConflictException, Controller, Delete, Get, HttpCode, HttpStatus, NotFoundException, Param, Post, UseGuards } from '@nestjs/common';
+import { Body, ConflictException, Controller, Delete, Get, HttpCode, HttpStatus, NotFoundException, Param, Patch, Post, Put, Query, UseGuards } from '@nestjs/common';
 import { telephoneClientE164 } from '../installation-booking/contact';
 import { UserRole } from '@prisma/client';
 import { AuthClientService } from '../auth-client/auth-client.service';
 import { AuthAccountSyncService } from '../users/auth-account-sync.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { SystemActivityService } from '../system-activity/system-activity.service';
+import { ArchiveFleetDto, DestroyFleetDto, PatchFleetDto, PutFleetDto } from './dto/fleet-sync.dto';
 import { CreateFleetUserDto } from './dto/fleet-user.dto';
 import { FleetIdDto, ProvisionFleetDto } from './dto/provision-fleet.dto';
+import { FleetSyncService } from './fleet-sync.service';
 import { InternalSecretGuard } from './internal-secret.guard';
 
 @Controller('internal')
@@ -17,7 +19,53 @@ export class InternalController {
     private readonly authClient: AuthClientService,
     private readonly accountSync: AuthAccountSyncService,
     private readonly systemActivity: SystemActivityService,
+    private readonly fleetSync: FleetSyncService,
   ) {}
+
+  // ─── Lot D — synchronisation Vizyo Manager → Tracky (conception RDV v2, § 2.5 / § 4.4) ──────
+  //
+  // Manager est la source de vérité de l'identité du client ; ces routes la reflètent. Toute la
+  // logique vit dans `FleetSyncService` (journalisée, idempotente) ; ici, seulement le câblage.
+
+  /** Les flottes sans `clientId` — pour « Adopter une flotte Tracky existante » dans Manager. */
+  @Get('fleets')
+  async listFleets(@Query('unlinked') unlinked?: string) {
+    if (unlinked !== 'true' && unlinked !== '1') {
+      throw new ConflictException('Seule la liste des flottes non reliées est servie ici : ?unlinked=true');
+    }
+    return this.fleetSync.unlinked();
+  }
+
+  /** Ce qui a changé dans Manager : nom, contact, e-mail de notification, e-mail de connexion (après Auth). */
+  @Patch('fleet/:fleetId')
+  patchFleet(@Param('fleetId') fleetId: string, @Body() dto: PatchFleetDto) {
+    return this.fleetSync.patch(fleetId, dto);
+  }
+
+  /** L'état complet, idempotent — « Resynchroniser », « Adopter » (pose le `clientId`). */
+  @Put('fleet/:fleetId')
+  putFleet(@Param('fleetId') fleetId: string, @Body() dto: PutFleetDto) {
+    return this.fleetSync.put(fleetId, dto);
+  }
+
+  @Post('fleet/:fleetId/archive')
+  @HttpCode(HttpStatus.OK)
+  archiveFleet(@Param('fleetId') fleetId: string, @Body() dto: ArchiveFleetDto) {
+    return this.fleetSync.archive(fleetId, dto ?? {});
+  }
+
+  @Post('fleet/:fleetId/unarchive')
+  @HttpCode(HttpStatus.OK)
+  unarchiveFleet(@Param('fleetId') fleetId: string, @Body() dto: ArchiveFleetDto) {
+    return this.fleetSync.unarchive(fleetId, dto ?? {});
+  }
+
+  /** Effacement définitif — depuis l'archive uniquement, nom retapé (Q12, § 8.4). */
+  @Delete('fleet/:fleetId')
+  @HttpCode(HttpStatus.OK)
+  destroyFleet(@Param('fleetId') fleetId: string, @Body() dto: DestroyFleetDto) {
+    return this.fleetSync.destroy(fleetId, dto);
+  }
 
   /**
    * Journal Système — ces routes machine (secret partagé, PAS de req.user) sont
@@ -70,7 +118,9 @@ export class InternalController {
 
     const phone = telephoneClientE164(dto.adminPhone) ?? null;
     const fleet = await this.prisma.$transaction(async (tx) => {
-      const f = await tx.fleet.create({ data: { name: dto.fleetName.trim(), clientId: dto.clientId ?? null } });
+      // Lot D : une flotte provisionnée par Manager est pilotée par Manager dès sa naissance —
+      // son admin porte `managedByManager`, ses champs d'identité se modifient là-bas.
+      const f = await tx.fleet.create({ data: { name: dto.fleetName.trim(), clientId: dto.clientId ?? null, managedByManagerAt: new Date() } });
       await tx.user.create({
         data: {
           authUserId: dto.adminAuthUserId,
@@ -80,6 +130,7 @@ export class InternalController {
           phone,
           role: UserRole.FLEET_ADMIN,
           fleetId: f.id,
+          managedByManager: true,
         },
       });
       return f;

@@ -10,6 +10,8 @@ export interface TrackyUser {
   role: string;
   fleetId: string | null;
   isActive: boolean;
+  /** Lot D — identité pilotée par Vizyo Manager (prénom, nom) : l'écran la montre sans la modifier. */
+  managedByManager?: boolean;
   createdAt: string;
 }
 

@@ -224,6 +224,11 @@ export function transformerFlotte(src: Fleet, ctx: Contexte): Prisma.FleetUnchec
     speedAlertUpdatedAt: src.speedAlertUpdatedAt,
     speedAlertUpdatedById: null,
     stripeCustomerId: null,
+    // Lot D : aucun client Manager derrière la démo, jamais archivée, pas de contact.
+    managedByManagerAt: null,
+    archivedAt: null,
+    archivedBy: null,
+    contactPhone: null,
     createdAt: src.createdAt,
     updatedAt: src.updatedAt,
   };

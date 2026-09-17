@@ -203,14 +203,18 @@ export interface UserDrawerResult {
             @if (data()?.mode === 'edit') {
               <section>
                 <h3 class="section-title">Informations</h3>
+                @if (data()?.user?.managedByManager) {
+                  <!-- Lot D : « Manager gagne » — modifier ici serait écrasé à la prochaine synchronisation. -->
+                  <p class="field-hint">Prénom et nom sont gérés dans <strong>Vizyo Manager</strong> et synchronisés ici : modifiez-les là-bas.</p>
+                }
                 <div class="grid grid-cols-2 gap-3">
                   <div>
                     <label class="field-label">Prénom</label>
-                    <input type="text" [(ngModel)]="firstName" placeholder="Prénom" class="field-input" />
+                    <input type="text" [(ngModel)]="firstName" placeholder="Prénom" class="field-input" [disabled]="!!data()?.user?.managedByManager" />
                   </div>
                   <div>
                     <label class="field-label">Nom</label>
-                    <input type="text" [(ngModel)]="lastName" placeholder="Nom" class="field-input" />
+                    <input type="text" [(ngModel)]="lastName" placeholder="Nom" class="field-input" [disabled]="!!data()?.user?.managedByManager" />
                   </div>
                 </div>
               </section>
@@ -375,6 +379,8 @@ export interface UserDrawerResult {
     .section-title { font-size: 10px; font-weight: 700; color: var(--fg-tertiary); text-transform: uppercase; letter-spacing: .08em; margin-bottom: 8px }
 
     .field-label { display: block; font-size: 11px; font-weight: 600; color: var(--fg-tertiary); margin-bottom: 4px }
+    .field-hint { margin: 0 0 10px; padding: 8px 10px; border-radius: 8px; font-size: 12px; line-height: 1.45; color: var(--fg-secondary); background: var(--bg-tertiary); border: 1px solid var(--border-subtle); }
+    .field-input:disabled { opacity: .6; cursor: not-allowed; }
     .field-input {
       width: 100%; padding: 10px 14px; background: var(--bg-secondary); border: 1.5px solid var(--border-subtle);
       border-radius: 12px; color: var(--fg-primary); font-size: 13px;

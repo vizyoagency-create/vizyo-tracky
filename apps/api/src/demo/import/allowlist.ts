@@ -40,7 +40,8 @@ export const ALLOWLIST: Readonly<Record<string, RegleModele>> = {
       'createdAt', 'updatedAt',
     ],
     transformes: ['id', 'name'],
-    imposes: ['clientId', 'weeklyReportEmail', 'aiEnabled', 'speedAlertUpdatedById', 'stripeCustomerId'],
+    // Lot D (RDV v2) : la démo n'est reliée à aucun client Manager, jamais archivée, sans téléphone de contact.
+    imposes: ['clientId', 'weeklyReportEmail', 'aiEnabled', 'speedAlertUpdatedById', 'stripeCustomerId', 'managedByManagerAt', 'archivedAt', 'archivedBy', 'contactPhone'],
   },
   FleetSubscription: {
     pourquoi: 'abonnement SIGNATURE offert : toutes les options visibles, rien de facturé — pas une copie',

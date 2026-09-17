@@ -297,6 +297,14 @@ model Fleet {
   // est PILOTÉ par l'abonnement (`AiSubscription`) : statut ACTIVE ou COMP → aiEnabled=true, sinon false.
   // `stripeCustomerId` = client Stripe de la société (créé à la 1re carte / au 1er abonnement).
   stripeCustomerId        String?
+  /// Lot D (RDV v2, § 3.7) — synchronisation depuis Vizyo Manager. `managedByManagerAt` : date de la
+  /// derniere poussee recue (nom, contact) ; les champs pilotes par Manager sont verrouilles dans Tracky
+  /// quand `clientId` est pose. `archivedAt/By` : societe archivee (Q12) — masquee, membres suspendus.
+  /// `contactPhone` : telephone du contact de la societe (celui de l'admin vit sur `users.phone`).
+  managedByManagerAt      DateTime?
+  archivedAt              DateTime?
+  archivedBy              String?
+  contactPhone            String?
   createdAt               DateTime    @default(now())
   updatedAt               DateTime    @updatedAt
 
@@ -335,6 +343,7 @@ model Fleet {
   missionRequests          MissionRequest[]
   missionPricingSettings   MissionPricingSettings?
 
+  @@index([archivedAt])
   @@map("fleets")
   /// Les liens publics de partage de trajet — l'écran de surveillance s'y appuie.
   tripShareLinks          TripShareLink[]
@@ -516,6 +525,9 @@ model User {
   // escalationContactUserId : si une alerte CRITICAL n'est pas ack en 10min,
   //   on notifie ce user (Sprint M).
   phone                    String?
+  /// Lot D — admin cree par la provision de Vizyo Manager : son identite (prenom, nom, telephone,
+  /// e-mail) est pilotee par Manager ; un operateur Tracky ne la modifie pas ici.
+  managedByManager         Boolean             @default(false)
   onboardingCompletedAt    DateTime?
   /// V1.12 — preferences UI per-user (JSON extensible).
   /// Aujourd'hui : `{ uiMode: 'tracky' | 'baanool' }`. Default null = mode Tracky

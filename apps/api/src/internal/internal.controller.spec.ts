@@ -63,10 +63,14 @@ function createController() {
   // propagation, eux, pilotent ce mock explicitement.
   const accountSync = { applyStatus: jest.fn().mockResolvedValue(true) };
 
+  // Lot D : la synchronisation Manager → Tracky vit dans FleetSyncService (testé à part).
+  const fleetSync = { unlinked: jest.fn(), patch: jest.fn(), put: jest.fn(), archive: jest.fn(), unarchive: jest.fn(), destroy: jest.fn() };
+
   return {
-    controller: new InternalController(prisma, authClient, accountSync as never, systemActivity),
+    controller: new InternalController(prisma, authClient, accountSync as never, systemActivity, fleetSync as never),
     prisma,
     accountSync,
+    fleetSync,
   };
 }
 
@@ -112,6 +116,29 @@ describe('InternalSecretGuard', () => {
 });
 
 describe('InternalController', () => {
+  describe('lot D — routes de synchronisation', () => {
+    it('GET fleets exige ?unlinked=true (la seule liste servie aux machines)', async () => {
+      const { controller, fleetSync } = createController();
+      await expect(controller.listFleets(undefined)).rejects.toBeInstanceOf(ConflictException);
+      fleetSync.unlinked.mockResolvedValue([]);
+      await expect(controller.listFleets('true')).resolves.toEqual([]);
+    });
+
+    it('PATCH / PUT / archive / unarchive / DELETE délèguent au service avec le bon identifiant', async () => {
+      const { controller, fleetSync } = createController();
+      await controller.patchFleet('f1', { name: 'X' });
+      expect(fleetSync.patch).toHaveBeenCalledWith('f1', { name: 'X' });
+      await controller.putFleet('f1', { name: 'X', clientId: 'c1' });
+      expect(fleetSync.put).toHaveBeenCalledWith('f1', { name: 'X', clientId: 'c1' });
+      await controller.archiveFleet('f1', { by: 'op' });
+      expect(fleetSync.archive).toHaveBeenCalledWith('f1', { by: 'op' });
+      await controller.unarchiveFleet('f1', undefined as never);
+      expect(fleetSync.unarchive).toHaveBeenCalledWith('f1', {});
+      await controller.destroyFleet('f1', { confirmName: 'X' });
+      expect(fleetSync.destroy).toHaveBeenCalledWith('f1', { confirmName: 'X' });
+    });
+  });
+
   /**
    * LA PROVISION PAR VIZYO MANAGER — lot A de la conception RDV v2 (C1–C3).
    *
@@ -135,7 +162,7 @@ describe('InternalController', () => {
       expect(result).toEqual({ fleetId: 'fleet-001', existed: false });
       expect((prisma as unknown as { $transaction: jest.Mock }).$transaction).toHaveBeenCalledTimes(1);
       expect(prisma.fleet.create).toHaveBeenCalledWith({
-        data: { name: 'Test Fleet', clientId: 'cli-42' },
+        data: { name: 'Test Fleet', clientId: 'cli-42', managedByManagerAt: expect.any(Date) },
       });
       expect(prisma.user.create).toHaveBeenCalledWith({
         data: {
@@ -146,6 +173,8 @@ describe('InternalController', () => {
           phone: '+33612345678',
           role: UserRole.FLEET_ADMIN,
           fleetId: 'fleet-001',
+          // Lot D : identité pilotée par Manager dès la provision.
+          managedByManager: true,
         },
       });
     });
@@ -153,7 +182,7 @@ describe('InternalController', () => {
     it('sans clientId ni contact : la flotte naît quand même (Manager d’avant le lot D)', async () => {
       const { controller, prisma } = createController();
       await controller.provisionFleet({ fleetName: 'Test Fleet', adminAuthUserId: 'auth-001', adminEmail: 'admin@fleet.com' });
-      expect(prisma.fleet.create).toHaveBeenCalledWith({ data: { name: 'Test Fleet', clientId: null } });
+      expect(prisma.fleet.create).toHaveBeenCalledWith({ data: { name: 'Test Fleet', clientId: null, managedByManagerAt: expect.any(Date) } });
       expect(prisma.user.create).toHaveBeenCalledWith({
         data: expect.objectContaining({ firstName: null, lastName: null, phone: null }),
       });
