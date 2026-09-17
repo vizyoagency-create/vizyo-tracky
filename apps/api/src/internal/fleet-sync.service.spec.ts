@@ -12,7 +12,8 @@ import { FleetSyncService } from './fleet-sync.service';
 const FLEET = 'aaaaaaaa-0000-4000-8000-000000000001';
 
 function flotte(over: Record<string, unknown> = {}) {
-  return { id: FLEET, name: 'Transports Legrand', clientId: null, contactPhone: null, weeklyReportEmail: null, archivedAt: null, ...over };
+  // `managedByManagerAt` posé : la flotte a déjà été synchronisée (un `null` de Manager efface).
+  return { id: FLEET, name: 'Transports Legrand', clientId: null, contactPhone: null, weeklyReportEmail: null, archivedAt: null, managedByManagerAt: new Date('2026-09-17T10:00:00Z'), ...over };
 }
 function admin(over: Record<string, unknown> = {}) {
   return { id: 'u-admin', email: 'marc@legrand.fr', firstName: 'Transports Legrand', lastName: null, phone: null, authUserId: 'auth-1', ...over };
@@ -34,8 +35,10 @@ function service(o: { flotte?: Record<string, unknown> | null; admin?: Record<st
       findMany: jest.fn().mockResolvedValue([{ id: 'u1', email: 'marc@legrand.fr', authUserId: 'auth-1' }, { id: 'u2', email: 'b@legrand.fr', authUserId: null }]),
       update: jest.fn().mockResolvedValue({}),
       updateMany: jest.fn().mockResolvedValue({ count: 2 }),
+      deleteMany: jest.fn().mockResolvedValue({ count: 2 }),
     },
     installationBookingLink: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
+    installationBooking: { deleteMany: jest.fn().mockResolvedValue({ count: 1 }) },
     position: {
       findMany: jest.fn().mockResolvedValueOnce(positions).mockResolvedValue([]),
       deleteMany: jest.fn().mockResolvedValue({ count: 2 }),
@@ -94,6 +97,18 @@ describe('FleetSyncService — PATCH : ce qui a changé dans Manager', () => {
     await expect(svc.patch(FLEET, { adminEmail: 'autre@legrand.fr' })).rejects.toThrow(/déjà utilisé/);
   });
 
+  it('PREMIÈRE synchro d’une flotte d’avant le lot D : les `null` de Manager n’effacent pas ce que Tracky sait', async () => {
+    const { svc, prisma } = service({ flotte: { managedByManagerAt: null }, admin: { firstName: 'Joost', lastName: 'Hendriks', phone: '+33600000001' } });
+    const r = await svc.put(FLEET, { name: 'Transports Legrand', clientId: 'cli-1', contact: { firstName: null, lastName: null, phone: null }, notificationEmail: null });
+    expect(prisma.user.update).toHaveBeenCalledWith({ where: { id: 'u-admin' }, data: { managedByManager: true } });
+    expect(prisma.fleet.update.mock.calls[0][0].data).toEqual({ managedByManagerAt: expect.any(Date), clientId: 'cli-1' });
+    expect(r.changed).toEqual(['clientId']);
+    // Deuxième poussée (flotte désormais synchronisée) : Manager est la vérité, `null` efface.
+    const deja = service({ admin: { firstName: 'Joost', lastName: 'Hendriks', phone: '+33600000001' } });
+    await deja.svc.patch(FLEET, { contact: { firstName: null, lastName: null, phone: null } });
+    expect(deja.prisma.user.update).toHaveBeenCalledWith({ where: { id: 'u-admin' }, data: { managedByManager: true, firstName: null, lastName: null, phone: null } });
+  });
+
   it('un téléphone illisible → 409 ; une flotte inconnue → 404', async () => {
     await expect(service().svc.patch(FLEET, { contact: { phone: 'abc' } })).rejects.toBeInstanceOf(ConflictException);
     await expect(service({ flotte: null }).svc.patch(FLEET, { name: 'X' })).rejects.toBeInstanceOf(NotFoundException);
@@ -101,6 +116,13 @@ describe('FleetSyncService — PATCH : ce qui a changé dans Manager', () => {
 });
 
 describe('FleetSyncService — PUT : l’état complet, et le statut de la flotte ENTIÈRE (C11)', () => {
+  it('réactiver une société ARCHIVÉE → 409 (désarchiver d’abord) ; la suspendre reste possible', async () => {
+    const { svc, prisma } = service({ flotte: { archivedAt: new Date() } });
+    await expect(svc.put(FLEET, { name: 'Transports Legrand', clientId: 'cli-1', isActive: true })).rejects.toThrow(/archivée/);
+    await svc.put(FLEET, { name: 'Transports Legrand', clientId: 'cli-1', isActive: false });
+    expect(prisma.user.updateMany).toHaveBeenCalledWith({ where: { fleetId: FLEET }, data: { isActive: false } });
+  });
+
   it('`isActive: false` suspend tous les membres, Vizyo Auth aligné compte par compte', async () => {
     const { svc, prisma, accountSync } = service();
     const r = await svc.put(FLEET, { name: 'Transports Legrand', clientId: 'cli-1', isActive: false });
@@ -178,6 +200,9 @@ describe('FleetSyncService — effacer définitivement (§ 8.4)', () => {
     expect(prisma.mission.deleteMany).toHaveBeenCalledWith({ where: { fleetId: FLEET } });
     expect(prisma.trackerCommand.deleteMany).toHaveBeenCalledWith({ where: { requestedBy: { in: ['u1', 'u2'] } } });
     expect(prisma.sim.updateMany).toHaveBeenCalledWith({ where: { fleetId: FLEET }, data: { fleetId: null } });
+    // Les demandes et les COMPTES partent explicitement (SetNull sinon : un compte orphelin encore actif — recette prod du 17/09).
+    expect(prisma.installationBooking.deleteMany).toHaveBeenCalledWith({ where: { fleetId: FLEET } });
+    expect(prisma.user.deleteMany).toHaveBeenCalledWith({ where: { fleetId: FLEET } });
     expect(prisma.fleet.delete).toHaveBeenCalledWith({ where: { id: FLEET } });
     // Un seul compte a un authUserId : un seul retrait Auth ; le boîtier n'est jamais détruit (aucun tracker.delete).
     expect(authClient.removeUserFromApp).toHaveBeenCalledTimes(1);

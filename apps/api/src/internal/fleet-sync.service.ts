@@ -114,9 +114,18 @@ export class FleetSyncService {
   private async appliquer(fleetId: string, dto: PatchFleetDto | PutFleetDto, action: string): Promise<FleetSyncResult> {
     const fleet = await this.prisma.fleet.findUnique({
       where: { id: fleetId },
-      select: { id: true, name: true, clientId: true, contactPhone: true, weeklyReportEmail: true, archivedAt: true },
+      select: { id: true, name: true, clientId: true, contactPhone: true, weeklyReportEmail: true, archivedAt: true, managedByManagerAt: true },
     });
     if (!fleet) throw new NotFoundException('Flotte introuvable.');
+    // ┌─ PREMIÈRE SYNCHRO D'UNE FLOTTE D'AVANT LE LOT D ─────────────────────────────────────────┐
+    // │ Les quatre clients de prod (A2R, Ahmed, cdef31, mh cars) ont une fiche Manager SANS      │
+    // │ contact, et un admin Tracky corrigé à la main (« Joost Hendriks »). Un « Resynchroniser » │
+    // │ enverrait `contact: { firstName: null, … }` et EFFACERAIT ces noms. Tant que la flotte    │
+    // │ n'a jamais été synchronisée, un `null` de Manager ne vaut pas « effacer » : il vaut       │
+    // │ « je ne sais pas ». À partir de la deuxième poussée, Manager est la vérité, `null` efface. │
+    // └────────────────────────────────────────────────────────────────────────────────────────────┘
+    const premiereSynchro = fleet.managedByManagerAt === null;
+    const fourni = (v: unknown): boolean => v !== undefined && !(premiereSynchro && (v === null || v === ''));
     if (dto.clientId && fleet.clientId && fleet.clientId !== dto.clientId) {
       // Deux clients Manager pour une flotte : impossible — c'est un doublon côté Manager, à
       // résoudre là-bas. On ne réécrit JAMAIS un rattachement existant.
@@ -130,28 +139,28 @@ export class FleetSyncService {
     const fleetData: { name?: string; clientId?: string; contactPhone?: string | null; weeklyReportEmail?: string | null; managedByManagerAt: Date } = { managedByManagerAt: now };
     if (dto.name !== undefined && dto.name.trim() && dto.name.trim() !== fleet.name) { fleetData.name = dto.name.trim(); changed.push('name'); }
     if (dto.clientId && dto.clientId !== fleet.clientId) { fleetData.clientId = dto.clientId; changed.push('clientId'); }
-    if (dto.notificationEmail !== undefined) {
+    if (fourni(dto.notificationEmail)) {
       const email = dto.notificationEmail?.trim() ? dto.notificationEmail.trim().toLowerCase() : null;
       if (email !== fleet.weeklyReportEmail) { fleetData.weeklyReportEmail = email; changed.push('notificationEmail'); }
     }
-    if (dto.contact?.phone !== undefined) {
-      const phone = dto.contact.phone ? telephoneClientE164(dto.contact.phone) : null;
-      if (dto.contact.phone && !phone) throw new ConflictException(`Téléphone illisible : « ${dto.contact.phone} ».`);
+    if (fourni(dto.contact?.phone)) {
+      const phone = dto.contact!.phone ? telephoneClientE164(dto.contact!.phone) : null;
+      if (dto.contact!.phone && !phone) throw new ConflictException(`Téléphone illisible : « ${dto.contact!.phone} ».`);
       if (phone !== fleet.contactPhone) { fleetData.contactPhone = phone; changed.push('contactPhone'); }
     }
 
     const userData: { firstName?: string | null; lastName?: string | null; phone?: string | null; email?: string; managedByManager: true } = { managedByManager: true };
     if (admin) {
-      if (dto.contact?.firstName !== undefined) {
-        const v = dto.contact.firstName?.trim() || null;
+      if (fourni(dto.contact?.firstName)) {
+        const v = dto.contact!.firstName?.trim() || null;
         if (v !== admin.firstName) { userData.firstName = v; changed.push('admin.firstName'); }
       }
-      if (dto.contact?.lastName !== undefined) {
-        const v = dto.contact.lastName?.trim() || null;
+      if (fourni(dto.contact?.lastName)) {
+        const v = dto.contact!.lastName?.trim() || null;
         if (v !== admin.lastName) { userData.lastName = v; changed.push('admin.lastName'); }
       }
-      if (dto.contact?.phone !== undefined) {
-        const v = dto.contact.phone ? telephoneClientE164(dto.contact.phone) : null;
+      if (fourni(dto.contact?.phone)) {
+        const v = dto.contact!.phone ? telephoneClientE164(dto.contact!.phone) : null;
         if (v !== admin.phone) { userData.phone = v; changed.push('admin.phone'); }
       }
       if (dto.adminEmail !== undefined) {
@@ -214,7 +223,13 @@ export class FleetSyncService {
    * aligne Vizyo Auth — la seule autorité du login. Séquentiel : quelques dizaines de comptes, pas
    * une rafale contre notre propre service d'authentification. Rend le nombre d'échecs Auth.
    */
-  async alignerStatut(fleetId: string, active: boolean, contexte: string): Promise<number> {
+  async alignerStatut(fleetId: string, active: boolean, contexte: string, options: { apresDesarchivage?: boolean } = {}): Promise<number> {
+    if (active && !options.apresDesarchivage) {
+      // Une société ARCHIVÉE ne se réactive pas par la bande : désarchiver d'abord (Q12 — l'archive
+      // prime). Sinon des comptes actifs sur une flotte invisible pourraient se connecter.
+      const f = await this.prisma.fleet.findUnique({ where: { id: fleetId }, select: { archivedAt: true, name: true } });
+      if (f?.archivedAt) throw new ConflictException(`La société « ${f.name} » est archivée : désarchivez-la pour réactiver ses comptes.`);
+    }
     const membres = await this.prisma.user.findMany({ where: { fleetId }, select: { email: true, authUserId: true } });
     await this.prisma.user.updateMany({ where: { fleetId }, data: { isActive: active } });
     let echecs = 0;
@@ -251,7 +266,7 @@ export class FleetSyncService {
     const fleet = await this.fleetOr404(fleetId);
     if (!fleet.archivedAt) return { status: 'active', authFailures: 0, wasArchived: false };
     await this.prisma.fleet.update({ where: { id: fleetId }, data: { archivedAt: null, archivedBy: null } });
-    const authFailures = await this.alignerStatut(fleetId, true, 'fleet_unarchive');
+    const authFailures = await this.alignerStatut(fleetId, true, 'fleet_unarchive', { apresDesarchivage: true });
     this.systemActivity.record({
       category: 'INTERNAL', action: 'fleet_unarchived', status: 'SUCCESS', actor: dto.by?.trim() || ACTEUR,
       target: fleet.name, fleetId,
@@ -330,15 +345,22 @@ export class FleetSyncService {
       if (r.count > 0) deleted[modele] = r.count;
     }
 
-    // 4. La flotte elle-même : les clés étrangères en cascade emportent le reste (les SIM sont
+    // 4. Ce que la cascade laisserait ORPHELIN (relations SetNull, voulues partout ailleurs) : les
+    //    demandes de RDV (`fleetId`/`linkId` SetNull) et les COMPTES (`users.fleetId` SetNull — un
+    //    compte sans flotte, encore actif, pourrait toujours se connecter). Recette prod du 17/09.
+    const demandes = await this.prisma.installationBooking.deleteMany({ where: { fleetId } });
+    if (demandes.count > 0) deleted['installationBooking'] = demandes.count;
+    const comptes = await this.prisma.user.deleteMany({ where: { fleetId } });
+    deleted['users'] = comptes.count;
+
+    // 5. La flotte elle-même : les clés étrangères en cascade emportent le reste (les SIM sont
     //    dissociées avant, pas détruites).
     await this.prisma.sim.updateMany({ where: { fleetId }, data: { fleetId: null } }).catch(() => undefined);
     await this.prisma.fleet.delete({ where: { id: fleetId } });
     deleted['fleet'] = 1;
-    deleted['users'] = fleet.users.length;
     deleted['vehicles'] = fleet.vehicles.length;
 
-    // 5. Vizyo Auth : les comptes quittent l'application Tracky (best-effort, jamais bloquant).
+    // 6. Vizyo Auth : les comptes quittent l'application Tracky (best-effort, jamais bloquant).
     let authRemoved = 0; let authFailures = 0;
     for (const u of fleet.users) {
       if (!u.authUserId) continue;

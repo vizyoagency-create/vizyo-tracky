@@ -65,6 +65,8 @@ function createController() {
 
   // Lot D : la synchronisation Manager → Tracky vit dans FleetSyncService (testé à part).
   const fleetSync = { unlinked: jest.fn(), patch: jest.fn(), put: jest.fn(), archive: jest.fn(), unarchive: jest.fn(), destroy: jest.fn() };
+  // fleet/activate relit la flotte (archivée ?) avant de réactiver — non archivée par défaut.
+  (prisma.fleet as unknown as { findUnique: jest.Mock }).findUnique = jest.fn().mockResolvedValue({ archivedAt: null, name: 'Test Fleet' });
 
   return {
     controller: new InternalController(prisma, authClient, accountSync as never, systemActivity, fleetSync as never),
@@ -117,6 +119,13 @@ describe('InternalSecretGuard', () => {
 
 describe('InternalController', () => {
   describe('lot D — routes de synchronisation', () => {
+    it('fleet/activate refuse une société archivée (409) : désarchiver d’abord', async () => {
+      const { controller, prisma } = createController();
+      (prisma.fleet as unknown as { findUnique: jest.Mock }).findUnique.mockResolvedValue({ archivedAt: new Date(), name: 'Archivée SA' });
+      await expect(controller.activateFleet({ fleetId: 'fleet-001' })).rejects.toThrow(/archivée/);
+      expect(prisma.user.updateMany).not.toHaveBeenCalled();
+    });
+
     it('GET fleets exige ?unlinked=true (la seule liste servie aux machines)', async () => {
       const { controller, fleetSync } = createController();
       await expect(controller.listFleets(undefined)).rejects.toBeInstanceOf(ConflictException);

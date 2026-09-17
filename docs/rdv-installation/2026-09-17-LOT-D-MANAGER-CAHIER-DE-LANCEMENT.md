@@ -276,6 +276,26 @@ les accès*. Lecture de `vizyo-auth/apps/api/src/auth/auth.service.ts` (`registe
 Aucun chemin ne crée deux identités Auth pour un même e-mail, ni deux flottes pour un même admin, ni ne rattache un
 client à la société d'un autre sans un geste explicite (« Adopter »).
 
+### 8.1 Recette de bout en bout en production (17/09, 15:40–15:50 Paris)
+Tracky `1ba0cc25` (13:37 UTC) et Manager `336b3e9` (13:42 UTC) déployés ; recette par les API depuis le conteneur
+`tracky-api` (script `recette-prod-lot-d-e2e.js`, e-mail fixe `recette-lot-d@vizyoagency.com`) :
+- **A** garde Manager : sans en-têtes 401, mauvaise signature 401, signature de Tracky valide + clé inconnue → 400
+  de la pipe (ordre garde → pipe prouvé en prod, rien créé) ;
+- **B** un clic : lien prospect → demande → `confirm { creerClient: true }` → **client créé dans Manager (Auth,
+  contact « Recette LotD », `origin: tracky-rdv`, `externalRef` = id de la demande), flotte provisionnée, demande
+  CONFIRMED, 1 pose** ; rejeu → 400 ; même e-mail sur une autre demande → 409 nommant la société ;
+- **C** (`TRACKY_SYNC_ENABLED=true`) : renommer + contact dans Manager → flotte renommée, admin « Recette Synchro »
+  marqué géré par Manager, 409 en modifiant son prénom dans Tracky ; désactiver → membres suspendus ; réactiver →
+  réactivés ; archiver → liens fermés ;
+- **D** effacement définitif depuis Manager → Tracky d'abord (`trackyFleetDeleted: true`), puis Manager.
+
+Deux trous vus en prod et corrigés dans la foulée (commit suivant `1ba0cc25`) : (1) `DELETE fleet` laissait la
+demande de RDV et le COMPTE admin orphelins (`fleetId` SetNull) — désormais effacés explicitement ; (2) réactiver un
+client ARCHIVÉ réactivait ses comptes sur une flotte archivée — refusé (409 « désarchivez-la »), sauf par
+`unarchive`. Un troisième garde-fou avant le premier « Resynchroniser » des **quatre clients de prod** (A2R, Ahmed,
+cdef31, mh cars — fiches Manager **sans contact**, admins Tracky corrigés à la main) : à la **première** synchro
+d'une flotte jamais synchronisée, un `null` de Manager ne vaut pas « effacer » — il vaut « je ne sais pas ».
+
 ## 9. Trouvailles de la revue croisée (à traiter côté Manager, non bloquantes)
 
 - **F1** — `create()` affiche `generatedPassword` même quand Auth a **relié une identité existante** (`linkedExisting:

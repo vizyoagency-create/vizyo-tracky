@@ -195,6 +195,11 @@ export class InternalController {
   @Post('fleet/activate')
   @HttpCode(HttpStatus.OK)
   async activateFleet(@Body() dto: FleetIdDto) {
+    // Lot D (Q12) : une société archivée ne se réactive pas par ce chemin — désarchiver d'abord.
+    const archivee = await this.prisma.fleet.findUnique({ where: { id: dto.fleetId }, select: { archivedAt: true, name: true } });
+    if (archivee?.archivedAt) {
+      throw new ConflictException(`La société « ${archivee.name} » est archivée : désarchivez-la pour réactiver ses comptes.`);
+    }
     // Symetrique du kill-switch : sans cet appel, une flotte reactivee resterait
     // verrouillee au login tout en s'affichant active dans Tracky.
     const members = await this.prisma.user.findMany({
