@@ -1505,6 +1505,59 @@ for c in tracky-api tracky-web; do
     echo "                lancerait cette image ; le menage de 00:40 la supprime au-dela de 24 h."
   fi
 done
+# ⚠️⚠️ AJOUTE LE 2026-09-17 (VPS-044, angle mort n° 1 du 16/09) — L ARRIERE DU DEPLOIEMENT.
+# Le bloc ci-dessus regarde l AVANT (latest = conteneur ?). Personne ne regardait l ARRIERE :
+# l etiquette de repli `avant-*` la plus recente existe-t-elle encore, et pointe-t-elle l image
+# qui TOURNAIT avant le dernier deploiement ? Le 16/09, le menage avait efface le seul repli
+# utile, et les `avant-*` restantes etaient des images PRE-construites (deploy.sh etiquette
+# `:latest`, pas le conteneur). La reference est l image que portait le conteneur AU PASSAGE
+# PRECEDENT — posee ici dans `imagesProdListe` (meme mecanique que conteneursListe, VPS-M92).
+# COUT : docker images deja lu ($IMGS) + 1 docker image inspect par service. Premiere pose :
+# comparaison NON FAITE.
+IMG_PROD_NOW=""
+for c in tracky-api tracky-web; do
+  _run=$(timeout 15 docker inspect --format '{{.Image}}' "$c" 2>/dev/null); IMG_PROD_NOW="$IMG_PROD_NOW${IMG_PROD_NOW:+,}$c=${_run:7:12}"
+done
+echo "  imagesProdListe (a reporter tel quel dans chiffres) : $IMG_PROD_NOW"
+if [ -r "$MANIF" ] && command -v jq >/dev/null 2>&1; then
+  _refimg=$(jq -r '.passages[0].chiffres.imagesProdListe // empty' "$MANIF" 2>/dev/null)
+  if [ -z "$_refimg" ]; then
+    echo "  ⚠️ le manifeste publie (${REF_DATE:-?}) ne porte pas imagesProdListe : repli NON VERIFIE (premiere pose)"
+  else
+    for c in tracky-api tracky-web; do
+      _prev=$(printf '%s' "$_refimg" | tr ',' '\n' | sed -n "s/^$c=//p")
+      # l etiquette la plus recente se lit dans son NOM (avant-AAAAMMJJ-HHMM-sha, tri lexical),
+      # pas dans la date de l image : avant-1731 pointait une image plus VIEILLE que avant-1741.
+      _avtag=$(printf '%s\n' "$IMGS" | awk -F'\t' -v c="$c" 'NF>3 && index($2, c":avant-")==1 {print $2}' | sort -r | head -1)
+      _avid=$(timeout 15 docker image inspect --format '{{.Id}}' "$_avtag" 2>/dev/null | cut -c8-19)
+      _now=$(printf '%s' "$IMG_PROD_NOW" | tr ',' '\n' | sed -n "s/^$c=//p")
+      if [ -z "$_avtag" ]; then
+        printf '  %-11s 🟠 AUCUNE etiquette avant-* : aucun repli par etiquette (VPS-044)\n' "$c"
+      elif [ "$_now" = "$_prev" ]; then
+        printf '  %-11s (pas de deploiement depuis le %s : le repli %s = %s n a rien a prouver)\n' "$c" "$REF_DATE" "$_avtag" "$_avid"
+      elif [ "$_avid" = "$_prev" ]; then
+        printf '  %-11s ✅ repli REEL : %s = %s = l image du conteneur au passage du %s\n' "$c" "$_avtag" "$_avid" "$REF_DATE"
+      else
+        printf '  %-11s 🔴 le repli MENT : %s = %s, mais le conteneur tournait sur %s le %s (image PRE-construite ou etiquette effacee — VPS-044)\n' "$c" "$_avtag" "$_avid" "$_prev" "$REF_DATE"
+      fi
+    done
+  fi
+fi
+# ⚠️ AJOUTE LE 2026-09-17 — LES CONTENEURS RECREES. La difference de perimetre (VPS-M92) compare
+# des NOMS : un conteneur detruit et recree sous le meme nom (deploiement, `compose up`, relance
+# a la main) lui est invisible. Le 16/09 a 12:45 UTC, vizyo-auth-api a ete recree (l ancien,
+# 284 h, arrete « manuellement » — dockerd le dit), 4 min apres qu un `docker logs` s y etait
+# bloque (VPS-016, 6e) — et aucune ligne de cette sortie ne le disait. COUT : un docker ps.
+sub "Conteneurs RECREES depuis 24 h (un nom identique peut cacher un objet neuf)"
+_seuil_cr=$(date -u -d '24 hours ago' '+%Y-%m-%d %H:%M:%S' 2>/dev/null)
+_recrees=$(timeout 15 docker ps --format '{{.CreatedAt}}\t{{.Names}}' 2>/dev/null | awk -F'\t' -v s="$_seuil_cr" 'substr($1,1,19) >= s {print substr($1,1,19)"  "$2}' | sort)
+if [ -n "$_recrees" ]; then
+  printf '%s\n' "$_recrees" | sed 's/^/  🟠 /'
+  echo "     → chaque ligne = un deploiement (journal T33 ci-dessus) OU un geste hors script (D1) :"
+  echo "       si le nom n est pas dans le journal, personne n a ecrit qui l a recree ni pourquoi."
+else
+  echo "  ✅ aucun conteneur cree depuis $_seuil_cr UTC"
+fi
 sub "Volumes orphelins (aucun conteneur ne les monte)"
 # ⚠️ « orphelin » ne veut PAS dire « jetable » : un volume Postgres detache reste une base.
 # Toujours afficher la TAILLE pour qu'un humain juge avant de supprimer.
@@ -4226,7 +4279,11 @@ for f in /var/backups/*/DERNIERE-COPIE-LOCALE.json; do
   v() { grep -o "\"$1\": *\"[^\"]*\"" "$f" | head -1 | sed 's/.*: *"//; s/"$//'; }
   n() { grep -o "\"$1\": *[0-9]*" "$f" | head -1 | grep -o '[0-9]*$'; }
   age_h=$(( (MAINTENANT - $(date -d "$(v horodatage)" +%s 2>/dev/null || echo "$MAINTENANT")) / 3600 ))
-  if [ "$age_h" -gt 48 ]; then verdict="⚠️ PERIMEE (> 48 h)"; else verdict="a jour"; fi
+  # ⚠️ 2026-09-17 : entre 30 h et 48 h, ce n est pas « a jour » — c est UN rendez-vous quotidien
+  # manque (cadence 24 h). Le 17/09 a 03:2x, 46 h se lisait « a jour » sur une paire sans copie.
+  if [ "$age_h" -gt 48 ]; then verdict="⚠️ PERIMEE (> 48 h)"
+  elif [ "$age_h" -gt 30 ]; then verdict="🟠 RENDEZ-VOUS MANQUE (> 30 h pour une cadence de 24 h)"
+  else verdict="a jour"; fi
   # ⚠️⚠️ CORRIGE LE 2026-09-15 (VPS-M100) — LE VERDICT NE LISAIT JAMAIS LE STATUT, ET IL A
   # IMPRIME « ECHEC … a jour » SUR LA MEME LIGNE. Le 14/09 a 04:30 UTC le copieur a ECHOUE
   # (`telechargement de verify-db_20260830-… en echec`, pairesCopiees=0 : la paire de la nuit
@@ -4262,6 +4319,28 @@ for f in /var/backups/*/DERNIERE-COPIE-LOCALE.json; do
       printf '       Une copie reussie ne prouve QUE le copieur, jamais le producteur.\n'
     else
       printf '    contenu copie : %s h (la copie ne peut pas etre plus fraiche que sa source)\n' "$age_src"
+    fi
+  fi
+  # ⚠️⚠️ AJOUTE LE 2026-09-17 (VPS-037, 2e paire de nuit sans copie en 3 jours) — « A JOUR » A 46 H
+  # SE LISAIT COMME UN VERDICT VERT SUR UNE COPIE QUI N A PAS EU LIEU. Le copieur passe UNE fois
+  # par jour (04:30 UTC) ; un JSON de 46 h veut dire « un rendez-vous manque, une paire de nuit
+  # sans copie », et le seuil de 48 h ne le disait pas — il ne parle qu a partir de DEUX manques.
+  # Ce qui compte n est pas l age de la tentative, c est le NOMBRE DE PAIRES PRODUITES DEPUIS LA
+  # DERNIERE COPIE REUSSIE : chacune n existe qu ICI, sur le disque qu elle protege. On les
+  # compte par leur manifeste (un par paire), plus recent que l horodatage du JSON.
+  # COUT : un `find -maxdepth 1 -newermt` sur un dossier de ~50 fichiers.
+  _horo=$(v horodatage)
+  if [ -n "$_horo" ]; then
+    _nsans=$(find "$src" -maxdepth 1 -name '*.manifest.json' -newermt "$_horo" 2>/dev/null | wc -l)
+    _rdv=$(( (MAINTENANT - $(date -d "$_horo" +%s 2>/dev/null || echo "$MAINTENANT")) / 86400 ))
+    if [ "$_nsans" -gt 0 ]; then
+      printf '    🔴 %s paire(s) produite(s) DEPUIS la derniere copie reussie (%s) — elles n existent qu ICI.\n' "$_nsans" "${_horo:0:16}"
+      printf '       Rendez-vous quotidien(s) de 04:30 UTC ecoule(s) sans tentative : %s. Une tentative absente\n' "$_rdv"
+      printf '       n ecrit rien dans ce JSON (le poste dormait, VPS-037) : c est le compte de paires qui le dit.\n'
+      printf '       ⚠️ Seuil VPS-037 : gravite 1 a la 3e paire sans copie sur 7 jours. ❌ Ne pas lancer le copieur\n'
+      printf '          a la main pour rattraper : geste (VPS-M81), et il masquerait la mesure du lendemain.\n'
+    else
+      printf '    ✅ aucune paire produite depuis la derniere copie reussie : tout ce qui existe ici existe aussi hors-site.\n'
     fi
   fi
 done
@@ -4498,7 +4577,17 @@ _ecart_min=$(( ( (10#$(date -u -d "@$T_DEBUT" +%H) * 60 + 10#$(date -u -d "@$T_D
 if [ "$_ecart_min" -gt 20 ] || [ "$_ecart_min" -lt -20 ]; then
   printf '  🟠 HEURE DE DEPART : %s UTC, soit %+d min sur l heure planifiee (%02d:%02d). Le poste a dormi,\n' "$(date -u -d "@$T_DEBUT" +%H:%M)" "$_ecart_min" "$_att_h" "$_att_m"
   printf '     ou un quota l a retenu (VPS-M73) : toutes les fenetres « 24 h » de cette sortie sont decalees\n'
-  printf '     d autant, et la copie hors-site (04:30 UTC, meme poste) a probablement ete manquee AUSSI.\n'
+  # ⚠️ CORRIGE LE 2026-09-17 : la phrase « la copie hors-site a probablement ete manquee AUSSI »
+  # etait FAUSSE ce matin — depart a 03:18, copie due a 04:30 : elle n etait pas encore due. Un
+  # retard ne prouve la copie manquee que si l heure de la copie est DEJA passee ; avant, il dit
+  # seulement que la copie dependra du poste RESTE eveille (WakeToRun=false, VPS-037).
+  _dep_min=$(( 10#$(date -u -d "@$T_DEBUT" +%H) * 60 + 10#$(date -u -d "@$T_DEBUT" +%M) ))
+  if [ "$_dep_min" -ge $(( 4 * 60 + 30 )) ]; then
+    printf '     d autant, et la copie hors-site (04:30 UTC, meme poste) a probablement ete manquee AUSSI.\n'
+  else
+    printf '     d autant. La copie hors-site (04:30 UTC, meme poste) n est PAS encore due : elle aura lieu\n'
+    printf '     seulement si le poste reste eveille jusque-la (WakeToRun=false, VPS-037) — a relire demain.\n'
+  fi
 else
   printf '  ✅ heure de depart : %s UTC (%+d min sur l heure planifiee %02d:%02d)\n' "$(date -u -d "@$T_DEBUT" +%H:%M)" "$_ecart_min" "$_att_h" "$_att_m"
 fi
