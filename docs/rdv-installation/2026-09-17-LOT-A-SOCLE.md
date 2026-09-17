@@ -127,9 +127,25 @@ Second passage : migration dédoublonnée et **rejouée sur une copie du schéma
 durci (migration avant recréation, attente de santé + repli automatique, fenêtre du matin),
 `pnpm verif:migrations` dans `pnpm verify`. _(résultat du second passage : voir § 6.1)_
 
-### 6.1 Second passage
+### 6.1 Second passage — 17/09 09:00 Paris : EN PRODUCTION
 
-_(rempli après le déploiement)_
+`deploy.sh --attendre` (nouvelle version) lancé à 07:00:06 UTC, HEAD `092a740d` : repères posés
+(`avant-20260917-0700-5e9d613e`), build 10 min, **migration appliquée dans le conteneur éphémère à
+07:10:08** (« All migrations have been successfully applied »), recréation 07:10:15, **API saine en
+20 s, 0 redémarrage** (07:10:50), journal `"sante":"healthy"`, durée 646 s.
+
+Vérifié dans le conteneur : `dist/installation-booking/installation-booking.controller.js` porte
+`consequences-suppression`, le service `SANS_FLOTTE`, `manager-client.service.js` présent ; en base :
+migration `20260917090000` appliquée (la ligne « annulée » du matin conservée à côté), table
+`installation_booking_vehicles`, quatre clés étrangères sur `installation_bookings`.
+
+Recette prod sur « Client test » (script par l'API, 21 contrôles, ménage complet) : lien nominatif
+pré-rempli (`06 52 07 70 38`), lien prospect, grille n=2 (créneaux de 4 h), téléphone invalide → 400,
+demande déposée, 409 `SANS_FLOTTE` avec l'URL Manager préremplie, 503 « Manager non configuré »,
+validation → 2 poses (`TEST-001`, `TEST-002`) dans un planning « Prospect de recette », lien
+prospect rattaché, annulation → poses retirées, 409 `DEMANDES_A_TRANCHER`, suppressions ; état
+final : 0 lien, 0 demande, planning supprimé. Deux e-mails de recette sont partis vers
+`contact@vizyoagency.com` (demande reçue, créneau confirmé).
 
 ---
 
