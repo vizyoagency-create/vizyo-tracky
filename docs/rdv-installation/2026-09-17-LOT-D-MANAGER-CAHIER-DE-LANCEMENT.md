@@ -222,7 +222,14 @@ arrière sinon — cf. `docs/fiabilite-coupe-circuit-2026-09/31-INCIDENT-DEPLOIE
 
 ---
 
-## 6. Ordre de déploiement (sans rien casser)
+## 6. Ordre de déploiement (sans rien casser) — FAIT le 17/09 (voir § 8.1)
+
+État en production au 17/09 16:00 Paris : Tracky `c38dc68e` (2e passage, après les correctifs de la recette),
+Manager `336b3e9` (PR #5) avec `INTERNAL_ALLOWED_APPS=leads,tracky` et `TRACKY_SYNC_ENABLED=true` ; Tracky avec
+`VIZYO_MANAGER_APP_SECRET` et `MANAGER_INTERNAL_URL=http://vizyo-manager-api:3001`. Sauvegardes des deux `.env.prod`
+dans `/opt/env-backups/`. **Le bouton « Créer le client dans Vizyo Manager et valider » est un clic.**
+Restent les étapes 4 et 5 (fin de transition du secret statique), sans urgence.
+
 
 0. **Tracky § 4** (branche `feat/rdv-lot-d-tracky`) peut partir **à tout moment** : compatible avec le Manager
    d'aujourd'hui (secret statique encore accepté), routes nouvelles inutilisées tant que Manager ne les appelle pas.
