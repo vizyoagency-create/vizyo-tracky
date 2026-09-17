@@ -1,0 +1,246 @@
+# Lot D — Vizyo Manager × Tracky : création d'un client en un clic, puis synchronisation (cahier de lancement, 17/09/2026)
+
+> À lire **en premier** par la session qui prend le lot D avec le dossier du projet Manager
+> (`D:\www\vizyo-agency\vizyo-manager`). Ce document est **auto-suffisant** : le contrat exact entre les deux
+> applications, ce qui existe déjà côté Tracky (en production depuis le 17/09 09:10), ce qu'il reste à construire
+> côté Manager puis côté Tracky, l'ordre de déploiement, la recette. Référence de conception :
+> [`2026-09-16-CONCEPTION-V2-RESERVATIONS-PLANNINGS.md`](./2026-09-16-CONCEPTION-V2-RESERVATIONS-PLANNINGS.md)
+> (§ 1.2 défauts C1–C11, § 2.3, § 2.5, § 3.7–3.8, § 4.4–4.6, § 8.4) ; lot A livré :
+> [`2026-09-17-LOT-A-SOCLE.md`](./2026-09-17-LOT-A-SOCLE.md).
+
+---
+
+## 0. En une page
+
+**Le besoin.** Un opérateur Tracky valide la demande de RDV d'un **prospect** (client sans compte). Aujourd'hui, l'écran
+propose « Créer le client dans Vizyo Manager et valider » — le bouton est **câblé mais inactif** en prod : Tracky répond
+`503 « La création directe dans Vizyo Manager n'est pas configurée (MANAGER_INTERNAL_URL) »` et ouvre en secours le
+formulaire Manager prérempli (`/admin/clients/new?companyName=…&email=…&phone=…&tracky=1`).
+
+**Le lot D rend ce bouton réel**, sans que Tracky crée jamais une flotte lui-même (règle de conception) :
+
+1. **Manager expose `POST /internal/clients`** (garde HMAC existante, appli `tracky`), qui exécute **exactement** sa
+   création habituelle (Vizyo Auth + Leads + Tracky + client + essai) et répond `{ clientId, trackyFleetId }`.
+2. **Manager corrige ses défauts vers Tracky** (C1 `clientId` jamais envoyé, C2 prénom = nom de société, C4 client
+   « Tracky activé » sans flotte irréparable, C5 essai Leads automatique pour tout le monde).
+3. **Synchronisation Manager → Tracky** (C10 : renommer un client ne renomme pas la flotte ; C11 : réactivation jamais
+   propagée, désactivation partielle) — nouvelles routes internes Tracky en HMAC (C7), archivage (Q12), « Resynchroniser »,
+   « Adopter une flotte Tracky existante ».
+4. **Prod** : `INTERNAL_ALLOWED_APPS += tracky` et `VIZYO_TRACKY_APP_SECRET` côté Manager ; `MANAGER_INTERNAL_URL` côté
+   Tracky. Le bouton devient un clic.
+
+**Deux dépôts, deux sessions** : la session Manager (celle qui lit ceci) fait **§ 3** (Manager) et rédige le contrat des
+appels sortants de **§ 4** ; la session Tracky fait **§ 4** (routes internes, HMAC entrant, archivage) dans un worktree
+Tracky. **Ordre de déploiement : § 6** — rien ne casse si Manager est déployé avant Tracky, à condition de respecter
+la transition du secret (§ 4.2).
+
+---
+
+## 1. Ce qui existe déjà (Tracky, en production)
+
+### 1.1 L'appel sortant Tracky → Manager (`apps/api/src/installation-booking/manager-client.service.ts`)
+Appelé à la validation d'une demande sans flotte quand l'opérateur clique « Créer le client dans Vizyo Manager ».
+
+```
+POST {MANAGER_INTERNAL_URL}/internal/clients
+Content-Type: application/json
+X-App-Id: tracky
+X-App-Timestamp: <secondes UNIX>
+X-App-Signature: HMAC-SHA256( VIZYO_AUTH_APP_SECRET_de_Tracky , `${timestamp}.${JSON.stringify(body)}` ) en hex
+
+body (clés DANS CET ORDRE, les `undefined` absents) :
+{
+  "companyName": "Garage Martin",
+  "email": "marc@legrand.fr",             ← e-mail de connexion du client (= admin de la flotte)
+  "notificationEmail": "marc@legrand.fr",
+  "contactFirstName": "Marc",              ← facultatif (absent si inconnu)
+  "contactLastName": "Legrand",            ← facultatif
+  "phone": "+33612345678",                 ← facultatif, E.164
+  "trackyEnabled": true,
+  "trackyFleetName": "Garage Martin",
+  "origin": "tracky-rdv",
+  "externalRef": "<id de la demande Tracky>"
+}
+```
+Délai 20 s. Réponse attendue **2xx** avec `{ "clientId": "<id client Manager>", "trackyFleetId": "<uuid flotte Tracky>" }`.
+Toute autre forme (pas de `trackyFleetId`) → Tracky refuse de rattacher et le dit (« Manager a créé le client mais n'a pas
+renvoyé de flotte ») ; erreur 4xx/5xx → le `message` du corps est montré à l'opérateur ; injoignable → 503 « Vizyo
+Manager ne répond pas ». Rien n'est créé côté Tracky tant que Manager n'a pas répondu proprement — **jamais de demi-client**.
+
+⚠️ **Le secret** : Tracky signe avec **`VIZYO_AUTH_APP_SECRET`** (le secret de l'application *Tracky* dans Vizyo Auth).
+Manager le connaît déjà sous **`VIZYO_TRACKY_APP_SECRET`** (`src/config/configuration.ts` : `trackyAppSecret`). La garde
+lit `VIZYO_<APPID>_APP_SECRET` avec `appId = tracky` → `VIZYO_TRACKY_APP_SECRET`. **Aucun nouveau secret à distribuer** —
+vérifier en prod que les deux valeurs sont bien identiques (c'est le même enregistrement Vizyo Auth).
+
+### 1.2 Le point d'entrée entrant de Tracky, déjà corrigé (C1–C3)
+`POST {TRACKY}/api/internal/fleet/provision` (garde `X-Internal-Secret`, inchangée pour l'instant) :
+```
+{ fleetName, clientId?, adminAuthUserId, adminEmail, adminFirstName?, adminLastName?, adminPhone? }
+→ 201 { fleetId, existed: false }         nouvelle flotte + admin FLEET_ADMIN, en UNE transaction
+→ 201 { fleetId, existed: true }          admin déjà connu (même e-mail OU même authUserId) : SA flotte est rendue,
+                                          rien n'est créé, `clientId` recollé si fourni (IDEMPOTENT — rejouable)
+→ 409                                     compte connu SANS flotte : à rattacher à la main
+```
+`adminPhone` accepte E.164 ou national français (`06 12 34 56 78` → `+33612345678`). Manager lit `body.fleetId` : compatible.
+⚠️ En cas d'erreur, le corps de Tracky est `{ "error": { "code", "message", "requestId" } }` (filtre global) — le client HTTP
+de Manager lit `body.message`, qui est **absent** : lire `body.error?.message ?? body.message`.
+
+### 1.3 Ce que Tracky affiche en attendant
+`GET /api/installation-bookings/:id/confirm` sans flotte → `409 { error: { code: 'SANS_FLOTTE', creationManagerConfiguree,
+urlManager } }` ; `urlManager` = `{MANAGER_WEB_URL}/admin/clients/new?companyName=&email=&tracky=1[&phone=]`
+(`MANAGER_WEB_URL` défaut `https://manager.vizyoagency.com`). **Le formulaire Manager ne lit pas encore ces paramètres**
+(§ 3.6).
+
+---
+
+## 2. Les défauts à corriger, avec leur preuve (rappel du § 1.2 de la conception)
+
+| # | Où | Défaut | Correction (lot D) |
+|---|---|---|---|
+| C1 | Manager → Tracky | `provisionTrackyFleet()` accepte `clientId?` mais `create()` ne le passe jamais (vide sur les 5 flottes de prod) | envoyer `clientId` (création **et** `activateTracky`) |
+| C2 | Manager → Tracky | `adminFirstName: dto.companyName`, pas de nom, pas de téléphone (prod : « Administeur / A2R ») | champs de **contact** sur `Client` + formulaire, envoyés à Tracky |
+| C4 | Manager | client `trackyEnabled` sans `trackyFleetId` (provision échouée) → « already enabled », irréparable | `activateTracky()` reprovisionne ce cas (Tracky est idempotent : sûr) |
+| C5 | Manager | `autoTrialApps = ['LEADS']` pour tout client, même Tracky seul | essai selon les apps réellement activées |
+| C7 | Tracky ← Manager | Tracky entrant = secret statique ; Manager entrant = HMAC + horodatage | Tracky passe au HMAC (§ 4.2) ; le client HTTP Manager → Tracky signe |
+| C10 | Manager | `update()` synchronise Leads, pas Tracky | `syncClientToTracky()` (§ 4.1) |
+| C11 | Manager | `activateTrackyFleet()` jamais appelé ; `deactivate()` ne suspend que l'admin | réactivation symétrique, flotte entière |
+
+---
+
+## 3. Côté Manager (`vizyo-manager-api` + `vizyo-manager-dashboard`) — ce que fait la session Manager
+
+Repères lus le 16/09 (HEAD `283ee2e`) : garde `src/common/guards/internal-hmac.guard.ts` (en-têtes `X-App-Id`,
+`X-App-Timestamp` ±300 s, `X-App-Signature` = HMAC-SHA256 sur `${ts}.${JSON.stringify(req.body)}`, secret
+`VIZYO_<APPID>_APP_SECRET`, applis `INTERNAL_ALLOWED_APPS`, défaut `leads`) ; exemple d'usage
+`src/subscriptions/subscriptions-internal.controller.ts` ; `src/clients/clients.service.ts` (`create`, `update`,
+`activateTracky`, `deactivate`, `provisionTrackyFleet` avec `X-Internal-Secret` vers `vizyo.trackyInternalUrl`, défaut
+`http://vizyo-tracky-api:3000`) ; DTO `src/clients/dto/create-client.dto.ts` ; `main.ts` : `ValidationPipe({ whitelist:
+true, forbidNonWhitelisted: true, transform: true })` ; dashboard route `admin/clients/new` (`app.routes.ts:80`).
+
+### 3.1 `POST /internal/clients` (nouveau)
+- Contrôleur `src/clients/clients-internal.controller.ts`, `@Controller('internal/clients')`, `@UseGuards(InternalHmacGuard)`.
+- DTO `InternalCreateClientDto` : **toutes** les clés du § 1.1 (`companyName`, `email`, `notificationEmail`,
+  `contactFirstName?`, `contactLastName?`, `phone?`, `trackyEnabled`, `trackyFleetName`, `origin`, `externalRef`).
+  ⚠️ `forbidNonWhitelisted: true` : une clé non déclarée = 400. ⚠️ La garde vérifie la signature sur `req.body` **avant**
+  la pipe (ordre Nest : guards → pipes) : ne rien faire qui réécrive le corps avant la garde (pas de middleware qui
+  le transforme).
+- Appelle `clients.create()` (le même chemin que l'écran), avec `origin`/`externalRef` journalisés sur le client
+  (colonnes `origin String?`, `externalRef String?` — utile pour retrouver la demande Tracky).
+- Répond `201 { clientId, trackyFleetId }`. Si la provision Tracky a échoué **après** la création du client, répondre
+  `503 { message }` explicite (Tracky l'affiche) et laisser le client réparable (C4).
+- `INTERNAL_ALLOWED_APPS=leads,tracky` (défaut du code à mettre à jour aussi).
+- Tests : signature valide → 201 et `create()` appelé avec les bons champs ; signature fausse / horodatage périmé / appli
+  non autorisée → 401 ; clé inconnue → 400 ; provision Tracky en échec → 503 avec message.
+
+### 3.2 C1 + C2 — contact et `clientId` envoyés à Tracky
+- `Client` : `contactFirstName String?`, `contactLastName String?`, `phone String?` (migration Prisma **rejouée** avant push).
+- `provisionTrackyFleet({ fleetName, clientId, adminAuthUserId, adminEmail, adminFirstName: contactFirstName,
+  adminLastName: contactLastName, adminPhone: phone })` — depuis `create()` **et** `activateTracky()`.
+- Formulaire dashboard « Nouveau client » et fiche client : prénom, nom, téléphone du contact.
+
+### 3.3 C4 — `activateTracky()` répare un client sans flotte
+Si `trackyEnabled && !trackyFleetId` → reprovisionner (Tracky rend `existed: true` si l'admin existe déjà : pas de doublon).
+
+### 3.4 C5 — essai automatique selon les apps
+`autoTrialApps` dérivé des apps activées à la création (Tracky seul ⇒ pas d'essai Leads).
+
+### 3.5 Synchronisation sortante `syncClientToTracky()` (C10, C11) — **dépend du § 4 Tracky**
+- `update()` : `PATCH {TRACKY}/api/internal/fleet/:trackyFleetId` `{ name?, contact?: { firstName, lastName, phone },
+  notificationEmail?, adminEmail? }` — `adminEmail` **seulement** après acceptation par Vizyo Auth (l'e-mail est
+  l'identifiant d'Auth : Manager change Auth d'abord, puis pousse).
+- `deactivate()` / `activate()` : `POST fleet/suspend` / `fleet/activate` (existants) — la **flotte entière**.
+- `archive()` / `unarchive()` / `destroy()` (Q12) : `POST fleet/:id/archive` · `unarchive` · `DELETE fleet/:id`.
+- « Resynchroniser » (fiche client) : `PUT fleet/:id` (état complet, idempotent). « Adopter une flotte Tracky
+  existante » : `GET fleets?unlinked=true` puis `PUT` avec `clientId`.
+- **Jamais silencieux** : échec → `trackySyncFailedAt` + `trackySyncError` sur le client, visibles sur la fiche, bouton
+  « Resynchroniser ». Le client HTTP Manager → Tracky **signe en HMAC** (même schéma que la garde, appli `manager`,
+  secret `VIZYO_MANAGER_APP_SECRET` déjà présent dans `configuration.ts`) — voir § 4.2 pour la transition.
+
+### 3.6 Dashboard : `admin/clients/new` prérempli
+Lire `companyName`, `email`, `phone`, `tracky=1` dans les query params (c'est le secours que Tracky ouvre) ; cocher
+« Tracky » quand `tracky=1`.
+
+---
+
+## 4. Côté Tracky (`vizyo-tracky`, worktree dédié) — ce que fait la session Tracky, après le § 3.1
+
+### 4.1 Routes internes (`apps/api/src/internal/internal.controller.ts`)
+| Route | Effet |
+|---|---|
+| `PATCH fleet/:fleetId` | `fleet.name`, admin `firstName/lastName/phone`, `weeklyReportEmail` (notificationEmail), `user.email` de l'admin si `adminEmail` ; pose `managedByManagerAt` |
+| `PUT fleet/:fleetId` | état complet, idempotent (resynchronisation) ; peut poser `clientId` (adoption) |
+| `POST fleet/:fleetId/archive` · `unarchive` | § 8.4 de la conception : `archivedAt/By`, membres suspendus (Vizyo Auth aligné), liens fermés, plannings masqués |
+| `DELETE fleet/:fleetId` | effacement définitif, cascade, journal Système `INTERNAL` |
+| `GET fleets?unlinked=true` | flottes sans `clientId` (« Adopter ») |
+Modèle : `fleets.managedByManagerAt`, `archivedAt`, `archivedBy`, `contactPhone` ; `users.managedByManager`.
+Champs pilotés par Manager **non modifiables** dans Tracky quand `clientId` est posé (« synchronisé depuis Vizyo Manager
+le … », lien « modifier dans Manager »).
+
+### 4.2 HMAC entrant (C7) — transition sans coupure
+Nouvelle garde `InternalHmacGuard` côté Tracky (même schéma, appli `manager`, secret = `VIZYO_MANAGER_APP_SECRET`
+à ajouter au `.env.prod` de Tracky = la valeur que Manager a déjà). **Pendant la transition, la garde accepte les deux** :
+HMAC valide **ou** `X-Internal-Secret` valide, avec une ligne de journal « appel en secret statique » ; le secret statique
+est retiré une fois Manager déployé en HMAC (un déploiement Tracky de plus, plus tard).
+
+### 4.3 Écran `/admin/societes` (lot E, pas D) — seulement ce que D impose : rien.
+
+---
+
+## 5. Variables d'environnement
+
+| Où | Variable | Valeur | Quand |
+|---|---|---|---|
+| Manager (prod, `/opt/vizyo-manager/.env.prod`) | `INTERNAL_ALLOWED_APPS` | ajouter `tracky` (la ligne existe déjà) → `leads,tracky` | déploiement Manager § 3.1 |
+| Manager (prod, `/opt/vizyo-manager/.env.prod`) | `VIZYO_TRACKY_APP_SECRET` | déjà présente et **identique** à `VIZYO_AUTH_APP_SECRET` de Tracky (comparées par empreinte le 17/09) — rien à distribuer | idem |
+| Tracky (prod, `deploy/vps/.env.prod`) | `MANAGER_INTERNAL_URL` | **`http://vizyo-manager-api:3001`** — vérifié le 17/09 : le conteneur `vizyo-manager-api` écoute sur 3001 et partage le réseau Docker `foodsqan-public` avec `tracky-api` ; **vide = bouton inactif** (aujourd'hui) | après § 3.1 en prod |
+| Tracky (prod) | `MANAGER_WEB_URL` | défaut `https://manager.vizyoagency.com` (rien à faire) | — |
+| Tracky (prod) | `VIZYO_MANAGER_APP_SECRET` | pour la garde HMAC entrante (§ 4.2) | déploiement Tracky § 4 |
+
+Tracky lit `MANAGER_INTERNAL_URL` au démarrage : après l'avoir posée, **recréer l'API par `deploy.sh`** (jamais
+`docker compose up` à la main ; jamais entre 05:30 et 09:00 Paris ; le script attend la santé et revient seul en
+arrière sinon — cf. `docs/fiabilite-coupe-circuit-2026-09/31-INCIDENT-DEPLOIEMENT-2026-09-17-API-A-TERRE-56-MIN.md`).
+
+---
+
+## 6. Ordre de déploiement (sans rien casser)
+
+1. **Manager § 3.1–3.4 + 3.6** (aucune dépendance Tracky : `fleet/provision` accepte déjà tout). Déployer Manager.
+   Recette : depuis l'écran Tracky de prod, valider une demande d'un lien prospect créé sur « Client test » ?
+   ⚠️ Non — la création passe par Manager et crée un **vrai client** (Vizyo Auth, e-mails) : recetter avec un client
+   de test nommé « TEST lot D — à supprimer », puis l'effacer dans Manager **et** dans Tracky (`DELETE fleet/:id`
+   n'existe pas encore : suppression Tracky par l'API admin après le § 4, ou à la main d'ici là — le noter).
+2. **Tracky `.env.prod` : `MANAGER_INTERNAL_URL`**, puis `deploy.sh` (hors fenêtre du matin). Le bouton devient un clic.
+3. **Tracky § 4** (routes + HMAC en double acceptation) → `deploy.sh`.
+4. **Manager § 3.5** (synchro sortante signée HMAC) → déploiement Manager.
+5. **Tracky** : retrait du secret statique → `deploy.sh`.
+
+---
+
+## 7. Recette de bout en bout (à écrire comme script, par l'API, avec ménage)
+
+1. Tracky : lien prospect « TEST lot D » → demande (2 véhicules, contact complet) → « Créer le client dans Vizyo Manager
+   et valider » → Manager crée le client (Auth + Leads si voulu + Tracky) → Tracky rattache `trackyFleetId`, crée 2 poses.
+2. Manager : la fiche client porte `origin = tracky-rdv`, `externalRef`, le contact ; Tracky : la flotte porte `clientId`,
+   l'admin `firstName/lastName/phone` corrects (plus « prénom = société »).
+3. Manager : renommer la société → Tracky renomme la flotte (§ 4) ; désactiver → tous les membres suspendus ; réactiver →
+   tous réactivés ; archiver → invisible partout ; effacer → cascade.
+4. Rejeu de la création (idempotence) : pas de deuxième flotte, pas de deuxième client.
+5. Ménage : client de test effacé des deux côtés ; e-mails de test signalés au propriétaire.
+
+---
+
+## 8. Ce qui peut mal tourner (déjà vu)
+
+- **Signature HMAC** : le corps signé par Tracky est `JSON.stringify(body)` avec les clés dans l'ordre du § 1.1 ; Manager
+  vérifie sur `JSON.stringify(req.body)` (corps reparsé par Express, même ordre). Tout middleware qui réécrit le corps
+  avant la garde casse la signature. Tester la garde avec un corps réel signé par le code de Tracky
+  (`manager-client.service.spec.ts` montre comment il signe).
+- **`forbidNonWhitelisted`** : une clé oubliée dans le DTO = 400 « property X should not exist » — et Tracky affichera ce
+  message à l'opérateur.
+- **Réponse d'erreur Tracky** : `{ error: { message } }`, pas `{ message }` (§ 1.2).
+- **Deux flottes pour un client** : impossible côté Tracky (idempotence par e-mail/authUserId) — mais Manager doit relire
+  `existed: true` comme un succès.
+- **Migration Prisma Manager** : la rejouer en entier sur une base vierge avant de pousser (leçon Tracky du 17/09 :
+  `pnpm verif:migrations` ; Manager n'a pas ce garde-fou — l'ajouter serait bienvenu).
+- **Fenêtres de production** : un déploiement Tracky ne se fait jamais entre 05:30 et 09:00 Paris ; Manager n'a pas cette
+  contrainte, mais un Manager mort pendant qu'un opérateur valide = 503 propre côté Tracky, sans demi-client.
