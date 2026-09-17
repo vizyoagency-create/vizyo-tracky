@@ -1,6 +1,9 @@
 # Conception v2 — réservations d'installation & plannings (16/09/2026, révision 2)
 
-> **CONCEPTION COMPLÈTE — en attente du « go ».** Ce document intègre les réponses du propriétaire aux
+> **« go lot A » reçu le 17/09 — le lot A est construit** : voir [`2026-09-17-LOT-A-SOCLE.md`](./2026-09-17-LOT-A-SOCLE.md)
+> (ce qui est livré, vérifié, et ce qui attend les lots D → B → C → E). Ce document reste la référence de conception.
+>
+> **CONCEPTION COMPLÈTE.** Ce document intègre les réponses du propriétaire aux
 > **treize** questions (Q1–Q8 du [plan du matin](./2026-09-16-ANALYSE-ET-PROPOSITIONS-RESERVATIONS-PLANNINGS.md),
 > Q9–Q13 de la révision 1). Il décrit, écran par écran et table par table, ce qui sera construit. **Rien n'est codé.**
 > Lecture faite sur Tracky `main` `c357e274` (= prod) et Vizyo Manager `283ee2e`.
@@ -406,4 +409,5 @@ précède le lot E ; (4) le SMS manuel passe par le relais Android (S21) et son 
 
 ## 11. Tranché
 
-Toutes les questions ont une réponse (§ 0). Il ne reste qu'un mot : **« go lot A »** — ou vos corrections sur ce document.
+Toutes les questions ont une réponse (§ 0). **« go lot A »** a été donné le 17/09 : le lot A est livré
+([compte rendu](./2026-09-17-LOT-A-SOCLE.md)). Prochain lot : **D** (Manager & synchro).
