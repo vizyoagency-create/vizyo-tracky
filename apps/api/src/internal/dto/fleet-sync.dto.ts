@@ -40,9 +40,9 @@ export class PatchFleetDto {
   @Type(() => FleetContactDto)
   contact?: FleetContactDto;
 
-  /** E-mail de notification du client → `weeklyReportEmail`. `null` efface. */
+  /** E-mail de notification du client → `weeklyReportEmail`. `null` ou `''` efface. */
   @IsOptional()
-  @ValidateIf((_, v) => v !== null)
+  @ValidateIf((_, v) => v !== null && v !== '')
   @IsEmail()
   @MaxLength(254)
   notificationEmail?: string | null;
@@ -82,7 +82,7 @@ export class PutFleetDto {
   contact?: FleetContactDto;
 
   @IsOptional()
-  @ValidateIf((_, v) => v !== null)
+  @ValidateIf((_, v) => v !== null && v !== '')
   @IsEmail()
   @MaxLength(254)
   notificationEmail?: string | null;

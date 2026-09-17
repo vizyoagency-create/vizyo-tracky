@@ -31,7 +31,7 @@ function service(o: { flotte?: Record<string, unknown> | null; admin?: Record<st
     user: {
       findFirst: jest.fn().mockResolvedValue(o.admin === null ? null : admin(o.admin ?? {})),
       findUnique: jest.fn().mockResolvedValue(o.emailPris ? { id: 'u-autre' } : null),
-      findMany: jest.fn().mockResolvedValue([{ email: 'marc@legrand.fr', authUserId: 'auth-1' }, { email: 'b@legrand.fr', authUserId: null }]),
+      findMany: jest.fn().mockResolvedValue([{ id: 'u1', email: 'marc@legrand.fr', authUserId: 'auth-1' }, { id: 'u2', email: 'b@legrand.fr', authUserId: null }]),
       update: jest.fn().mockResolvedValue({}),
       updateMany: jest.fn().mockResolvedValue({ count: 2 }),
     },
@@ -43,6 +43,9 @@ function service(o: { flotte?: Record<string, unknown> | null; admin?: Record<st
     sim: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
     alertRule: { deleteMany: jest.fn().mockResolvedValue({ count: 3 }) },
     trip: { deleteMany: jest.fn().mockResolvedValue({ count: 0 }) },
+    mission: { deleteMany: jest.fn().mockResolvedValue({ count: 1 }) },
+    missionRequest: { deleteMany: jest.fn().mockResolvedValue({ count: 0 }) },
+    trackerCommand: { deleteMany: jest.fn().mockResolvedValue({ count: 4 }) },
     $transaction: jest.fn(async (fn: any) => fn(prisma)),
   };
   const accountSync = { applyStatus: jest.fn().mockResolvedValue(true) };
@@ -171,12 +174,15 @@ describe('FleetSyncService — effacer définitivement (§ 8.4)', () => {
     expect(prisma.position.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { trackerId: { in: ['t1'] } } }));
     expect(prisma.position.deleteMany).toHaveBeenCalledWith({ where: { id: { in: ['p1', 'p2'] } } });
     expect(prisma.alertRule.deleteMany).toHaveBeenCalledWith({ where: { fleetId: FLEET } });
+    // Les trois relations Restrict partent AVANT la flotte : missions (→ véhicule), commandes de boîtier (→ utilisateur).
+    expect(prisma.mission.deleteMany).toHaveBeenCalledWith({ where: { fleetId: FLEET } });
+    expect(prisma.trackerCommand.deleteMany).toHaveBeenCalledWith({ where: { requestedBy: { in: ['u1', 'u2'] } } });
     expect(prisma.sim.updateMany).toHaveBeenCalledWith({ where: { fleetId: FLEET }, data: { fleetId: null } });
     expect(prisma.fleet.delete).toHaveBeenCalledWith({ where: { id: FLEET } });
     // Un seul compte a un authUserId : un seul retrait Auth ; le boîtier n'est jamais détruit (aucun tracker.delete).
     expect(authClient.removeUserFromApp).toHaveBeenCalledTimes(1);
     expect(prisma.tracker).toBeUndefined();
-    expect(r.deleted).toEqual(expect.objectContaining({ positions: 2, alertRule: 3, fleet: 1, users: 2, vehicles: 2 }));
+    expect(r.deleted).toEqual(expect.objectContaining({ positions: 2, alertRule: 3, mission: 1, trackerCommand: 4, fleet: 1, users: 2, vehicles: 2 }));
     expect(activity.record).toHaveBeenCalledWith(expect.objectContaining({ action: 'fleet_destroyed', fleetId: null }));
   });
 });

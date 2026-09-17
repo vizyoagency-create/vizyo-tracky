@@ -191,6 +191,7 @@ describe('InternalController', () => {
     it('IDEMPOTENT : un admin deja connu (meme e-mail ou meme compte Auth) rend SA flotte, sans rien creer', async () => {
       const { controller, prisma } = createController();
       (prisma.user.findFirst as jest.Mock).mockResolvedValue({ id: 'u9', email: 'admin@fleet.com', fleetId: 'fleet-009', role: UserRole.FLEET_ADMIN });
+      (prisma.fleet as unknown as { findUnique: jest.Mock }).findUnique = jest.fn().mockResolvedValue({ name: 'test fleet', clientId: null });
       const result = await controller.provisionFleet({
         fleetName: 'Test Fleet', clientId: 'cli-42', adminAuthUserId: 'auth-001', adminEmail: 'admin@fleet.com',
       });
@@ -198,7 +199,28 @@ describe('InternalController', () => {
       expect(prisma.fleet.create).not.toHaveBeenCalled();
       expect(prisma.user.create).not.toHaveBeenCalled();
       // Le client Manager, lui, est recolle si on le connait enfin.
-      expect((prisma.fleet as unknown as { update: jest.Mock }).update).toHaveBeenCalledWith({ where: { id: 'fleet-009' }, data: { clientId: 'cli-42' } });
+      expect((prisma.fleet as unknown as { update: jest.Mock }).update).toHaveBeenCalledWith({ where: { id: 'fleet-009' }, data: { clientId: 'cli-42', managedByManagerAt: expect.any(Date) } });
+    });
+
+    it('🔴 un e-mail deja admin d\'une AUTRE societe (nom different) → 409 nommant la flotte : jamais un client rattache a la societe d\'un autre', async () => {
+      const { controller, prisma } = createController();
+      (prisma.user.findFirst as jest.Mock).mockResolvedValue({ id: 'u9', email: 'admin@fleet.com', fleetId: 'fleet-009', role: UserRole.FLEET_ADMIN });
+      (prisma.fleet as unknown as { findUnique: jest.Mock }).findUnique = jest.fn().mockResolvedValue({ name: 'Transports Legrand', clientId: null });
+      await expect(controller.provisionFleet({ fleetName: 'Garage Martin', clientId: 'cli-42', adminAuthUserId: 'auth-001', adminEmail: 'admin@fleet.com' }))
+        .rejects.toThrow(/Transports Legrand/);
+      expect(prisma.fleet.create).not.toHaveBeenCalled();
+    });
+
+    it('🔴 un compte simple membre (VIEWER) d\'une flotte → 409 ; une flotte deja reliee a un autre client → 409', async () => {
+      const { controller, prisma } = createController();
+      (prisma.user.findFirst as jest.Mock).mockResolvedValue({ id: 'u9', email: 'admin@fleet.com', fleetId: 'fleet-009', role: UserRole.VIEWER });
+      (prisma.fleet as unknown as { findUnique: jest.Mock }).findUnique = jest.fn().mockResolvedValue({ name: 'Test Fleet', clientId: null });
+      await expect(controller.provisionFleet({ fleetName: 'Test Fleet', adminAuthUserId: 'auth-001', adminEmail: 'admin@fleet.com' }))
+        .rejects.toThrow(/membre \(VIEWER\)/);
+      (prisma.user.findFirst as jest.Mock).mockResolvedValue({ id: 'u9', email: 'admin@fleet.com', fleetId: 'fleet-009', role: UserRole.FLEET_ADMIN });
+      (prisma.fleet as unknown as { findUnique: jest.Mock }).findUnique = jest.fn().mockResolvedValue({ name: 'Test Fleet', clientId: 'cli-autre' });
+      await expect(controller.provisionFleet({ fleetName: 'Test Fleet', clientId: 'cli-42', adminAuthUserId: 'auth-001', adminEmail: 'admin@fleet.com' }))
+        .rejects.toThrow(/autre client Manager/);
     });
 
     it('un compte connu SANS flotte → 409 : on ne devine pas a quelle flotte le rattacher', async () => {

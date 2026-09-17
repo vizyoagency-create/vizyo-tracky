@@ -131,7 +131,7 @@ export class FleetSyncService {
     if (dto.name !== undefined && dto.name.trim() && dto.name.trim() !== fleet.name) { fleetData.name = dto.name.trim(); changed.push('name'); }
     if (dto.clientId && dto.clientId !== fleet.clientId) { fleetData.clientId = dto.clientId; changed.push('clientId'); }
     if (dto.notificationEmail !== undefined) {
-      const email = dto.notificationEmail ? dto.notificationEmail.trim().toLowerCase() : null;
+      const email = dto.notificationEmail?.trim() ? dto.notificationEmail.trim().toLowerCase() : null;
       if (email !== fleet.weeklyReportEmail) { fleetData.weeklyReportEmail = email; changed.push('notificationEmail'); }
     }
     if (dto.contact?.phone !== undefined) {
@@ -316,14 +316,29 @@ export class FleetSyncService {
       }
     }
 
-    // 3. La flotte elle-même : les clés étrangères en cascade emportent le reste.
+    // 3. Ce que la cascade ne PEUT pas emporter : trois relations `Restrict` (missions → véhicule,
+    //    commandes de boîtier → utilisateur, invitations → créateur). Elles partent d'abord, en clair.
+    const userIds = (await this.prisma.user.findMany({ where: { fleetId }, select: { id: true } })).map((u) => u.id);
+    for (const [modele, where] of [
+      ['missionRequest', { fleetId }],
+      ['mission', { fleetId }],
+      ['trackerCommand', { requestedBy: { in: userIds } }],
+    ] as const) {
+      const delegate = (this.prisma as unknown as Record<string, { deleteMany?: (args: { where: unknown }) => Promise<{ count: number }> }>)[modele];
+      if (!delegate?.deleteMany || (modele === 'trackerCommand' && userIds.length === 0)) continue;
+      const r = await delegate.deleteMany({ where });
+      if (r.count > 0) deleted[modele] = r.count;
+    }
+
+    // 4. La flotte elle-même : les clés étrangères en cascade emportent le reste (les SIM sont
+    //    dissociées avant, pas détruites).
     await this.prisma.sim.updateMany({ where: { fleetId }, data: { fleetId: null } }).catch(() => undefined);
     await this.prisma.fleet.delete({ where: { id: fleetId } });
     deleted['fleet'] = 1;
     deleted['users'] = fleet.users.length;
     deleted['vehicles'] = fleet.vehicles.length;
 
-    // 4. Vizyo Auth : les comptes quittent l'application Tracky (best-effort, jamais bloquant).
+    // 5. Vizyo Auth : les comptes quittent l'application Tracky (best-effort, jamais bloquant).
     let authRemoved = 0; let authFailures = 0;
     for (const u of fleet.users) {
       if (!u.authUserId) continue;

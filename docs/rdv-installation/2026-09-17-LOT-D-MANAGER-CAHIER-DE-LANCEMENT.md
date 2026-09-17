@@ -255,7 +255,39 @@ arrière sinon — cf. `docs/fiabilite-coupe-circuit-2026-09/31-INCIDENT-DEPLOIE
 
 ---
 
-## 8. Ce qui peut mal tourner (déjà vu)
+## 8. Un compte Vizyo Auth est unique — les cas passés en revue le 17/09 (Tracky × Manager × Auth)
+
+Règle du propriétaire : *un compte Vizyo Auth vaut pour toutes les applications ; Manager crée les comptes et donne
+les accès*. Lecture de `vizyo-auth/apps/api/src/auth/auth.service.ts` (`register`) et de `clients.service.ts` (Manager,
+`59f0c89`) — ce que fait la chaîne, cas par cas :
+
+| Cas | Vizyo Auth (`register`, appli Manager) | Manager | Tracky (`fleet/provision`) |
+|---|---|---|---|
+| e-mail inconnu partout | crée l'identité + lien Manager ; puis lien Leads, lien Tracky | fiche créée | flotte + admin créés (`existed:false`) |
+| e-mail connu d'Auth (Leads seul, ou Tracky seul), sans fiche Manager | **relie** l'identité existante à Manager (`linkedExisting`, mot de passe **ignoré**) — pas de doublon | fiche créée ; ⚠️ le « mot de passe généré » affiché n'est pas celui du compte (F1, § 9) | si l'e-mail est déjà admin d'une flotte **du même nom** → cette flotte (`existed:true`) ; sinon **409 nommant la flotte** (§ 1.2) |
+| e-mail déjà relié à l'appli Manager dans Auth, sans fiche | 409 « already registered for this app » | 409 | — |
+| e-mail déjà fiche Manager | — | 409 nommant la société (et sa flotte) | — |
+| même demande Tracky rejouée (`origin`, `externalRef`) | — | même `{ clientId, trackyFleetId }`, répare la flotte si absente | idempotent |
+| e-mail admin d'une AUTRE société dans Tracky (nom différent) | relie | fiche créée **sans flotte**, 503 avec le motif Tracky | 409 `COMPTE_DEJA_DANS_UNE_AUTRE_FLOTTE` — jamais un client rattaché à la société d'un autre ; l'opérateur « Adopte » explicitement ou change d'e-mail |
+| e-mail simple membre (VIEWER…) d'une flotte Tracky | relie | idem | 409 (un membre n'administre pas une société) |
+| flotte déjà reliée à un autre client Manager | — | — | 409 `FLOTTE_D_UN_AUTRE_CLIENT` |
+| e-mail SUPER_ADMIN Tracky (compte sans flotte) | relie | 503 avec le motif | 409 « existe déjà sans flotte » |
+
+Aucun chemin ne crée deux identités Auth pour un même e-mail, ni deux flottes pour un même admin, ni ne rattache un
+client à la société d'un autre sans un geste explicite (« Adopter »).
+
+## 9. Trouvailles de la revue croisée (à traiter côté Manager, non bloquantes)
+
+- **F1** — `create()` affiche `generatedPassword` même quand Auth a **relié une identité existante** (`linkedExisting:
+  true`, `passwordIgnored: true`) : ce mot de passe ne fonctionne pas. Afficher « compte Vizyo existant relié — mot de
+  passe inchangé » à la place (le client passe par « mot de passe oublié » / « Choisir mon mot de passe », lot C).
+- **F2** — `deleteClient()` retire les accès applicatifs mais l'identité Auth reste (sans appli) : inerte, mais à
+  savoir pour les recettes (un e-mail de test reste « connu » d'Auth → rejouer une création avec le même e-mail relie
+  l'ancienne identité).
+- **F3** — l'effacement Tracky part **sans corps** : la garde côté Tracky est « depuis l'archive seulement » ; si
+  Manager retape le nom de la société avant d'effacer (Q12), l'envoyer en `{ confirmName }` ajoute une vérification.
+
+## 10. Ce qui peut mal tourner (déjà vu)
 
 - **Signature HMAC** : le corps signé par Tracky est `JSON.stringify(body)` avec les clés dans l'ordre du § 1.1 ; Manager
   vérifie sur `JSON.stringify(req.body)` (corps reparsé par Express, même ordre). Tout middleware qui réécrit le corps

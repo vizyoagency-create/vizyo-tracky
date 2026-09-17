@@ -108,9 +108,32 @@ export class InternalController {
       if (!existant.fleetId) {
         throw new ConflictException(`Le compte ${existant.email} existe déjà dans Tracky sans flotte : rattachez-le à la main.`);
       }
+      // ┌─ UN COMPTE VIZYO AUTH EST UNIQUE — ET UNE FLOTTE N'APPARTIENT QU'À UN CLIENT ─────────┐
+      // │ Rejouer la MÊME demande rend la même flotte (idempotence, C3). Mais un e-mail déjà     │
+      // │ admin d'une AUTRE société dans Tracky, ou simple membre d'une flotte, n'est pas un     │
+      // │ rejeu : rendre sa flotte rattacherait un nouveau client à la société d'un autre. On    │
+      // │ répond 409 en nommant la flotte : l'opérateur « adopte » cette flotte explicitement    │
+      // │ dans Manager, ou prend un autre e-mail. Jamais de doublon, jamais de rattachement muet. │
+      // └────────────────────────────────────────────────────────────────────────────────────────┘
+      const flotte = await this.prisma.fleet.findUnique({ where: { id: existant.fleetId }, select: { name: true, clientId: true } });
+      const memeNom = !!flotte && flotte.name.trim().toLowerCase() === dto.fleetName.trim().toLowerCase();
+      const memeClient = !!dto.clientId && !!flotte?.clientId && flotte.clientId === dto.clientId;
+      if (flotte?.clientId && dto.clientId && flotte.clientId !== dto.clientId) {
+        throw new ConflictException({
+          code: 'FLOTTE_D_UN_AUTRE_CLIENT',
+          message: `Le compte ${existant.email} administre la flotte « ${flotte.name} », déjà reliée à un autre client Manager (${flotte.clientId}).`,
+        });
+      }
+      if (!memeClient && (existant.role !== UserRole.FLEET_ADMIN || !memeNom)) {
+        const role = existant.role === UserRole.FLEET_ADMIN ? 'administrateur' : `membre (${existant.role})`;
+        throw new ConflictException({
+          code: 'COMPTE_DEJA_DANS_UNE_AUTRE_FLOTTE',
+          message: `Le compte ${existant.email} est déjà ${role} de la flotte « ${flotte?.name ?? '?'} » dans Tracky : rattachez cette flotte existante (« Adopter »), ou utilisez un autre e-mail.`,
+        });
+      }
       // Idempotent : la même demande rejouée (ou un client déjà provisionné) rend sa flotte.
-      if (dto.clientId) {
-        await this.prisma.fleet.update({ where: { id: existant.fleetId }, data: { clientId: dto.clientId } }).catch(() => undefined);
+      if (dto.clientId && !flotte?.clientId) {
+        await this.prisma.fleet.update({ where: { id: existant.fleetId }, data: { clientId: dto.clientId, managedByManagerAt: new Date() } }).catch(() => undefined);
       }
       this.recordInternal('fleet_provision_existing', existant.fleetId, dto.fleetName, `Admin ${existant.email} déjà provisionné — flotte existante rendue`);
       return { fleetId: existant.fleetId, existed: true };
