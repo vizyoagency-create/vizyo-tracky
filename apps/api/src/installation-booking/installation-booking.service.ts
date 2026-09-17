@@ -13,6 +13,8 @@ import type {
   BookingVisitEventType,
   CreatePublicBookingDto,
   DecouverteDto,
+  DeleteLinkConsequencesDto,
+  DeleteLinkMode,
   InstallationBookingDto,
   InstallationBookingLinkDto,
   InstallationBookingLinkVisitDto,
@@ -25,6 +27,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { EmailService } from '../email/email.service';
 import { SystemActivityService } from '../system-activity/system-activity.service';
 import { tronquerAdresse } from '../depot/share-token';
+import { emailClientPropre, telephoneClientE164, telephoneLisible } from './contact';
 import {
   type SlotConfig,
   WEEKEND_DAYS,
@@ -33,8 +36,11 @@ import {
   slotLabel,
   windowFor,
 } from './installation-booking.slots';
+import { ManagerClientService } from './manager-client.service';
 import { decrireAgent, hoteDuReferrer, provenanceLisible } from './visiteur';
 import type {
+  BookingVehicleInputDto,
+  CancelBookingDto,
   CreateBookingLinkDto,
   UpdateBookingLinkDto,
   ConfirmBookingDto,
@@ -43,8 +49,6 @@ import type {
 
 /** Statuts qui OCCUPENT un créneau (source de la disponibilité + contrainte EXCLUDE). */
 const ACTIVE: InstallationBookingStatus[] = ['PENDING', 'CONFIRMED'];
-/** Notification opérateur — le client l'a demandé sur cette boîte. */
-const CONTACT_EMAIL = 'contact@vizyoagency.com';
 
 /**
  * Combien de temps on garde l'adresse d'un client qui demande à être prévenu.
@@ -83,8 +87,26 @@ const VISIT_MAX_EVENTS = 80;
 /** Le marqueur `?from=` que la vitrine lit (vt.js) pour attribuer la visite au lien de RDV. */
 const VITRINE_FROM = 'rdv-installation';
 
-type LinkRow = Prisma.InstallationBookingLinkGetPayload<{ include: { fleet: { select: { name: true } } } }>;
-type BookingRow = Prisma.InstallationBookingGetPayload<{ include: { link: { select: { label: true; planId: true } } } }>;
+/** Plaque écrite sur une pose dont le client n'a pas donné la plaque ; `completeTask` exige la vraie. */
+export const PLAQUE_A_CONFIRMER = 'À confirmer';
+
+/** Plafond absolu du multi-véhicules (6 × 2 h = une journée). Le lien porte son propre plafond. */
+const MAX_VEHICULES_ABSOLU = 6;
+
+const LINK_INCLUDE = {
+  fleet: { select: { name: true } },
+  creator: { select: { firstName: true, lastName: true, email: true } },
+} satisfies Prisma.InstallationBookingLinkInclude;
+type LinkRow = Prisma.InstallationBookingLinkGetPayload<{ include: typeof LINK_INCLUDE }>;
+
+const BOOKING_INCLUDE = {
+  link: { select: { label: true, planId: true } },
+  fleet: { select: { name: true } },
+  vehicles: { orderBy: { position: 'asc' } },
+  tasks: { select: { id: true, planId: true, plate: true, status: true } },
+  confirmer: { select: { firstName: true, lastName: true, email: true } },
+} satisfies Prisma.InstallationBookingInclude;
+type BookingRow = Prisma.InstallationBookingGetPayload<{ include: typeof BOOKING_INCLUDE }>;
 type VisitRow = Prisma.InstallationBookingLinkVisitGetPayload<Record<string, never>>;
 
 /** Ce que l'HTTP sait du visiteur au moment où la page s'ouvre. */
@@ -100,6 +122,12 @@ export interface ContexteVisite {
   visiteId?: string | null;
 }
 
+/** Un nom lisible pour un compte, ou null s'il n'existe plus. */
+function nomDe(u: { firstName: string | null; lastName: string | null; email: string } | null | undefined): string | null {
+  if (!u) return null;
+  return [u.firstName, u.lastName].filter(Boolean).join(' ') || u.email;
+}
+
 @Injectable()
 export class InstallationBookingService {
   private readonly logger = new Logger(InstallationBookingService.name);
@@ -109,6 +137,7 @@ export class InstallationBookingService {
     private readonly email: EmailService,
     private readonly config: ConfigService<Env, true>,
     private readonly systemActivity: SystemActivityService,
+    private readonly manager: ManagerClientService,
   ) {}
 
   // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -134,6 +163,11 @@ export class InstallationBookingService {
     };
   }
 
+  /** La société telle que le client la connaît : celle du lien prospect, sinon la flotte. */
+  private societeDe(link: { companyName: string | null; fleet: { name: string } | null }): string {
+    return link.companyName?.trim() || link.fleet?.name || 'Vizyo Tracky';
+  }
+
   /** Intervalles occupés GLOBALEMENT (capacité 1 équipe) sur le futur proche. */
   private async busyIntervals(now: Date): Promise<{ startMs: number; endMs: number }[]> {
     const rows = await this.prisma.installationBooking.findMany({
@@ -156,6 +190,12 @@ export class InstallationBookingService {
 
   private vitrineBase(): string {
     return String(this.config.get('VITRINE_BASE_URL', { infer: true }) ?? 'https://tracky.vizyoagency.com').replace(/\/+$/, '');
+  }
+
+  /** Adresse qui reçoit les notifications opérateur — configurable, plus codée en dur. */
+  private adresseOperateur(): string {
+    const brut = this.config.get('INSTALLATION_NOTIFY_EMAIL', { infer: true }) as string | undefined;
+    return (brut ?? '').trim() || 'contact@vizyoagency.com';
   }
 
   /**
@@ -184,17 +224,32 @@ export class InstallationBookingService {
     }
   }
 
+  /**
+   * Un lien a une flotte OU un nom de société — jamais ni l'un ni l'autre (la page publique
+   * n'aurait rien à afficher, et une demande ne saurait pas à qui elle appartient).
+   */
+  private async validerSociete(fleetId: string | null | undefined, companyName: string | null | undefined, planId?: string | null): Promise<void> {
+    if (fleetId) {
+      const fleet = await this.prisma.fleet.findUnique({ where: { id: fleetId }, select: { id: true } });
+      if (!fleet) throw new NotFoundException('Flotte introuvable.');
+      if (planId) {
+        const plan = await this.prisma.installationPlan.findUnique({ where: { id: planId }, select: { fleetId: true } });
+        if (!plan || plan.fleetId !== fleetId) {
+          throw new BadRequestException('Le planning choisi n\'appartient pas à cette flotte.');
+        }
+      }
+      return;
+    }
+    if (!companyName?.trim()) {
+      throw new BadRequestException('Sans flotte, indiquez le nom de la société du prospect.');
+    }
+    if (planId) throw new BadRequestException('Un planning ne peut être rattaché qu\'avec une flotte.');
+  }
+
   // ─── Liens (SUPER_ADMIN) ─────────────────────────────────────────────────────
 
   async createLink(userId: string | null, dto: CreateBookingLinkDto): Promise<InstallationBookingLinkDto> {
-    const fleet = await this.prisma.fleet.findUnique({ where: { id: dto.fleetId }, select: { id: true, name: true } });
-    if (!fleet) throw new NotFoundException('Flotte introuvable.');
-    if (dto.planId) {
-      const plan = await this.prisma.installationPlan.findUnique({ where: { id: dto.planId }, select: { fleetId: true } });
-      if (!plan || plan.fleetId !== dto.fleetId) {
-        throw new BadRequestException('Le planning choisi n\'appartient pas à cette flotte.');
-      }
-    }
+    await this.validerSociete(dto.fleetId, dto.companyName, dto.planId);
     this.validerFenetres({
       slotMinutes: dto.slotMinutes ?? 120,
       dayStartMinutes: dto.dayStartMinutes ?? 480,
@@ -207,12 +262,14 @@ export class InstallationBookingService {
     const token = randomBytes(32).toString('base64url');
     const row = await this.prisma.installationBookingLink.create({
       data: {
-        fleetId: dto.fleetId,
+        fleetId: dto.fleetId ?? null,
+        companyName: dto.fleetId ? (dto.companyName?.trim() || null) : dto.companyName!.trim(),
+        maxVehicles: dto.maxVehicles ?? undefined,
         planId: dto.planId ?? null,
         label: dto.label.trim(),
         token,
         clientName: dto.clientName?.trim() || null,
-        clientEmail: dto.clientEmail?.trim() || null,
+        clientEmail: dto.clientEmail?.trim().toLowerCase() || null,
         clientPhone: dto.clientPhone?.trim() || null,
         clientAddress: dto.clientAddress?.trim() || null,
         slotMinutes: dto.slotMinutes ?? undefined,
@@ -227,14 +284,14 @@ export class InstallationBookingService {
         expiresAt: dto.expiresAt ? new Date(dto.expiresAt) : null,
         createdBy: userId,
       },
-      include: { fleet: { select: { name: true } } },
+      include: LINK_INCLUDE,
     });
     return this.toLinkDto(row, { pending: 0, confirmed: 0, visits: 0, robots: 0 });
   }
 
   async listLinks(): Promise<InstallationBookingLinkDto[]> {
     const rows = await this.prisma.installationBookingLink.findMany({
-      include: { fleet: { select: { name: true } } },
+      include: LINK_INCLUDE,
       orderBy: { createdAt: 'desc' },
     });
     if (rows.length === 0) return [];
@@ -254,6 +311,7 @@ export class InstallationBookingService {
     const pending = new Map<string, number>();
     const confirmed = new Map<string, number>();
     for (const c of counts) {
+      if (!c.linkId) continue;
       if (c.status === 'PENDING') pending.set(c.linkId, c._count._all);
       if (c.status === 'CONFIRMED') confirmed.set(c.linkId, c._count._all);
     }
@@ -270,6 +328,14 @@ export class InstallationBookingService {
 
   async updateLink(id: string, dto: UpdateBookingLinkDto): Promise<InstallationBookingLinkDto> {
     const actuel = await this.getLinkOr404(id);
+    // La société résultante : on peut rattacher une flotte à un lien prospect, jamais retirer la
+    // flotte d'un lien qui en a une (ses demandes la portent déjà).
+    const fleetId = dto.fleetId === undefined ? actuel.fleetId : dto.fleetId;
+    if (actuel.fleetId && fleetId !== actuel.fleetId) {
+      throw new BadRequestException('La flotte d\'un lien ne se change pas : créez un autre lien.');
+    }
+    const companyName = dto.companyName === undefined ? actuel.companyName : dto.companyName;
+    await this.validerSociete(fleetId, companyName, null);
     // On valide la configuration RÉSULTANTE (l'existant fusionné avec ce qui change), pas
     // seulement les champs envoyés : un week-end coché seul, sans ses horaires, se lit ici.
     this.validerFenetres({
@@ -285,6 +351,9 @@ export class InstallationBookingService {
       data: {
         label: dto.label?.trim(),
         active: dto.active,
+        fleetId: dto.fleetId === undefined ? undefined : dto.fleetId,
+        companyName: dto.companyName === undefined ? undefined : (dto.companyName?.trim() || null),
+        maxVehicles: dto.maxVehicles,
         slotMinutes: dto.slotMinutes,
         dayStartMinutes: dto.dayStartMinutes,
         dayEndMinutes: dto.dayEndMinutes,
@@ -296,20 +365,82 @@ export class InstallationBookingService {
         singleUse: dto.singleUse,
         expiresAt: dto.expiresAt === undefined ? undefined : dto.expiresAt ? new Date(dto.expiresAt) : null,
       },
-      include: { fleet: { select: { name: true } } },
+      include: LINK_INCLUDE,
     });
+    // Rattacher la flotte à un lien prospect rattache aussi ses demandes encore sans flotte.
+    if (!actuel.fleetId && row.fleetId) {
+      await this.prisma.installationBooking.updateMany({
+        where: { linkId: id, fleetId: null },
+        data: { fleetId: row.fleetId },
+      });
+    }
     return this.toLinkDto(row, { pending: 0, confirmed: 0, visits: 0, robots: 0 });
   }
 
-  async deleteLink(id: string): Promise<void> {
+  /** Ce qu'une suppression emporterait — pour le dialogue de l'écran, et le 409 de l'API. */
+  async consequencesSuppression(id: string): Promise<DeleteLinkConsequencesDto> {
     await this.getLinkOr404(id);
+    const [parStatut, visites, abonnes] = await Promise.all([
+      this.prisma.installationBooking.groupBy({ by: ['status'], _count: { _all: true }, where: { linkId: id } }),
+      this.prisma.installationBookingLinkVisit.count({ where: { linkId: id } }),
+      this.prisma.installationSlotWatcher.count({ where: { linkId: id } }),
+    ]);
+    const compte = (s: InstallationBookingStatus) => parStatut.find((p) => p.status === s)?._count._all ?? 0;
+    const total = parStatut.reduce((n, p) => n + p._count._all, 0);
+    return {
+      demandes: { total, enAttente: compte('PENDING'), confirmees: compte('CONFIRMED') },
+      visites,
+      abonnes,
+    };
+  }
+
+  /**
+   * Supprimer un lien (Q8, décision du 16/09). S'il porte des demandes, l'appelant DOIT dire quoi
+   * en faire : `conserver` (elles survivent, `linkLabel` les garde lisibles — SetNull en base) ou
+   * `effacer` (demandes et véhicules partent avec le lien ; les poses déjà créées survivent). Sans
+   * réponse : 409 avec le décompte — c'est ce que le dialogue affiche.
+   */
+  async deleteLink(id: string, mode?: DeleteLinkMode, userId?: string | null): Promise<void> {
+    const link = await this.getLinkOr404(id);
+    const consequences = await this.consequencesSuppression(id);
+    if (consequences.demandes.total > 0 && !mode) {
+      // `code` explicite : le filtre global ne transmet les champs métier (`consequences`) qu'avec lui.
+      throw new ConflictException({
+        code: 'DEMANDES_A_TRANCHER',
+        message: `Ce lien porte ${consequences.demandes.total} demande(s). Indiquez quoi en faire : conserver ou effacer.`,
+        consequences,
+      });
+    }
+    if (mode === 'effacer' && consequences.demandes.total > 0) {
+      await this.prisma.installationBooking.deleteMany({ where: { linkId: id } });
+    } else if (consequences.demandes.total > 0) {
+      await this.prisma.installationBooking.updateMany({
+        where: { linkId: id, linkLabel: null },
+        data: { linkLabel: link.label },
+      });
+    }
     await this.prisma.installationBookingLink.delete({ where: { id } });
+    this.systemActivity.record({
+      category: 'INSTALLATION',
+      action: 'booking_link_deleted',
+      status: 'SUCCESS',
+      actor: 'opérateur',
+      target: link.label,
+      detail: consequences.demandes.total === 0
+        ? 'Lien supprimé (aucune demande)'
+        : mode === 'effacer'
+          ? `Lien supprimé avec ses ${consequences.demandes.total} demande(s)`
+          : `Lien supprimé, ${consequences.demandes.total} demande(s) conservée(s)`,
+      fleetId: link.fleetId,
+      triggeredByUserId: userId ?? null,
+      meta: { linkId: id, mode: mode ?? null, ...consequences },
+    });
   }
 
   private async getLinkOr404(id: string): Promise<LinkRow> {
     const row = await this.prisma.installationBookingLink.findUnique({
       where: { id },
-      include: { fleet: { select: { name: true } } },
+      include: LINK_INCLUDE,
     });
     if (!row) throw new NotFoundException('Lien introuvable.');
     return row;
@@ -485,7 +616,7 @@ export class InstallationBookingService {
   }
 
   /** Trace une ouverture HUMAINE de la page publique (fire-and-forget, ne jette jamais). */
-  private trackOpen(linkId: string, isFirst: boolean, fleetId: string, label: string): void {
+  private trackOpen(linkId: string, isFirst: boolean, fleetId: string | null, label: string): void {
     const now = new Date();
     this.prisma.installationBookingLink
       .update({
@@ -546,10 +677,17 @@ export class InstallationBookingService {
     };
   }
 
-  async getPublicLink(rawToken: string, ctx: ContexteVisite = {}): Promise<PublicBookingLinkDto> {
+  /** Le nombre de véhicules demandé, borné par le lien — jamais moins d'un, jamais plus que permis. */
+  private borneVehicules(link: { maxVehicles: number }, demande: number | undefined): number {
+    const max = Math.min(Math.max(1, link.maxVehicles), MAX_VEHICULES_ABSOLU);
+    const n = Math.floor(demande ?? 1);
+    return Math.min(Math.max(1, Number.isFinite(n) ? n : 1), max);
+  }
+
+  async getPublicLink(rawToken: string, ctx: ContexteVisite = {}, vehicleCount?: number): Promise<PublicBookingLinkDto> {
     const link = await this.prisma.installationBookingLink.findUnique({
       where: { token: rawToken },
-      include: { fleet: { select: { name: true } } },
+      include: LINK_INCLUDE,
     });
     if (!link) throw new NotFoundException('Lien de réservation introuvable.');
 
@@ -558,13 +696,15 @@ export class InstallationBookingService {
     const visite = await this.ouvrirVisite(link, ctx);
 
     const closedReason = this.closedReason(link);
+    const nombre = this.borneVehicules(link, vehicleCount);
     const base: PublicBookingLinkDto = {
-      companyName: link.fleet.name,
+      companyName: this.societeDe(link),
       closed: closedReason !== null,
       closedReason,
-      needsClientInfo: !link.clientEmail,
+      // Depuis le lot A, le contact est TOUJOURS demandé (le lien nominatif pré-remplit).
+      needsClientInfo: true,
       prefill: link.clientEmail
-        ? { name: link.clientName, email: link.clientEmail, phone: link.clientPhone, address: link.clientAddress }
+        ? { name: link.clientName, email: link.clientEmail, phone: telephoneLisible(link.clientPhone) ?? link.clientPhone, address: link.clientAddress }
         : null,
       slotMinutes: link.slotMinutes,
       days: [],
@@ -573,6 +713,9 @@ export class InstallationBookingService {
       // prévenu sur un lien expiré promettrait un e-mail qui ne partira jamais.
       abonnementCreneauDisponible: closedReason === null,
       weekendOuvert: link.workingDays.some((d) => WEEKEND_DAYS.has(d)),
+      vehicleCount: nombre,
+      maxVehicles: Math.min(Math.max(1, link.maxVehicles), MAX_VEHICULES_ABSOLU),
+      contactRequis: { email: true, telephone: true },
       visite,
       decouverte: this.decouverte(),
     };
@@ -580,7 +723,7 @@ export class InstallationBookingService {
 
     const now = new Date();
     const busy = await this.busyIntervals(now);
-    const days = generateAvailability(this.configOf(link), now, busy);
+    const days = generateAvailability(this.configOf(link), now, busy, nombre);
     base.days = days.map((d) => ({
       date: d.date,
       label: d.label,
@@ -680,7 +823,7 @@ export class InstallationBookingService {
   async notifierAbonnesCreneauxLibres(maintenant: Date = new Date()): Promise<number> {
     const abonnes = await this.prisma.installationSlotWatcher.findMany({
       where: { notifiedAt: null, expiresAt: { gt: maintenant } },
-      include: { link: { include: { fleet: { select: { name: true } } } } },
+      include: { link: { include: LINK_INCLUDE } },
     });
     if (abonnes.length === 0) return 0;
 
@@ -700,7 +843,7 @@ export class InstallationBookingService {
       if (days.length === 0) continue;
       const premier = days[0].slots[0];
       const courriel = this.email.buildInstallationSlotAvailableEmail({
-        companyName: link.fleet.name,
+        companyName: this.societeDe(link),
         nextSlotLabel: slotLabel(premier.startAt, premier.endAt),
         dayCount: days.length,
         bookingUrl: this.publicUrl(link.token),
@@ -711,7 +854,7 @@ export class InstallationBookingService {
             to: a.email,
             ...courriel,
             template: 'installation_slot_available',
-            fleetId: link.fleetId,
+            fleetId: link.fleetId ?? undefined,
             context: { linkId: link.id, watcherId: a.id },
           })
           .catch((e) => ({ ok: false, error: e instanceof Error ? e.message : String(e) }));
@@ -736,10 +879,48 @@ export class InstallationBookingService {
     return envoyes;
   }
 
+  /**
+   * Le contact d'une demande — OBLIGATOIRE (décision du 16/09). Chaque refus dit quoi corriger :
+   * ce formulaire s'ouvre au téléphone, une main prise, et un message vague coûte une demande.
+   */
+  private validerContact(dto: CreatePublicBookingDto): { name: string; email: string; phone: string } {
+    const name = (dto.clientName ?? '').trim();
+    if (name.length < 2) throw new BadRequestException('Indiquez votre nom.');
+    if (name.includes('@')) throw new BadRequestException('Le nom ne peut pas être une adresse e-mail.');
+    const email = emailClientPropre(dto.clientEmail);
+    if (!email) throw new BadRequestException('Renseignez un e-mail valide : c\'est là que la confirmation arrive.');
+    const phone = telephoneClientE164(dto.clientPhone);
+    if (!phone) {
+      throw new BadRequestException('Renseignez un numéro de téléphone valide (ex. 06 12 34 56 78) : nous vous appelons la veille si besoin.');
+    }
+    return { name, email, phone };
+  }
+
+  /** Les véhicules déclarés, nettoyés : autant que `vehicleCount`, dans l'ordre. */
+  private validerVehicules(link: { maxVehicles: number }, dto: CreatePublicBookingDto): {
+    count: number; vehicles: { plate: string | null; brand: string | null; model: string | null; energy: BookingVehicleInputDto['energy'] | null }[];
+  } {
+    const max = Math.min(Math.max(1, link.maxVehicles), MAX_VEHICULES_ABSOLU);
+    const count = Math.floor(dto.vehicleCount);
+    if (!Number.isFinite(count) || count < 1) throw new BadRequestException('Indiquez le nombre de véhicules à équiper.');
+    if (count > max) throw new BadRequestException(`Au plus ${max} véhicule(s) par demande sur ce lien.`);
+    const lignes = Array.isArray(dto.vehicles) ? dto.vehicles : [];
+    if (lignes.length !== count) throw new BadRequestException(`${count} véhicule(s) annoncé(s), ${lignes.length} décrit(s).`);
+    return {
+      count,
+      vehicles: lignes.map((v) => ({
+        plate: v.plate?.trim().toUpperCase() || null,
+        brand: v.brand?.trim() || null,
+        model: v.model?.trim() || null,
+        energy: v.energy ?? null,
+      })),
+    };
+  }
+
   async createPublicBooking(rawToken: string, dto: CreatePublicBookingDto): Promise<PublicBookingResultDto> {
     const link = await this.prisma.installationBookingLink.findUnique({
       where: { token: rawToken },
-      include: { fleet: { select: { name: true } } },
+      include: LINK_INCLUDE,
     });
     if (!link) throw new NotFoundException('Lien de réservation introuvable.');
     const closed = this.closedReason(link);
@@ -747,59 +928,46 @@ export class InstallationBookingService {
 
     const start = new Date(dto.startAt);
     if (Number.isNaN(start.getTime())) throw new BadRequestException('Créneau invalide.');
-    const end = new Date(start.getTime() + link.slotMinutes * 60_000);
+    const contact = this.validerContact(dto);
+    const { count, vehicles } = this.validerVehicules(link, dto);
+    const end = new Date(start.getTime() + link.slotMinutes * count * 60_000);
 
-    // Le créneau doit correspondre EXACTEMENT à une disponibilité offerte à cet instant
-    // (grille horaire + jour ouvré + horizon + délai mini + non déjà pris). La contrainte
-    // EXCLUDE tranche ensuite la course concurrente.
+    // Le créneau doit correspondre EXACTEMENT à une disponibilité offerte à cet instant POUR CE
+    // NOMBRE DE VÉHICULES (grille horaire + jour ouvré + horizon + J+N + non déjà pris). La
+    // contrainte EXCLUDE tranche ensuite la course concurrente.
     const now = new Date();
     const busy = await this.busyIntervals(now);
-    const days = generateAvailability(this.configOf(link), now, busy);
+    const days = generateAvailability(this.configOf(link), now, busy, count);
     const offered = days.some((d) => d.slots.some((s) => s.startAt.getTime() === start.getTime()));
     if (!offered) {
       await this.tracerEchec(dto.visiteId, link.id, 'créneau plus disponible');
       throw new ConflictException('Ce créneau n\'est plus disponible. Choisissez-en un autre.');
     }
 
-    // Infos client : mode « lien direct » (clientEmail sur le lien) => on prend celles du lien.
-    let clientName: string;
-    let clientEmail: string;
-    let clientPhone: string | null;
-    let clientAddress: string | null;
-    if (link.clientEmail) {
-      clientName = link.clientName ?? link.fleet.name;
-      clientEmail = link.clientEmail;
-      clientPhone = link.clientPhone;
-      clientAddress = link.clientAddress;
-    } else {
-      const name = dto.clientName?.trim();
-      const email = dto.clientEmail?.trim();
-      if (!name || !email) throw new BadRequestException('Nom et e-mail requis.');
-      clientName = name;
-      clientEmail = email;
-      clientPhone = dto.clientPhone?.trim() || null;
-      clientAddress = dto.clientAddress?.trim() || null;
-    }
-
-    let booking;
+    const clientAddress = dto.clientAddress?.trim() || link.clientAddress || null;
+    const companyName = this.societeDe(link);
+    let booking: { id: string };
     try {
       booking = await this.prisma.installationBooking.create({
         data: {
           linkId: link.id,
+          linkLabel: link.label,
           fleetId: link.fleetId,
+          companyName,
           startAt: start,
           endAt: end,
           status: 'PENDING',
-          clientName,
-          clientEmail,
-          clientPhone,
+          clientName: contact.name,
+          clientEmail: contact.email,
+          clientPhone: contact.phone,
           clientAddress,
-          vehiclePlate: dto.vehiclePlate?.trim() || null,
-          vehicleBrand: dto.vehicleBrand?.trim() || null,
-          vehicleModel: dto.vehicleModel?.trim() || null,
-          vehicleEnergy: dto.vehicleEnergy ?? null,
+          vehicleCount: count,
           notes: dto.notes?.trim() || null,
+          vehicles: {
+            create: vehicles.map((v, i) => ({ position: i, plate: v.plate, brand: v.brand, model: v.model, energy: v.energy })),
+          },
         },
+        select: { id: true },
       });
     } catch (err) {
       if (this.isExclusionConflict(err)) {
@@ -814,32 +982,34 @@ export class InstallationBookingService {
     // La visite raconte maintenant QUI a réservé — une identité certaine, celle-là.
     if (dto.visiteId) {
       await this.identifierVisite(dto.visiteId, link.id, {
-        name: clientName, email: clientEmail, source: 'RESERVATION', bookingId: booking.id,
+        name: contact.name, email: contact.email, source: 'RESERVATION', bookingId: booking.id,
       });
       await this.ajouterEvenement(dto.visiteId, link.id, { type: 'reservation', target: label }).catch(() => 0);
     }
 
     // Notification opérateur (best-effort : ne bloque pas la réservation).
-    const vehicle = [dto.vehiclePlate, dto.vehicleBrand, dto.vehicleModel].filter(Boolean).join(' · ') || null;
+    const vehiculesLisibles = vehicles
+      .map((v, i) => [v.plate ?? `véhicule ${i + 1}`, [v.brand, v.model].filter(Boolean).join(' ') || null].filter(Boolean).join(' · '))
+      .join(' ; ');
     void this.email
       .send({
-        to: CONTACT_EMAIL,
+        to: this.adresseOperateur(),
         ...this.email.buildInstallationSlotRequestedEmail({
-          companyName: link.fleet.name,
-          slotLabel: label,
-          clientName,
-          clientEmail,
-          clientPhone,
+          companyName: link.fleetId ? companyName : `${companyName} (prospect, sans flotte)`,
+          slotLabel: `${label} · ${count} véhicule${count > 1 ? 's' : ''}`,
+          clientName: contact.name,
+          clientEmail: contact.email,
+          clientPhone: telephoneLisible(contact.phone),
           clientAddress,
-          vehicle,
+          vehicle: vehiculesLisibles || null,
           notes: dto.notes?.trim() || null,
           manageUrl: `${this.appBase()}/admin/installation-bookings`,
         }),
         template: 'installation_slot_requested',
         // ⚠️ RÉPONDRE ÉCRIT AU CLIENT, pas à notre propre boîte. Le pied de page le dit ;
         // sans cet en-tête il faudrait recopier l'adresse à la main depuis le corps.
-        replyTo: clientEmail,
-        fleetId: link.fleetId,
+        replyTo: contact.email,
+        fleetId: link.fleetId ?? undefined,
         context: { bookingId: booking.id, linkId: link.id },
       })
       .catch((e) => this.logger.warn(`Notif demande créneau échouée: ${e instanceof Error ? e.message : e}`));
@@ -849,10 +1019,10 @@ export class InstallationBookingService {
       action: 'booking_requested',
       status: 'SUCCESS',
       actor: 'client',
-      target: `${clientName} — ${label}`,
-      detail: 'Demande de créneau déposée via le lien public',
+      target: `${contact.name} — ${label}`,
+      detail: `Demande de créneau déposée via le lien public (${count} véhicule${count > 1 ? 's' : ''}, ${companyName})`,
       fleetId: link.fleetId,
-      meta: { bookingId: booking.id, linkId: link.id },
+      meta: { bookingId: booking.id, linkId: link.id, vehicleCount: count, prospect: !link.fleetId },
     });
 
     return { ok: true, startAt: start.toISOString(), endAt: end.toISOString(), slotLabel: label };
@@ -874,103 +1044,164 @@ export class InstallationBookingService {
     }
     const rows = await this.prisma.installationBooking.findMany({
       where,
-      include: { link: { select: { label: true, planId: true } } },
+      include: BOOKING_INCLUDE,
       orderBy: { startAt: 'asc' },
       take: 1000,
     });
     return rows.map((r) => this.toBookingDto(r));
   }
 
+  private async getBookingOr404(id: string): Promise<BookingRow> {
+    const row = await this.prisma.installationBooking.findUnique({ where: { id }, include: BOOKING_INCLUDE });
+    if (!row) throw new NotFoundException('Demande introuvable.');
+    return row;
+  }
+
+  /**
+   * La flotte d'une demande à valider : celle qu'elle porte, celle qu'on rattache, ou celle que
+   * Vizyo Manager vient de créer. JAMAIS créée par Tracky lui-même (conception v2, § 2.3).
+   */
+  private async resoudreFlotte(booking: BookingRow, dto: ConfirmBookingDto): Promise<{ id: string; name: string }> {
+    let fleetId = booking.fleetId ?? dto.fleetId ?? null;
+    if (!fleetId && dto.creerClient) {
+      const cree = await this.manager.creerClient({
+        companyName: booking.companyName ?? booking.clientName,
+        email: booking.clientEmail,
+        contactFirstName: booking.clientName.split(/\s+/)[0] ?? null,
+        contactLastName: booking.clientName.split(/\s+/).slice(1).join(' ') || null,
+        phone: booking.clientPhone,
+        externalRef: booking.id,
+      });
+      fleetId = cree.trackyFleetId;
+      this.systemActivity.record({
+        category: 'INSTALLATION',
+        action: 'client_created_via_manager',
+        status: 'SUCCESS',
+        actor: 'opérateur',
+        target: booking.companyName ?? booking.clientName,
+        detail: `Client créé dans Vizyo Manager (${cree.clientId}) et flotte provisionnée`,
+        fleetId,
+        meta: { bookingId: booking.id, clientId: cree.clientId },
+      });
+    }
+    if (!fleetId) {
+      // `code` explicite : sans lui, le filtre global (`AllExceptionsFilter`) ne rend que le message.
+      throw new ConflictException({
+        code: 'SANS_FLOTTE',
+        message: 'Cette demande n\'a pas encore de société : rattachez une flotte existante, ou créez le client dans Vizyo Manager.',
+        sansFlotte: true,
+        creationManagerConfiguree: this.manager.estConfigure(),
+        urlManager: this.manager.urlNouveauClient({
+          companyName: booking.companyName ?? booking.clientName, email: booking.clientEmail, phone: booking.clientPhone,
+        }),
+      });
+    }
+    const fleet = await this.prisma.fleet.findUnique({ where: { id: fleetId }, select: { id: true, name: true } });
+    if (!fleet) throw new NotFoundException('Flotte introuvable — si elle vient d\'être créée dans Manager, vérifiez que la provision Tracky a réussi.');
+    return fleet;
+  }
+
   async confirmBooking(userId: string | null, id: string, dto: ConfirmBookingDto): Promise<InstallationBookingDto> {
-    const booking = await this.prisma.installationBooking.findUnique({
-      where: { id },
-      include: { link: { select: { label: true, planId: true, id: true, clientName: true, clientAddress: true } } },
-    });
-    if (!booking) throw new NotFoundException('Demande introuvable.');
+    const booking = await this.getBookingOr404(id);
     if (booking.status !== 'PENDING') {
       throw new BadRequestException('Seule une demande en attente peut être validée.');
     }
+    const fleet = await this.resoudreFlotte(booking, dto);
 
-    const plate = (dto.vehiclePlate?.trim() || booking.vehiclePlate || '').trim();
-    if (!plate) throw new BadRequestException('Renseignez la plaque du véhicule pour créer la pose.');
-    const brand = dto.vehicleBrand?.trim() ?? booking.vehicleBrand;
-    const model = dto.vehicleModel?.trim() ?? booking.vehicleModel;
-    const energy = dto.vehicleEnergy ?? booking.vehicleEnergy;
+    // Les véhicules, avec les corrections de l'opérateur (par position).
+    const corrections = new Map((dto.vehicles ?? []).map((v) => [v.position, v]));
+    const vehicules = booking.vehicles.map((v) => {
+      const fix = corrections.get(v.position);
+      return {
+        id: v.id,
+        plate: (fix?.plate ?? v.plate)?.trim().toUpperCase() || null,
+        brand: (fix?.brand ?? v.brand)?.trim() || null,
+        model: (fix?.model ?? v.model)?.trim() || null,
+        energy: fix?.energy === undefined ? v.energy : fix.energy,
+      };
+    });
+    if (vehicules.length === 0) throw new BadRequestException('Cette demande ne décrit aucun véhicule.');
+
     // Date de pose = jour du créneau (Europe/Paris), sauf override.
     const p = parisParts(booking.startAt);
     const scheduledDate = dto.scheduledDate
       ? new Date(`${dto.scheduledDate}T00:00:00.000Z`)
       : new Date(`${p.year}-${String(p.month).padStart(2, '0')}-${String(p.day).padStart(2, '0')}T00:00:00.000Z`);
+    const societe = booking.companyName ?? fleet.name;
 
     const updated = await this.prisma.$transaction(async (tx) => {
-      // 1) Planning cible : celui du lien, sinon on en crée un (même lien = même planning).
-      let planId = booking.link.planId;
+      // 1) Planning cible : celui du lien, sinon on en crée un au nom de la SOCIÉTÉ (même lien = même planning).
+      let planId = booking.link?.planId ?? null;
       if (!planId) {
         const plan = await tx.installationPlan.create({
           data: {
-            fleetId: booking.fleetId,
-            clientName: booking.clientName || booking.link.clientName || 'Client',
-            clientAddress: booking.clientAddress ?? booking.link.clientAddress ?? null,
-            description: 'Prises de RDV en ligne',
+            fleetId: fleet.id,
+            clientName: societe,
+            clientAddress: booking.clientAddress ?? null,
+            description: 'Prises de RDV en ligne — créé automatiquement à la validation',
             status: InstallationPlanStatus.PUBLISHED,
           },
         });
         planId = plan.id;
-        await tx.installationBookingLink.update({ where: { id: booking.link.id }, data: { planId } });
+        if (booking.linkId) {
+          await tx.installationBookingLink.update({ where: { id: booking.linkId }, data: { planId } });
+        }
       }
 
-      // 2) Pose dans ce planning (orderIndex = à la suite).
+      // 2) Une pose par véhicule, à la suite du planning, rattachée à la demande.
       const agg = await tx.installationTask.aggregate({ where: { planId }, _max: { orderIndex: true } });
-      const task = await tx.installationTask.create({
-        data: {
-          planId,
-          orderIndex: (agg._max.orderIndex ?? -1) + 1,
-          scheduledDate,
-          plate,
-          brand: brand ?? null,
-          model: model ?? null,
-          energy: energy ?? null,
-          status: 'PENDING',
-        },
-      });
+      let orderIndex = (agg._max.orderIndex ?? -1) + 1;
+      for (const v of vehicules) {
+        const task = await tx.installationTask.create({
+          data: {
+            planId,
+            orderIndex: orderIndex++,
+            scheduledDate,
+            plate: v.plate ?? PLAQUE_A_CONFIRMER,
+            brand: v.brand,
+            model: v.model,
+            energy: v.energy,
+            status: 'PENDING',
+            bookingId: booking.id,
+            fieldNotes: booking.notes ? `Note du client : ${booking.notes}` : null,
+          },
+        });
+        await tx.installationBookingVehicle.update({
+          where: { id: v.id },
+          data: { plate: v.plate, brand: v.brand, model: v.model, energy: v.energy, taskId: task.id },
+        });
+      }
 
-      // 3) Marque la demande validée + garde la trace de la pose.
+      // 3) La demande est validée ; elle porte désormais sa flotte, et le lien prospect aussi.
       const b = await tx.installationBooking.update({
         where: { id },
-        data: {
-          status: 'CONFIRMED',
-          taskId: task.id,
-          vehiclePlate: plate,
-          vehicleBrand: brand ?? null,
-          vehicleModel: model ?? null,
-          vehicleEnergy: energy ?? null,
-          confirmedAt: new Date(),
-          confirmedBy: userId,
-        },
-        include: { link: { select: { label: true, planId: true } } },
+        data: { status: 'CONFIRMED', fleetId: fleet.id, confirmedAt: new Date(), confirmedBy: userId },
+        include: BOOKING_INCLUDE,
       });
-
-      // 4) Lien à usage unique : on le referme.
-      if (booking.link) {
-        const full = await tx.installationBookingLink.findUnique({ where: { id: booking.link.id }, select: { singleUse: true } });
-        if (full?.singleUse) await tx.installationBookingLink.update({ where: { id: booking.link.id }, data: { active: false } });
+      if (booking.linkId) {
+        const lien = await tx.installationBookingLink.findUnique({ where: { id: booking.linkId }, select: { fleetId: true, singleUse: true } });
+        if (lien && !lien.fleetId) {
+          await tx.installationBookingLink.update({ where: { id: booking.linkId }, data: { fleetId: fleet.id } });
+          await tx.installationBooking.updateMany({ where: { linkId: booking.linkId, fleetId: null }, data: { fleetId: fleet.id } });
+        }
+        // 4) Lien à usage unique : on le referme.
+        if (lien?.singleUse) await tx.installationBookingLink.update({ where: { id: booking.linkId }, data: { active: false } });
       }
       return b;
     });
 
     // Confirmation client (best-effort).
-    const fleet = await this.prisma.fleet.findUnique({ where: { id: booking.fleetId }, select: { name: true } });
     void this.email
       .send({
         to: booking.clientEmail,
         ...this.email.buildInstallationSlotConfirmedEmail({
-          companyName: fleet?.name ?? 'Vizyo Tracky',
+          companyName: societe,
           slotLabel: slotLabel(booking.startAt, booking.endAt),
           clientName: booking.clientName,
-          address: booking.clientAddress ?? booking.link.clientAddress ?? null,
+          address: booking.clientAddress ?? null,
         }),
         template: 'installation_slot_confirmed',
-        fleetId: booking.fleetId,
+        fleetId: fleet.id,
         context: { bookingId: booking.id },
       })
       .catch((e) => this.logger.warn(`Confirmation client échouée: ${e instanceof Error ? e.message : e}`));
@@ -981,30 +1212,26 @@ export class InstallationBookingService {
       status: 'SUCCESS',
       actor: 'opérateur',
       target: `${booking.clientName} — ${slotLabel(booking.startAt, booking.endAt)}`,
-      detail: 'Créneau validé → pose créée dans le planning',
-      fleetId: booking.fleetId,
+      detail: `Créneau validé → ${vehicules.length} pose(s) créée(s) dans le planning de ${societe}`,
+      fleetId: fleet.id,
       triggeredByUserId: userId,
-      meta: { bookingId: booking.id },
+      meta: { bookingId: booking.id, vehicleCount: vehicules.length },
     });
 
     return this.toBookingDto(updated);
   }
 
   async rejectBooking(id: string, dto: RejectBookingDto): Promise<InstallationBookingDto> {
-    const booking = await this.prisma.installationBooking.findUnique({
-      where: { id },
-      include: { link: { select: { label: true, planId: true } } },
-    });
-    if (!booking) throw new NotFoundException('Demande introuvable.');
+    const booking = await this.getBookingOr404(id);
     if (booking.status === 'CONFIRMED') {
-      throw new BadRequestException('Une demande déjà validée ne peut pas être refusée (annulez la pose).');
+      throw new BadRequestException('Une demande déjà validée ne se refuse pas : annulez-la.');
     }
-    if (booking.status === 'REJECTED') return this.toBookingDto(booking);
+    if (booking.status === 'REJECTED' || booking.status === 'CANCELLED') return this.toBookingDto(booking);
 
     const updated = await this.prisma.installationBooking.update({
       where: { id },
       data: { status: 'REJECTED', rejectionReason: dto.reason?.trim() || null },
-      include: { link: { select: { label: true, planId: true } } },
+      include: BOOKING_INCLUDE,
     });
 
     this.systemActivity.record({
@@ -1019,21 +1246,97 @@ export class InstallationBookingService {
     });
 
     if (dto.notifyClient) {
-      const fleet = await this.prisma.fleet.findUnique({ where: { id: booking.fleetId }, select: { name: true } });
+      const lienOuvert = booking.linkId
+        ? await this.prisma.installationBookingLink.findUnique({ where: { id: booking.linkId }, select: { token: true, active: true, expiresAt: true } })
+        : null;
+      const bookingUrl = lienOuvert && !this.closedReason(lienOuvert) ? this.publicUrl(lienOuvert.token) : null;
       void this.email
         .send({
           to: booking.clientEmail,
-          subject: 'Votre demande de créneau d\'installation',
-          html: this.email.shell({
-            eyebrow: 'Installation · Créneau',
-            footer: 'VIZYO TRACKY · GPS FLOTTE · OCCITANIE',
-            body: `<tr><td style="padding:28px 36px 0;"><h1 style="margin:0 0 12px;font-family:'Manrope',sans-serif;font-size:23px;font-weight:800;color:#EAEFED;">Créneau à reprogrammer</h1><p style="margin:0;font-family:'Manrope',sans-serif;font-size:15px;line-height:1.65;color:#9BA5A1;">Bonjour, le créneau demandé (${slotLabel(booking.startAt, booking.endAt)}) n'a pas pu être retenu${dto.reason ? ` : ${dto.reason}` : ''}. Répondez à cet e-mail pour convenir d'un autre créneau.</p></td></tr>`,
+          ...this.email.buildInstallationSlotRejectedEmail({
+            companyName: booking.companyName ?? booking.fleet?.name ?? 'Vizyo Tracky',
+            slotLabel: slotLabel(booking.startAt, booking.endAt),
+            clientName: booking.clientName,
+            reason: dto.reason?.trim() || null,
+            bookingUrl,
+            telephoneAtelier: this.telephoneAtelier(),
           }),
-          template: 'installation_slot_confirmed',
-          fleetId: booking.fleetId,
-          context: { bookingId: booking.id, rejected: true, fleetName: fleet?.name },
+          template: 'installation_slot_rejected',
+          fleetId: booking.fleetId ?? undefined,
+          context: { bookingId: booking.id },
         })
         .catch((e) => this.logger.warn(`Refus client échoué: ${e instanceof Error ? e.message : e}`));
+    }
+    return this.toBookingDto(updated);
+  }
+
+  /**
+   * Annuler une demande — en attente OU confirmée (R2 : jusqu'ici une demande confirmée bloquait
+   * son créneau pour toujours). Les poses non faites sont retirées ; une pose déjà faite interdit
+   * l'annulation (le boîtier est posé, ce n'est plus une demande).
+   */
+  async cancelBooking(userId: string | null, id: string, dto: CancelBookingDto): Promise<InstallationBookingDto> {
+    const booking = await this.getBookingOr404(id);
+    if (booking.status === 'CANCELLED') return this.toBookingDto(booking);
+    if (booking.status === 'REJECTED') throw new BadRequestException('Une demande refusée n\'a rien à annuler.');
+    if (booking.tasks.some((t) => t.status === 'DONE')) {
+      throw new BadRequestException('Une pose de cette demande a déjà été faite : elle ne s\'annule plus.');
+    }
+
+    // `cancelledBy` est un LIBELLÉ (« Youness H. » ou « client »), pas un identifiant : c'est ce
+    // que l'écran affiche, et il doit rester lisible quand le compte n'existe plus.
+    const operateur = userId
+      ? nomDe(await this.prisma.user.findUnique({ where: { id: userId }, select: { firstName: true, lastName: true, email: true } }))
+      : null;
+    const updated = await this.prisma.$transaction(async (tx) => {
+      if (booking.tasks.length > 0) {
+        await tx.installationTask.deleteMany({ where: { id: { in: booking.tasks.map((t) => t.id) } } });
+      }
+      return tx.installationBooking.update({
+        where: { id },
+        data: {
+          status: 'CANCELLED',
+          cancelledAt: new Date(),
+          cancelledBy: operateur ?? 'opérateur',
+          cancelReason: dto.reason?.trim() || null,
+        },
+        include: BOOKING_INCLUDE,
+      });
+    });
+
+    this.systemActivity.record({
+      category: 'INSTALLATION',
+      action: 'booking_cancelled',
+      status: 'SUCCESS',
+      actor: 'opérateur',
+      target: `${booking.clientName} — ${slotLabel(booking.startAt, booking.endAt)}`,
+      detail: dto.reason?.trim() || `Demande annulée (${booking.tasks.length} pose(s) retirée(s))`,
+      fleetId: booking.fleetId,
+      triggeredByUserId: userId,
+      meta: { bookingId: booking.id, posesRetirees: booking.tasks.length, notifiedClient: !!dto.notifyClient },
+    });
+
+    if (dto.notifyClient) {
+      const lienOuvert = booking.linkId
+        ? await this.prisma.installationBookingLink.findUnique({ where: { id: booking.linkId }, select: { token: true, active: true, expiresAt: true } })
+        : null;
+      const bookingUrl = lienOuvert && !this.closedReason(lienOuvert) ? this.publicUrl(lienOuvert.token) : null;
+      void this.email
+        .send({
+          to: booking.clientEmail,
+          ...this.email.buildInstallationSlotCancelledEmail({
+            companyName: booking.companyName ?? booking.fleet?.name ?? 'Vizyo Tracky',
+            slotLabel: slotLabel(booking.startAt, booking.endAt),
+            clientName: booking.clientName,
+            reason: dto.reason?.trim() || null,
+            bookingUrl,
+            telephoneAtelier: this.telephoneAtelier(),
+          }),
+          template: 'installation_slot_cancelled',
+          fleetId: booking.fleetId ?? undefined,
+          context: { bookingId: booking.id },
+        })
+        .catch((e) => this.logger.warn(`Annulation client échouée: ${e instanceof Error ? e.message : e}`));
     }
     return this.toBookingDto(updated);
   }
@@ -1047,7 +1350,10 @@ export class InstallationBookingService {
     return {
       id: row.id,
       fleetId: row.fleetId,
-      fleetName: row.fleet.name,
+      fleetName: row.fleet?.name ?? null,
+      companyName: row.companyName,
+      maxVehicles: row.maxVehicles,
+      createdByName: nomDe(row.creator),
       planId: row.planId,
       label: row.label,
       publicUrl: this.publicUrl(row.token),
@@ -1103,24 +1409,31 @@ export class InstallationBookingService {
     return {
       id: row.id,
       linkId: row.linkId,
-      linkLabel: row.link?.label ?? '',
+      linkLabel: row.link?.label ?? row.linkLabel ?? '',
       fleetId: row.fleetId,
-      planId: row.link?.planId ?? null,
+      fleetName: row.fleet?.name ?? null,
+      companyName: row.companyName,
+      planId: row.link?.planId ?? row.tasks[0]?.planId ?? null,
       startAt: row.startAt.toISOString(),
       endAt: row.endAt.toISOString(),
       status: row.status as InstallationBookingDto['status'],
       clientName: row.clientName,
       clientEmail: row.clientEmail,
-      clientPhone: row.clientPhone,
+      clientPhone: telephoneLisible(row.clientPhone) ?? row.clientPhone,
       clientAddress: row.clientAddress,
-      vehiclePlate: row.vehiclePlate,
-      vehicleBrand: row.vehicleBrand,
-      vehicleModel: row.vehicleModel,
-      vehicleEnergy: row.vehicleEnergy as InstallationBookingDto['vehicleEnergy'],
+      vehicleCount: row.vehicleCount,
+      vehicles: row.vehicles.map((v) => ({
+        id: v.id, position: v.position, plate: v.plate, brand: v.brand, model: v.model,
+        energy: v.energy as InstallationBookingDto['vehicles'][number]['energy'], taskId: v.taskId,
+      })),
       notes: row.notes,
-      taskId: row.taskId,
+      poses: row.tasks.map((t) => ({ taskId: t.id, planId: t.planId, plate: t.plate, status: t.status as 'PENDING' | 'DONE' | 'SKIPPED' })),
       rejectionReason: row.rejectionReason,
+      cancelledAt: row.cancelledAt ? row.cancelledAt.toISOString() : null,
+      cancelledByName: row.cancelledBy,
+      cancelReason: row.cancelReason,
       confirmedAt: row.confirmedAt ? row.confirmedAt.toISOString() : null,
+      confirmedByName: nomDe(row.confirmer),
       createdAt: row.createdAt.toISOString(),
       updatedAt: row.updatedAt.toISOString(),
     };

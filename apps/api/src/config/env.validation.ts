@@ -304,9 +304,25 @@ const envSchema = z.object({
   // numero personnel expose la ne se reprend plus. Ne jamais rebrancher ce champ
   // sur `User.phone` ni sur le telephone d'un client pre-rempli.
   INSTALLATION_PUBLIC_PHONE: z.string().default(''),
+  // Boite qui recoit les notifications operateur de la prise de RDV (nouvelle demande…).
+  // Vide = contact@vizyoagency.com (l'ancienne constante codee en dur).
+  INSTALLATION_NOTIFY_EMAIL: z.string().default(''),
   // Le SITE VITRINE (tracky.vizyoagency.com) : la page publique de prise de RDV y renvoie
   // (« decouvrir.html », « decouvrir-depot.html ») pour que le client voie a quoi ressemble
   // ce qu'on va lui installer. Une seule adresse, surchargeable en dev (npx serve lp/public).
+  // Vizyo Manager (conception RDV v2, lot A) : l'API interne de Manager que Tracky appelle pour
+  // creer le client d'un prospect a la validation d'une demande (POST /internal/clients, lot D).
+  // VIDE = l'appel direct est inactif, l'ecran propose le formulaire Manager prerempli. La
+  // signature HMAC utilise VIZYO_AUTH_APP_SECRET (Manager le connait sous VIZYO_TRACKY_APP_SECRET).
+  MANAGER_INTERNAL_URL: z.preprocess(
+    (v) => (v === '' || v === undefined || v === null ? undefined : v),
+    z.string().url().optional(),
+  ),
+  // L'interface de Manager, pour le bouton « Creer dans Vizyo Manager » (formulaire prerempli).
+  MANAGER_WEB_URL: z.preprocess(
+    (v) => (v === '' || v === undefined || v === null ? undefined : v),
+    z.string().url().default('https://manager.vizyoagency.com'),
+  ),
   // Chaine vide (le .env.example la laisse vide) = le defaut, pas une adresse vide.
   VITRINE_BASE_URL: z.preprocess(
     (v) => (v === '' || v === undefined || v === null ? undefined : v),

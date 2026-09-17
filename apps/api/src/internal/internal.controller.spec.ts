@@ -1,4 +1,4 @@
-import { UnauthorizedException } from '@nestjs/common';
+import { ConflictException, UnauthorizedException } from '@nestjs/common';
 import { InternalSecretGuard } from './internal-secret.guard';
 import { InternalController } from './internal.controller';
 import { UserRole } from '@prisma/client';
@@ -32,6 +32,8 @@ function createController() {
         email: 'admin@fleet.com',
         role: UserRole.FLEET_ADMIN,
       }),
+      // Lot A (C3) : la provision cherche d'abord un admin deja connu — aucun par defaut.
+      findFirst: jest.fn().mockResolvedValue(null),
       updateMany: jest.fn().mockResolvedValue({ count: 3 }),
       // Les membres de la flotte, LUS avant la bascule pour pouvoir propager le statut
       // a Vizyo Auth. Un fixture sans `authUserId` ferait passer le test sans jamais
@@ -43,6 +45,10 @@ function createController() {
       ]),
     },
   } as unknown as PrismaService;
+  // La transaction interactive rejoue les memes mocks : on verifie la SEQUENCE et l'atomicite
+  // par le fait meme qu'elle passe par `$transaction`.
+  (prisma as unknown as { $transaction: unknown }).$transaction = jest.fn(async (fn: (tx: PrismaService) => Promise<unknown>) => fn(prisma));
+  (prisma as unknown as { fleet: { update: unknown } }).fleet.update = jest.fn().mockResolvedValue({});
 
   const authClient = {
     register: jest.fn(),
@@ -106,20 +112,30 @@ describe('InternalSecretGuard', () => {
 });
 
 describe('InternalController', () => {
+  /**
+   * LA PROVISION PAR VIZYO MANAGER — lot A de la conception RDV v2 (C1–C3).
+   *
+   * Avant : flotte creee PUIS admin, hors transaction (un e-mail deja pris laissait une flotte
+   * orpheline), rejouable a l'infini (une flotte de plus a chaque essai), sans `clientId`
+   * ni telephone.
+   */
   describe('provisionFleet', () => {
-    it('should create fleet and admin user', async () => {
+    it('cree la flotte et son admin dans UNE transaction, avec le client Manager et le contact (C1, C2, C3)', async () => {
       const { controller, prisma } = createController();
       const result = await controller.provisionFleet({
-        fleetName: 'Test Fleet',
+        fleetName: ' Test Fleet ',
+        clientId: 'cli-42',
         adminAuthUserId: 'auth-001',
-        adminEmail: 'admin@fleet.com',
+        adminEmail: 'Admin@Fleet.com',
         adminFirstName: 'John',
         adminLastName: 'Doe',
+        adminPhone: '06 12 34 56 78',
       });
 
-      expect(result).toEqual({ fleetId: 'fleet-001' });
+      expect(result).toEqual({ fleetId: 'fleet-001', existed: false });
+      expect((prisma as unknown as { $transaction: jest.Mock }).$transaction).toHaveBeenCalledTimes(1);
       expect(prisma.fleet.create).toHaveBeenCalledWith({
-        data: { name: 'Test Fleet', clientId: undefined },
+        data: { name: 'Test Fleet', clientId: 'cli-42' },
       });
       expect(prisma.user.create).toHaveBeenCalledWith({
         data: {
@@ -127,10 +143,41 @@ describe('InternalController', () => {
           email: 'admin@fleet.com',
           firstName: 'John',
           lastName: 'Doe',
+          phone: '+33612345678',
           role: UserRole.FLEET_ADMIN,
           fleetId: 'fleet-001',
         },
       });
+    });
+
+    it('sans clientId ni contact : la flotte naît quand même (Manager d’avant le lot D)', async () => {
+      const { controller, prisma } = createController();
+      await controller.provisionFleet({ fleetName: 'Test Fleet', adminAuthUserId: 'auth-001', adminEmail: 'admin@fleet.com' });
+      expect(prisma.fleet.create).toHaveBeenCalledWith({ data: { name: 'Test Fleet', clientId: null } });
+      expect(prisma.user.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({ firstName: null, lastName: null, phone: null }),
+      });
+    });
+
+    it('IDEMPOTENT : un admin deja connu (meme e-mail ou meme compte Auth) rend SA flotte, sans rien creer', async () => {
+      const { controller, prisma } = createController();
+      (prisma.user.findFirst as jest.Mock).mockResolvedValue({ id: 'u9', email: 'admin@fleet.com', fleetId: 'fleet-009', role: UserRole.FLEET_ADMIN });
+      const result = await controller.provisionFleet({
+        fleetName: 'Test Fleet', clientId: 'cli-42', adminAuthUserId: 'auth-001', adminEmail: 'admin@fleet.com',
+      });
+      expect(result).toEqual({ fleetId: 'fleet-009', existed: true });
+      expect(prisma.fleet.create).not.toHaveBeenCalled();
+      expect(prisma.user.create).not.toHaveBeenCalled();
+      // Le client Manager, lui, est recolle si on le connait enfin.
+      expect((prisma.fleet as unknown as { update: jest.Mock }).update).toHaveBeenCalledWith({ where: { id: 'fleet-009' }, data: { clientId: 'cli-42' } });
+    });
+
+    it('un compte connu SANS flotte → 409 : on ne devine pas a quelle flotte le rattacher', async () => {
+      const { controller, prisma } = createController();
+      (prisma.user.findFirst as jest.Mock).mockResolvedValue({ id: 'u9', email: 'admin@fleet.com', fleetId: null, role: UserRole.VIEWER });
+      await expect(controller.provisionFleet({ fleetName: 'Test Fleet', adminAuthUserId: 'auth-001', adminEmail: 'admin@fleet.com' }))
+        .rejects.toBeInstanceOf(ConflictException);
+      expect(prisma.fleet.create).not.toHaveBeenCalled();
     });
   });
 

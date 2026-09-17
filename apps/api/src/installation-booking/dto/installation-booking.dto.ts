@@ -1,5 +1,7 @@
+import { Type } from 'class-transformer';
 import {
   ArrayMaxSize,
+  ArrayMinSize,
   IsArray,
   IsBoolean,
   IsEmail,
@@ -15,16 +17,69 @@ import {
   Min,
   MinLength,
   ValidateIf,
+  ValidateNested,
 } from 'class-validator';
 import { BOOKING_VISIT_EVENTS_PAGE, type BookingVisitEventType } from '@vizyo/tracky-shared';
 
 const DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
 const ENERGIES = ['DIESEL', 'ESSENCE', 'ELECTRIQUE', 'HYBRIDE', 'AUTRE'] as const;
 
+/** Un véhicule déclaré par le client — tout est facultatif, il ne sait pas toujours. */
+export class BookingVehicleInputDto {
+  @IsOptional()
+  @ValidateIf((_, v) => v !== null)
+  @IsString()
+  @MaxLength(20)
+  plate?: string | null;
+
+  @IsOptional()
+  @ValidateIf((_, v) => v !== null)
+  @IsString()
+  @MaxLength(100)
+  brand?: string | null;
+
+  @IsOptional()
+  @ValidateIf((_, v) => v !== null)
+  @IsString()
+  @MaxLength(100)
+  model?: string | null;
+
+  @IsOptional()
+  @ValidateIf((_, v) => v !== null)
+  @IsIn(ENERGIES)
+  energy?: (typeof ENERGIES)[number] | null;
+}
+
+/** Correction d'un véhicule à la validation (par position). */
+export class BookingVehicleFixDto extends BookingVehicleInputDto {
+  @IsInt()
+  @Min(0)
+  @Max(9)
+  position!: number;
+}
+
+/** Plafond absolu du multi-véhicules (6 × 2 h = une journée entière). */
+export const MAX_VEHICULES_ABSOLU = 6;
+
 /** Création d'un lien public (SUPER_ADMIN). */
 export class CreateBookingLinkDto {
+  /** Facultatif (lien prospect) : `companyName` est alors obligatoire — règle du service. */
+  @IsOptional()
+  @ValidateIf((_, v) => v !== null)
   @IsUUID()
-  fleetId!: string;
+  fleetId?: string | null;
+
+  @IsOptional()
+  @ValidateIf((_, v) => v !== null)
+  @IsString()
+  @MaxLength(200)
+  companyName?: string | null;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(MAX_VEHICULES_ABSOLU)
+  maxVehicles?: number;
 
   @IsString()
   @MinLength(1)
@@ -121,7 +176,7 @@ export class CreateBookingLinkDto {
   expiresAt?: string | null;
 }
 
-/** Mise à jour d'un lien (config + activation). */
+/** Mise à jour d'un lien (config + activation + rattachement d'une flotte). */
 export class UpdateBookingLinkDto {
   @IsOptional()
   @IsString()
@@ -132,6 +187,23 @@ export class UpdateBookingLinkDto {
   @IsOptional()
   @IsBoolean()
   active?: boolean;
+
+  @IsOptional()
+  @ValidateIf((_, v) => v !== null)
+  @IsUUID()
+  fleetId?: string | null;
+
+  @IsOptional()
+  @ValidateIf((_, v) => v !== null)
+  @IsString()
+  @MaxLength(200)
+  companyName?: string | null;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(MAX_VEHICULES_ABSOLU)
+  maxVehicles?: number;
 
   @IsOptional()
   @IsInt()
@@ -199,49 +271,47 @@ export class UpdateBookingLinkDto {
   expiresAt?: string | null;
 }
 
-/** Soumission d'une réservation depuis la page publique (hors auth). */
+/**
+ * Soumission d'une réservation depuis la page publique (hors auth).
+ *
+ * Le CONTACT est obligatoire (décision du 16/09) — nom, e-mail, téléphone — même sur un lien
+ * nominatif (le lien pré-remplit, le client corrige). Les formats fins (E.164, e-mail en
+ * minuscules) sont posés par le service, qui sait dire pourquoi il refuse.
+ */
 export class CreatePublicBookingDto {
   @IsISO8601()
   startAt!: string;
 
-  @IsOptional()
-  @IsString()
-  @MaxLength(200)
-  clientName?: string;
+  @IsInt()
+  @Min(1)
+  @Max(MAX_VEHICULES_ABSOLU)
+  vehicleCount!: number;
 
-  @IsOptional()
-  @IsEmail()
-  @MaxLength(200)
-  clientEmail?: string;
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(MAX_VEHICULES_ABSOLU)
+  @ValidateNested({ each: true })
+  @Type(() => BookingVehicleInputDto)
+  vehicles!: BookingVehicleInputDto[];
 
-  @IsOptional()
   @IsString()
+  @MinLength(2)
+  @MaxLength(200)
+  clientName!: string;
+
+  @IsString()
+  @MaxLength(254)
+  clientEmail!: string;
+
+  @IsString()
+  @MinLength(6)
   @MaxLength(40)
-  clientPhone?: string;
+  clientPhone!: string;
 
   @IsOptional()
   @IsString()
   @MaxLength(300)
   clientAddress?: string;
-
-  @IsOptional()
-  @IsString()
-  @MaxLength(20)
-  vehiclePlate?: string;
-
-  @IsOptional()
-  @IsString()
-  @MaxLength(100)
-  vehicleBrand?: string;
-
-  @IsOptional()
-  @IsString()
-  @MaxLength(100)
-  vehicleModel?: string;
-
-  @IsOptional()
-  @IsIn(ENERGIES)
-  vehicleEnergy?: (typeof ENERGIES)[number] | null;
 
   @IsOptional()
   @IsString()
@@ -282,31 +352,42 @@ export class EnregistrerEvenementVisiteDto {
   target?: string;
 }
 
-/** Validation d'une demande → création de la pose (SUPER_ADMIN). */
+/** Validation d'une demande → création des poses, une par véhicule (SUPER_ADMIN). */
 export class ConfirmBookingDto {
+  /** Demande sans flotte : rattacher celle-ci… */
   @IsOptional()
-  @IsString()
-  @MaxLength(20)
-  vehiclePlate?: string | null;
+  @ValidateIf((_, v) => v !== null)
+  @IsUUID()
+  fleetId?: string | null;
+
+  /** …ou la créer via Vizyo Manager (actif quand le lot D est déployé et configuré). */
+  @IsOptional()
+  @IsBoolean()
+  creerClient?: boolean;
 
   @IsOptional()
-  @IsString()
-  @MaxLength(100)
-  vehicleBrand?: string | null;
-
-  @IsOptional()
-  @IsString()
-  @MaxLength(100)
-  vehicleModel?: string | null;
-
-  @IsOptional()
-  @IsIn(ENERGIES)
-  vehicleEnergy?: (typeof ENERGIES)[number] | null;
+  @IsArray()
+  @ArrayMaxSize(MAX_VEHICULES_ABSOLU)
+  @ValidateNested({ each: true })
+  @Type(() => BookingVehicleFixDto)
+  vehicles?: BookingVehicleFixDto[];
 
   @IsOptional()
   @IsString()
   @Matches(DATE_REGEX, { message: 'scheduledDate: format YYYY-MM-DD attendu' })
   scheduledDate?: string | null;
+}
+
+/** Annulation d'une demande par l'opérateur (SUPER_ADMIN). */
+export class CancelBookingDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  reason?: string | null;
+
+  @IsOptional()
+  @IsBoolean()
+  notifyClient?: boolean;
 }
 
 /** Refus d'une demande (SUPER_ADMIN). */

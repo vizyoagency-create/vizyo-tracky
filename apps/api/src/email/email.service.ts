@@ -40,6 +40,10 @@ export type EmailTemplateId =
   // RDV d'installation (2026-09) : « prevenez-moi si un creneau se libere » — la promesse
   // faite sur la page publique, tenue par le service d'entretien quotidien.
   | 'installation_slot_available'
+  // Lot A (2026-09-17) : le refus avait un corps en palette sombre sur le gabarit blanc (illisible)
+  // et partait sous l'identifiant « confirme » ; l'annulation n'existait pas.
+  | 'installation_slot_rejected'
+  | 'installation_slot_cancelled'
   | 'reservation_requested'
   | 'reservation_confirmed'
   | 'ai_invoice_request'
@@ -1660,6 +1664,102 @@ Si aucun ne vous convient, répondez à cet e-mail : on vous en propose un direc
   }
 
   /**
+   * Prise de RDV en ligne — REFUS d'une demande (→ client). Remplace un corps écrit à la main en
+   * palette sombre (`#EAEFED` sur fond blanc : titre invisible) et envoyé sous l'identifiant
+   * « confirmé ». Le client repart avec une sortie : le lien s'il est encore ouvert, sinon l'atelier.
+   */
+  buildInstallationSlotRejectedEmail(opts: {
+    companyName: string;
+    slotLabel: string;
+    clientName?: string | null;
+    reason?: string | null;
+    /** Le lien de réservation s'il est encore ouvert — pour choisir un autre créneau. */
+    bookingUrl?: string | null;
+    telephoneAtelier?: string | null;
+  }): { subject: string; html: string; text: string } {
+    const greeting = opts.clientName ? `Bonjour ${escapeHtml(opts.clientName)},` : 'Bonjour,';
+    const subject = `Votre créneau d'installation n'a pas pu être retenu`;
+    const motif = opts.reason ? `<p class="m-text" style="margin:0 0 16px;font-family:${EMAIL_FONT};font-size:14px;line-height:1.6;color:#56635E;"><span style="color:${EMAIL_TEXTE_SECOND};">Motif :</span> ${escapeHtml(opts.reason)}</p>` : '';
+    const bouton = opts.bookingUrl
+      ? `<table role="presentation"><tr><td style="border-radius:11px;background:#10E0A0;">
+            <a href="${opts.bookingUrl}" style="display:inline-block;padding:14px 30px;font-family:${EMAIL_FONT};font-size:14px;font-weight:700;letter-spacing:-0.01em;color:#04130D;text-decoration:none;">Choisir un autre créneau →</a>
+          </td></tr></table>`
+      : '';
+    const atelier = opts.telephoneAtelier
+      ? ` Vous pouvez aussi appeler l'atelier au <strong style="color:#0A1311;">${escapeHtml(opts.telephoneAtelier)}</strong>.`
+      : '';
+    const body = `
+        <tr><td style="padding:28px 36px 0;">
+          <h1 class="m-title" style="margin:0 0 12px;font-family:${EMAIL_FONT};font-size:25px;line-height:1.15;font-weight:800;letter-spacing:-0.025em;color:#0A1311;">Créneau à reprogrammer</h1>
+          <p class="m-text" style="margin:0 0 6px;font-family:${EMAIL_FONT};font-size:15px;line-height:1.65;color:#56635E;">${greeting}</p>
+          <p class="m-text" style="margin:0 0 16px;font-family:${EMAIL_FONT};font-size:15px;line-height:1.65;color:#56635E;">Le créneau demandé pour <span style="color:${EMAIL_ACCENT_TEXTE};font-weight:600;">${escapeHtml(opts.companyName)}</span> — <strong style="color:#0A1311;">${escapeHtml(opts.slotLabel)}</strong> — n'a pas pu être retenu.</p>
+          ${motif}
+          ${bouton}
+          <p class="m-text" style="margin:20px 0 0;font-family:${EMAIL_FONT};font-size:13px;line-height:1.6;color:${EMAIL_TEXTE_SECOND};">Répondez à cet e-mail pour convenir d'une date ensemble.${atelier}</p>
+        </td></tr>`;
+    const html = this.shell({
+      eyebrow: 'Installation · Créneau',
+      preheader: 'Le créneau demandé n\'a pas pu être retenu — choisissons-en un autre.',
+      footer: 'VIZYO TRACKY · GPS FLOTTE · OCCITANIE',
+      body,
+    });
+    const text = `${opts.clientName ? `Bonjour ${opts.clientName},` : 'Bonjour,'}
+
+Le créneau demandé pour ${opts.companyName} — ${opts.slotLabel} — n'a pas pu être retenu.${opts.reason ? `\nMotif : ${opts.reason}` : ''}
+${opts.bookingUrl ? `\nChoisir un autre créneau : ${opts.bookingUrl}\n` : ''}
+Répondez à cet e-mail pour convenir d'une date ensemble.${opts.telephoneAtelier ? ` Atelier : ${opts.telephoneAtelier}.` : ''}
+— L'équipe Vizyo`;
+    return { subject, html, text };
+  }
+
+  /**
+   * Prise de RDV en ligne — ANNULATION d'une demande (→ client), par l'opérateur (lot A) ou par le
+   * client lui-même (lot C). Dit qui a annulé et comment reprendre.
+   */
+  buildInstallationSlotCancelledEmail(opts: {
+    companyName: string;
+    slotLabel: string;
+    clientName?: string | null;
+    reason?: string | null;
+    bookingUrl?: string | null;
+    telephoneAtelier?: string | null;
+  }): { subject: string; html: string; text: string } {
+    const greeting = opts.clientName ? `Bonjour ${escapeHtml(opts.clientName)},` : 'Bonjour,';
+    const subject = `Votre rendez-vous d'installation est annulé`;
+    const motif = opts.reason ? `<p class="m-text" style="margin:0 0 16px;font-family:${EMAIL_FONT};font-size:14px;line-height:1.6;color:#56635E;"><span style="color:${EMAIL_TEXTE_SECOND};">Motif :</span> ${escapeHtml(opts.reason)}</p>` : '';
+    const bouton = opts.bookingUrl
+      ? `<table role="presentation"><tr><td style="border-radius:11px;background:#10E0A0;">
+            <a href="${opts.bookingUrl}" style="display:inline-block;padding:14px 30px;font-family:${EMAIL_FONT};font-size:14px;font-weight:700;letter-spacing:-0.01em;color:#04130D;text-decoration:none;">Reprendre un créneau →</a>
+          </td></tr></table>`
+      : '';
+    const atelier = opts.telephoneAtelier
+      ? ` Vous pouvez aussi appeler l'atelier au <strong style="color:#0A1311;">${escapeHtml(opts.telephoneAtelier)}</strong>.`
+      : '';
+    const body = `
+        <tr><td style="padding:28px 36px 0;">
+          <h1 class="m-title" style="margin:0 0 12px;font-family:${EMAIL_FONT};font-size:25px;line-height:1.15;font-weight:800;letter-spacing:-0.025em;color:#0A1311;">Rendez-vous annulé</h1>
+          <p class="m-text" style="margin:0 0 6px;font-family:${EMAIL_FONT};font-size:15px;line-height:1.65;color:#56635E;">${greeting}</p>
+          <p class="m-text" style="margin:0 0 16px;font-family:${EMAIL_FONT};font-size:15px;line-height:1.65;color:#56635E;">Votre rendez-vous d'installation pour <span style="color:${EMAIL_ACCENT_TEXTE};font-weight:600;">${escapeHtml(opts.companyName)}</span> — <strong style="color:#0A1311;">${escapeHtml(opts.slotLabel)}</strong> — est annulé. Le créneau est libéré.</p>
+          ${motif}
+          ${bouton}
+          <p class="m-text" style="margin:20px 0 0;font-family:${EMAIL_FONT};font-size:13px;line-height:1.6;color:${EMAIL_TEXTE_SECOND};">Répondez à cet e-mail si vous souhaitez convenir d'une autre date.${atelier}</p>
+        </td></tr>`;
+    const html = this.shell({
+      eyebrow: 'Installation · Annulation',
+      preheader: 'Votre rendez-vous d\'installation est annulé — le créneau est libéré.',
+      footer: 'VIZYO TRACKY · GPS FLOTTE · OCCITANIE',
+      body,
+    });
+    const text = `${opts.clientName ? `Bonjour ${opts.clientName},` : 'Bonjour,'}
+
+Votre rendez-vous d'installation pour ${opts.companyName} — ${opts.slotLabel} — est annulé. Le créneau est libéré.${opts.reason ? `\nMotif : ${opts.reason}` : ''}
+${opts.bookingUrl ? `\nReprendre un créneau : ${opts.bookingUrl}\n` : ''}
+Répondez à cet e-mail si vous souhaitez convenir d'une autre date.${opts.telephoneAtelier ? ` Atelier : ${opts.telephoneAtelier}.` : ''}
+— L'équipe Vizyo`;
+    return { subject, html, text };
+  }
+
+  /**
    * Lien public de réservation — ACCUSÉ DE RÉCEPTION (→ demandeur) quand une demande est déposée.
    * Charte 2026 via shell(). Aucun véhicule exposé (la demande est en attente de validation).
    */
@@ -2065,6 +2165,24 @@ ${this.commercialSignatureText()}`;
           vehicle: 'AB-123-CD · Renault Kangoo · Diesel',
           notes: 'Disponible plutôt le matin.',
           manageUrl: `${appBase}/admin/installation-bookings`,
+        });
+      case 'installation_slot_rejected':
+        return this.buildInstallationSlotRejectedEmail({
+          companyName: fleetName,
+          slotLabel: 'jeu. 24 sept., 10:00 – 12:00',
+          clientName: 'Marc Legrand',
+          reason: 'Équipe déjà mobilisée sur un autre chantier ce jour-là.',
+          bookingUrl: `${appBase}/book/apercu`,
+          telephoneAtelier: '06 52 07 70 38',
+        });
+      case 'installation_slot_cancelled':
+        return this.buildInstallationSlotCancelledEmail({
+          companyName: fleetName,
+          slotLabel: 'jeu. 24 sept., 10:00 – 12:00',
+          clientName: 'Marc Legrand',
+          reason: 'Véhicule indisponible ce jour-là.',
+          bookingUrl: `${appBase}/book/apercu`,
+          telephoneAtelier: '06 52 07 70 38',
         });
       case 'installation_slot_available':
         return this.buildInstallationSlotAvailableEmail({

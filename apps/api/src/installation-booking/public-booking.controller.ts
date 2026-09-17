@@ -42,13 +42,16 @@ export class PublicBookingController {
     @Headers('referer') referer?: string,
     @Query('visite') visite?: string,
     @Query('ref') ref?: string,
+    @Query('vehicules') vehicules?: string,
   ) {
+    // `?vehicules=n` : la grille pour n véhicules (créneaux de n × 2 h). Borné par le service.
+    const nombre = vehicules ? Number.parseInt(vehicules, 10) : undefined;
     return this.service.getPublicLink(token, {
       ip,
       userAgent,
       referrer: typeof ref === 'string' ? ref.slice(0, 500) : referer,
       visiteId: visite && UUID.test(visite) ? visite : null,
-    });
+    }, Number.isFinite(nombre) ? nombre : undefined);
   }
 
   /** Dépose une demande de créneau. */

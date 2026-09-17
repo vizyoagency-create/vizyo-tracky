@@ -21,6 +21,11 @@ export class ProvisionFleetDto {
   @IsString()
   @IsOptional()
   adminLastName?: string;
+
+  /** Téléphone du contact (E.164 ou national français) — lot A. */
+  @IsString()
+  @IsOptional()
+  adminPhone?: string;
 }
 
 export class FleetIdDto {

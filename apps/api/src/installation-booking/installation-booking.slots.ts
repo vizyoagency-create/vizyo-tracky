@@ -129,13 +129,26 @@ function pad(n: number): string {
  * Génère les jours + créneaux LIBRES sur l'horizon, en excluant :
  *  - aujourd'hui, TOUJOURS, et les jours avant J+`leadDays` (jours entiers, calendrier Paris),
  *  - les jours non ouvrés,
- *  - les jours dont la fenêtre horaire (semaine ou week-end) est plus courte qu'un créneau,
+ *  - les jours dont la fenêtre horaire (semaine ou week-end) est plus courte que la durée demandée,
  *  - les créneaux chevauchant un intervalle occupé (`busy`, demi-ouvert [start,end)).
+ *
+ * MULTI-VÉHICULES (lot A, décision du 16/09 : un véhicule = `slotMinutes`). Pour `vehicleCount`
+ * véhicules, chaque créneau dure `slotMinutes × vehicleCount` ; les départs restent alignés sur la
+ * grille d'un véhicule (toutes les `slotMinutes`), et un départ n'est proposé que si la durée entière
+ * tient dans la fenêtre du jour et ne chevauche rien. Un samedi 09:00–13:00 propose donc
+ * 09:00 et 11:00 pour un véhicule, 09:00 seul pour deux, rien pour trois.
  */
-export function generateAvailability(config: SlotConfig, now: Date, busy: BusyInterval[]): GeneratedDay[] {
+export function generateAvailability(
+  config: SlotConfig,
+  now: Date,
+  busy: BusyInterval[],
+  vehicleCount = 1,
+): GeneratedDay[] {
   const { slotMinutes, workingDays, horizonDays } = config;
   const days: GeneratedDay[] = [];
   if (slotMinutes <= 0) return days;
+  const nombre = Math.max(1, Math.floor(vehicleCount || 1));
+  const duree = slotMinutes * nombre;
 
   // Borné à 1 quoi qu'on lui passe : le jour même n'est pas une option de configuration.
   const premierJour = Math.max(1, Math.floor(config.leadDays || 1));
@@ -150,14 +163,14 @@ export function generateAvailability(config: SlotConfig, now: Date, busy: BusyIn
     const dp = parisParts(midInstant);
     if (!workSet.has(dp.isoWeekday)) continue;
     const { start: dayStartMinutes, end: dayEndMinutes } = windowFor(config, dp.isoWeekday);
-    if (dayEndMinutes - dayStartMinutes < slotMinutes) continue;
+    if (dayEndMinutes - dayStartMinutes < duree) continue;
 
     const slots: GeneratedSlot[] = [];
-    for (let start = dayStartMinutes; start + slotMinutes <= dayEndMinutes; start += slotMinutes) {
+    for (let start = dayStartMinutes; start + duree <= dayEndMinutes; start += slotMinutes) {
       const sh = Math.floor(start / 60);
       const sm = start % 60;
-      const eh = Math.floor((start + slotMinutes) / 60);
-      const em = (start + slotMinutes) % 60;
+      const eh = Math.floor((start + duree) / 60);
+      const em = (start + duree) % 60;
       const startAt = parisWallClockToUtc(dp.year, dp.month, dp.day, sh, sm);
       const endAt = parisWallClockToUtc(dp.year, dp.month, dp.day, eh, em);
       const overlaps = busy.some((b) => startAt.getTime() < b.endMs && endAt.getTime() > b.startMs);

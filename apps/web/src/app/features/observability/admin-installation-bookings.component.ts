@@ -1,15 +1,16 @@
+import { apiErrorMessage } from '../../core/error/api-error';
 import { swallow } from '../../core/error/swallow';
 import { NgTemplateOutlet } from '@angular/common';
 import { ChangeDetectionStrategy, Component, computed, inject, OnInit, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import {
-  ArrowLeft, Bot, CalendarClock, Check, ChevronDown, ChevronUp, Copy, Eye, Link2, LucideAngularModule,
-  Monitor, Pencil, Plus, Smartphone, Tablet, Trash2, UserCheck, X,
+  ArrowLeft, Ban, Bot, Building2, CalendarClock, Check, ChevronDown, ChevronUp, Copy, ExternalLink, Eye, Link2,
+  LucideAngularModule, Monitor, Pencil, Plus, Smartphone, Tablet, Trash2, UserCheck, X,
 } from 'lucide-angular';
 import { firstValueFrom } from 'rxjs';
 import type {
-  BookingVisitEventDto, InstallationBookingDto, InstallationBookingLinkDto, InstallationBookingLinkVisitDto,
-  InstallationBookingLinkVisitsDto, InstallationBookingStatus,
+  BookingVisitEventDto, DeleteLinkConsequencesDto, DeleteLinkMode, InstallationBookingDto, InstallationBookingLinkDto,
+  InstallationBookingLinkVisitDto, InstallationBookingLinkVisitsDto, InstallationBookingStatus,
 } from '@vizyo/tracky-shared';
 import { FleetsApiService, type FleetSummary } from '../../core/services/fleets.service';
 import { InstallationBookingApiService } from '../../core/services/installation-booking.service';
@@ -43,10 +44,19 @@ function toHHMM(minutes: number): string {
   return `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`;
 }
 
+/** Valeur du sélecteur de société quand le client n'a pas encore de compte flotte. */
+const PROSPECT = '__prospect__';
+/** Le secours quand la création directe dans Manager n'est pas configurée : son formulaire, prérempli. */
+const MANAGER_NOUVEAU_CLIENT = 'https://manager.vizyoagency.com/admin/clients/new';
+
 /**
  * Prise de RDV en ligne — console admin (SUPER_ADMIN). 3 onglets : Demandes (valider /
- * refuser), Liens (créer / modifier / copier / désactiver, et LIRE LES VISITES), Agenda
- * (poses réservées par jour).
+ * refuser / annuler), Liens (créer — avec ou sans flotte — / modifier / copier / désactiver /
+ * supprimer, et LIRE LES VISITES), Agenda (poses réservées par jour).
+ *
+ * Lot A (conception v2, 17/09) : un lien peut viser un PROSPECT sans compte flotte ; sa demande
+ * est validée en rattachant une flotte existante ou en créant le client dans Vizyo Manager
+ * (jamais une flotte créée par Tracky lui-même). Une demande porte n véhicules → n poses.
  */
 @Component({
   selector: 'app-admin-installation-bookings',
@@ -85,23 +95,62 @@ function toHHMM(minutes: number): string {
           <div class="ib-card">
             <div class="ib-card-top">
               <div>
-                <div class="ib-slot"><lucide-icon [img]="CalendarClock" [size]="14"></lucide-icon> {{ formatSlot(b.startAt, b.endAt) }}</div>
-                <div class="ib-client">{{ b.clientName }} · <a href="mailto:{{ b.clientEmail }}">{{ b.clientEmail }}</a>@if (b.clientPhone) { · {{ b.clientPhone }} }</div>
-                @if (b.vehiclePlate || b.vehicleBrand) { <div class="ib-meta">🚗 {{ b.vehiclePlate }}@if (b.vehicleBrand) { · {{ b.vehicleBrand }} {{ b.vehicleModel }} }</div> }
+                <div class="ib-slot"><lucide-icon [img]="CalendarClock" [size]="14"></lucide-icon> {{ formatSlot(b.startAt, b.endAt) }} <span class="ib-tag">{{ b.vehicleCount }} véhicule{{ b.vehicleCount > 1 ? 's' : '' }}</span></div>
+                <div class="ib-societe">
+                  <lucide-icon [img]="Building2" [size]="13"></lucide-icon> {{ societeDe(b) }}
+                  @if (!b.fleetId) { <span class="ib-tag ib-tag--prospect">prospect — pas encore de compte flotte</span> }
+                </div>
+                <div class="ib-client">{{ b.clientName }} · <a href="mailto:{{ b.clientEmail }}">{{ b.clientEmail }}</a>@if (b.clientPhone) { · <a [href]="telHref(b.clientPhone)">{{ b.clientPhone }}</a> }</div>
+                @for (v of b.vehicles; track v.id) {
+                  <div class="ib-meta">🚗 {{ vehiculeLisible(v, b.vehicleCount > 1 ? v.position + 1 : null) }}</div>
+                }
                 @if (b.clientAddress) { <div class="ib-meta">📍 {{ b.clientAddress }}</div> }
                 @if (b.notes) { <div class="ib-meta">💬 {{ b.notes }}</div> }
-                <div class="ib-meta">Lien : {{ b.linkLabel }}</div>
+                <div class="ib-meta">Lien : {{ b.linkLabel || '(supprimé)' }}@if (b.planId) { · <a class="ib-a" [routerLink]="['/admin/installations', b.planId]">planning</a> }</div>
+                @if (b.status === 'CONFIRMED') {
+                  <div class="ib-meta">✔ Validée{{ b.confirmedByName ? ' par ' + b.confirmedByName : '' }}@if (b.confirmedAt) { le {{ formatDateTime(b.confirmedAt) }} } · {{ b.poses.length }} pose{{ b.poses.length > 1 ? 's' : '' }}@if (posesFaites(b) > 0) { ({{ posesFaites(b) }} faite{{ posesFaites(b) > 1 ? 's' : '' }}) }</div>
+                } @else if (b.status === 'CANCELLED') {
+                  <div class="ib-meta">✖ Annulée{{ b.cancelledByName ? ' par ' + b.cancelledByName : '' }}@if (b.cancelledAt) { le {{ formatDateTime(b.cancelledAt) }} }@if (b.cancelReason) { — {{ b.cancelReason }} }</div>
+                }
               </div>
               <span class="ib-status ib-status--{{ b.status.toLowerCase() }}">{{ statusLabel(b.status) }}</span>
             </div>
 
-            @if (b.status === 'PENDING') {
+            @if (b.status === 'PENDING' || b.status === 'CONFIRMED') {
               @if (expandedId() === b.id && expandMode() === 'confirm') {
                 <div class="ib-action">
-                  <label class="ib-in-lbl">Plaque du véhicule (obligatoire)</label>
-                  <input class="ib-in" [value]="plate()" (input)="plate.set($any($event.target).value)" placeholder="AB-123-CD">
+                  @if (!b.fleetId) {
+                    <!--
+                      LA SOCIÉTÉ D'UN PROSPECT. Tracky ne crée JAMAIS la flotte lui-même : soit on
+                      rattache une flotte existante, soit Vizyo Manager crée le client (et provisionne
+                      la flotte) — en un clic quand l'appel direct est configuré, sinon via son
+                      formulaire prérempli, puis on rattache.
+                    -->
+                    <div class="ib-prospect">
+                      <div class="ib-prospect-t"><lucide-icon [img]="Building2" [size]="14"></lucide-icon> Cette demande n'a pas encore de société dans Tracky</div>
+                      <label class="ib-in-lbl">Rattacher une flotte existante</label>
+                      <select class="ib-in" (change)="cFleet.set($any($event.target).value)">
+                        <option value="" [selected]="!cFleet()">— choisir une flotte —</option>
+                        @for (fl of fleets(); track fl.id) { <option [value]="fl.id" [selected]="fl.id === cFleet()">{{ fl.name }}</option> }
+                      </select>
+                      <div class="ib-prospect-ou">ou</div>
+                      <div class="ib-action-btns ib-action-btns--tight">
+                        <button class="ib-btn ib-btn--ghost" [disabled]="busy()" (click)="doConfirm(b, true)"><lucide-icon [img]="Plus" [size]="14"></lucide-icon> Créer le client dans Vizyo Manager et valider</button>
+                        <a class="ib-btn ib-btn--ghost" [href]="urlManager() || urlManagerParDefaut(b)" target="_blank" rel="noopener"><lucide-icon [img]="ExternalLink" [size]="14"></lucide-icon> Ouvrir le formulaire Manager (prérempli)</a>
+                      </div>
+                      <div class="ib-hint">Une fois le client créé dans Manager (avec Tracky activé), sa flotte apparaît dans la liste ci-dessus : rattachez-la, puis validez.</div>
+                    </div>
+                  }
+                  <label class="ib-in-lbl">{{ b.vehicleCount > 1 ? 'Les véhicules' : 'Le véhicule' }} — une pose par ligne ; sans plaque, la pose est créée « À confirmer »</label>
+                  @for (v of cVehicules(); track v.position) {
+                    <div class="ib-veh-row">
+                      @if (b.vehicleCount > 1) { <span class="ib-veh-n">{{ v.position + 1 }}</span> }
+                      <input class="ib-in" [value]="v.plate" (input)="majVehiculeConfirm(v.position, 'plate', $any($event.target).value)" placeholder="AB-123-CD">
+                      <input class="ib-in" [value]="v.vehicle" (input)="majVehiculeConfirm(v.position, 'vehicle', $any($event.target).value)" placeholder="Marque modèle">
+                    </div>
+                  }
                   <div class="ib-action-btns">
-                    <button class="ib-btn ib-btn--ok" [disabled]="busy()" (click)="doConfirm(b)"><lucide-icon [img]="Check" [size]="14"></lucide-icon> Valider & créer la pose</button>
+                    <button class="ib-btn ib-btn--ok" [disabled]="busy()" (click)="doConfirm(b)"><lucide-icon [img]="Check" [size]="14"></lucide-icon> Valider & créer {{ b.vehicleCount > 1 ? 'les ' + b.vehicleCount + ' poses' : 'la pose' }}</button>
                     <button class="ib-btn ib-btn--ghost" (click)="collapse()">Annuler</button>
                   </div>
                 </div>
@@ -114,10 +163,25 @@ function toHHMM(minutes: number): string {
                     <button class="ib-btn ib-btn--ghost" (click)="collapse()">Annuler</button>
                   </div>
                 </div>
+              } @else if (expandedId() === b.id && expandMode() === 'cancel') {
+                <div class="ib-action">
+                  @if (b.status === 'CONFIRMED') { <div class="ib-hint">Les {{ b.poses.length }} pose{{ b.poses.length > 1 ? 's' : '' }} non faite{{ b.poses.length > 1 ? 's' : '' }} seront retirées du planning ; le créneau est libéré.</div> }
+                  <input class="ib-in" [value]="reason()" (input)="reason.set($any($event.target).value)" placeholder="Motif de l'annulation (optionnel)">
+                  <label class="ib-check"><input type="checkbox" [checked]="notify()" (change)="notify.set($any($event.target).checked)"> Prévenir le client par e-mail</label>
+                  <div class="ib-action-btns">
+                    <button class="ib-btn ib-btn--danger" [disabled]="busy()" (click)="doCancel(b)"><lucide-icon [img]="Ban" [size]="14"></lucide-icon> Confirmer l'annulation</button>
+                    <button class="ib-btn ib-btn--ghost" (click)="collapse()">Retour</button>
+                  </div>
+                </div>
               } @else {
                 <div class="ib-action-btns">
-                  <button class="ib-btn ib-btn--ok" (click)="openConfirm(b)"><lucide-icon [img]="Check" [size]="14"></lucide-icon> Valider</button>
-                  <button class="ib-btn ib-btn--danger" (click)="openReject(b)"><lucide-icon [img]="X" [size]="14"></lucide-icon> Refuser</button>
+                  @if (b.status === 'PENDING') {
+                    <button class="ib-btn ib-btn--ok" (click)="openConfirm(b)"><lucide-icon [img]="Check" [size]="14"></lucide-icon> Valider</button>
+                    <button class="ib-btn ib-btn--danger" (click)="openReject(b)"><lucide-icon [img]="X" [size]="14"></lucide-icon> Refuser</button>
+                  }
+                  @if (posesFaites(b) === 0) {
+                    <button class="ib-btn ib-btn--ghost" (click)="openCancel(b)"><lucide-icon [img]="Ban" [size]="14"></lucide-icon> Annuler {{ b.status === 'CONFIRMED' ? 'le rendez-vous' : 'la demande' }}</button>
+                  }
                 </div>
               }
             } @else if (b.status === 'REJECTED' && b.rejectionReason) {
@@ -151,9 +215,10 @@ function toHHMM(minutes: number): string {
             } @else {
               <div class="ib-card-top">
                 <div class="ib-grow">
-                  <div class="ib-slot"><lucide-icon [img]="Link2" [size]="14"></lucide-icon> {{ l.label }} @if (!l.active) { <span class="ib-off-tag">désactivé</span> } @if (l.singleUse) { <span class="ib-tag">usage unique</span> }</div>
-                  <div class="ib-meta">{{ l.fleetName }} · {{ l.pendingCount }} en attente · {{ l.confirmedCount }} confirmé{{ l.confirmedCount > 1 ? 's' : '' }}@if (l.clientEmail) { · lien direct ({{ l.clientName || l.clientEmail }}) }</div>
-                  <div class="ib-meta">{{ horairesLisibles(l) }}</div>
+                  <div class="ib-slot"><lucide-icon [img]="Link2" [size]="14"></lucide-icon> {{ l.label }} @if (!l.active) { <span class="ib-off-tag">désactivé</span> } @if (l.singleUse) { <span class="ib-tag">usage unique</span> } @if (!l.fleetId) { <span class="ib-tag ib-tag--prospect">prospect</span> }</div>
+                  <div class="ib-meta">{{ l.fleetName || l.companyName }}@if (!l.fleetId) { (pas encore de compte flotte) } · {{ l.pendingCount }} en attente · {{ l.confirmedCount }} confirmé{{ l.confirmedCount > 1 ? 's' : '' }}@if (l.clientEmail) { · lien direct ({{ l.clientName || l.clientEmail }}) }</div>
+                  <div class="ib-meta">{{ horairesLisibles(l) }} · jusqu'à {{ l.maxVehicles }} véhicule{{ l.maxVehicles > 1 ? 's' : '' }}</div>
+                  <div class="ib-meta">Créé {{ l.createdByName ? 'par ' + l.createdByName + ' ' : '' }}le {{ formatDateTime(l.createdAt) }}</div>
                   <div class="ib-meta ib-opens" [class.ib-opens--none]="l.visitCount === 0">
                     <lucide-icon [img]="Eye" [size]="13"></lucide-icon>
                     @if (l.visitCount === 0) {
@@ -247,7 +312,7 @@ function toHHMM(minutes: number): string {
             @for (b of day.items; track b.id) {
               <div class="ib-agenda-row ib-agenda-row--{{ b.status.toLowerCase() }}">
                 <span class="ib-agenda-time">{{ timeOnly(b.startAt) }}–{{ timeOnly(b.endAt) }}</span>
-                <span class="ib-agenda-client">{{ b.clientName }}@if (b.vehiclePlate) { · {{ b.vehiclePlate }} }</span>
+                <span class="ib-agenda-client">{{ societeDe(b) }} · {{ b.clientName }} · {{ b.vehicleCount }} véhicule{{ b.vehicleCount > 1 ? 's' : '' }}</span>
                 <span class="ib-status ib-status--{{ b.status.toLowerCase() }}">{{ statusLabel(b.status) }}</span>
               </div>
             }
@@ -256,21 +321,51 @@ function toHHMM(minutes: number): string {
       }
     </div>
 
+    <!-- ═══ Supprimer un lien qui porte des demandes : quoi en faire ? (Q8) ═══ -->
+    @if (suppression(); as sup) {
+      <div class="ib-voile" (click)="suppression.set(null)">
+        <div class="ib-dialogue" role="dialog" aria-modal="true" (click)="$event.stopPropagation()">
+          <h2><lucide-icon [img]="Trash2" [size]="16"></lucide-icon> Supprimer « {{ sup.link.label }} »</h2>
+          <p>
+            Ce lien porte <strong>{{ sup.consequences.demandes.total }} demande{{ sup.consequences.demandes.total > 1 ? 's' : '' }}</strong>
+            ({{ sup.consequences.demandes.enAttente }} en attente, {{ sup.consequences.demandes.confirmees }} confirmée{{ sup.consequences.demandes.confirmees > 1 ? 's' : '' }}).
+            L'historique des visites ({{ sup.consequences.visites }}) et les abonnés « prévenez-moi » ({{ sup.consequences.abonnes }}) partent avec le lien dans tous les cas.
+          </p>
+          <div class="ib-dialogue-choix">
+            <button class="ib-btn ib-btn--ok" [disabled]="busy()" (click)="confirmerSuppression('conserver')">Conserver les demandes</button>
+            <button class="ib-btn ib-btn--danger" [disabled]="busy()" (click)="confirmerSuppression('effacer')">Tout effacer</button>
+            <button class="ib-btn ib-btn--ghost" (click)="suppression.set(null)">Annuler</button>
+          </div>
+          <div class="ib-hint">« Conserver » garde les demandes (et les poses déjà créées) lisibles dans l'onglet Demandes, sous le libellé du lien. « Tout effacer » supprime les demandes ; les poses déjà créées dans un planning restent.</div>
+        </div>
+      </div>
+    }
+
     <!-- ═══ Le formulaire d'un lien (création ET modification : mêmes réglages, même lecture) ═══ -->
     <ng-template #formulaire let-mode="mode">
       <div class="ib-form">
-        @if (mode === 'create') {
+        @if (mode === 'create' || !fleetFigee()) {
           <label class="ib-f"><span>Société / flotte *</span>
+            <!-- Un client sans compte encore : le lien vit sans flotte, elle est rattachée à la validation. -->
             <select class="ib-in" (change)="fFleet.set($any($event.target).value)">
               <option value="" [selected]="!fFleet()">— choisir —</option>
+              <option [value]="PROSPECT" [selected]="fFleet() === PROSPECT">Pas encore de compte flotte (prospect)</option>
               @for (fl of fleets(); track fl.id) { <option [value]="fl.id" [selected]="fl.id === fFleet()">{{ fl.name }}</option> }
             </select>
           </label>
+          @if (fFleet() === PROSPECT) {
+            <label class="ib-f"><span>Nom de la société *</span><input class="ib-in" [value]="fCompany()" (input)="fCompany.set($any($event.target).value)" placeholder="Tel que le client la connaît"></label>
+          }
         }
-        <label class="ib-f" [class.ib-f--full]="mode !== 'create'"><span>Libellé (interne) *</span><input class="ib-in" [value]="fLabel()" (input)="fLabel.set($any($event.target).value)" placeholder="Ex. Pose flotte Dupont"></label>
+        <label class="ib-f" [class.ib-f--full]="mode !== 'create' && fleetFigee()"><span>Libellé (interne) *</span><input class="ib-in" [value]="fLabel()" (input)="fLabel.set($any($event.target).value)" placeholder="Ex. Pose flotte Dupont"></label>
+        <label class="ib-f"><span>Véhicules par demande (au plus)</span>
+          <select class="ib-in" (change)="fMaxVehicles.set(+$any($event.target).value)">
+            @for (n of [1, 2, 3, 4, 5, 6]; track n) { <option [value]="n" [selected]="n === fMaxVehicles()">{{ n }} — rendez-vous jusqu'à {{ dureeTotale(n) }}</option> }
+          </select>
+        </label>
 
         @if (mode === 'create') {
-          <label class="ib-f ib-f--full"><span>E-mail du client (optionnel — « lien direct »)</span><input class="ib-in" [value]="fEmail()" (input)="fEmail.set($any($event.target).value)" placeholder="Si renseigné, la page ne redemandera pas l'e-mail"></label>
+          <label class="ib-f ib-f--full"><span>E-mail du client (optionnel — « lien direct »)</span><input class="ib-in" [value]="fEmail()" (input)="fEmail.set($any($event.target).value)" placeholder="Si renseigné, la page pré-remplit ses coordonnées (il les vérifie)"></label>
           @if (fEmail().trim()) {
             <label class="ib-f"><span>Nom du client</span><input class="ib-in" [value]="fName()" (input)="fName.set($any($event.target).value)"></label>
             <label class="ib-f"><span>Téléphone</span><input class="ib-in" [value]="fPhone()" (input)="fPhone.set($any($event.target).value)"></label>
@@ -392,6 +487,23 @@ function toHHMM(minutes: number): string {
     .ib-tag em { font-style:normal; opacity:.75; }
     .ib-tag--sur { background:color-mix(in srgb, var(--tracky-light) 15%, transparent); color:var(--texte-succes); }
     .ib-tag--muted { opacity:.8; }
+    .ib-tag--prospect { background:rgba(245,179,61,.15); color:#F5B33D; }
+    .ib-societe { display:inline-flex; align-items:center; gap:6px; flex-wrap:wrap; font-size:13px; font-weight:600; color:var(--fg-primary,#EAEFED); margin-top:6px; }
+    .ib-a { color:var(--tracky,#10E0A0); text-decoration:none; }
+    .ib-prospect { padding:12px 14px; border-radius:10px; border:1px dashed rgba(245,179,61,.45); background:rgba(245,179,61,.06); margin-bottom:14px; }
+    .ib-prospect-t { display:flex; align-items:center; gap:6px; font-size:13px; font-weight:700; color:#F5B33D; margin-bottom:10px; }
+    .ib-prospect-ou { text-align:center; font-size:11px; text-transform:uppercase; letter-spacing:.08em; color:var(--fg-tertiary,#69736E); margin:8px 0 2px; }
+    .ib-action-btns--tight { margin-top:6px; }
+    .ib-veh-row { display:grid; grid-template-columns:auto 1fr 1fr; gap:8px; align-items:center; margin-bottom:8px; }
+    .ib-veh-row:has(> .ib-in:first-child) { grid-template-columns:1fr 1fr; }
+    .ib-veh-n { display:inline-flex; align-items:center; justify-content:center; width:26px; height:26px; border-radius:8px; background:rgba(255,255,255,.07); font-size:12px; font-weight:700; color:var(--fg-secondary,#9BA5A1); }
+    a.ib-btn { text-decoration:none; }
+    .ib-voile { position:fixed; inset:0; z-index:60; background:rgba(0,0,0,.55); display:flex; align-items:center; justify-content:center; padding:16px; }
+    .ib-dialogue { width:100%; max-width:520px; background:var(--bg-secondary,#101514); border:1px solid var(--border-subtle,rgba(255,255,255,.12)); border-radius:16px; padding:20px 22px; }
+    .ib-dialogue h2 { margin:0 0 10px; font-size:17px; font-weight:800; color:var(--fg-primary,#EAEFED); display:flex; align-items:center; gap:8px; }
+    .ib-dialogue p { margin:0 0 14px; font-size:13.5px; line-height:1.55; color:var(--fg-secondary,#9BA5A1); }
+    .ib-dialogue p strong { color:var(--fg-primary,#EAEFED); }
+    .ib-dialogue-choix { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:10px; }
     .ib-err { color:var(--texte-alerte); font-size:13px; }
     .ib-empty, .ib-loading { padding:28px; text-align:center; color:var(--fg-tertiary,#69736E); font-size:14px; }
     .ib-empty--inline, .ib-loading--inline { padding:14px; font-size:13px; }
@@ -433,6 +545,8 @@ export class AdminInstallationBookingsComponent implements OnInit {
 
   protected readonly ArrowLeft = ArrowLeft; protected readonly CalendarClock = CalendarClock;
   protected readonly Check = Check; protected readonly X = X; protected readonly Copy = Copy;
+  protected readonly Ban = Ban; protected readonly Building2 = Building2; protected readonly ExternalLink = ExternalLink;
+  protected readonly PROSPECT = PROSPECT;
   protected readonly Trash2 = Trash2; protected readonly Plus = Plus; protected readonly Link2 = Link2;
   protected readonly Eye = Eye; protected readonly Pencil = Pencil; protected readonly Bot = Bot;
   protected readonly ChevronDown = ChevronDown; protected readonly ChevronUp = ChevronUp; protected readonly UserCheck = UserCheck;
@@ -452,19 +566,30 @@ export class AdminInstallationBookingsComponent implements OnInit {
     { value: 'PENDING' as const, label: 'En attente' },
     { value: 'CONFIRMED' as const, label: 'Confirmées' },
     { value: 'REJECTED' as const, label: 'Refusées' },
+    { value: 'CANCELLED' as const, label: 'Annulées' },
   ];
 
-  // Expansion valider/refuser
+  // Expansion valider / refuser / annuler
   protected readonly expandedId = signal<string | null>(null);
-  protected readonly expandMode = signal<'confirm' | 'reject' | null>(null);
-  protected readonly plate = signal('');
+  protected readonly expandMode = signal<'confirm' | 'reject' | 'cancel' | null>(null);
   protected readonly reason = signal('');
   protected readonly notify = signal(false);
+  /** Validation : la flotte à rattacher (demande d'un prospect) et les véhicules corrigés. */
+  protected readonly cFleet = signal('');
+  protected readonly cVehicules = signal<{ position: number; plate: string; vehicle: string }[]>([]);
+  /** L'URL du formulaire Manager rendue par l'API (409 « sansFlotte ») — sinon le repli local. */
+  protected readonly urlManager = signal<string | null>(null);
+
+  // Suppression d'un lien qui porte des demandes (Q8)
+  protected readonly suppression = signal<{ link: InstallationBookingLinkDto; consequences: DeleteLinkConsequencesDto } | null>(null);
 
   // Formulaire (création ET modification)
   protected readonly formOuvert = signal(false);
   protected readonly editingId = signal<string | null>(null);
   protected readonly fFleet = signal(''); protected readonly fLabel = signal('');
+  protected readonly fCompany = signal(''); protected readonly fMaxVehicles = signal(3);
+  /** En modification : un lien qui a déjà une flotte ne la change pas (ses demandes la portent). */
+  protected readonly fleetFigee = signal(false);
   protected readonly fEmail = signal(''); protected readonly fName = signal(''); protected readonly fPhone = signal('');
   protected readonly fAddress = signal('');
   protected readonly fSlot = signal(120);
@@ -542,6 +667,34 @@ export class AdminInstallationBookingsComponent implements OnInit {
   }
 
   // ── Lecture ──
+  protected societeDe(b: InstallationBookingDto): string {
+    return b.fleetName ?? b.companyName ?? '—';
+  }
+  protected posesFaites(b: InstallationBookingDto): number {
+    return b.poses.filter((p) => p.status === 'DONE').length;
+  }
+  protected vehiculeLisible(v: InstallationBookingDto['vehicles'][number], numero: number | null): string {
+    const desc = [v.plate ?? 'plaque à confirmer', [v.brand, v.model].filter(Boolean).join(' ') || null, v.energy ? this.energieLisible(v.energy) : null]
+      .filter(Boolean).join(' · ');
+    const pose = v.taskId ? ' — pose créée' : '';
+    return `${numero ? `Véhicule ${numero} : ` : ''}${desc}${pose}`;
+  }
+  private energieLisible(e: string): string {
+    return { DIESEL: 'diesel', ESSENCE: 'essence', ELECTRIQUE: 'électrique', HYBRIDE: 'hybride', AUTRE: 'autre énergie' }[e] ?? e.toLowerCase();
+  }
+  protected telHref(tel: string): string {
+    return `tel:${tel.replace(/[^+\d]/g, '')}`;
+  }
+  protected dureeTotale(n: number): string {
+    const m = this.fSlot() * n;
+    const h = Math.floor(m / 60); const r = m % 60;
+    return r ? `${h} h ${String(r).padStart(2, '0')}` : `${h} h`;
+  }
+  protected urlManagerParDefaut(b: InstallationBookingDto): string {
+    const q = new URLSearchParams({ companyName: b.companyName ?? b.clientName, email: b.clientEmail, tracky: '1' });
+    if (b.clientPhone) q.set('phone', b.clientPhone);
+    return `${MANAGER_NOUVEAU_CLIENT}?${q.toString()}`;
+  }
   protected statusLabel(s: InstallationBookingStatus): string {
     return { PENDING: 'en attente', CONFIRMED: 'confirmée', REJECTED: 'refusée', CANCELLED: 'annulée' }[s];
   }
@@ -644,23 +797,60 @@ export class AdminInstallationBookingsComponent implements OnInit {
   // ── Demandes ──
   protected openConfirm(b: InstallationBookingDto): void {
     this.expandedId.set(b.id); this.expandMode.set('confirm');
-    this.plate.set(b.vehiclePlate ?? '');
+    this.cFleet.set(''); this.urlManager.set(null);
+    this.cVehicules.set(b.vehicles.map((v) => ({
+      position: v.position, plate: v.plate ?? '', vehicle: [v.brand, v.model].filter(Boolean).join(' '),
+    })));
+  }
+  protected majVehiculeConfirm(position: number, champ: 'plate' | 'vehicle', valeur: string): void {
+    this.cVehicules.update((liste) => liste.map((v) => (v.position === position ? { ...v, [champ]: valeur } : v)));
   }
   protected openReject(b: InstallationBookingDto): void {
     this.expandedId.set(b.id); this.expandMode.set('reject'); this.reason.set(''); this.notify.set(false);
   }
+  protected openCancel(b: InstallationBookingDto): void {
+    this.expandedId.set(b.id); this.expandMode.set('cancel'); this.reason.set(''); this.notify.set(true);
+  }
   protected collapse(): void { this.expandedId.set(null); this.expandMode.set(null); }
 
-  protected async doConfirm(b: InstallationBookingDto): Promise<void> {
-    if (!this.plate().trim()) { this.toast.error('Plaque requise', 'Renseignez la plaque du véhicule.'); return; }
+  /** Valider : rattache la flotte choisie (ou la fait créer par Manager), puis une pose par véhicule. */
+  protected async doConfirm(b: InstallationBookingDto, creerClient = false): Promise<void> {
+    if (!b.fleetId && !creerClient && !this.cFleet()) {
+      this.toast.error('Société requise', 'Rattachez une flotte existante, ou créez le client dans Vizyo Manager.');
+      return;
+    }
     this.busy.set(true);
     try {
-      await firstValueFrom(this.api.confirmBooking(b.id, { vehiclePlate: this.plate().trim() }));
-      this.toast.success('Créneau validé', 'La pose a été ajoutée au planning et le client prévenu.');
+      const vehicles = this.cVehicules().map((v) => {
+        const [brand, ...rest] = v.vehicle.trim().split(' ');
+        return { position: v.position, plate: v.plate.trim() || null, brand: brand || null, model: rest.join(' ') || null };
+      });
+      await firstValueFrom(this.api.confirmBooking(b.id, {
+        fleetId: !b.fleetId && !creerClient ? this.cFleet() : undefined,
+        creerClient: creerClient || undefined,
+        vehicles,
+      }));
+      this.toast.success('Créneau validé', `${b.vehicleCount > 1 ? `${b.vehicleCount} poses ajoutées` : 'La pose a été ajoutée'} au planning ; le client est prévenu.`);
       this.collapse();
       await this.reload();
     } catch (e) {
-      swallow('admin-installation-bookings:doConfirm', e); this.toast.error('Validation impossible', this.errMsg(e)); }
+      swallow('admin-installation-bookings:doConfirm', e);
+      // Le filtre global de l'API rend `{ error: { code, message, …champs métier } }`.
+      const corps = (e as { error?: { error?: { urlManager?: string } } })?.error?.error;
+      if (typeof corps?.urlManager === 'string') this.urlManager.set(corps.urlManager);
+      this.toast.error('Validation impossible', this.errMsg(e));
+    } finally { this.busy.set(false); }
+  }
+
+  protected async doCancel(b: InstallationBookingDto): Promise<void> {
+    this.busy.set(true);
+    try {
+      await firstValueFrom(this.api.cancelBooking(b.id, { reason: this.reason().trim() || undefined, notifyClient: this.notify() }));
+      this.toast.success('Demande annulée', b.status === 'CONFIRMED' ? 'Les poses ont été retirées du planning ; le créneau est libéré.' : 'Le créneau est libéré.');
+      this.collapse();
+      await this.reload();
+    } catch (e) {
+      swallow('admin-installation-bookings:doCancel', e); this.toast.error('Annulation impossible', this.errMsg(e)); }
     finally { this.busy.set(false); }
   }
 
@@ -710,6 +900,7 @@ export class AdminInstallationBookingsComponent implements OnInit {
   }
 
   private resetForm(): void {
+    this.fFleet.set(''); this.fCompany.set(''); this.fMaxVehicles.set(3); this.fleetFigee.set(false);
     this.fLabel.set(''); this.fEmail.set(''); this.fName.set(''); this.fPhone.set(''); this.fAddress.set('');
     this.fSlot.set(120); this.fDays.set(new Set([1, 2, 3, 4, 5])); this.fStart.set('08:00'); this.fEnd.set('21:00');
     this.fWeekendCustom.set(false); this.fWeStart.set('09:00'); this.fWeEnd.set('13:00');
@@ -717,9 +908,20 @@ export class AdminInstallationBookingsComponent implements OnInit {
     this.createErr.set(null);
   }
 
+  /** La société du formulaire : une flotte, ou un prospect nommé — ou une erreur lisible. */
+  private lireSociete(): { ok: true; fleetId: string | null; companyName: string | null } | { ok: false; erreur: string } {
+    if (!this.fFleet()) return { ok: false, erreur: 'Choisissez une société — ou « pas encore de compte flotte ».' };
+    if (this.fFleet() === PROSPECT) {
+      if (!this.fCompany().trim()) return { ok: false, erreur: 'Indiquez le nom de la société du prospect.' };
+      return { ok: true, fleetId: null, companyName: this.fCompany().trim() };
+    }
+    return { ok: true, fleetId: this.fFleet(), companyName: null };
+  }
+
   protected async createLink(): Promise<void> {
     this.createErr.set(null);
-    if (!this.fFleet()) { this.createErr.set('Choisissez une société.'); return; }
+    const societe = this.lireSociete();
+    if (!societe.ok) { this.createErr.set(societe.erreur); return; }
     if (!this.fLabel().trim()) { this.createErr.set('Donnez un libellé.'); return; }
     const horaires = this.lireHoraires();
     if (!horaires.ok) { this.createErr.set(horaires.erreur); return; }
@@ -727,7 +929,9 @@ export class AdminInstallationBookingsComponent implements OnInit {
     try {
       const direct = !!this.fEmail().trim();
       const link = await firstValueFrom(this.api.createLink({
-        fleetId: this.fFleet(),
+        fleetId: societe.fleetId,
+        companyName: societe.companyName,
+        maxVehicles: this.fMaxVehicles(),
         label: this.fLabel().trim(),
         clientEmail: this.fEmail().trim() || undefined,
         clientName: direct ? (this.fName().trim() || undefined) : undefined,
@@ -751,6 +955,11 @@ export class AdminInstallationBookingsComponent implements OnInit {
     this.editingId.set(l.id);
     this.createErr.set(null);
     this.fLabel.set(l.label);
+    // Un lien prospect peut recevoir sa flotte ici ; un lien qui en a une ne la change pas.
+    this.fleetFigee.set(!!l.fleetId);
+    this.fFleet.set(l.fleetId ?? PROSPECT);
+    this.fCompany.set(l.companyName ?? '');
+    this.fMaxVehicles.set(l.maxVehicles);
     this.fSlot.set(DUREES.some((d) => d.minutes === l.slotMinutes) ? l.slotMinutes : 120);
     this.fDays.set(new Set(l.workingDays));
     this.fStart.set(toHHMM(l.dayStartMinutes)); this.fEnd.set(toHHMM(l.dayEndMinutes));
@@ -773,9 +982,15 @@ export class AdminInstallationBookingsComponent implements OnInit {
     if (!this.fLabel().trim()) { this.createErr.set('Donnez un libellé.'); return; }
     const horaires = this.lireHoraires();
     if (!horaires.ok) { this.createErr.set(horaires.erreur); return; }
+    const societe = this.fleetFigee() ? null : this.lireSociete();
+    if (societe && !societe.ok) { this.createErr.set(societe.erreur); return; }
     this.busy.set(true);
     try {
-      await firstValueFrom(this.api.updateLink(id, { label: this.fLabel().trim(), singleUse: this.fSingle(), ...horaires.valeurs }));
+      await firstValueFrom(this.api.updateLink(id, {
+        label: this.fLabel().trim(), singleUse: this.fSingle(), maxVehicles: this.fMaxVehicles(),
+        ...(societe && societe.ok ? { fleetId: societe.fleetId, companyName: societe.companyName } : {}),
+        ...horaires.valeurs,
+      }));
       this.editingId.set(null);
       this.resetForm();
       await this.reload();
@@ -793,16 +1008,37 @@ export class AdminInstallationBookingsComponent implements OnInit {
       swallow('admin-installation-bookings:toggleLink', e); this.toast.error('Action impossible', this.errMsg(e)); }
   }
 
+  /**
+   * Supprimer (Q8) : sans demande, une confirmation suffit. Avec des demandes, l'API répond 409
+   * avec le décompte, et le dialogue demande quoi en faire — conserver ou tout effacer.
+   */
   protected async deleteLink(l: InstallationBookingLinkDto): Promise<void> {
-    if (!confirm(`Supprimer le lien « ${l.label} » ? Les demandes déjà reçues sont conservées ; l'historique des visites est effacé.`)) return;
+    if (!confirm(`Supprimer le lien « ${l.label} » ? L'historique des visites est effacé.`)) return;
+    await this.supprimer(l, undefined);
+  }
+  protected async confirmerSuppression(mode: DeleteLinkMode): Promise<void> {
+    const sup = this.suppression();
+    if (!sup) return;
+    await this.supprimer(sup.link, mode);
+  }
+  private async supprimer(l: InstallationBookingLinkDto, mode: DeleteLinkMode | undefined): Promise<void> {
+    this.busy.set(true);
     try {
-      await firstValueFrom(this.api.deleteLink(l.id));
+      await firstValueFrom(this.api.deleteLink(l.id, mode));
+      this.suppression.set(null);
       if (this.createdUrl() === l.publicUrl) this.createdUrl.set(null);
       if (this.visitesOuvertes() === l.id) this.visitesOuvertes.set(null);
       await this.reload();
-      this.toast.success('Lien supprimé');
+      this.toast.success('Lien supprimé', mode === 'conserver' ? 'Ses demandes restent lisibles dans l\'onglet Demandes.' : mode === 'effacer' ? 'Ses demandes ont été effacées.' : undefined);
     } catch (e) {
-      swallow('admin-installation-bookings:deleteLink', e); this.toast.error('Suppression impossible', this.errMsg(e)); }
+      swallow('admin-installation-bookings:deleteLink', e);
+      const corps = (e as { error?: { error?: { consequences?: DeleteLinkConsequencesDto } } })?.error?.error;
+      if ((e as { status?: number })?.status === 409 && corps?.consequences) {
+        this.suppression.set({ link: l, consequences: corps.consequences });
+      } else {
+        this.toast.error('Suppression impossible', this.errMsg(e));
+      }
+    } finally { this.busy.set(false); }
   }
 
   // ── Visites ──
@@ -822,8 +1058,8 @@ export class AdminInstallationBookingsComponent implements OnInit {
     }
   }
 
+  /** Le message de l'API (`{ error: { message } }` depuis le filtre global), sinon un repli. */
   private errMsg(e: unknown): string {
-    const m = (e as { error?: { message?: string } })?.error?.message;
-    return typeof m === 'string' ? m : 'Une erreur est survenue.';
+    return apiErrorMessage(e);
   }
 }

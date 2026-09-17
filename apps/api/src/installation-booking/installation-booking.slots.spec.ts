@@ -143,3 +143,42 @@ describe('installation-booking slots — horaires du week-end', () => {
     expect(windowFor(CONFIG, 6)).toEqual({ start: 480, end: 1260 });
   });
 });
+
+/**
+ * MULTI-VÉHICULES — un véhicule = 2 h (décision du 16/09). Le créneau s'étire, la grille des
+ * départs ne bouge pas, et rien n'est proposé qui ne tienne pas dans la journée.
+ */
+describe('installation-booking slots — plusieurs véhicules', () => {
+  // Vendredi 3 juillet : J+1 = samedi 4, semaine 08:00–21:00, samedi 09:00–13:00.
+  const now = new Date('2026-07-03T00:00:00Z');
+  const cfg: SlotConfig = { ...CONFIG, workingDays: [1, 2, 3, 4, 5, 6], weekendStartMinutes: 540, weekendEndMinutes: 780, horizonDays: 5 };
+  const isoOf = (date: string) => parisParts(new Date(`${date}T12:00:00Z`)).isoWeekday;
+
+  it('deux véhicules = des créneaux de 4 h, alignés sur la grille de 2 h', () => {
+    const days = generateAvailability(cfg, now, [], 2);
+    const lundi = days.find((d) => isoOf(d.date) === 1)!;
+    expect(lundi.slots.map((s) => s.label)).toEqual(['08:00 – 12:00', '10:00 – 14:00', '12:00 – 16:00', '14:00 – 18:00', '16:00 – 20:00']);
+    for (const s of lundi.slots) expect(s.endAt.getTime() - s.startAt.getTime()).toBe(240 * 60_000);
+  });
+
+  it('un samedi 09:00–13:00 : deux départs pour un véhicule, un seul pour deux, aucun pour trois', () => {
+    const samedi = (n: number) => generateAvailability(cfg, now, [], n).find((d) => isoOf(d.date) === 6);
+    expect(samedi(1)!.slots.map((s) => s.label)).toEqual(['09:00 – 11:00', '11:00 – 13:00']);
+    expect(samedi(2)!.slots.map((s) => s.label)).toEqual(['09:00 – 13:00']);
+    expect(samedi(3)).toBeUndefined();
+  });
+
+  it('un créneau étiré ne chevauche pas une demande existante au milieu', () => {
+    const lundi1 = generateAvailability(cfg, now, [], 1).find((d) => isoOf(d.date) === 1)!;
+    const occupe = lundi1.slots.find((s) => s.label === '12:00 – 14:00')!;
+    const busy = [{ startMs: occupe.startAt.getTime(), endMs: occupe.endAt.getTime() }];
+    const lundi2 = generateAvailability(cfg, now, busy, 2).find((d) => isoOf(d.date) === 1)!;
+    // 08–12 passe (finit à 12:00, demi-ouvert), 10–14 et 12–16 chevauchent, 14–18 et 16–20 passent.
+    expect(lundi2.slots.map((s) => s.label)).toEqual(['08:00 – 12:00', '14:00 – 18:00', '16:00 – 20:00']);
+  });
+
+  it('un nombre absent ou nul vaut un véhicule', () => {
+    expect(generateAvailability(cfg, now, [], 0)).toEqual(generateAvailability(cfg, now, [], 1));
+    expect(generateAvailability(cfg, now, [])).toEqual(generateAvailability(cfg, now, [], 1));
+  });
+});

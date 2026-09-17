@@ -4,6 +4,7 @@ import { EmailModule } from '../email/email.module';
 import { InstallationBookingController } from './installation-booking.controller';
 import { InstallationBookingEntretienService } from './installation-booking-entretien.service';
 import { InstallationBookingService } from './installation-booking.service';
+import { ManagerClientService } from './manager-client.service';
 import { PublicBookingController } from './public-booking.controller';
 
 /**
@@ -13,6 +14,6 @@ import { PublicBookingController } from './public-booking.controller';
 @Module({
   imports: [AuthModule, EmailModule],
   controllers: [InstallationBookingController, PublicBookingController],
-  providers: [InstallationBookingService, InstallationBookingEntretienService],
+  providers: [InstallationBookingService, InstallationBookingEntretienService, ManagerClientService],
 })
 export class InstallationBookingModule {}

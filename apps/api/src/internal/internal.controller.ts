@@ -1,4 +1,5 @@
-import { Body, Controller, Delete, Get, HttpCode, HttpStatus, NotFoundException, Param, Post, UseGuards } from '@nestjs/common';
+import { Body, ConflictException, Controller, Delete, Get, HttpCode, HttpStatus, NotFoundException, Param, Post, UseGuards } from '@nestjs/common';
+import { telephoneClientE164 } from '../installation-booking/contact';
 import { UserRole } from '@prisma/client';
 import { AuthClientService } from '../auth-client/auth-client.service';
 import { AuthAccountSyncService } from '../users/auth-account-sync.service';
@@ -35,29 +36,57 @@ export class InternalController {
     });
   }
 
+  /**
+   * Provision d'une flotte par Vizyo Manager (conception RDV v2, § 1.2 C1–C3).
+   *
+   * ┌─ TROIS DÉFAUTS RÉPARÉS ────────────────────────────────────────────────────────────────┐
+   * │ C1 `clientId` est stocké (Manager l'envoie depuis le lot D) : Tracky sait enfin quelle   │
+   * │    flotte appartient à quel client.                                                      │
+   * │ C2 Prénom / nom / téléphone du CONTACT, plus le nom de la société en guise de prénom.   │
+   * │ C3 TRANSACTION + IDEMPOTENCE : avant, la flotte était créée PUIS l'admin — un e-mail    │
+   * │    déjà pris laissait une flotte orpheline, et rejouer en créait une deuxième. Désormais │
+   * │    un admin déjà connu (même e-mail ou même compte Auth) rend SA flotte, sans rien créer. │
+   * └────────────────────────────────────────────────────────────────────────────────────────┘
+   */
   @Post('fleet/provision')
   @HttpCode(HttpStatus.CREATED)
   async provisionFleet(@Body() dto: ProvisionFleetDto) {
-    const fleet = await this.prisma.fleet.create({
-      data: {
-        name: dto.fleetName,
-        clientId: dto.clientId,
-      },
+    const email = dto.adminEmail.trim().toLowerCase();
+    const existant = await this.prisma.user.findFirst({
+      where: { OR: [{ email }, { authUserId: dto.adminAuthUserId }] },
+      select: { id: true, email: true, fleetId: true, role: true },
+    });
+    if (existant) {
+      if (!existant.fleetId) {
+        throw new ConflictException(`Le compte ${existant.email} existe déjà dans Tracky sans flotte : rattachez-le à la main.`);
+      }
+      // Idempotent : la même demande rejouée (ou un client déjà provisionné) rend sa flotte.
+      if (dto.clientId) {
+        await this.prisma.fleet.update({ where: { id: existant.fleetId }, data: { clientId: dto.clientId } }).catch(() => undefined);
+      }
+      this.recordInternal('fleet_provision_existing', existant.fleetId, dto.fleetName, `Admin ${existant.email} déjà provisionné — flotte existante rendue`);
+      return { fleetId: existant.fleetId, existed: true };
+    }
+
+    const phone = telephoneClientE164(dto.adminPhone) ?? null;
+    const fleet = await this.prisma.$transaction(async (tx) => {
+      const f = await tx.fleet.create({ data: { name: dto.fleetName.trim(), clientId: dto.clientId ?? null } });
+      await tx.user.create({
+        data: {
+          authUserId: dto.adminAuthUserId,
+          email,
+          firstName: dto.adminFirstName?.trim() || null,
+          lastName: dto.adminLastName?.trim() || null,
+          phone,
+          role: UserRole.FLEET_ADMIN,
+          fleetId: f.id,
+        },
+      });
+      return f;
     });
 
-    await this.prisma.user.create({
-      data: {
-        authUserId: dto.adminAuthUserId,
-        email: dto.adminEmail,
-        firstName: dto.adminFirstName,
-        lastName: dto.adminLastName,
-        role: UserRole.FLEET_ADMIN,
-        fleetId: fleet.id,
-      },
-    });
-
-    this.recordInternal('fleet_provisioned', fleet.id, dto.fleetName, `Admin ${dto.adminEmail}`);
-    return { fleetId: fleet.id };
+    this.recordInternal('fleet_provisioned', fleet.id, dto.fleetName, `Admin ${email}${dto.clientId ? ` · client Manager ${dto.clientId}` : ''}`);
+    return { fleetId: fleet.id, existed: false };
   }
 
   @Post('fleet/suspend')

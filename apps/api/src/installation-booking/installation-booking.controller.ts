@@ -16,7 +16,9 @@ import { InstallationBookingStatus, UserRole } from '@prisma/client';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { AuthenticatedRequest, JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
+import type { DeleteLinkMode } from '@vizyo/tracky-shared';
 import {
+  CancelBookingDto,
   ConfirmBookingDto,
   CreateBookingLinkDto,
   RejectBookingDto,
@@ -55,10 +57,21 @@ export class InstallationBookingController {
     return this.service.updateLink(id, dto);
   }
 
+  /** Ce que la suppression emporterait — le dialogue de l'écran le lit avant de demander. */
+  @Get('links/:id/consequences-suppression')
+  consequencesSuppression(@Param('id') id: string) {
+    return this.service.consequencesSuppression(id);
+  }
+
+  /**
+   * Suppression (Q8) : `?demandes=conserver|effacer` dit quoi faire des demandes ; sans réponse
+   * alors qu'il y en a, le service répond 409 avec le décompte.
+   */
   @Delete('links/:id')
   @HttpCode(HttpStatus.NO_CONTENT)
-  async deleteLink(@Param('id') id: string) {
-    await this.service.deleteLink(id);
+  async deleteLink(@Req() req: AuthenticatedRequest, @Param('id') id: string, @Query('demandes') demandes?: string) {
+    const mode: DeleteLinkMode | undefined = demandes === 'conserver' || demandes === 'effacer' ? demandes : undefined;
+    await this.service.deleteLink(id, mode, req.user.id);
   }
 
   /** Les visites de la page publique d'un lien : qui l'a ouvert, quand, depuis quoi, et la suite. */
@@ -90,5 +103,11 @@ export class InstallationBookingController {
   @Post(':id/reject')
   reject(@Param('id') id: string, @Body() dto: RejectBookingDto) {
     return this.service.rejectBooking(id, dto);
+  }
+
+  /** Annuler une demande — en attente ou confirmée ; les poses non faites sont retirées. */
+  @Post(':id/cancel')
+  cancel(@Req() req: AuthenticatedRequest, @Param('id') id: string, @Body() dto: CancelBookingDto) {
+    return this.service.cancelBooking(req.user.id, id, dto);
   }
 }

@@ -237,6 +237,12 @@ export class InstallationsService {
     }
 
     const effStatus: InstallationTaskStatus = dto.status ?? 'DONE';
+    // Lot A : une pose issue d'une réservation peut naître sans plaque (`PLAQUE_A_CONFIRMER` du
+    // service de réservation) ; à la pose, le véhicule est devant le technicien — la vraie plaque
+    // est exigée avant de provisionner. Une pose SAUTÉE (véhicule absent) reste possible.
+    if (effStatus === 'DONE' && existing.plate.trim().toLowerCase() === 'à confirmer') {
+      throw new BadRequestException('Renseignez la plaque du véhicule (modifier la ligne) avant de valider la pose.');
+    }
     const sim = dto.simNumber?.trim() || null;
 
     // 1) Capture (toujours conservee, meme si le provisioning echoue ensuite).

@@ -310,6 +310,7 @@ model Fleet {
   surveillanceEvents       SurveillanceEvent[]
   installationPlans        InstallationPlan[]
   installationBookingLinks InstallationBookingLink[]
+  installationBookings     InstallationBooking[]
   // Refonte agenda/IA (2026-07) — reglages de l'agent d'optimisation d'agenda (1:1, opt-in).
   agendaAgentSettings      AgendaAgentSettings?
   // Refonte agenda/IA (P4) — liens publics de demande de reservation (societe fixe).
@@ -529,6 +530,8 @@ model User {
   trackerCommands          TrackerCommand[]
   vehicleAccess            UserVehicleAccess[]
   invitationsSent          Invitation[]        @relation("InvitationCreatedBy")
+  bookingLinksCreated      InstallationBookingLink[] @relation("BookingLinkCreator")
+  bookingsConfirmed        InstallationBooking[]     @relation("BookingConfirmedBy")
   tripNotesAuthored        Trip[]              @relation("TripNotesAuthor")
   /// Phase 3 (futur) : si ce User est lie a un compte conducteur (driver login).
   /// Aujourd'hui null pour tous les Users existants. Cf. Driver.userId.
@@ -3507,11 +3510,19 @@ model InstallationTask {
   vehicle               Vehicle?               @relation("InstallationTaskVehicle", fields: [vehicleId], references: [id], onDelete: SetNull)
   trackerId             String?                @db.Uuid
   tracker               Tracker?               @relation("InstallationTaskTracker", fields: [trackerId], references: [id], onDelete: SetNull)
+  /// La demande de creneau dont cette pose est issue (lot A) — plusieurs poses par demande,
+  /// une par vehicule. L'editeur affiche alors le creneau, le telephone, l'adresse et la note
+  /// du client. SetNull : la pose survit a la demande.
+  bookingId             String?                @db.Uuid
+  bookingOrigin         InstallationBooking?   @relation("TaskBooking", fields: [bookingId], references: [id], onDelete: SetNull)
+  bookingVehicle        InstallationBookingVehicle? @relation("VehicleTask")
   createdAt             DateTime               @default(now())
   updatedAt             DateTime               @updatedAt
 
+  /// Obsolete (lot A) : ancienne relation 1:1 par `installation_bookings.taskId`.
   booking InstallationBooking?
 
+  @@index([bookingId])
   @@index([planId, orderIndex])
   @@index([planId, scheduledDate])
   @@index([vehicleId])
@@ -3539,8 +3550,16 @@ model InstallationTask {
 /// semaines, delai mini 24h).
 model InstallationBookingLink {
   id              String            @id @default(uuid()) @db.Uuid
-  fleetId         String            @db.Uuid
-  fleet           Fleet             @relation(fields: [fleetId], references: [id], onDelete: Cascade)
+  /// FACULTATIVE depuis le lot A (2026-09-17) : un lien « prospect » n'a pas encore de flotte.
+  /// Elle est rattachee a la VALIDATION de la premiere demande (flotte existante, ou creee par
+  /// Vizyo Manager) et les demandes suivantes du lien en heritent. `companyName` est alors
+  /// obligatoire (regle du service), c'est lui que la page publique affiche.
+  fleetId         String?           @db.Uuid
+  fleet           Fleet?            @relation(fields: [fleetId], references: [id], onDelete: Cascade)
+  /// Nom de la societe du prospect (lien sans flotte). Affiche a la place de `fleet.name`.
+  companyName     String?
+  /// Plafond de vehicules par demande (1 vehicule = `slotMinutes`). Decision du proprietaire : 3.
+  maxVehicles     Int               @default(3)
   planId          String?           @db.Uuid
   plan            InstallationPlan? @relation(fields: [planId], references: [id], onDelete: SetNull)
   /// Libelle interne (identifie le lien cote admin).
@@ -3585,7 +3604,9 @@ model InstallationBookingLink {
   openCount       Int               @default(0)
   firstOpenedAt   DateTime?
   lastOpenedAt    DateTime?
+  /// Qui a cree le lien — relie a `users` depuis le lot A, pour l'afficher (« cree par … le … »).
   createdBy       String?           @db.Uuid
+  creator         User?             @relation("BookingLinkCreator", fields: [createdBy], references: [id], onDelete: SetNull)
   createdAt       DateTime          @default(now())
   updatedAt       DateTime          @updatedAt
 
@@ -3621,7 +3642,8 @@ model InstallationBookingLinkVisit {
   linkId         String                  @db.Uuid
   link           InstallationBookingLink @relation(fields: [linkId], references: [id], onDelete: Cascade)
   /// Denormalise depuis le lien (filtre par societe sans jointure).
-  fleetId        String                  @db.Uuid
+  /// NULL pour la visite d'un lien prospect (lot A).
+  fleetId        String?                 @db.Uuid
   openedAt       DateTime                @default(now())
   /// Dernier geste recu (evenement, rechargement).
   lastSeenAt     DateTime                @default(now())
@@ -3659,10 +3681,22 @@ model InstallationBookingLinkVisit {
 /// A la validation, on cree la pose (`taskId`) dans le planning du lien.
 model InstallationBooking {
   id              String                    @id @default(uuid()) @db.Uuid
-  linkId          String                    @db.Uuid
-  link            InstallationBookingLink   @relation(fields: [linkId], references: [id], onDelete: Cascade)
-  /// Denormalise depuis le lien (scoping/filtre sans jointure).
-  fleetId         String                    @db.Uuid
+  /// FACULTATIF depuis le lot A : supprimer un lien en « conservant les demandes » le met a
+  /// null (SetNull, plus Cascade) — l'ecran promettait deja qu'elles etaient conservees.
+  linkId          String?                   @db.Uuid
+  link            InstallationBookingLink?  @relation(fields: [linkId], references: [id], onDelete: SetNull)
+  /// Libelle du lien recopie a la creation : lisible apres la suppression du lien.
+  linkLabel       String?
+  /// Denormalise depuis le lien (scoping/filtre sans jointure). NULL pour la demande d'un
+  /// prospect, jusqu'a la validation qui rattache (ou cree) la flotte.
+  fleetId         String?                   @db.Uuid
+  /// Lot A : enfin RELIEE (SetNull) — une flotte supprimee ne laisse plus d'identifiant orphelin.
+  fleet           Fleet?                    @relation(fields: [fleetId], references: [id], onDelete: SetNull)
+  /// Societe telle que le client la connait (du lien prospect, ou nom de la flotte).
+  companyName     String?
+  /// Nombre de vehicules a equiper : `endAt = startAt + slotMinutes x vehicleCount`.
+  /// Le detail par vehicule vit dans `installation_booking_vehicles`.
+  vehicleCount    Int                       @default(1)
   startAt         DateTime
   endAt           DateTime
   status          InstallationBookingStatus @default(PENDING)
@@ -3675,12 +3709,22 @@ model InstallationBooking {
   vehicleModel    String?
   vehicleEnergy   InstallationEnergy?
   notes           String?                   @db.Text
-  /// Pose creee a la validation (SetNull : supprimer la pose n'efface pas l'historique).
+  /// ⚠️ OBSOLETE depuis le lot A (2026-09-17) : les poses d'une demande passent par
+  /// `installation_tasks.bookingId` (une par vehicule). Conserve pour le repli d'image ; plus ecrit.
   taskId          String?                   @unique @db.Uuid
   task            InstallationTask?         @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  /// ⚠️ OBSOLETES depuis le lot A : `vehiclePlate/Brand/Model/Energy` vivent dans
+  /// `installation_booking_vehicles`. Conserves pour le repli ; plus ecrits.
   rejectionReason String?
+  /// Annulation (operateur au lot A ; client au lot C) : `cancelledBy` = id utilisateur ou 'client'.
+  cancelledAt     DateTime?
+  cancelledBy     String?
+  cancelReason    String?
   confirmedAt     DateTime?
   confirmedBy     String?                   @db.Uuid
+  confirmer       User?                     @relation("BookingConfirmedBy", fields: [confirmedBy], references: [id], onDelete: SetNull)
+  vehicles        InstallationBookingVehicle[]
+  tasks           InstallationTask[]        @relation("TaskBooking")
   createdAt       DateTime                  @default(now())
   updatedAt       DateTime                  @updatedAt
   /// La visite de la page publique pendant laquelle la demande a ete deposee.
@@ -3690,6 +3734,25 @@ model InstallationBooking {
   @@index([fleetId, status])
   @@index([status, startAt])
   @@map("installation_bookings")
+}
+
+/// Un vehicule d'une demande de creneau (lot A, 2026-09-17). Une demande en porte
+/// `vehicleCount`, dans l'ordre de saisie ; a la validation, chacun devient une pose
+/// (`taskId`, SetNull : supprimer la pose n'efface pas ce que le client a declare).
+model InstallationBookingVehicle {
+  id        String              @id @default(uuid()) @db.Uuid
+  bookingId String              @db.Uuid
+  booking   InstallationBooking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  position  Int
+  plate     String?
+  brand     String?
+  model     String?
+  energy    InstallationEnergy?
+  taskId    String?             @unique @db.Uuid
+  task      InstallationTask?   @relation("VehicleTask", fields: [taskId], references: [id], onDelete: SetNull)
+
+  @@index([bookingId, position])
+  @@map("installation_booking_vehicles")
 }
 
 /// V1.16 — Carte SIM M2M du parc WhereverSIM.

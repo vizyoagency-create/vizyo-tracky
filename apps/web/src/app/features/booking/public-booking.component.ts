@@ -1,3 +1,4 @@
+import { apiErrorMessage } from '../../core/error/api-error';
 import { swallow } from '../../core/error/swallow';
 import { ChangeDetectionStrategy, Component, computed, inject, OnInit, signal } from '@angular/core';
 import { ActivatedRoute } from '@angular/router';
@@ -8,6 +9,7 @@ import type {
   BookingVisitEventType,
   CreatePublicBookingDto,
   DecouverteVideoDto,
+  InstallationEnergy,
   PublicBookingLinkDto,
 } from '@vizyo/tracky-shared';
 import {
@@ -18,9 +20,11 @@ import { InstallationBookingApiService } from '../../core/services/installation-
 
 /**
  * Page PUBLIQUE de réservation de créneau d'installation (hors auth). Le client ouvre
- * `/book/<token>`, choisit un jour puis un créneau LIBRE, renseigne ses infos (sauf en
- * mode « lien direct » où l'e-mail est déjà connu) et dépose sa demande. Page autonome
- * (hors shell authentifié) → styles complets ici, charte émeraude/Manrope.
+ * `/book/<token>`, dit COMBIEN de véhicules il équipe (la grille s'adapte : 2 h par véhicule),
+ * choisit un jour puis un créneau LIBRE, renseigne ses coordonnées — nom, e-mail ET téléphone,
+ * toujours demandés depuis le lot A, pré-remplis sur un lien nominatif — décrit chaque véhicule
+ * (tout facultatif : il ne sait pas toujours) et dépose sa demande. Page autonome (hors shell
+ * authentifié) → styles complets ici, charte émeraude/Manrope.
  *
  * ┌─ CE QUE LA PAGE RACONTE À L'ATELIER ────────────────────────────────────────────────┐
  * │ Chaque ouverture est une VISITE côté serveur (appareil, provenance, IP tronquée), et  │
@@ -88,9 +92,22 @@ import { InstallationBookingApiService } from '../../core/services/installation-
           <div class="pb-body">
             <h1 class="pb-title">Réservez votre installation</h1>
             <p class="pb-sub">
-              {{ link()?.companyName }} · créneaux de {{ dureeLisible() }}
+              {{ link()?.companyName }} · {{ dureeLisible() }} par véhicule
               @if (link()?.weekendOuvert) { <span class="pb-pill">week-end possible</span> }
             </p>
+
+            <!-- Combien de véhicules : la grille dépend de la réponse (n × 2 h). -->
+            @if (maxVehicles() > 1) {
+              <div class="pb-label">{{ etape(0) }} · Combien de véhicules à équiper&nbsp;?</div>
+              <div class="pb-nb">
+                @for (n of choixVehicules(); track n) {
+                  <button type="button" class="pb-nb-b" [class.on]="vehicleCount() === n" [disabled]="rechargement()" (click)="choisirNombre(n)">
+                    {{ n }}
+                  </button>
+                }
+                <span class="pb-nb-d">{{ vehicleCount() }} véhicule{{ vehicleCount() > 1 ? 's' : '' }} · rendez-vous de {{ dureeTotaleLisible() }}</span>
+              </div>
+            }
 
             @if (days().length === 0) {
               <!-- « Reessayez plus tard » n'est pas une sortie : rien ne dit quand, ni a qui parler. -->
@@ -101,8 +118,8 @@ import { InstallationBookingApiService } from '../../core/services/installation-
               </div>
             } @else {
               <!-- Jours -->
-              <div class="pb-label">1 · Choisissez un jour</div>
-              <div class="pb-days">
+              <div class="pb-label">{{ etape(1) }} · Choisissez un jour</div>
+              <div class="pb-days" [class.pb-days--rechargement]="rechargement()">
                 @for (d of days(); track d.date) {
                   <button type="button" class="pb-day" [class.on]="selectedDate() === d.date" [class.we]="d.weekend" (click)="selectDay(d.date)">
                     <span class="pb-day-l">{{ d.label }}</span>
@@ -114,7 +131,7 @@ import { InstallationBookingApiService } from '../../core/services/installation-
 
               <!-- Créneaux -->
               @if (selectedDay(); as day) {
-                <div class="pb-label">2 · Choisissez un créneau</div>
+                <div class="pb-label">{{ etape(2) }} · Choisissez un créneau</div>
                 <div class="pb-slots">
                   @for (s of day.slots; track s.startAt) {
                     <button type="button" class="pb-slot" [class.on]="selectedSlot()?.startAt === s.startAt" (click)="selectSlot(s)">{{ s.label }}</button>
@@ -124,26 +141,42 @@ import { InstallationBookingApiService } from '../../core/services/installation-
 
               <!-- Formulaire -->
               @if (selectedSlot()) {
-                <div class="pb-label">3 · Vos informations</div>
+                <div class="pb-label">{{ etape(3) }} · Vos coordonnées</div>
                 <div class="pb-form" (focusin)="formulaireTouche()">
-                  @if (link()?.needsClientInfo) {
-                    <label class="pb-f"><span>Nom complet *</span><input class="pb-in" [value]="name()" (input)="name.set($any($event.target).value)" placeholder="Prénom Nom"></label>
-                    <label class="pb-f"><span>E-mail *</span><input class="pb-in" type="email" [value]="email()" (input)="email.set($any($event.target).value)" placeholder="vous@exemple.fr"></label>
-                    <label class="pb-f"><span>Téléphone</span><input class="pb-in" [value]="phone()" (input)="phone.set($any($event.target).value)" placeholder="06 12 34 56 78"></label>
-                    <label class="pb-f pb-f--full"><span>Adresse (lieu de pose)</span><input class="pb-in" [value]="address()" (input)="address.set($any($event.target).value)" placeholder="12 rue…, 31000 Toulouse"></label>
-                  } @else {
-                    <div class="pb-known">Bonjour <strong>{{ link()?.prefill?.name || 'à vous' }}</strong>, on a déjà vos coordonnées. Choisissez juste votre créneau ci-dessus.</div>
+                  @if (link()?.prefill?.name) {
+                    <div class="pb-known">Bonjour <strong>{{ link()?.prefill?.name }}</strong> — vérifiez vos coordonnées, c'est là que la confirmation arrive.</div>
                   }
-                  <label class="pb-f"><span>Immatriculation</span><input class="pb-in" [value]="plate()" (input)="plate.set($any($event.target).value)" placeholder="AB-123-CD"></label>
-                  <label class="pb-f"><span>Marque / modèle</span><input class="pb-in" [value]="vehicle()" (input)="vehicle.set($any($event.target).value)" placeholder="Renault Kangoo"></label>
-                  <label class="pb-f pb-f--full"><span>Remarque (optionnel)</span><textarea class="pb-in pb-ta" [value]="notes()" (input)="notes.set($any($event.target).value)" rows="2" placeholder="Une précision utile ?"></textarea></label>
+                  <label class="pb-f"><span>Nom complet *</span><input class="pb-in" autocomplete="name" [value]="name()" (input)="name.set($any($event.target).value)" placeholder="Prénom Nom"></label>
+                  <label class="pb-f"><span>E-mail *</span><input class="pb-in" type="email" autocomplete="email" inputmode="email" [value]="email()" (input)="email.set($any($event.target).value)" placeholder="vous@exemple.fr"></label>
+                  <label class="pb-f"><span>Téléphone *</span><input class="pb-in" type="tel" autocomplete="tel" inputmode="tel" [value]="phone()" (input)="phone.set($any($event.target).value)" placeholder="06 12 34 56 78"><small class="pb-aide-champ">Pour vous joindre la veille si besoin.</small></label>
+                  <label class="pb-f"><span>Adresse (lieu de pose)</span><input class="pb-in" autocomplete="street-address" [value]="address()" (input)="address.set($any($event.target).value)" placeholder="12 rue…, 31000 Toulouse"></label>
+                </div>
+
+                <div class="pb-label">{{ etape(4) }} · {{ vehicleCount() > 1 ? 'Vos véhicules' : 'Votre véhicule' }} <span class="pb-label-opt">— si vous les connaissez</span></div>
+                @for (v of vehicleRows(); track $index; let i = $index) {
+                  <div class="pb-veh">
+                    @if (vehicleCount() > 1) { <div class="pb-veh-t">Véhicule {{ i + 1 }}</div> }
+                    <div class="pb-form pb-form--veh">
+                      <label class="pb-f"><span>Immatriculation</span><input class="pb-in" [value]="v.plate" (input)="majVehicule(i, 'plate', $any($event.target).value)" placeholder="AB-123-CD" autocapitalize="characters"></label>
+                      <label class="pb-f"><span>Marque / modèle</span><input class="pb-in" [value]="v.vehicle" (input)="majVehicule(i, 'vehicle', $any($event.target).value)" placeholder="Renault Kangoo"></label>
+                      <label class="pb-f"><span>Énergie</span>
+                        <select class="pb-in" (change)="majVehicule(i, 'energy', $any($event.target).value)">
+                          <option value="" [selected]="!v.energy">—</option>
+                          @for (e of ENERGIES; track e.value) { <option [value]="e.value" [selected]="v.energy === e.value">{{ e.label }}</option> }
+                        </select>
+                      </label>
+                    </div>
+                  </div>
+                }
+                <div class="pb-form">
+                  <label class="pb-f pb-f--full"><span>Remarque (optionnel)</span><textarea class="pb-in pb-ta" [value]="notes()" (input)="notes.set($any($event.target).value)" rows="2" placeholder="Une précision utile ? (accès, horaires, contact sur place…)"></textarea></label>
                 </div>
 
                 @if (error()) { <div class="pb-err">{{ error() }}</div> }
                 <button type="button" class="pb-submit" [disabled]="submitting()" (click)="submit()">
                   {{ submitting() ? 'Envoi…' : 'Confirmer ma demande' }}
                 </button>
-                <p class="pb-legal">Créneau choisi : <strong>{{ selectedSlot()?.label }}</strong> · {{ selectedDayLabel() }}</p>
+                <p class="pb-legal">Créneau choisi : <strong>{{ selectedSlot()?.label }}</strong> · {{ selectedDayLabel() }}@if (vehicleCount() > 1) { · {{ vehicleCount() }} véhicules }</p>
               }
             }
 
@@ -265,6 +298,21 @@ import { InstallationBookingApiService } from '../../core/services/installation-
     .pb-in:focus { outline:none; border-color:var(--color-tracky-light); }
     .pb-ta { resize:vertical; }
     .pb-known { grid-column:1 / -1; padding:12px 14px; border-radius:11px; background:color-mix(in srgb, var(--color-tracky-light) 8%, transparent); border:1px solid color-mix(in srgb, var(--color-tracky-light) 20%, transparent); font-size:13px; color:var(--fg-secondary); }
+    .pb-aide-champ { font-size:11.5px; color:var(--fg-secondary); }
+    .pb-label-opt { font-weight:500; text-transform:none; letter-spacing:0; }
+    /* Nombre de véhicules */
+    .pb-nb { display:flex; align-items:center; flex-wrap:wrap; gap:8px; }
+    .pb-nb-b { display:inline-flex; align-items:center; justify-content:center; min-width:44px; min-height:44px; padding:0 14px; border-radius:12px; border:1px solid var(--border-strong); background:var(--bg-tertiary); color:var(--fg-primary); font-size:15px; font-weight:800; cursor:pointer; transition:.15s; font-family:inherit; }
+    .pb-nb-b:hover { border-color:color-mix(in srgb, var(--color-tracky-light) 50%, transparent); }
+    .pb-nb-b.on { border-color:var(--color-tracky-light); background:color-mix(in srgb, var(--color-tracky-light) 14%, transparent); color:var(--texte-succes); }
+    .pb-nb-b:disabled { opacity:.6; cursor:default; }
+    .pb-nb-d { font-size:12.5px; color:var(--fg-secondary); margin-left:4px; }
+    .pb-days--rechargement { opacity:.5; pointer-events:none; }
+    /* Un bloc par véhicule */
+    .pb-veh { margin-bottom:10px; padding:12px 14px; border-radius:12px; border:1px solid var(--border-subtle); background:color-mix(in srgb, var(--bg-tertiary) 55%, transparent); }
+    .pb-veh-t { font-size:12px; font-weight:800; letter-spacing:.02em; color:var(--fg-primary); margin-bottom:8px; }
+    .pb-form--veh { grid-template-columns:1fr 1fr 1fr; }
+    select.pb-in { appearance:auto; }
     .pb-submit { width:100%; margin-top:18px; padding:15px; border:none; border-radius:12px; background:var(--color-tracky-light); color:var(--accent-ink); font-size:15px; font-weight:800; cursor:pointer; }
     .pb-submit:disabled { opacity:.6; cursor:default; }
     .pb-submit--compact { width:auto; margin-top:0; padding:0 18px; min-height:44px; font-size:14px; }
@@ -277,9 +325,9 @@ import { InstallationBookingApiService } from '../../core/services/installation-
     .pb-spin { width:34px; height:34px; margin:0 auto 14px; border:3px solid color-mix(in srgb, var(--color-tracky-light) 20%, transparent); border-top-color:var(--color-tracky-light); border-radius:50%; animation:pbspin .8s linear infinite; }
     @keyframes pbspin { to { transform:rotate(360deg); } }
     .pb-foot { margin-top:18px; font-size:11.5px; color:var(--fg-secondary); }
-    @media (max-width:520px) { .pb-form { grid-template-columns:1fr; } }
+    @media (max-width:520px) { .pb-form, .pb-form--veh { grid-template-columns:1fr; } }
 
-    /* Cibles tactiles : cette page s'ouvre au telephone, depuis un SMS. */
+    /* Cibles tactiles : cette page s'ouvre au téléphone, depuis un SMS. */
     .pb-day, .pb-slot { min-height:44px; }
     .pb-in { min-height:44px; }
     .pb-submit { min-height:48px; }
@@ -380,12 +428,29 @@ export class PublicBookingComponent implements OnInit {
   protected telHref(tel: string): string {
     return `tel:${tel.replace(/[^+\d]/g, '')}`;
   }
-  protected dureeLisible(): string {
-    const m = this.link()?.slotMinutes || 120;
+  private minutesLisibles(m: number): string {
     const h = Math.floor(m / 60);
     const r = m % 60;
     return r ? `${h}h${String(r).padStart(2, '0')}` : `${h}h`;
   }
+  protected dureeLisible(): string {
+    return this.minutesLisibles(this.link()?.slotMinutes || 120);
+  }
+  protected dureeTotaleLisible(): string {
+    return this.minutesLisibles((this.link()?.slotMinutes || 120) * this.vehicleCount());
+  }
+  /** Les numéros d'étape glissent d'un cran quand la question du nombre de véhicules s'affiche. */
+  protected etape(n: number): number {
+    return this.maxVehicles() > 1 ? n + 1 : n;
+  }
+
+  protected readonly ENERGIES: { value: InstallationEnergy; label: string }[] = [
+    { value: 'DIESEL', label: 'Diesel' },
+    { value: 'ESSENCE', label: 'Essence' },
+    { value: 'ELECTRIQUE', label: 'Électrique' },
+    { value: 'HYBRIDE', label: 'Hybride' },
+    { value: 'AUTRE', label: 'Autre' },
+  ];
 
   private readonly route = inject(ActivatedRoute);
   private readonly api = inject(InstallationBookingApiService);
@@ -413,14 +478,18 @@ export class PublicBookingComponent implements OnInit {
   protected readonly aboError = signal<string | null>(null);
   protected readonly aboSending = signal(false);
 
-  // Champs client / véhicule
+  // Contact (obligatoire) et véhicules (un bloc par véhicule, tout facultatif)
   protected readonly name = signal('');
   protected readonly email = signal('');
   protected readonly phone = signal('');
   protected readonly address = signal('');
-  protected readonly plate = signal('');
-  protected readonly vehicle = signal('');
   protected readonly notes = signal('');
+  protected readonly vehicleCount = signal(1);
+  protected readonly maxVehicles = computed(() => Math.max(1, this.link()?.maxVehicles ?? 1));
+  protected readonly choixVehicules = computed(() => Array.from({ length: this.maxVehicles() }, (_, i) => i + 1));
+  protected readonly vehicleRows = signal<{ plate: string; vehicle: string; energy: InstallationEnergy | '' }[]>([{ plate: '', vehicle: '', energy: '' }]);
+  /** La grille se recharge quand le nombre change — les jours sont grisés pendant ce temps. */
+  protected readonly rechargement = signal(false);
 
   protected readonly selectedDay = computed(() => this.days().find((d) => d.date === this.selectedDate()) ?? null);
   protected readonly selectedDayLabel = computed(() => this.selectedDay()?.label ?? '');
@@ -435,12 +504,21 @@ export class PublicBookingComponent implements OnInit {
     try {
       // La provenance n'a de sens qu'à la PREMIÈRE ouverture : au rechargement, c'est nous.
       const provenance = this.visiteId ? undefined : (typeof document !== 'undefined' ? document.referrer : '');
-      const link = await firstValueFrom(this.api.getPublicLink(this.token, this.visiteId, provenance));
+      const link = await firstValueFrom(this.api.getPublicLink(this.token, this.visiteId, provenance, this.vehicleCount()));
       this.link.set(link);
       this.visiteId = link.visite?.id ?? this.visiteId;
       this.days.set(link.days);
       if (link.days.length > 0) this.selectedDate.set(link.days[0].date);
-      if (link.prefill?.email) this.aboEmail.set(link.prefill.email);
+      // Lien nominatif : les coordonnées connues sont proposées, le client les corrige.
+      if (link.prefill) {
+        if (link.prefill.email) this.aboEmail.set(link.prefill.email);
+        if (!this.name()) this.name.set(link.prefill.name ?? '');
+        if (!this.email()) this.email.set(link.prefill.email ?? '');
+        if (!this.phone()) this.phone.set(link.prefill.phone ?? '');
+        if (!this.address()) this.address.set(link.prefill.address ?? '');
+      }
+      if (this.vehicleCount() !== link.vehicleCount) this.vehicleCount.set(link.vehicleCount);
+      this.ajusterVehicules(link.vehicleCount);
     } catch (err) {
       swallow('public-booking:load', err);
       this.notFound.set(true);
@@ -467,6 +545,39 @@ export class PublicBookingComponent implements OnInit {
     this.trace('formulaire');
   }
 
+  /** Changer le nombre de véhicules recharge la grille (même visite), en gardant ce qui est saisi. */
+  protected async choisirNombre(n: number): Promise<void> {
+    if (n === this.vehicleCount() || this.rechargement()) return;
+    this.vehicleCount.set(n);
+    this.ajusterVehicules(n);
+    this.selectedSlot.set(null);
+    this.trace('vehicules', String(n));
+    this.rechargement.set(true);
+    try {
+      const link = await firstValueFrom(this.api.getPublicLink(this.token, this.visiteId, undefined, n));
+      this.link.set(link);
+      this.days.set(link.days);
+      const encore = link.days.find((d) => d.date === this.selectedDate());
+      this.selectedDate.set(encore ? encore.date : (link.days[0]?.date ?? null));
+    } catch (e) {
+      swallow('public-booking:vehicules', e);
+    } finally {
+      this.rechargement.set(false);
+    }
+  }
+  private ajusterVehicules(n: number): void {
+    const actuels = this.vehicleRows();
+    if (actuels.length === n) return;
+    this.vehicleRows.set(
+      actuels.length > n
+        ? actuels.slice(0, n)
+        : [...actuels, ...Array.from({ length: n - actuels.length }, () => ({ plate: '', vehicle: '', energy: '' as const }))],
+    );
+  }
+  protected majVehicule(i: number, champ: 'plate' | 'vehicle' | 'energy', valeur: string): void {
+    this.vehicleRows.update((liste) => liste.map((v, j) => (j === i ? { ...v, [champ]: valeur } : v)));
+  }
+
   protected selectDay(date: string): void {
     if (this.selectedDate() !== date) this.trace('jour', date);
     this.selectedDate.set(date);
@@ -482,20 +593,26 @@ export class PublicBookingComponent implements OnInit {
     const slot = this.selectedSlot();
     if (!slot) return;
     this.error.set(null);
-    if (this.link()?.needsClientInfo) {
-      if (!this.name().trim()) { this.error.set('Renseignez votre nom.'); return; }
-      if (!/.+@.+\..+/.test(this.email().trim())) { this.error.set('Renseignez un e-mail valide.'); return; }
-    }
-    const [brand, ...rest] = this.vehicle().trim().split(' ');
+    // Le contact est obligatoire : c'est là qu'arrive la confirmation, et l'appel de la veille.
+    if (this.name().trim().length < 2) { this.error.set('Renseignez votre nom.'); return; }
+    if (!/.+@.+\..+/.test(this.email().trim())) { this.error.set('Renseignez un e-mail valide.'); return; }
+    if (this.phone().replace(/\D/g, '').length < 9) { this.error.set('Renseignez un numéro de téléphone (ex. 06 12 34 56 78).'); return; }
     const dto: CreatePublicBookingDto = {
       startAt: slot.startAt,
-      clientName: this.name().trim() || undefined,
-      clientEmail: this.email().trim() || undefined,
-      clientPhone: this.phone().trim() || undefined,
+      vehicleCount: this.vehicleCount(),
+      vehicles: this.vehicleRows().map((v) => {
+        const [brand, ...rest] = v.vehicle.trim().split(' ');
+        return {
+          plate: v.plate.trim() || undefined,
+          brand: brand || undefined,
+          model: rest.join(' ') || undefined,
+          energy: v.energy || undefined,
+        };
+      }),
+      clientName: this.name().trim(),
+      clientEmail: this.email().trim(),
+      clientPhone: this.phone().trim(),
       clientAddress: this.address().trim() || undefined,
-      vehiclePlate: this.plate().trim() || undefined,
-      vehicleBrand: brand || undefined,
-      vehicleModel: rest.join(' ') || undefined,
       notes: this.notes().trim() || undefined,
       visiteId: this.visiteId ?? undefined,
     };
@@ -506,8 +623,8 @@ export class PublicBookingComponent implements OnInit {
       this.done.set(true);
     } catch (e: unknown) {
       swallow('public-booking:submit', e);
-      const msg = (e as { error?: { message?: string } })?.error?.message;
-      this.error.set(typeof msg === 'string' ? msg : 'Une erreur est survenue. Réessayez.');
+      // `{ error: { message } }` : le filtre global de l'API enveloppe le message métier.
+      this.error.set(apiErrorMessage(e, 'Une erreur est survenue. Réessayez.'));
       // Créneau plus dispo → on recharge les disponibilités (même visite : voir `load`).
       await this.load();
       this.selectedSlot.set(null);
@@ -526,8 +643,7 @@ export class PublicBookingComponent implements OnInit {
       this.abonnementFait.set(true);
     } catch (e: unknown) {
       swallow('public-booking:prevenirMoi', e);
-      const msg = (e as { error?: { message?: string } })?.error?.message;
-      this.aboError.set(typeof msg === 'string' ? msg : 'Une erreur est survenue. Réessayez.');
+      this.aboError.set(apiErrorMessage(e, 'Une erreur est survenue. Réessayez.'));
     } finally {
       this.aboSending.set(false);
     }

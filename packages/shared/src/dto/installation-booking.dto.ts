@@ -72,6 +72,7 @@ export interface DecouverteDto {
  */
 export type BookingVisitEventType =
   | 'ouverture'          // serveur — target : 'nouvelle' | 'rechargement'
+  | 'vehicules'          // page — target : nombre de véhicules choisi
   | 'jour'               // page — target : "YYYY-MM-DD"
   | 'creneau'            // page — target : libellé du créneau
   | 'formulaire'         // page — premier champ touché
@@ -84,8 +85,25 @@ export type BookingVisitEventType =
 
 /** Ce que la page a le droit d'envoyer. Le reste, seule l'API le pose. */
 export const BOOKING_VISIT_EVENTS_PAGE: readonly BookingVisitEventType[] = [
-  'jour', 'creneau', 'formulaire', 'decouverte', 'appel', 'courriel',
+  'vehicules', 'jour', 'creneau', 'formulaire', 'decouverte', 'appel', 'courriel',
 ];
+
+// ───────────────────────── Véhicules d'une demande ─────────────────────────
+
+/** Un véhicule à équiper, tel que le client le déclare (tout est facultatif : il ne sait pas toujours). */
+export interface BookingVehicleInputDto {
+  plate?: string | null;
+  brand?: string | null;
+  model?: string | null;
+  energy?: InstallationEnergy | null;
+}
+
+/** Un véhicule d'une demande, côté admin — et la pose qu'il est devenu à la validation. */
+export interface BookingVehicleDto extends BookingVehicleInputDto {
+  id: string;
+  position: number;
+  taskId: string | null;
+}
 
 export interface BookingVisitEventDto {
   /** ISO 8601, horodatage serveur. */
@@ -131,6 +149,14 @@ export interface PublicBookingLinkDto {
   /** Au moins un jour de week-end est ouvert : l'écran le dit avant même la liste des jours. */
   weekendOuvert: boolean;
   /**
+   * Multi-véhicules (lot A) : `days` est calculé pour `vehicleCount` véhicules (créneaux de
+   * `slotMinutes × vehicleCount`). La page redemande la grille quand le nombre change.
+   */
+  vehicleCount: number;
+  maxVehicles: number;
+  /** E-mail ET téléphone sont obligatoires (décision du 16/09) — la page le sait sans deviner. */
+  contactRequis: { email: true; telephone: true };
+  /**
    * La visite créée (ou réutilisée) par cet appel. `null` si le suivi a échoué : la page
    * fonctionne exactement pareil, elle n'envoie simplement plus de gestes.
    */
@@ -148,17 +174,19 @@ export interface AbonnementCreneauDto {
 
 /** Soumission d'une réservation (POST public). */
 export interface CreatePublicBookingDto {
-  /** ISO d'un créneau proposé (doit correspondre à une disponibilité). */
+  /** ISO d'un créneau proposé (doit correspondre à une disponibilité pour `vehicleCount`). */
   startAt: string;
-  /** Requis si `needsClientInfo` (lien générique) ; ignoré sinon. */
-  clientName?: string;
-  clientEmail?: string;
-  clientPhone?: string;
+  /** Nombre de véhicules (1 … `maxVehicles`). `vehicles` en porte autant, dans l'ordre. */
+  vehicleCount: number;
+  vehicles: BookingVehicleInputDto[];
+  /**
+   * Contact — OBLIGATOIRES tous les trois (nom, e-mail, téléphone), même sur un lien nominatif :
+   * le lien pré-remplit, le client corrige. Téléphone accepté au format français ou E.164.
+   */
+  clientName: string;
+  clientEmail: string;
+  clientPhone: string;
   clientAddress?: string;
-  vehiclePlate?: string;
-  vehicleBrand?: string;
-  vehicleModel?: string;
-  vehicleEnergy?: InstallationEnergy | null;
   notes?: string;
   /** La visite en cours, pour rattacher la demande à la chronologie de la page. */
   visiteId?: string;
@@ -176,9 +204,13 @@ export interface PublicBookingResultDto {
 
 export interface InstallationBookingDto {
   id: string;
-  linkId: string;
+  /** `null` quand le lien a été supprimé en conservant les demandes ; `linkLabel` reste. */
+  linkId: string | null;
   linkLabel: string;
-  fleetId: string;
+  /** `null` pour la demande d'un prospect, jusqu'à la validation. */
+  fleetId: string | null;
+  fleetName: string | null;
+  companyName: string | null;
   planId: string | null;
   startAt: string;
   endAt: string;
@@ -187,22 +219,31 @@ export interface InstallationBookingDto {
   clientEmail: string;
   clientPhone: string | null;
   clientAddress: string | null;
-  vehiclePlate: string | null;
-  vehicleBrand: string | null;
-  vehicleModel: string | null;
-  vehicleEnergy: InstallationEnergy | null;
+  vehicleCount: number;
+  vehicles: BookingVehicleDto[];
   notes: string | null;
-  taskId: string | null;
+  /** Les poses créées à la validation (une par véhicule), avec leur avancement. */
+  poses: { taskId: string; planId: string; plate: string; status: 'PENDING' | 'DONE' | 'SKIPPED' }[];
   rejectionReason: string | null;
+  cancelledAt: string | null;
+  /** `'client'` ou le nom de l'opérateur. */
+  cancelledByName: string | null;
+  cancelReason: string | null;
   confirmedAt: string | null;
+  confirmedByName: string | null;
   createdAt: string;
   updatedAt: string;
 }
 
 export interface InstallationBookingLinkDto {
   id: string;
-  fleetId: string;
-  fleetName: string;
+  /** `null` = lien prospect (pas encore de flotte) ; `companyName` porte alors la société. */
+  fleetId: string | null;
+  fleetName: string | null;
+  companyName: string | null;
+  maxVehicles: number;
+  /** « créé par … » — nom de l'opérateur, ou null si le compte n'existe plus. */
+  createdByName: string | null;
   planId: string | null;
   label: string;
   /** URL publique COMPLÈTE (`/book/<token>`) — à copier/partager. */
@@ -271,7 +312,11 @@ export interface InstallationBookingLinkVisitsDto {
 }
 
 export interface CreateInstallationBookingLinkDto {
-  fleetId: string;
+  /** Facultatif : sans flotte, `companyName` est obligatoire (lien prospect). */
+  fleetId?: string | null;
+  companyName?: string | null;
+  /** 1 … 6 ; défaut 3. */
+  maxVehicles?: number;
   label: string;
   /** Lier à un planning existant (sinon un planning est créé à la 1re validation). */
   planId?: string | null;
@@ -297,6 +342,10 @@ export interface CreateInstallationBookingLinkDto {
 export interface UpdateInstallationBookingLinkDto {
   label?: string;
   active?: boolean;
+  /** Rattacher (ou changer) la flotte d'un lien prospect. */
+  fleetId?: string | null;
+  companyName?: string | null;
+  maxVehicles?: number;
   slotMinutes?: number;
   dayStartMinutes?: number;
   dayEndMinutes?: number;
@@ -310,13 +359,32 @@ export interface UpdateInstallationBookingLinkDto {
 }
 
 export interface ConfirmInstallationBookingDto {
-  /** Plaque du véhicule (requise pour créer la pose) — défaut : celle fournie par le client. */
-  vehiclePlate?: string | null;
-  vehicleBrand?: string | null;
-  vehicleModel?: string | null;
-  vehicleEnergy?: InstallationEnergy | null;
+  /**
+   * Demande sans flotte : rattacher une flotte existante (`fleetId`) OU la créer via Vizyo
+   * Manager (`creerClient: true`, lot D). L'un des deux est obligatoire ; sinon 409.
+   */
+  fleetId?: string | null;
+  creerClient?: boolean;
+  /** Corrections des véhicules déclarés (par position) — plaque « À confirmer » si absente. */
+  vehicles?: ({ position: number } & BookingVehicleInputDto)[];
   /** Date de pose "YYYY-MM-DD" — défaut : le jour du créneau réservé. */
   scheduledDate?: string | null;
+}
+
+export interface CancelInstallationBookingDto {
+  reason?: string | null;
+  /** Envoyer un e-mail d'annulation au client (défaut false). */
+  notifyClient?: boolean;
+}
+
+/** Suppression d'un lien qui porte des demandes (Q8) : `conserver` les demandes, ou tout `effacer`. */
+export type DeleteLinkMode = 'conserver' | 'effacer';
+
+/** Ce que porte le 409 quand on supprime un lien sans dire quoi faire de ses demandes. */
+export interface DeleteLinkConsequencesDto {
+  demandes: { total: number; enAttente: number; confirmees: number };
+  visites: number;
+  abonnes: number;
 }
 
 export interface RejectInstallationBookingDto {
