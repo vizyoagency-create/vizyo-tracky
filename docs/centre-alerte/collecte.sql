@@ -320,18 +320,35 @@ LIMIT 30;
 -- dire tel quel, jamais à lire comme une amélioration ou une dégradation du recalage.
 -- Série (nouvelle définition) : 13/09 = 88 / 88 / 60 / 28 / 0 · 14/09 = 250 / 250 / 239 / 0 / 0
 --                                · 15/09 = 273 / 273 / 263 / 0 / 0.
+-- ⚠️ CORRIGÉ LE 17/09 : « close » ne veut pas dire « figée ». Le 15/09 rendait 273 le 16/09 à 01 h
+--    et 222 le 17/09 à 03 h — 71 trajets supprimés, 20 recréés dans la journée du 16/09, par
+--    l'automatisation horaire dont la fenêtre de recalcul vaut `lookbackHours` = 26 h. Une journée
+--    civile de Paris J = [J-1 22:00, J 22:00) UTC reste DANS cette fenêtre jusqu'à J+2 00:00 UTC.
+--    Le 14/09 (250 les 16 et 17/09) était déjà sorti de la fenêtre à sa première lecture ; le
+--    15/09 ne l'était pas. RÈGLE : une journée n'est comparable d'un passage à l'autre qu'une fois
+--    `fenetre_recalcul_close = O` — c'est-à-dire lue à J+2 ou plus tard. La colonne le dit ; la
+--    fenêtre est étendue à J-4 pour qu'il y ait toujours deux journées figées à comparer.
+--    Et `cloture_moins_2h` compte depuis `endedAt` : un trajet RECRÉÉ par le recalcul est signé
+--    « cloture » avec un délai de plusieurs heures (max 1 586 min le 15/09) — ce n'est pas un
+--    recalage lent, c'est une recréation. `cloture_moins_2h_depuis_creation` mesure depuis
+--    `greatest(endedAt, createdAt)` : c'est lui qui juge la qualité du flux neuf.
+--    Série figée (J+2) : 14/09 = 250 / 250 / 239 / 0 / 0 · 15/09 = 222 / 222 / 192 / 0 / 0.
 WITH j AS (
   SELECT (("endedAt" AT TIME ZONE 'UTC' AT TIME ZONE 'Europe/Paris')::date) AS jour_paris, *
   FROM trips
   WHERE "endedAt" IS NOT NULL
-    AND "endedAt" >= (date_trunc('day', now() AT TIME ZONE 'Europe/Paris') - interval '3 days') AT TIME ZONE 'Europe/Paris'
+    AND "endedAt" >= (date_trunc('day', now() AT TIME ZONE 'Europe/Paris') - interval '4 days') AT TIME ZONE 'Europe/Paris'
     AND "endedAt" <  (date_trunc('day', now() AT TIME ZONE 'Europe/Paris')) AT TIME ZONE 'Europe/Paris'
 )
 SELECT jour_paris,
+       CASE WHEN ((jour_paris + interval '2 days') AT TIME ZONE 'UTC') <= now()
+            THEN 'O' ELSE 'N' END                                                   AS fenetre_recalcul_close,
        count(*)                                                                    AS trajets,
        count(*) FILTER (WHERE "polylineMatched" IS NOT NULL)                       AS recales,
        count(*) FILTER (WHERE "polylineMatchedSource" = 'cloture'
                           AND "polylineMatchedAt" - "endedAt" < interval '2 hours') AS cloture_moins_2h,
+       count(*) FILTER (WHERE "polylineMatchedSource" = 'cloture'
+                          AND "polylineMatchedAt" - greatest("endedAt", "createdAt") < interval '2 hours') AS cloture_moins_2h_depuis_creation,
        count(*) FILTER (WHERE "polylineMatched" IS NOT NULL
                           AND "polylineMatchedAt" IS NULL)                          AS origine_inconnue,
        count(*) FILTER (WHERE "polylineMatched" IS NULL)                            AS sans_recalage,
