@@ -1,15 +1,15 @@
 {
   "_comment": "Ce que le POSTE DE COMMANDE montre en plus des tâches. Les tâches, elles, viennent de docs/centre-alerte/app/taches.json et ne se recopient JAMAIS ici — voir generer.mjs. Ce fichier ne porte que ce qu'aucune tâche ne décrit : les mesures de tête, les mécaniques qui tournent seules, les décisions posées au propriétaire, et ce qui est prouvé.",
   "version": 1,
-  "releve": "17 septembre 2026, 05h30 Paris",
+  "releve": "18 septembre 2026, 03h30 Paris",
   "machines": [
     {
       "nom": "Rattrapage du recalage des tracés",
       "texte": "Quinze tracés d’historique remis sur la route à chaque passage horaire, après les analyses. S’arrête tout seul.",
-      "fait": 6665,
-      "total": 18237,
-      "pied": "11 572 restants (5 185 dans la fenêtre de 60 j)",
-      "pied2": "≈ 14 jours à 15 par heure — 1 049 traces depuis le 13/09"
+      "fait": 7226,
+      "total": 18589,
+      "pied": "11 363 restants (4 892 dans la fenêtre de 60 j)",
+      "pied2": "≈ 14 jours à 15 par heure — 1 258 traces depuis le 13/09"
     },
     {
       "nom": "Reprise des analyses d’avant le 4 septembre",
@@ -20,23 +20,23 @@
       "pied2": "s’éteint seule"
     },
     {
-      "nom": "Coupe-circuit automatique — 2e nuit sur le chantier, la première probante : preuve de 21:30 OK, 0 refus, 28 coupes, 27 acquittées",
-      "texte": "Nuit du 16 au 17 : la preuve de 21:30 est partie et remise en 6 s (T69, déployé le matin même), l'interlock n'a rien retenu, 4 coupes MH Cars à 20:00 et 24 CDEF31 à 22:00 sont parties — 26 acquittées par TCP en 0,4 à 5,4 s, HM-733-GA par le repli SMS (83 s, première coupe SMS prouvée de bout en bout), GR-898-HY « non confirmée » alors que le boîtier avait répondu 0,9 s avant que le guetteur ne soit armé (T71, à coder : sur une reprise, la même course enverrait un SMS et une alerte pour rien). À 05:00 les 4 reprises MH Cars acquittées en ≤ 4,1 s ; les 22 CDEF31 partent à 07:00 — à lire à 07:10. Deux véhicules rallumés à la main par CDEF31 pour la 2e nuit sur 2 (HM-733-GA, GS-187-NY) : leurs plannings sont à ajuster.",
+      "nom": "Coupe-circuit automatique — 3e nuit sur le chantier, la 2e probante : preuve de 21:30 OK, 0 refus, 28 coupes, 28 acquittées — mais le matin du 17, l’API à terre a retardé les reprises de 53 min sans qu’une ligne le dise",
+      "texte": "Nuit du 17 au 18 : la preuve de 21:30 est partie et remise en 5 s, l'interlock n'a rien retenu, 4 coupes MH Cars à 20:00 et 24 CDEF31 à 22:00 sont parties — 27 acquittées par TCP en 0,4 à 5,0 s, EY-613-MF par le repli SMS en 5 s, aucune « non confirmée » ; les deux SIM injoignables sont passées en « TCP seul » (T62 exercé) et les notifications de reprise non confirmée ont atteint ton téléphone (T69 exercé). Second passage OK : la condition du Go est remplie. Mais le matin du 17 (migration du lot A en double, API à terre de 06:56 à 07:52 Paris) : les 24 reprises CDEF31 de 07:00 sont parties à 07:53, 20 par SMS, toutes acquittées à 08:08 — 53 à 67 min de véhicules qui ne démarraient pas, et le centre d'alerte n'en montre rien (T72, gravité 1) ; 7 reprises non confirmées, 1 seule ligne (T73). HM-733-GA rallumé à la main pour la 3e nuit sur 3 : son planning est à ajuster.",
       "fait": null,
       "total": null,
-      "pied": "35 plannings actifs sur 37 (30 CDEF31 + 5 MH Cars) — chantier + T69, 1re nuit probante",
-      "pied2": "07:10 : lire les 22 reprises CDEF31 ; ce soir 21:30 preuve → 22:00 coupes ; 2e passage OK = Go du banc"
+      "pied": "35 plannings actifs sur 37 (30 CDEF31 + 5 MH Cars) — 2 nuits probantes sur 3",
+      "pied2": "07:10 : lire les 24 reprises CDEF31 ; décider l’élargissement (T38) ; T72 avant la prochaine panne du matin"
     }
   ],
   "chiffres": [
     {
-      "v": "6",
-      "t": "défauts nés au centre d'alerte sur 24 h (sur 12 lignes — 4 CRITICAL « agent manqué » parce que le poste dort la nuit ; 37 CRITICAL actives dont 25 du refus de la nuit précédente, TRK-081)",
+      "v": "23",
+      "t": "défauts nés au centre d'alerte sur 24 h (sur 31 lignes — 8 du recalcul sur un boîtier sans fix, 6 sur les deux SIM injoignables, 3 « session Claude expirée » ; 45 CRITICAL actives dont 25 du refus de la nuit du 15)",
       "alerte": true
     },
     {
-      "v": "684/684",
-      "t": "trajets des 14, 15 et 16/09 recalés dans les 2 h suivant leur création — la jauge est corrigée : une journée ne se compare qu'à J+2 (T28)"
+      "v": "688/688",
+      "t": "trajets des 14, 15 et 16/09 recalés dans les 2 h suivant leur création — le test daté est franchi au mot près, la jauge est prouvée (T28 fait)"
     },
     {
       "v": "auto",
