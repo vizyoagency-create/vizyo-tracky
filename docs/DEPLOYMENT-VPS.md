@@ -75,13 +75,19 @@ Vérifier que le fichier du jour existe et n'est pas vide **avant** de continuer
 bash /opt/vizyo-tracky/deploy/vps/deploy.sh                  # main
 bash /opt/vizyo-tracky/deploy/vps/deploy.sh --branche $BRANCHE   # une recette de branche
 bash /opt/vizyo-tracky/deploy/vps/deploy.sh --avec-demo      # et la démo sur les mêmes images
+bash /opt/vizyo-tracky/deploy/vps/deploy.sh --marketing-seul # site public seul, sans API/Web
 ```
 
 Il fait, dans l'ordre : la garde (un passage d'automatisation tourne-t-il ?), les repères de
-repli, `git checkout` + `git pull --ff-only`, `docker compose build`, **la garde à nouveau**,
-`docker compose up -d`, le journal. S'il refuse, il dit pourquoi et quoi faire (`--attendre`
-patiente, `--force` passe outre en le disant). Le `--env-file .env.prod` qu'il faut à compose
-est dans le script : on ne peut plus l'oublier.
+repli des trois images, `git checkout` + `git pull --ff-only`, les builds applicatif et marketing,
+**la garde à nouveau**, la recréation des deux piles, l'attente de santé et le journal. S'il
+refuse, il dit pourquoi et quoi faire (`--attendre` patiente, `--force` passe outre en le disant).
+Le `--env-file .env.prod` qu'il faut à Compose est dans le script : on ne peut plus l'oublier.
+
+`--marketing-seul` est le chemin prévu lorsqu'une livraison ne touche que le site public. Il
+pose et restaure uniquement le repère `tracky-lp`, construit et recrée uniquement cette pile,
+attend sa santé et inscrit son périmètre dans le journal. Il ne redémarre pas l'API, ne joue
+aucune migration et ne peut pas être combiné avec `--avec-demo`.
 
 > ⚠️ Avec `--branche`, le VPS reste **sur la branche**. Le retour à `main` est un déploiement
 > comme un autre : `deploy.sh` sans option (il fait le `git checkout main`).

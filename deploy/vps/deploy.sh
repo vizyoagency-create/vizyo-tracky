@@ -8,6 +8,7 @@
 #     bash /opt/vizyo-tracky/deploy/vps/deploy.sh --attendre     # patiente (65 min au plus) au lieu de refuser
 #     bash /opt/vizyo-tracky/deploy/vps/deploy.sh --force        # déploie quand même, et le dit
 #     bash /opt/vizyo-tracky/deploy/vps/deploy.sh --avec-demo    # met aussi la démo à jour
+#     bash /opt/vizyo-tracky/deploy/vps/deploy.sh --marketing-seul # ne recrée que le site public
 #     bash /opt/vizyo-tracky/deploy/vps/deploy.sh --branche X    # une autre branche que main
 #     bash /opt/vizyo-tracky/deploy/vps/deploy.sh --repli avant-20260913-1130-a8f9575e
 #                                                                # revient aux images étiquetées, sans rebuild
@@ -78,11 +79,14 @@ RACINE="${RACINE:-/opt/vizyo-tracky}"
 # Hors de l'arbre git (y écrire ferait échouer le prochain `git pull`), monté `:ro` dans l'API.
 JOURNAL="${JOURNAL_DEPLOIEMENTS:-/opt/tracky-deploiements/journal.jsonl}"
 COMPOSE_PROD="docker-compose.prod.yml"
+COMPOSE_LP="docker-compose.lp.yml"
 COMPOSE_DEMO="docker-compose.demo.yml"
-IMAGES="tracky-api tracky-web"
+IMAGES_COMPLETES="tracky-api tracky-web tracky-lp"
+IMAGES="$IMAGES_COMPLETES"
 FORCE=0
 ATTENDRE=0
 AVEC_DEMO=0
+MARKETING_SEUL=0
 BRANCHE=main
 REPLI=""
 
@@ -111,7 +115,7 @@ epoch_s()      { date -u +%s; }
 horodatage_etiquette() { date -u +%Y%m%d-%H%M; }
 maintenant_iso() { date -u +%Y-%m-%dT%H:%M:%SZ; }
 heure_paris_hhmm() { TZ=Europe/Paris date +%H%M; }
-journal_conteneur() { timeout 15 docker logs --tail 20 tracky-api 2>&1 || true; }
+journal_conteneur() { timeout 15 docker logs --tail 20 "$1" 2>&1 || true; }
 
 lire_options() {
   local attend_valeur=""
@@ -128,12 +132,18 @@ lire_options() {
       --force) FORCE=1 ;;
       --attendre) ATTENDRE=1 ;;
       --avec-demo) AVEC_DEMO=1 ;;
+      --marketing-seul) MARKETING_SEUL=1 ;;
       --branche) attend_valeur=branche ;;
       --repli) attend_valeur=repli ;;
       *) echo "Option inconnue : $arg" >&2; return 2 ;;
     esac
   done
   if [ -n "$attend_valeur" ]; then echo "Option --$attend_valeur sans valeur" >&2; return 2; fi
+  if [ "$MARKETING_SEUL" -eq 1 ] && [ "$AVEC_DEMO" -eq 1 ]; then
+    echo "Options incompatibles : --marketing-seul ne met pas à jour la démo." >&2
+    return 2
+  fi
+  if [ "$MARKETING_SEUL" -eq 1 ]; then IMAGES="tracky-lp"; else IMAGES="$IMAGES_COMPLETES"; fi
   return 0
 }
 
@@ -320,18 +330,18 @@ migrer_avant() {
 
 # ── L'ATTENTE DE SANTÉ — le script ne dit plus « terminé » sans l'avoir vu ──────────────────
 #
-#   $1 = libellé pour les messages. Rend 0 quand l'API est `healthy` ; 1 sinon (redémarrage,
-#   arrêt, ou délai dépassé), après avoir montré les dernières lignes du journal du conteneur.
-attendre_sante() {
-  local quoi="$1"
+#   Attend un conteneur doté d'une sonde. Rend 0 quand il est `healthy` ; 1 sinon
+#   (redémarrage, arrêt ou délai dépassé), après les dernières lignes de son journal.
+attendre_sante_conteneur() {
+  local conteneur="$1" quoi="$2"
   local t0; t0="$(epoch_s)"
-  dire "attente de santé de tracky-api ($quoi, ${SANTE_MAX_S} s au plus)…"
+  dire "attente de santé de $conteneur ($quoi, ${SANTE_MAX_S} s au plus)…"
   while :; do
-    local etat; etat="$(docker inspect -f '{{.State.Status}} {{.State.Health.Status}} {{.RestartCount}}' tracky-api 2>/dev/null || echo 'absent ? 0')"
+    local etat; etat="$(docker inspect -f '{{.State.Status}} {{.State.Health.Status}} {{.RestartCount}}' "$conteneur" 2>/dev/null || echo 'absent ? 0')"
     local statut sante redemarrages
     statut="$(echo "$etat" | cut -d' ' -f1)"; sante="$(echo "$etat" | cut -d' ' -f2)"; redemarrages="$(echo "$etat" | cut -d' ' -f3)"
     if [ "$sante" = "healthy" ] && [ "${redemarrages:-0}" -eq 0 ]; then
-      dire "✅ tracky-api est saine ($(( $(epoch_s) - t0 )) s, 0 redémarrage)."
+      dire "✅ $conteneur est sain ($(( $(epoch_s) - t0 )) s, 0 redémarrage)."
       return 0
     fi
     local raison=""
@@ -341,12 +351,35 @@ attendre_sante() {
     elif [ $(( $(epoch_s) - t0 )) -ge "$SANTE_MAX_S" ]; then raison="toujours « $sante » après ${SANTE_MAX_S} s"
     fi
     if [ -n "$raison" ]; then
-      dire "⛔ tracky-api N'EST PAS SAINE : $raison. Dernières lignes du conteneur :"
-      journal_conteneur | sed 's/^/   /'
+      dire "⛔ $conteneur N'EST PAS SAIN : $raison. Dernières lignes du conteneur :"
+      journal_conteneur "$conteneur" | sed 's/^/   /'
       return 1
     fi
     sleep "$SANTE_PAS_S"
   done
+}
+
+attendre_sante() {
+  local quoi="$1"
+  if [ "$MARKETING_SEUL" -eq 1 ]; then
+    attendre_sante_conteneur tracky-lp "$quoi"
+  else
+    attendre_sante_conteneur tracky-api "$quoi" &&
+      attendre_sante_conteneur tracky-lp "$quoi"
+  fi
+}
+
+recreer_perimetre() {
+  cd "$RACINE/deploy/vps"
+  if [ "$MARKETING_SEUL" -eq 1 ]; then
+    dire "docker compose up -d (site marketing uniquement)"
+    docker compose --env-file .env.prod -f "$COMPOSE_LP" up -d
+  else
+    dire "docker compose up -d (prod)"
+    docker compose --env-file .env.prod -f "$COMPOSE_PROD" up -d
+    dire "docker compose up -d (site marketing)"
+    docker compose --env-file .env.prod -f "$COMPOSE_LP" up -d
+  fi
 }
 
 # Le repli automatique : le repère posé par ce passage redevient `latest`, on recrée, on attend.
@@ -369,27 +402,29 @@ repli_automatique() {
     dire "   $image:$ETIQUETTE_POSEE → $image:latest"
   done
   cd "$RACINE/deploy/vps"
-  docker compose --env-file .env.prod -f "$COMPOSE_PROD" up -d
+  recreer_perimetre
   attendre_sante "après repli automatique"
 }
 
 # ── LE JOURNAL — ce qui rend un contournement visible ────────────────────────────────────────
 journaliser() {
   local sha="$1" duree="$2" sante="${3:-healthy}"
-  local id_api id_web
+  local id_api id_web id_lp
   id_api="$(docker inspect --format '{{.Id}}' tracky-api 2>/dev/null || echo '')"
   id_web="$(docker inspect --format '{{.Id}}' tracky-web 2>/dev/null || echo '')"
+  id_lp="$(docker inspect --format '{{.Id}}' tracky-lp 2>/dev/null || echo '')"
   # Qui a déployé, et d'où : `SSH_CLIENT` n'existe pas hors SSH (console, test) — sans valeur
   # par défaut, `set -u` ferait échouer le journal après un déploiement réussi.
   local client="${SSH_CLIENT:-}"
   local par="${SUDO_USER:-${USER:-?}}@${client%% *}"
-  local force=false attente=false repli=null
+  local force=false attente=false repli=null perimetre=production
   [ "$FORCE" -eq 1 ] && force=true
   [ "$ATTENDRE" -eq 1 ] && attente=true
   [ -n "$REPLI" ] && repli="\"$REPLI\""
+  [ "$MARKETING_SEUL" -eq 1 ] && perimetre=marketing
   mkdir -p "$(dirname "$JOURNAL")"
-  printf '{"at":"%s","sha":"%s","branche":"%s","apiContainerId":"%s","webContainerId":"%s","force":%s,"attente":%s,"repli":%s,"par":"%s","dureeS":%s,"sante":"%s"}\n' \
-    "$(maintenant_iso)" "$sha" "$BRANCHE" "$id_api" "$id_web" "$force" "$attente" "$repli" "$par" "$duree" "$sante" >> "$JOURNAL"
+  printf '{"at":"%s","sha":"%s","branche":"%s","perimetre":"%s","apiContainerId":"%s","webContainerId":"%s","lpContainerId":"%s","force":%s,"attente":%s,"repli":%s,"par":"%s","dureeS":%s,"sante":"%s"}\n' \
+    "$(maintenant_iso)" "$sha" "$BRANCHE" "$perimetre" "$id_api" "$id_web" "$id_lp" "$force" "$attente" "$repli" "$par" "$duree" "$sante" >> "$JOURNAL"
   dire "   journal : $JOURNAL"
 }
 
@@ -398,9 +433,9 @@ main() {
   local t0; t0="$(epoch_s)"
 
   # ── 0. la fenêtre du matin : pas de déploiement quand les reprises dépendent de l'API ──
-  garde_matin depart
+  if [ "$MARKETING_SEUL" -eq 0 ]; then garde_matin depart; fi
   # ── 1. la garde, une première fois : inutile de tirer et de construire pour rien ──
-  garde depart
+  if [ "$MARKETING_SEUL" -eq 0 ]; then garde depart; fi
 
   local sha
   if [ -n "$REPLI" ]; then
@@ -425,24 +460,32 @@ main() {
     # l'interpolation, et `env_file:` dans le service ne s'applique qu'au runtime du conteneur.
     # Sans le flag, le déploiement échoue sur « network <vide> declared as external ».
     cd "$RACINE/deploy/vps"
-    dire "docker compose build (prod)"
-    docker compose --env-file .env.prod -f "$COMPOSE_PROD" build
+    if [ "$MARKETING_SEUL" -eq 1 ]; then
+      dire "docker compose build (site marketing uniquement)"
+      docker compose --env-file .env.prod -f "$COMPOSE_LP" build
+    else
+      dire "docker compose build (prod)"
+      docker compose --env-file .env.prod -f "$COMPOSE_PROD" build
+      dire "docker compose build (site marketing)"
+      docker compose --env-file .env.prod -f "$COMPOSE_LP" build
+    fi
 
     # ── 3 bis. LA MIGRATION, AVANT DE TOUCHER À L'API (incident du 17/09) ──
-    migrer_avant
+    if [ "$MARKETING_SEUL" -eq 0 ]; then migrer_avant; fi
   fi
 
   # ── 4. LA GARDE, À NOUVEAU — c'est maintenant que ça tue (TRK-077) ──
   cd "$RACINE/deploy/vps"
-  garde_matin recreation
-  garde recreation
+  if [ "$MARKETING_SEUL" -eq 0 ]; then
+    garde_matin recreation
+    garde recreation
+  fi
 
   # ── 5. RECRÉER — court : les images sont prêtes ──
   # Le dossier du journal AVANT le `up` : le compose le monte dans l'API, et un dossier absent
   # serait créé vide par Docker, appartenant à root, hors de tout contrôle.
   mkdir -p "$(dirname "$JOURNAL")"
-  dire "docker compose up -d (prod)"
-  docker compose --env-file .env.prod -f "$COMPOSE_PROD" up -d
+  recreer_perimetre
   if [ "$AVEC_DEMO" -eq 1 ]; then
     dire "docker compose up -d (démo, mêmes images)"
     docker compose --env-file .env.demo -f "$COMPOSE_DEMO" up -d
@@ -453,7 +496,7 @@ main() {
   if ! attendre_sante "après recréation"; then
     if [ -n "$REPLI" ]; then
       journaliser "$sha" "$(( $(epoch_s) - t0 ))" "malade-apres-repli"
-      dire "⛔ Le repli lui-même ne donne pas une API saine. Rien d'automatique au-delà : regarder le journal du conteneur ci-dessus."
+      dire "⛔ Le repli lui-même ne rend pas le périmètre sain. Rien d'automatique au-delà : regarder le journal du conteneur ci-dessus."
       exit 5
     fi
     if repli_automatique; then
@@ -473,8 +516,12 @@ main() {
   # 2026-09-07). L'âge affiché ici est la seule preuve : « Up 4 weeks » après un déploiement
   # veut dire que rien n'a été remplacé.
   dire "état des conteneurs :"
-  docker ps --format '  {{.Names}} — {{.Status}}' | grep -E 'tracky-(api|web|demo-api|demo-web)' || true
-  dire "Déploiement terminé : API saine. Vérifier l'artefact compilé, pas seulement docker ps."
+  docker ps --format '  {{.Names}} — {{.Status}}' | grep -E 'tracky-(api|web|lp|demo-api|demo-web)' || true
+  if [ "$MARKETING_SEUL" -eq 1 ]; then
+    dire "Déploiement terminé : site marketing sain ; API et Web applicatif non recréés. Vérifier les URLs publiques, pas seulement docker ps."
+  else
+    dire "Déploiement terminé : API et site marketing sains. Vérifier les artefacts servis, pas seulement docker ps."
+  fi
 }
 
 # Exécuté : on déploie. Sourcé (deploy.test.sh) : on expose les fonctions, rien de plus.

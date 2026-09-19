@@ -11,8 +11,11 @@ Voir `docs/DEPLOYMENT-VPS.md` pour la procédure complète.
 > au runtime du container, pas au parsing du compose). Sans le flag, le déploiement
 > échoue avec `network <vide> declared as external, but could not be found`.
 
-    # Depuis /opt/vizyo-tracky/deploy/vps/
-    docker compose --env-file .env.prod -f docker-compose.lp.yml   up -d --build  # Landing page (pile à part)
+    # Déploiement complet : API, application Web et site marketing
+    bash /opt/vizyo-tracky/deploy/vps/deploy.sh
+
+    # Site marketing uniquement : ne recrée ni l'API ni l'application Web
+    bash /opt/vizyo-tracky/deploy/vps/deploy.sh --marketing-seul
 
     # Logs
     docker logs -f tracky-api
@@ -31,6 +34,7 @@ Voir `docs/DEPLOYMENT-VPS.md` pour la procédure complète.
     bash /opt/vizyo-tracky/deploy/vps/deploy.sh --attendre      # patiente (65 min au plus) au lieu de refuser
     bash /opt/vizyo-tracky/deploy/vps/deploy.sh --force         # déploie quand même, et le dit
     bash /opt/vizyo-tracky/deploy/vps/deploy.sh --avec-demo     # et la démo dans la foulée
+    bash /opt/vizyo-tracky/deploy/vps/deploy.sh --marketing-seul # seulement tracky-lp
     bash /opt/vizyo-tracky/deploy/vps/deploy.sh --branche X     # une autre branche que main (recette)
     bash /opt/vizyo-tracky/deploy/vps/deploy.sh --repli avant-20260913-1130-a8f9575e
                                                                  # revenir aux images étiquetées, sans rebuild
@@ -40,14 +44,26 @@ Voir `docs/DEPLOYMENT-VPS.md` pour la procédure complète.
 1. **La garde** — un passage d'automatisation tourne-t-il ? (`status='running'` dans
    `trip_automation_runs`, « la ligne au départ » du 2026-09-08). Refus, attente ou passage
    en force selon l'option.
-2. **Les repères de repli** — `tracky-api:avant-<date>-<sha>` et `tracky-web:…`, posés AVANT de
+2. **Les repères de repli** — `tracky-api:avant-<date>-<sha>`, `tracky-web:…` et
+   `tracky-lp:…`, posés AVANT de
    toucher au code (c'est ce qui tourne qu'on étiquette). Trois par image, les plus vieux
    s'élaguent seuls. `--repli <étiquette>` revient dessus par le même chemin, garde comprise.
 3. **Le code** — `git checkout` + `git pull --ff-only`.
-4. **La construction** — `docker compose build`, longue et sans effet sur ce qui tourne.
+4. **La construction** — les images de la production applicative et du site marketing sont
+   construites sans effet sur ce qui tourne.
 5. **La garde, À NOUVEAU** — c'est maintenant que ça tue (TRK-077, ci-dessous).
-6. **La recréation** — `docker compose up -d`, courte.
-7. **Le journal** — date, sha, identifiants des conteneurs créés, qui, d'où, options.
+6. **La recréation** — les piles applicative et marketing sont recréées, puis leur santé est
+   attendue. Un échec remet automatiquement les trois images précédentes.
+7. **Le journal** — date, sha, périmètre, identifiants API/Web/marketing, qui, d'où, options.
+
+`--marketing-seul` applique les mêmes repères, contrôle de santé, journal et repli automatique,
+mais uniquement à `tracky-lp`. Il ne lit pas la garde des trajets, ne joue aucune migration et
+ne recrée ni `tracky-api` ni `tracky-web`. Il est incompatible avec `--avec-demo`.
+
+Lors de la toute première livraison qui introduit cette option sur un VPS encore équipé de
+l'ancien script, faire d'abord un simple `git pull --ff-only origin main` dans
+`/opt/vizyo-tracky`, puis lancer `deploy.sh --marketing-seul`. Le pull ne recrée aucun conteneur ;
+il rend seulement la nouvelle option disponible.
 
 ### Pourquoi il refuse parfois — et pourquoi deux fois
 

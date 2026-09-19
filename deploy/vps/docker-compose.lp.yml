@@ -13,6 +13,12 @@ services:
     image: tracky-lp:latest
     container_name: tracky-lp
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1/ >/dev/null && wget -qO- http://127.0.0.1/sitemap.xml | grep -q '<urlset'"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
     networks:
       - foodsqan-public
     labels:
