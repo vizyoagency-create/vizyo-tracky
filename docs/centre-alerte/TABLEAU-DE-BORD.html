@@ -88,19 +88,19 @@
 </header>
 
 <div class="kpis">
-  <div class="k ok"><div class="n">62</div><div class="l">faites et verifiees</div></div>
-  <div class="k warn"><div class="n">19</div><div class="l">deployees, preuve attendue</div></div>
-  <div class="k"><div class="n">31</div><div class="l">ouvertes sur 112</div></div>
+  <div class="k ok"><div class="n">63</div><div class="l">faites et verifiees</div></div>
+  <div class="k warn"><div class="n">20</div><div class="l">deployees, preuve attendue</div></div>
+  <div class="k"><div class="n">29</div><div class="l">ouvertes sur 112</div></div>
   <div class="k dgr"><div class="n">3</div><div class="l">ouvertes en gravite 1</div></div>
   <div class="k dgr"><div class="n">0</div><div class="l">au-dela de 7 jours</div></div>
-  <div class="k info"><div class="n">15</div><div class="l">attendent un humain</div></div>
+  <div class="k info"><div class="n">14</div><div class="l">attendent un humain</div></div>
 </div>
 
-<div class="barre" role="img" aria-label="Avancement : 62 faites, 19 deployees, 31 ouvertes sur 112">
-  <span class="s-FAIT" style="width:55%"></span>
-  <span class="s-DEPLOYE" style="width:17%"></span>
+<div class="barre" role="img" aria-label="Avancement : 63 faites, 20 deployees, 29 ouvertes sur 112">
+  <span class="s-FAIT" style="width:56%"></span>
+  <span class="s-DEPLOYE" style="width:18%"></span>
   <span class="s-COMMITE" style="width:0%"></span>
-  <span class="s-OUVERT" style="width:28%"></span>
+  <span class="s-OUVERT" style="width:26%"></span>
 </div>
 <p class="leg">
   <i><b>✓</b> faite ET verifiee</i>
@@ -112,13 +112,13 @@
 
 <div class="filtres" id="f">
   <button data-f="tout" aria-pressed="true">Tout (112)</button>
-  <button data-f="ouvert" aria-pressed="false">Ouvertes (31)</button>
+  <button data-f="ouvert" aria-pressed="false">Ouvertes (29)</button>
   <button data-f="g1" aria-pressed="false">Gravite 1 (3)</button>
-  <button data-f="humain" aria-pressed="false">Attendent un humain (15)</button>
-  <button data-f="code" aria-pressed="false">A faire soi-meme (15)</button>
+  <button data-f="humain" aria-pressed="false">Attendent un humain (14)</button>
+  <button data-f="code" aria-pressed="false">A faire soi-meme (14)</button>
   <button data-f="centre-alerte" aria-pressed="false">Centre d'alerte</button>
   <button data-f="vps" aria-pressed="false">VPS</button>
-  <button data-f="fait" aria-pressed="false">Closes (81)</button>
+  <button data-f="fait" aria-pressed="false">Closes (83)</button>
 </div>
 
 <h2 class="sec">Les 112 taches — ouvertes et graves d'abord</h2>
@@ -288,21 +288,6 @@
   
   <div class="badges"></div>
 </article>
-<article class="t etat-OUVERT g2" data-etat="OUVERT" data-partie="vps" data-classe="HUMAIN" data-g="2">
-  <div class="t-h">
-    <span class="marque" title="Ouvert">☐</span>
-    <span class="id">V4</span>
-    <span class="fiche">VPS-010</span>
-    <span class="classe">🤝 Decision ou geste humain</span>
-    <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-08-04">47 j</span>
-    
-  </div>
-  <h3>Planifier un redemarrage vers 23 h 30</h3>
-  <p class="detail">🔓 16/09 (audit VPS) — DEBLOQUEE ET PROUVEE DEBLOQUEE (V28 mesuree). Uptime 42,3 j, noyau -136 actif contre -139, 6 services sous libc6 remplacee, 3 correctifs de securite en attente (mesure apt VALIDE ce matin ; installateur a 06:52). Creneau 23:30, hors HH:42-HH:46 (automatisation), hors 02:20-02:30 (audit), hors 03:00-04:55 (sauvegardes) ; 38/38 unless-stopped ; live-restore: true. || 📏 14/09 — uptime 40,2 j, noyau -136 contre -139, libc6 remplace sous 6 services (09-12). ⚠️ APRES V28, jamais a la place : un redemarrage efface la preuve de VPS-016. || Noyau actif 6.8.0-136, trois installes. 6 services tournent sur une bibliotheque remplacee, dont docker.service. 🔓 15/09 : V28 est fait (client Docker tué à 17:20 UTC) — le redémarrage peut être planifié sans effacer de preuve. ⛔ 17/09 (audit VPS) : RE-BLOQUEE par V33 — tuer le client Docker AVANT tout redemarrage (un redemarrage efface l etat qui prouve la cause). Uptime 43,2 j, noyau -136 / -139, libc6 sous 6 services ; ✅ les 3 correctifs de securite d hier ont ete INSTALLES a 06:52 (VPS-M74).</p>
-  
-  <div class="badges"></div>
-</article>
 <article class="t etat-OUVERT g2" data-etat="OUVERT" data-partie="vps" data-classe="AUTO" data-g="2">
   <div class="t-h">
     <span class="marque" title="Ouvert">☐</span>
@@ -420,21 +405,6 @@
   </div>
   <h3>Afficher l'ecart en jours sur /admin → Audit VPS</h3>
   <p class="detail">Cinq passages manques (27 au 31/08) n'ont ete vus qu'apres coup. La donnee est deja la.</p>
-  
-  <div class="badges"></div>
-</article>
-<article class="t etat-OUVERT g2" data-etat="OUVERT" data-partie="vps" data-classe="PREPARE" data-g="2">
-  <div class="t-h">
-    <span class="marque" title="Ouvert">☐</span>
-    <span class="id">V29</span>
-    <span class="fiche">VPS-041</span>
-    <span class="classe">🟡 Commande ecrite, arbitrage humain</span>
-    <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-13">7 j</span>
-    
-  </div>
-  <h3>Un seul rotateur pour les journaux de conteneur — retirer la stanza logrotate a copytruncate</h3>
-  <p class="detail">📏 16/09 (audit VPS) — 4e NUIT : logrotate 00:00:00 → 00:00:37, 1,63 s de CPU (13,2 s hier : les fichiers de production ont ete recrees a 17:24 / 17:35 / 18:14, donc petits). Courants troues 6, TOUS des -dev- (maalem-dev-api 92 %, -web 97 %, -admin 97 %, maestroo-dev-api 82 %, -web 94 %, -lp 88 %) ; les 3 de production sont sortis par recreation, ils reviendront a la prochaine rotation. A 0 octet : 8 — mesure a 04:37 et non 02:23, NE SE COMPARE PAS (VPS-M18). 🔑 La stanza relue dit sa raison : rotate 14 pose le 25/08 POUR TRK-035 (log_connections de tracky-postgres) → compenser le retrait par max-file: 14 sur le seul tracky-postgres dans le compose. V28 faite : V29 est la seule remediation ouverte sur la classe de VPS-016. Chemin de retrait : /root/logrotate.d-docker-containers.retire-2026-09-16. || 📏 15/09 (audit VPS) — 3e NUIT : logrotate 00:00:04 → 00:00:36, 13,2 s de CPU (1,98 s la veille, x6,7 — copytruncate copie AVANT de tronquer). Courants troues 5 (maestroo-dev-lp ENTRE a 84 % ; tracky-postgres et maestroo-dev-api SORTENT, rotes par Docker a 10 Mo — le trou part avec le fichier et reviendra), courants a 0 octet 17 (vizyo-vault entre), texto-relay 4e jour a 0. Le compte ne monte plus, il TOURNE. Chemin de retrait mis a jour : /root/logrotate.d-docker-containers.retire-2026-09-15. Geste avant minuit. || 📏 14/09 (audit VPS) — 2e JOUR MESURE, LA STANZA A RE-PERCE : logrotate 00:00:10 → 00:00:29 ; fichiers courants troues 6 (5 hier, maestroo-dev-web s ajoute, 73-98 % de NUL), fichiers courants a 0 octet 18 (13 hier), texto-relay a 0 pour le 3e jour. ⚠️ La seule fenetre ou le geste ne coute rien est AVANT minuit : le 15/09 a 00:00 ca recommence. Chemin de retrait mis a jour : /root/logrotate.d-docker-containers.retire-2026-09-14. || DEUX ROTATEURS SUR LES MEMES FICHIERS : le pilote json-file de Docker (max-size 10m, max-file 3) ET /etc/logrotate.d/docker-containers (posee le 25/08 avec son cout mesure, copytruncate, minuit). dockerd garde son descripteur et son OFFSET : chaque rotation perce un trou d octets NUL de la taille EXACTE du fichier tronque — preuve arithmetique : tracky-api json.log.1 = 8 405 652 NUL, json.log.2 = 8 405 652 octets ; meme egalite sur maalem-dev-api (9 846 713), maestroo-dev-api (6 486 806), tracky-postgres (8 720 183). Le 13/09 : 5 fichiers COURANTS a 34-92 % de NUL (maalem-dev-web 92, maalem-dev-admin 91, maalem-dev-api 81, tracky-postgres 65, maestroo-dev-api 34), 13 fichiers courants a 0 octet avec rotations a cote (dont texto-relay). dockerd journalise « Error decoding log file: invalid character \x00 » — a 04:33:52 le 13/09, 8 s avant le client bloque de V28. GESTE (10 s, risque nul) : relire puis mv /etc/logrotate.d/docker-containers /root/logrotate.d-docker-containers.retire-2026-09-13 — AVANT toute modification de daemon.json. Gain : plus aucun trou des la nuit suivante, docker logs exact sur 5 conteneurs, une classe de declencheurs de VPS-016 en moins. Contrepartie : fenetre = max-file 3 x 10 Mo (~3 j sur tracky-api) ; si 14 j voulus, max-file dans daemon.json, applique aux conteneurs crees APRES. ❌ Ne pas reparer les fichiers troues (rm/truncate : dockerd les tient ouverts). ❌ Ne pas remplacer copytruncate par create (dockerd ecrirait dans le fichier renomme). ⚠️ Ce qui n est PAS prouve : que les NUL soient la cause necessaire du BLOCAGE de docker logs ; ce qui l est : docker logs est FAUX sur 5 conteneurs et le mecanisme est le notre. PREUVE ATTENDUE : le collecteur rend « ✅ un seul rotateur » puis, au passage suivant, « ✅ aucun fichier journal courant ne porte d octet NUL ». 📏 17/09 (audit VPS) : 5e nuit — logrotate 21,9 s de CPU (00:00:00 → 00:01:17 ; 1,63 s hier), les memes 6 troues -dev-, 13 a 0 octet. ⚠️ La 6e occurrence de VPS-016 (V33) visait vizyo-auth-api, PAS un troue : V29 reste utile (docker logs exact), elle ne ferme pas la classe.</p>
   
   <div class="badges"></div>
 </article>
@@ -706,6 +676,21 @@
   <h3>Fixer l'heure du rafraichissement apt (et non reduire son alea)</h3>
   <p class="detail">📏 16/09 (audit VPS) — MESURE VALIDE PAR CHANCE (4e / 19) : cache 01:26:38, 73 en retard dont 3 de securite (premiere fois &gt; 0). Test date demain : 3 → 0 apres l installation de 06:52 = canal OK. Le geste reste le meme, 60 s. || 📏 15/09 — 15e echec sur 18, CONFORME a la loi : cache rafraichi le 09-14 16:39:24 (1re sonnerie du jour UTC), 9 h a l audit ; prochaine sonnerie 04:48:13, apres l audit. Geste inchange. || ✅ 14/09 (audit VPS) — GESTE CONFIRME PAR LE CODE, ET LE TAUX D ECHEC EST PREDIT : apt-daily.timer = OnCalendar=*-*-* 6,18:00 + RandomizedDelaySec=12h (DEUX sonneries par jour), et check_stamp() de /usr/lib/apt/apt.systemd.daily compare MINUIT du jour du tampon a MINUIT d aujourd hui → la 1re sonnerie de chaque jour UTC rafraichit (13-27 s de CPU), la 2e ne fait rien (1 s). Journal : 09-13 03:01:51 rafraichit (19,9 s), 15:12 et 19:56 rien. Cache frais a 02:20 ssi la sonnerie de 18 h de la veille tombe entre 00:00 et 02:20 = 2 h 20 / 12 h ≈ 19 % ; mesure : 3 succes sur 17 = 18 %. Le geste (OnCalendar=*-*-* 01:30:00, RandomizedDelaySec=15m) est COMPATIBLE avec le tampon : a 01:30-01:45 il porte la date de la veille, donc l unique sonnerie rafraichit chaque jour, 50 min avant l audit. Ce qui ne marcherait PAS : garder deux sonneries et reduire l alea. apt-daily-upgrade (06:00 + 60 min) lit le meme tampon : inchange. Gain : 18 % → ~100 % de mesures valides, zero commande cote audit. || 🔑 RECOMMANDATION CHANGEE LE 07/09, SUR MESURE. La validite de la mesure s'est jouee a 37 MINUTES : le cache lu par le passage du 07/09 (collecte a 02:21) est EXACTEMENT celui que le passage du 06/09 (collecte a 04:05) avait declare valide — date du 06/09 02:59:53. 75 → 75 n'est donc pas une stabilite, c'est UNE mesure publiee deux fois. RandomizedDelaySec=30m RETRECIT la fenetre sans la PLACER ; ce qu'il faut est que le cache soit frais A L'HEURE DE L'AUDIT. Geste : systemctl edit apt-daily.timer → [Timer] / OnCalendar= / OnCalendar=*-*-* 01:30:00 / RandomizedDelaySec=15m. ⚠️ NE PAS mettre 0 : l'alea etale la charge sur les miroirs Ubuntu, et 15 min y suffisent. 📏 17/09 (audit VPS) : apt NON MESURABLE (cache 25 h, 2e sonnerie de 20:34 sans effet — loi confirmee, 4 valides / 20) ; ✅ mais le canal INSTALLE : polkitd x3 a 06:52:26 par unattended-upgrades, update-notifier 64 → 61 (VPS-M74 clos). Le geste reste OnCalendar=01:30 + 15 min. ✅ 20/09 13:12 UTC : POSEE — drop-in /etc/systemd/system/apt-daily.timer.d/override.conf (OnCalendar=*-*-* 01:30:00, RandomizedDelaySec=15m ; avant : 06,18:00 du paquet + 12 h de delai aleatoire) ; prochaine echeance 21/09 01:41:32. Preuve : « MESURE VALIDE » a l audit de 02:22 deux jours de suite.</p>
   
+  <div class="badges"></div>
+</article>
+<article class="t etat-DEPLOYE g2" data-etat="DEPLOYE" data-partie="vps" data-classe="PREPARE" data-g="2">
+  <div class="t-h">
+    <span class="marque" title="Deploye, preuve attendue">»</span>
+    <span class="id">V29</span>
+    <span class="fiche">VPS-041</span>
+    <span class="classe">🟡 Commande ecrite, arbitrage humain</span>
+    <span class="grav" title="gravite 2">G2</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-13">7 j</span>
+    
+  </div>
+  <h3>Un seul rotateur pour les journaux de conteneur — retirer la stanza logrotate a copytruncate</h3>
+  <p class="detail">📏 16/09 (audit VPS) — 4e NUIT : logrotate 00:00:00 → 00:00:37, 1,63 s de CPU (13,2 s hier : les fichiers de production ont ete recrees a 17:24 / 17:35 / 18:14, donc petits). Courants troues 6, TOUS des -dev- (maalem-dev-api 92 %, -web 97 %, -admin 97 %, maestroo-dev-api 82 %, -web 94 %, -lp 88 %) ; les 3 de production sont sortis par recreation, ils reviendront a la prochaine rotation. A 0 octet : 8 — mesure a 04:37 et non 02:23, NE SE COMPARE PAS (VPS-M18). 🔑 La stanza relue dit sa raison : rotate 14 pose le 25/08 POUR TRK-035 (log_connections de tracky-postgres) → compenser le retrait par max-file: 14 sur le seul tracky-postgres dans le compose. V28 faite : V29 est la seule remediation ouverte sur la classe de VPS-016. Chemin de retrait : /root/logrotate.d-docker-containers.retire-2026-09-16. || 📏 15/09 (audit VPS) — 3e NUIT : logrotate 00:00:04 → 00:00:36, 13,2 s de CPU (1,98 s la veille, x6,7 — copytruncate copie AVANT de tronquer). Courants troues 5 (maestroo-dev-lp ENTRE a 84 % ; tracky-postgres et maestroo-dev-api SORTENT, rotes par Docker a 10 Mo — le trou part avec le fichier et reviendra), courants a 0 octet 17 (vizyo-vault entre), texto-relay 4e jour a 0. Le compte ne monte plus, il TOURNE. Chemin de retrait mis a jour : /root/logrotate.d-docker-containers.retire-2026-09-15. Geste avant minuit. || 📏 14/09 (audit VPS) — 2e JOUR MESURE, LA STANZA A RE-PERCE : logrotate 00:00:10 → 00:00:29 ; fichiers courants troues 6 (5 hier, maestroo-dev-web s ajoute, 73-98 % de NUL), fichiers courants a 0 octet 18 (13 hier), texto-relay a 0 pour le 3e jour. ⚠️ La seule fenetre ou le geste ne coute rien est AVANT minuit : le 15/09 a 00:00 ca recommence. Chemin de retrait mis a jour : /root/logrotate.d-docker-containers.retire-2026-09-14. || DEUX ROTATEURS SUR LES MEMES FICHIERS : le pilote json-file de Docker (max-size 10m, max-file 3) ET /etc/logrotate.d/docker-containers (posee le 25/08 avec son cout mesure, copytruncate, minuit). dockerd garde son descripteur et son OFFSET : chaque rotation perce un trou d octets NUL de la taille EXACTE du fichier tronque — preuve arithmetique : tracky-api json.log.1 = 8 405 652 NUL, json.log.2 = 8 405 652 octets ; meme egalite sur maalem-dev-api (9 846 713), maestroo-dev-api (6 486 806), tracky-postgres (8 720 183). Le 13/09 : 5 fichiers COURANTS a 34-92 % de NUL (maalem-dev-web 92, maalem-dev-admin 91, maalem-dev-api 81, tracky-postgres 65, maestroo-dev-api 34), 13 fichiers courants a 0 octet avec rotations a cote (dont texto-relay). dockerd journalise « Error decoding log file: invalid character \x00 » — a 04:33:52 le 13/09, 8 s avant le client bloque de V28. GESTE (10 s, risque nul) : relire puis mv /etc/logrotate.d/docker-containers /root/logrotate.d-docker-containers.retire-2026-09-13 — AVANT toute modification de daemon.json. Gain : plus aucun trou des la nuit suivante, docker logs exact sur 5 conteneurs, une classe de declencheurs de VPS-016 en moins. Contrepartie : fenetre = max-file 3 x 10 Mo (~3 j sur tracky-api) ; si 14 j voulus, max-file dans daemon.json, applique aux conteneurs crees APRES. ❌ Ne pas reparer les fichiers troues (rm/truncate : dockerd les tient ouverts). ❌ Ne pas remplacer copytruncate par create (dockerd ecrirait dans le fichier renomme). ⚠️ Ce qui n est PAS prouve : que les NUL soient la cause necessaire du BLOCAGE de docker logs ; ce qui l est : docker logs est FAUX sur 5 conteneurs et le mecanisme est le notre. PREUVE ATTENDUE : le collecteur rend « ✅ un seul rotateur » puis, au passage suivant, « ✅ aucun fichier journal courant ne porte d octet NUL ». 📏 17/09 (audit VPS) : 5e nuit — logrotate 21,9 s de CPU (00:00:00 → 00:01:17 ; 1,63 s hier), les memes 6 troues -dev-, 13 a 0 octet. ⚠️ La 6e occurrence de VPS-016 (V33) visait vizyo-auth-api, PAS un troue : V29 reste utile (docker logs exact), elle ne ferme pas la classe. ✅ 20/09 16:24 UTC : FAITE — (1) 15 fichiers de journal de l ancien tracky-postgres (75 Mo, 14 j de log_connections = memoire TRK-035) copies dans /root/journaux-tracky-postgres-avant-v29-2026-09-20/ (a supprimer apres le 04/10) ; (2) docker stop --signal SIGINT -t 60 : fast shutdown propre (« database system is shut down » 16:23:59) ; (3) compose up -d --no-deps postgres avec logging max-file 14 / max-size 10m, stop_signal SIGINT, stop_grace_period 60s (commit e5fb70fc) : nouveau conteneur cce3585f73e9, healthy en 12 s, demarrage SANS recuperation ; (4) API reconnectee seule : /api/health 200 x6, 112 positions en 3 min, 0 erreur Prisma ; (5) /etc/logrotate.d/docker-containers → /root/logrotate.d-docker-containers.retire-2026-09-20, logrotate -d : 0 occurrence de docker/containers. V29 bis : 316 anciens *.log.N laisses par logrotate sur les autres conteneurs (434 Mo) a retirer apres le 04/10.</p>
+  <p class="attendue"><b>Preuve attendue</b> — Audit du 21/09 : logrotate.service de 00:00 &lt; 1 s de CPU et 0 journal docker touche ; aucun NOUVEAU fichier troue (les 7 existants s effacent par la rotation Docker) ; tracky-postgres LogConfig max-file 14. APPLIQUE apres deux nuits sans nouveau trou.</p>
   <div class="badges"></div>
 </article>
 <article class="t etat-DEPLOYE g2" data-etat="DEPLOYE" data-partie="vps" data-classe="PREPARE" data-g="2">
@@ -1501,6 +1486,21 @@
   <h3>Sortir du parc les 6 boitiers muets depuis plus de 7 jours</h3>
   <p class="detail">Dont 3 sans aucun vehicule (7,3 · 66,8 · 92,7 jours). Un STATUT, pas un DELETE. ✅ CLOSE LE 15/09 (optimisation des tâches) : fusionnée dans T9 (sortir du parc les boîtiers muets &gt; 7 j — un STATUT, pas un DELETE).</p>
   <p class="preuve"><b>Preuve</b> — Absorbée par T9.</p>
+  <div class="badges"></div>
+</article>
+<article class="t etat-FAIT g2" data-etat="FAIT" data-partie="vps" data-classe="HUMAIN" data-g="2">
+  <div class="t-h">
+    <span class="marque" title="Fait et verifie">✓</span>
+    <span class="id">V4</span>
+    <span class="fiche">VPS-010</span>
+    <span class="classe">🤝 Decision ou geste humain</span>
+    <span class="grav" title="gravite 2">G2</span>
+    <span class="depuis" title="ouverte depuis le 2026-08-04">47 j</span>
+    
+  </div>
+  <h3>Planifier un redemarrage vers 23 h 30</h3>
+  <p class="detail">🔓 16/09 (audit VPS) — DEBLOQUEE ET PROUVEE DEBLOQUEE (V28 mesuree). Uptime 42,3 j, noyau -136 actif contre -139, 6 services sous libc6 remplacee, 3 correctifs de securite en attente (mesure apt VALIDE ce matin ; installateur a 06:52). Creneau 23:30, hors HH:42-HH:46 (automatisation), hors 02:20-02:30 (audit), hors 03:00-04:55 (sauvegardes) ; 38/38 unless-stopped ; live-restore: true. || 📏 14/09 — uptime 40,2 j, noyau -136 contre -139, libc6 remplace sous 6 services (09-12). ⚠️ APRES V28, jamais a la place : un redemarrage efface la preuve de VPS-016. || Noyau actif 6.8.0-136, trois installes. 6 services tournent sur une bibliotheque remplacee, dont docker.service. 🔓 15/09 : V28 est fait (client Docker tué à 17:20 UTC) — le redémarrage peut être planifié sans effacer de preuve. ⛔ 17/09 (audit VPS) : RE-BLOQUEE par V33 — tuer le client Docker AVANT tout redemarrage (un redemarrage efface l etat qui prouve la cause). Uptime 43,2 j, noyau -136 / -139, libc6 sous 6 services ; ✅ les 3 correctifs de securite d hier ont ete INSTALLES a 06:52 (VPS-M74). ✅ 20/09 16:17 UTC : REDEMARRE — noyau 6.8.0-139, libc6 rechargee, tout revenu seul en 60 s.</p>
+  <p class="preuve"><b>Preuve</b> — FAIT le 20/09 16:17:23 UTC (systemctl reboot apres liste de controle : aucun passage d automatisation ni commande coupe-circuit en cours, minute 17, 18:17 Paris, 103 min avant la coupe de 18:00 UTC, 38/38 en unless-stopped, docker / docker-orphelins.timer / sauvegardes / ssh.socket enabled, GRUB_DEFAULT=0). SSH de retour 16:20:03 (2 min 40 de coupure). A 16:21 : uname -r = 6.8.0-139-generic, /var/run/reboot-required disparu, 38/38 running, 29 healthy, 0 starting, 0 unhealthy apres 60 s ; tracky-api meme conteneur 3ec0c6d13241 (pas d alerte hors script) ; 10 URL de production 200/301/302/307 en 50-160 ms ; port 5023 en ecoute, 29 positions et 171 trames dans les 5 min ; 6 timers actifs, fail2ban + ufw actifs ; swap 0 Mo (1,1 Go avant) ; steal 3 % ; dockerd cumul remis a zero.</p>
   <div class="badges"></div>
 </article>
 <article class="t etat-FAIT g2" data-etat="FAIT" data-partie="vps" data-classe="PREPARE" data-g="2">

@@ -626,7 +626,18 @@ cache jetable et une base de données.
 
 ## VPS-010 — Noyau non redémarré, 59 paquets en retard
 
-- **Domaine** : sécurité · **Gravité** : 2 · **Statut** : `A_TRAITER` — **désaggravé le 2026-08-12 sur le volet paquets, toujours ouvert sur le noyau**
+- **Domaine** : sécurité · **Gravité** : 2 · **Statut** : `APPLIQUE` — **V4 FAITE le 2026-09-20 16 h 17 UTC** : noyau **6.8.0-139** actif, `reboot-required` disparu, 38/38 revenus seuls en 60 s ; volet paquets désaggravé le 2026-08-12
+- ✅ **Vu : 2026-09-20 16 h 17 → 16 h 21 UTC — REDÉMARRÉ, 2 min 40 DE COUPURE, TOUT EST REVENU SEUL.** Liste de contrôle
+  avant : aucun passage d'automatisation ni commande coupe-circuit en cours, minute 17, 18 h 17 Paris, 103 min avant
+  la coupe de 18 h 00 UTC, apt libre, 0 job systemd, **38 / 38 en `unless-stopped`**, `docker`, `docker-orphelins.timer`,
+  sauvegardes et `ssh.socket` `enabled`, `GRUB_DEFAULT=0`, `/boot` 700 Mo libres ; état de référence écrit dans
+  `/root/avant-reboot-2026-09-20.txt`. `systemctl reboot` à **16 h 17 min 23** ; SSH de retour à **16 h 20 min 03**
+  (uptime 14 s) ; à 16 h 21 : **`uname -r` = 6.8.0-139-generic**, plus de `/var/run/reboot-required`, **38 / 38 running,
+  29 `healthy`, 0 `starting`, 0 `unhealthy` après 60 s**, `tracky-api` **même conteneur** (`3ec0c6d13241` : redémarré,
+  pas recréé → pas d'alerte « hors script »), 10 URL de production 200/301/302/307 en 50–160 ms, port 5023 en écoute,
+  **29 positions et 171 trames dans les 5 min**, 6 timers actifs, `fail2ban` + `ufw` actifs, **swap 0 Mo** (1,1 Go
+  avant), steal 3 %, `dockerd` cumul remis à zéro (395,5 h → 0 : la série VPS-016 repart de zéro, à noter dans les
+  comparaisons). Uptime 46,6 j → 0. *Le noyau -137/-138/-139 et `libc6` attendaient depuis le 03/09.*
 - **Vu : 2026-09-16 — V4 DÉBLOQUÉE (V28 faite), uptime 42,3 j.** Noyau actif **6.8.0-136**,
   installés -137 / -138 / -139 ; 6 services sous `libc6` remplacée ; **3 correctifs de sécurité en
   attente** (mesure valide, VPS-033) — installateur à 06 h 52. Créneau : **23 h 30**, hors HH:42–HH:46
@@ -5715,7 +5726,21 @@ confondre les deux ferait accuser le mauvais coupable.
 
 ## VPS-041 — Deux rotateurs se partagent les journaux de conteneur, et l'un des deux perce des trous d'octets NUL
 
-- **Domaine** : docker · **Gravité** : 2 · **Statut** : `A_TRAITER` (geste 🟡 PRÉPARÉ — **V29**)
+- **Domaine** : docker · **Gravité** : 2 · **Statut** : `SURVEILLANCE` — **V29 FAITE le 2026-09-20 16 h 24 UTC** (un seul rotateur ; `tracky-postgres` recréé avec `max-file 14`) ; `APPLIQUE` au premier passage sans **nouveau** trou (les 7 fichiers troués existants s'effacent par la rotation Docker)
+- ✅ **Vu : 2026-09-20 16 h 24 UTC — V29 FAITE : UN SEUL ROTATEUR, ET LA MÉMOIRE DE 14 JOURS VIT DANS DOCKER.** (1) Les
+  **15 fichiers de journal** de l'ancien `tracky-postgres` (75 Mo, 14 j de `log_connections` — la mémoire TRK-035, qui
+  partait avec le conteneur) copiés dans `/root/journaux-tracky-postgres-avant-v29-2026-09-20/` (à supprimer après le
+  04/10). (2) `docker stop --signal SIGINT -t 60` : *fast shutdown* propre — *« checkpoint starting: shutdown immediate »*,
+  *« database system is shut down »* à 16 h 23 min 59. (3) `docker compose … up -d --no-deps postgres` : nouveau
+  conteneur `cce3585f73e9`, `LogConfig {max-file 14, max-size 10m}`, `StopSignal SIGINT`, `stop_grace_period 60 s` (commit
+  `e5fb70fc`) ; **`healthy` en 12 s** ; démarrage **sans récupération** (*« database system was shut down at 16:23:59 »*,
+  *« ready to accept connections »* 2 s après). (4) L'API s'est reconnectée seule : `/api/health` 200 en 30 ms ×6,
+  2 connexions `tracky-api`, **112 positions dans les 3 min**, 0 erreur Prisma. (5) `/etc/logrotate.d/docker-containers`
+  → `/root/logrotate.d-docker-containers.retire-2026-09-20` ; `logrotate -d` : **0 occurrence** de `docker/containers`.
+  Fenêtre : aucun passage d'automatisation (le 15 h 45 avait duré 10 min), minute 23, 96 min avant la coupe de 18 h 00.
+  ⚠️ Pour l'audit du 21/09 : `tracky-postgres` apparaîtra **RECRÉÉ** (16 h 24, hors journal T33 — geste V29, pas D1) ;
+  les 316 fichiers `*.log.N` laissés par logrotate sur les autres conteneurs (434 Mo) ne seront effacés par personne —
+  **V29 bis** : les retirer après le 04/10 (`find /var/lib/docker/containers -name '*-json.log.[0-9]*' -mtime +14`).
 - **Vu : 2026-09-20 — 8ᵉ NUIT : `tracky-postgres` EST REVENU DANS LES TROUÉS (7), ET LA ROTATION A PRIS 3 MIN 40
   DE MUR SUR UNE VM SANS CPU.** `logrotate.service` **00 h 00 min 03 → 00 h 03 min 43**, `CPUUsageNSec` **7,2 s** (21,9
   le 17/09 ; le mur ×3 vient du steal — VPS-045). Troués **7** : `maalem-dev-api` 71 %, `maestroo-dev-api` 45 %,

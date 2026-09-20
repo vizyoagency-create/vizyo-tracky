@@ -43,7 +43,9 @@ rapport [audit VPS du 20/09](../vps-audit/rapports/2026-09-20.md) ; roadmap [V33
 | **13:35 → 13:36** | Ticket par le chat hPanel : Hostinger **confirme** — *« a CPU limitation was active and it has now been successfully removed; your sustained high usage from 09-19 18:40 to 09-20 05:25 UTC is consistent with the trigger »* — et **lève la limitation**. Steal **89 → 1 %** dans la minute. `/api/health` 2 100 → 30 ms. | hPanel, `/proc/stat` |
 | 13:38 | Les 14 conteneurs rallumés (bases d'abord) : 38/38. | `docker start` |
 | 13:40 → 13:47 | Démo recréée sur les images courantes, 5 migrations jouées, **« Import réussi »**. | `tracky-demo-refresh.log` |
-| 20/09 après-midi | `deploy.sh` corrigé : repère de repli sur l'image **en service** (V32 b), la démo **suit par défaut** (V36 b) — 131 contrôles verts. | `pnpm verif:deploiement` |
+| 20/09 après-midi | `deploy.sh` corrigé : repère de repli sur l'image **en service** (V32 b), la démo **suit par défaut** (V36 b) — 131 contrôles verts ; poussé, VPS à jour (`git pull`). | `pnpm verif:deploiement` |
+| **16:17 → 16:20** | **Redémarrage** (V4) sur le noyau **6.8.0-139** après liste de contrôle ; 2 min 40 de coupure, 38/38 revenus seuls en 60 s, API même conteneur, swap 0. | `v4-avant`/`v4-apres` |
+| **16:24** | **V29** : `tracky-postgres` recréé avec 14 fichiers de journal par le seul rotateur Docker (arrêt propre `SIGINT`, `healthy` 12 s, API reconnectée seule) ; **stanza logrotate `copytruncate` retirée** — plus de second rotateur. | `journalctl`, `logrotate -d` |
 
 ---
 
@@ -147,7 +149,9 @@ de steal (1ᵉʳ jet : −36 % de durée, insuffisant sur la charge — 2ᵉ jet
 - **V35 (1) — la règle exacte de Hostinger** est inconnue ; la protection est de ne plus jamais lui donner le
   déclencheur (4.1, 4.2).
 - **VPS-M107, 2ᵉ jet** : un *mode minimal* du collecteur au-delà de 80 % de steal.
-- **V29** (deux rotateurs de journaux), **V4** (redémarrage noyau) : possibles maintenant, hors 05:30–09:00 Paris.
+- **V29 bis** : les 316 fichiers `*.log.N` laissés par l'ancienne stanza (434 Mo) ne seront plus effacés par personne —
+  à retirer après le 04/10, quand leur contenu aura dépassé les 14 jours qu'ils devaient garder.
+- **La preuve de V29** vient la nuit du 21/09 : `logrotate.service` de 00:00 sous la seconde, aucun nouveau trou.
 - **Les agents locaux du poste** (T75) sont en pause depuis le 17/09 ; la chute de 935 à 120 sessions SSH par jour
   dit que ce sont eux qui parlent le plus à la machine — la ventilation de VPS-032 se confirmera à leur reprise.
 
