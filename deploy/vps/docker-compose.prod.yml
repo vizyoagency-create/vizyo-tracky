@@ -60,6 +60,29 @@ services:
         limits:
           memory: 1536m
 
+    # ── Journal : 14 fichiers de 10 Mo, UN SEUL rotateur (V29 / VPS-041, 2026-09-20) ──
+    # `log_connections=on` (25/08, TRK-035) sert a NOMMER UN TIERS APRES COUP : il faut ~14 jours
+    # de journal (~9 Mo/jour mesures). Le 25/08 cette memoire avait ete obtenue par une stanza
+    # logrotate hote (`/etc/logrotate.d/docker-containers`, rotate 14, copytruncate) posee SUR
+    # le rotateur json-file de Docker : DEUX rotateurs sur le meme fichier. copytruncate tronque
+    # un fichier que dockerd continue d ecrire a son ancien offset → chaque rotation perce un
+    # trou d octets NUL de la taille du fichier (7 journaux courants a 45-97 % de NUL le 20/09),
+    # et `docker logs` y devient faux ou BLOQUANT — la classe de VPS-016. La stanza est retiree ;
+    # la memoire de 14 jours vit ICI, portee par le seul rotateur de Docker, sans trou.
+    # ⚠️ Un changement de `logging` recree le conteneur au prochain `up -d` : la base redemarre
+    #    (quelques secondes, volume intact). Fait a la main le 20/09 dans une fenetre calme.
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "14"
+    # SIGINT = « fast shutdown » de PostgreSQL (transactions en cours annulees proprement, arret
+    # en quelques secondes). Par defaut Docker envoie SIGTERM = « smart shutdown », qui attend la
+    # fin de TOUTES les sessions : l API garde son pool ouvert, donc PostgreSQL attend… jusqu au
+    # SIGKILL a l echeance — un arret sale, une recuperation WAL au demarrage suivant.
+    stop_signal: SIGINT
+    stop_grace_period: 60s
+
   redis:
     image: redis:7-alpine
     container_name: tracky-redis
