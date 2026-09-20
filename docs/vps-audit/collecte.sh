@@ -68,6 +68,7 @@ exec 2>"$ERRBUF"
 FIN_NORMALE=0
 _publier_erreurs_si_mort_en_route() {
   st=$?
+  rm -f "${DOCKER_DISJ:-/nonexistent}" 2>/dev/null   # VPS-M104 : le temoin du disjoncteur ne survit pas a la collecte
   [ "${FIN_NORMALE:-0}" = "1" ] && return 0
   printf '\n\n'
   # ⚠️ Attrape a l'essai de la branche C (mort par signal) : dans un trap EXIT, `$?` ne porte
@@ -176,6 +177,79 @@ ms() { echo $(( ( $(date +%s%N) - $1 ) / 1000000 )); }
 # Sur 2 vCPU deja charges, un audit qui se sert avant les services degrade ce qu'il surveille
 # et fausse sa propre mesure.
 LOW="nice -n 19 ionice -c3"
+
+# ⚠️⚠️ AJOUTE LE 2026-09-20 (VPS-M104) — LE COLLECTEUR ECRIT POUR DENONCER VPS-016 LANCAIT LUI-MEME
+# 31 CLIENTS `docker` SANS `timeout`. Le 20/09 a 10:40 UTC, `docker system df` (ligne « capture
+# unique », section 4) n a PAS rendu la main pendant plus de 3 min sur une machine a charge 13-16
+# (dockerd en boucle depuis le 16/09 12:41, V33 jamais faite) : la collecte entiere s est arretee
+# derriere lui, sans une ligne pour le dire. Un `docker` qui ne rend pas la main est EXACTEMENT
+# la classe de VPS-016 (6 occurrences sur 6) — et si la session SSH qui porte cette collecte se
+# ferme avant lui, le collecteur devient la 7e.
+#
+# Le remede : TOUT appel `docker` de ce script passe par cette fonction, qui le borne a
+# DOCKER_TIMEOUT secondes ET arme un DISJONCTEUR au premier depassement — un fichier temoin,
+# parce qu une variable posee dans un `$(...)` ne remonte pas au shell parent. Une fois le
+# disjoncteur arme, chaque appel docker suivant rend la main IMMEDIATEMENT (code 124) : au pire
+# UNE attente de DOCKER_TIMEOUT s par collecte, jamais 31. Les sections qui dependent de docker
+# rendent alors du vide — et ce vide est NOMME : la section 4 et le bloc BUDGET impriment
+# « DISJONCTEUR docker ARME » (lecon VPS-M02 : un silence doit dire pourquoi il se tait).
+# ⚠️ Le message part dans $ERRBUF par son CHEMIN, pas par stderr : la plupart des appels sont
+# suivis d un `2>/dev/null` qui aurait avale l explication.
+# ⚠️ `timeout` tue le CLIENT (SIGTERM, puis SIGKILL 5 s apres) ; la requete cote dockerd suit
+# son cours et se termine seule. Aucun conteneur, aucune donnee touchee : lecture seule.
+DOCKER_TIMEOUT=${DOCKER_TIMEOUT:-45}
+DOCKER_DISJ="/tmp/audit-vps-docker-disjoncte.$$"
+# ⚠️ CORRIGE LE 2026-09-20 (meme passage, 2e jet — VPS-M105) : la premiere version ecrivait
+# `timeout … command docker "$@"`. Or `command` est un BUILTIN du shell, pas un executable :
+# `timeout` ne peut pas le lancer (rc 127, « failed to run command 'command' ») et CHAQUE appel
+# docker du script aurait rendu du vide, en silence (les `2>/dev/null` avalent le message) —
+# un correctif ecrit pour nommer un vide qui en aurait fabrique 31. Il n avait jamais tourne
+# (la collecte du jour a ete produite AVANT lui : lecon VPS-M35, « essayer les branches ne
+# remplace pas essayer le montage »). `type -P` rend le chemin du BINAIRE, jamais la fonction.
+DOCKER_BIN=$(type -P docker 2>/dev/null || true)
+docker() {
+  if [ -e "$DOCKER_DISJ" ]; then
+    echo "docker: DISJONCTE — appel « docker ${1:-} ${2:-} » NON FAIT ($(date -u '+%H:%M:%S') UTC)" >>"$ERRBUF"
+    return 124
+  fi
+  [ -n "$DOCKER_BIN" ] || return 127
+  timeout -k 5 "$DOCKER_TIMEOUT" "$DOCKER_BIN" "$@"
+  local rc=$?
+  if [ "$rc" -eq 124 ] || [ "$rc" -eq 137 ]; then
+    : >"$DOCKER_DISJ"
+    echo "docker: « docker ${1:-} ${2:-} » n a pas rendu la main en ${DOCKER_TIMEOUT} s ($(date -u '+%H:%M:%S') UTC) — DISJONCTEUR ARME : tous les appels docker suivants sont NON FAITS (VPS-M104). Verifier dockerd (section 1) et les clients bloques (section 4)." >>"$ERRBUF"
+  fi
+  return "$rc"
+}
+disjoncteur_docker() {   # a appeler la ou un vide docker doit etre EXPLIQUE (section 4, BUDGET)
+  if [ -e "$DOCKER_DISJ" ]; then
+    echo "  🔴 DISJONCTEUR docker ARME : un appel docker a depasse ${DOCKER_TIMEOUT} s, les suivants n ont"
+    echo "     PAS ete faits. Tout vide docker de cette sortie est une MESURE NON FAITE, pas un « rien »."
+    echo "     Cause probable : dockerd en boucle (VPS-016) — lire la section 1 et le bloc « Clients docker"
+    echo "     BLOQUES ». Detail dans « ERREURS PENDANT LA COLLECTE » en fin de sortie."
+  fi
+}
+
+# ⚠️⚠️ AJOUTE LE 2026-09-20 (VPS-M107) — SUR UNE VM QUI NE RECOIT QUE 12 % DE SON CPU (steal 88 %,
+# VPS-045), LA COLLECTE « 90 s » A DURE 647 s ET A FAIT MONTER LA CHARGE DE 15,8 A 81,7. Le bloc
+# BUDGET l a ecrit lui-meme : audit 22,6 % de la machine, user+sys 9,4 % au total — l audit etait
+# la majorite de ce que la VM recevait. Un audit qui pese autant sur ce qu il mesure ne mesure plus
+# rien (VPS-M12), et ses `gzip -dc` de 170 Mo sur l archive Tracky etaient le poste le plus lourd.
+# Le remede : mesurer le VOL DE CPU (steal) sur 2 s AVANT de commencer ; au-dela de 50 %, passer en
+# MODE ALLEGE — les trois blocs les plus couteux en CPU sont SAUTES et le disent (jamais un vide
+# muet, VPS-M02) : relecture des archives > 50 Mo, parcours de /opt, balayage par contenu.
+# ⚠️ Le seuil porte sur le STEAL, pas sur la charge : une charge haute avec du CPU servi est
+#    justement ce que l audit doit mesurer ; un CPU non servi, il ne peut que l aggraver.
+# ⚠️ Cout : 2 s d attente, deux lectures de /proc/stat, aucun fork de plus.
+MODE_ALLEGE=0; STEAL_T0_PCT=0
+_s0=$(head -1 /proc/stat); sleep 2; _s1=$(head -1 /proc/stat)
+STEAL_T0_PCT=$(awk -v a="$_s0" -v b="$_s1" 'BEGIN{split(a,x," ");split(b,y," ");t=0;for(i=2;i<=9;i++)t+=y[i]-x[i]; if(t>0) printf "%d", 100*(y[9]-x[9])/t; else print 0}')
+if [ "${STEAL_T0_PCT:-0}" -ge 50 ]; then MODE_ALLEGE=1; fi
+mode_allege_dit() {   # a appeler dans chaque bloc saute : le vide se NOMME
+  echo "  ⏭️ MODE ALLEGE (steal ${STEAL_T0_PCT} % au depart, seuil 50 % — VPS-M107) : $1 NON FAIT ce passage."
+  echo "     Ce n est pas « rien a signaler » : c est une mesure volontairement non faite pour ne pas"
+  echo "     prendre a la production le peu de CPU que l hote lui laisse. Lire le passage precedent."
+}
 
 # ⚠️⚠️ AJOUTE LE 2026-08-23 — VPS-M61. LES DEUX BORNES DE TOUT HISTOGRAMME « PAR JOUR » SONT
 # PARTIELLES, ET AUCUNE NE LE DISAIT.
@@ -658,8 +732,11 @@ T_OPT=$(date +%s); OPT_KO=0; OPT_N=0; OPT_TOT=0; OPT_RESTE=""
 # situation ; une attribution ecrite en dur devient fausse sans que rien ne le signale
 # (meme lecon que VPS-M47, au meme fichier, a un autre endroit).
 OPT_MS_TOT=0; OPT_MS_LEADS=""
+[ "$MODE_ALLEGE" = "1" ] && mode_allege_dit "le parcours de /opt (jusqu a 21 x 12 s de du sur une VM sans CPU)"
 for d in /opt/*/; do
   OPT_TOT=$((OPT_TOT+1)); x=${d%/}
+  # VPS-M107 : mode allege → aucun enfant n est parcouru ; ils sont tous comptes « non mesures ».
+  if [ "$MODE_ALLEGE" = "1" ]; then OPT_RESTE="$OPT_RESTE ${x##*/}"; continue; fi
   # Plafond GLOBAL : au-dela, on n'entame pas un enfant de plus. Le budget de la section est
   # ainsi borne par construction, au lieu de dependre du nombre de dossiers presents.
   if [ $(( $(date +%s) - T_OPT )) -ge 45 ]; then OPT_RESTE="$OPT_RESTE ${x##*/}"; continue; fi
@@ -845,7 +922,7 @@ have docker || { echo "docker absent"; }
 # 2026-08-14, le total est passe de 18,92 a 13,38 puis 17,35 et 16,57 Go A L INTERIEUR D UNE
 # MEME COLLECTE, et le rapport ne pouvait pas dire laquelle etait « la » mesure. Une capture
 # unique rend les sections COHERENTES ENTRE ELLES : elles decrivent le meme instant.
-SYSDF_T=$(date -u '+%H:%M:%S')
+SYSDF_T=$(date -u '+%H:%M:%S'); SYSDF_T0=$(date +%s%N)
 SYSDF_TXT=$(docker system df 2>/dev/null)
 SYSDF_FMT=$(docker system df --format '{{.Type}}|{{.Size}}|{{.Reclaimable}}|{{.Active}}|{{.TotalCount}}' 2>/dev/null)
 echo "$SYSDF_TXT"
@@ -860,6 +937,10 @@ else
   echo "  (capture unique a $SYSDF_T UTC, $SYSDF_N lignes — relue par les sections 10 et 12,"
   echo "   donc toutes les sections decrivent le MEME instant)"
 fi
+# VPS-M104 : la duree de CE premier appel docker est imprimee — c est lui qui a bloque 3 min le
+# 20/09 ; et si le disjoncteur s est arme, le vide qui suit est explique ICI, pas 1 500 lignes plus bas.
+printf '  (docker system df a rendu la main en %s ms — borne %s s, VPS-M104)\n' "$(ms "$SYSDF_T0")" "$DOCKER_TIMEOUT"
+disjoncteur_docker
 sub "Conteneurs par etat"
 docker ps -a --format '{{.State}}' 2>/dev/null | sort | uniq -c
 sub "Conteneurs ARRETES — toujours affiche, meme a zero"
@@ -1057,7 +1138,15 @@ sub "Perimetre : qu est-ce qui est NEUF ou DISPARU depuis le dernier manifeste p
 LISTE_NOW=$(printf '%s\n' "$PROJETS" | grep -v '^$' | awk -F'|' '{print $2}' | sort -u)
 echo "  conteneursListe (a reporter tel quel dans chiffres) : $(printf '%s\n' "$LISTE_NOW" | paste -sd, -)"
 MANIF=/opt/tracky-vps-audit/app/wiki.json
-if [ -r "$MANIF" ] && command -v jq >/dev/null 2>&1; then
+# ⚠️ AJOUTE LE 2026-09-20 (VPS-M106) : disjoncteur docker arme → $PROJETS est VIDE, et ce bloc a
+# imprime « 🟠 DISPARU(S) : <les 38 conteneurs> ». Une liste courante vide n est pas un perimetre,
+# c est une mesure NON FAITE — la difference d ensembles ne se calcule pas contre du vide.
+if [ -z "$LISTE_NOW" ]; then
+  echo "  ⚠️ liste courante VIDE (disjoncteur docker arme, ou docker ps sans reponse) : comparaison de"
+  echo "     perimetre NON FAITE ce passage — ne PAS lire « 38 disparus ». Reporter la conteneursListe"
+  echo "     du manifeste precedent telle quelle, en le disant."
+  REF_DATE=$(jq -r '.passages[0].date // empty' "$MANIF" 2>/dev/null)
+elif [ -r "$MANIF" ] && command -v jq >/dev/null 2>&1; then
   REF_DATE=$(jq -r '.passages[0].date // empty' "$MANIF" 2>/dev/null)
   REF_LISTE=$(jq -r '.passages[0].chiffres.conteneursListe // empty' "$MANIF" 2>/dev/null | tr ',' '\n' | sed '/^$/d' | sort -u)
   if [ -z "$REF_LISTE" ]; then
@@ -1132,6 +1221,15 @@ if have jq; then
   # precedente en lancait deux — c'est-a-dire qu'elle serialisait DEUX FOIS l'etat complet des
   # 32 conteneurs (plusieurs Mo de JSON) pour repondre a deux questions sur le meme objet.
   INSPECT_JSON=$(printf '%s\n' "$IDS" | xargs -r docker inspect 2>/dev/null)
+  # ⚠️ AJOUTE LE 2026-09-20 (VPS-M106) : sans `docker inspect` (disjoncteur arme, IDS vide), ce bloc
+  # rendait « ✅ 0 domaines routes », « 🔴 PERSONNE ne publie 80/443 — la production est injoignable »
+  # et « 38 certificats, dont 38 sans service vivant » — trois verdicts FAUX fabriques par un vide,
+  # pendant que la production repondait 200. Un vide se nomme, il ne se juge pas (VPS-M02).
+  if [ -z "$INSPECT_JSON" ]; then
+    echo "  ⚠️ docker inspect sans reponse (disjoncteur arme ?) : table de routage, detenteur de 80/443 et"
+    echo "     certificats orphelins NON MESURES ce passage — PAS « 0 route », PAS « production injoignable »."
+    INSPECT_JSON=""; NB_ETIQ=0; ROUTES=""
+  else
   NB_ETIQ=$(printf '%s' "$INSPECT_JSON" \
     | jq -r '[.[] | select([.Config.Labels // {} | keys[] | select(startswith("traefik."))] | length > 0)] | length')
   ROUTES=$(printf '%s' "$INSPECT_JSON" | jq -r '.[]
@@ -1174,6 +1272,7 @@ if have jq; then
     printf '  acme.json modifie le : %s  (renouvellement = 30 j avant expiration)\n' \
       "$(date -r "$ACME" '+%Y-%m-%d %H:%M' 2>/dev/null)"
   fi
+  fi   # fin du garde VPS-M106 (INSPECT_JSON vide)
 else
   echo "  (jq absent — table de routage non calculable)"
 fi
@@ -3358,6 +3457,12 @@ CADENCES=$(printf '%s\n' "$IDS" | xargs -r docker inspect \
   --format '{{with .Config.Healthcheck}}{{.Interval}}{{end}}' 2>/dev/null | grep .)
 # ⚠️ Le denominateur est affiche (lecon VPS-M08/M22) : sans lui, un gabarit qui casse rendrait
 # « 0 invocation/min » — c'est-a-dire l'image d'une machine sans aucune sonde — en silence.
+# ⚠️ VPS-M106 (2026-09-20) : sans `docker inspect` (disjoncteur arme), ce bloc rendait « 1 conteneurs
+#    toutes les  » et « -1 SANS AUCUNE SONDE » — un vide lu comme des nombres. Il se nomme desormais.
+if [ -z "$IDS" ] || [ -z "$CADENCES" ]; then
+  echo "  ⚠️ cadences NON LUES (docker inspect sans reponse — disjoncteur arme ?) : healthchecksParMin"
+  echo "     NON MESURE ce passage. PAS « 0 sonde », PAS « 0 invocation »."
+else
 printf '%s\n' "$CADENCES" | sort | uniq -c \
   | awk '{printf "  %3d conteneurs toutes les %s\n", $1, $2}'
 printf '%s\n' "$CADENCES" | awk -v tot="$NB_PS" '
@@ -3365,6 +3470,7 @@ printf '%s\n' "$CADENCES" | awk -v tot="$NB_PS" '
   { s++ }
   END {printf "  → %d invocations/min, soit ~%d/jour (chacune ~5 processus via runc)\n", n, n*1440
        printf "     %d conteneurs sondes sur %d ; %d SANS AUCUNE SONDE (leur panne est invisible a Docker)\n", s, tot, tot-s}'
+fi
 
 sub "Creations de processus par minute (fenetre de 10 s, DECOUPEE en 3 sous-fenetres)"
 # Le compteur `processes` de /proc/stat est cumulatif depuis le demarrage : la difference sur
@@ -4076,6 +4182,10 @@ sub "Sauvegardes HORS de /var/backups — balayage par CONTENU (angle mort n° 4
 echo "  couvert par les controles ci-dessus : /var/backups/*"
 echo "  elague du balayage (non pertinent)  : /var/backups, /var/lib/docker, /proc, /sys, /snap, /run"
 echo "  critere : fichier > 50 Mo, extension .sql .sql.gz .sql.bz2 .dump .tar .tar.gz .tgz .gpg .bak"
+if [ "$MODE_ALLEGE" = "1" ]; then
+  mode_allege_dit "le balayage par contenu (find / -maxdepth 5, 25 s)"
+  ERRANTS=""; RC_ERRANTS=124   # 124 = le meme chemin que « interrompu » : aucun ✅ ne peut sortir d ici
+else
 ERRANTS=$(timeout 25 $LOW find / -xdev -maxdepth 5 \
     \( -path /var/backups -o -path /var/lib/docker -o -path /proc -o -path /sys \
        -o -path /snap -o -path /run \) -prune -o \
@@ -4084,7 +4194,8 @@ ERRANTS=$(timeout 25 $LOW find / -xdev -maxdepth 5 \
        -o -name '*.tar' -o -name '*.tar.gz' -o -name '*.tgz' -o -name '*.gpg' -o -name '*.bak' \) \
     -printf '%s\t%TY-%Tm-%Td %TH:%TM\t%p\n' 2>/dev/null)
 RC_ERRANTS=$?
-if [ "$RC_ERRANTS" -eq 124 ]; then
+fi
+if [ "$RC_ERRANTS" -eq 124 ] && [ "$MODE_ALLEGE" != "1" ]; then
   echo "  🔴 BALAYAGE INTERROMPU (timeout 25 s) — le resultat ci-dessous est PARTIEL."
   echo "     NE PAS le lire comme « rien a signaler » : c'est « on ne sait pas »."
 fi
@@ -4129,6 +4240,12 @@ for d in /var/backups/*/; do
   der=$(find "$d" -maxdepth 1 -type f -name '*.gz' ! -name '*.gpg' -printf '%T@ %p\n' 2>/dev/null | sort -rn | head -1)
   [ -z "$der" ] && continue
   fic=${der#* }
+  # VPS-M107 : en mode allege, une archive > 50 Mo n est pas relue (gzip -dc de 170 Mo = le poste
+  # CPU le plus lourd de toute la collecte) — et la ligne le dit, archive nommee.
+  if [ "$MODE_ALLEGE" = "1" ] && [ "$(stat -c %s "$fic" 2>/dev/null || echo 0)" -gt 52428800 ]; then
+    printf '  ⏭️ %-26s %s NON RELUE (mode allege, steal %s %% — VPS-M107) : archive > 50 Mo\n' "$(basename "$d")" "$(basename "$fic")" "$STEAL_T0_PCT"
+    continue
+  fi
   # ⚠️ `rc=${PIPESTATUS[0]}` NE MARCHE PAS ici : `x=$(a | b)` est une commande SIMPLE, donc
   # PIPESTATUS decrit l'affectation, pas le tube interne — l'echec de gzip serait avale et
   # toute archive tronquee declaree saine. C'est `pipefail` (pose en tete de script) qui
@@ -4564,6 +4681,13 @@ DUREE=$(( $(date +%s) - T_DEBUT ))
 CHARGE_FIN=$(cut -d' ' -f1 /proc/loadavg)
 printf '\n\n═════ BUDGET DE LA COLLECTE ═════\n'
 printf '  duree totale : %s s   (budget impose : %s s)\n' "$DUREE" "${BUDGET:-90}"
+disjoncteur_docker   # VPS-M104 : un vide docker se dit AUSSI ici, la ou l on relit le budget
+if [ "$MODE_ALLEGE" = "1" ]; then
+  echo "  ⏭️ MODE ALLEGE : steal ${STEAL_T0_PCT} % au depart (seuil 50 %, VPS-M107) — relecture des archives > 50 Mo,"
+  echo "     parcours de /opt et balayage par contenu NON FAITS. Les cles qui en dependent sont NON MESUREES."
+else
+  echo "  steal au depart : ${STEAL_T0_PCT} % (mode complet ; le mode allege s enclenche a 50 %, VPS-M107)"
+fi
 # ⚠️ AJOUTE LE 2026-09-16 (VPS-M73) : le passage est planifie a 02:22 UTC cote poste. Ce matin il a
 # demarre a 04:36 — le poste dormait (sorti de veille 02:20:46Z, rendormi dans la seconde, reveille
 # 04:34:19Z) — et RIEN dans cette sortie ne le disait : « ✅ ma collecte etait SEULE » se lit
