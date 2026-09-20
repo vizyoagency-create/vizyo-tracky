@@ -6102,7 +6102,19 @@ confondre les deux ferait accuser le mauvais coupable.
 
 ## VPS-045 — L'hôte retient 80 à 90 % du CPU de la machine, et il ne l'a pas rendu quand la cause interne a disparu
 
-- **Domaine** : charge · **Gravité** : **1** · **Statut** : `A_TRAITER` — 🆕 **V35** : (2) **FAIT à 12 h 48 UTC** (14 conteneurs arrêtés, pas 18), (1) ticket hébergeur **à faire** ; **V4 re-bloquée**
+- **Domaine** : charge · **Gravité** : **2** (1 → 2 le 2026-09-20 13 h 36 : limitation levée) · **Statut** : `SURVEILLANCE` — **V35 FAITE** : (1) ticket → **limitation CONFIRMÉE et LEVÉE par Hostinger à 13 h 36 UTC**, (2) 14 conteneurs arrêtés 12 h 48 puis **rallumés 13 h 38** ; **V4 débloquée**
+- ✅ **Vu : 2026-09-20 13 h 36 UTC — L'HÉBERGEUR CONFIRME ET LÈVE : « a Hostinger CPU limitation was active and it has now been
+  successfully removed; your sustained high usage from 2026-09-19 18:40 to 2026-09-20 05:25 UTC is consistent with the
+  trigger ».** Ticket envoyé par le chat hPanel (Hostinger Agent) à 15 h 35 Paris, réponse à 15 h 36 ; **seuil et fenêtre non
+  exposés**, et l'avertissement : *« the limitation may be reapplied after sustained usage »*. **Mesure à 13 h 37** : `/proc/stat`
+  3 × 10 s → steal **1 / 1 / 1 %**, idle 89–96 % ; charge **1,24** ; `docker ps -q` **0,14 s** (20 s ce matin) ; `/api/health`
+  **29–55 ms** (1 500–2 100 ms ce matin). **Les 14 conteneurs rallumés à 13 h 38** (bases d'abord) : 38 / 38 running,
+  14 / 14 `healthy` ou `starting`, `dev.maestroo.app`, `dev.maalem-now.com`, démo à 200 ; steal 4 % pendant le redémarrage.
+  *L'hypothèse des paliers (politique d'équité déclenchée par 2 × 100 % pendant 11 h) est confirmée par l'hébergeur ; la règle
+  exacte reste inconnue.* **Ce qui empêche la rechute** : le garde-fou `docker-orphelins.timer` et la borne `timeout` (V34) —
+  la cause des 2 × 100 % ne peut plus durer plus de 15 min. **Seuil de réescalade** : `A_TRAITER` gravité 1 si steal > 30 %
+  sur 3 relevés `sar` de suite **avec** `dockerd` < 10 % et 0 client ; `APPLIQUE` après 7 jours de steal < 10 % en moyenne
+  journalière.
 - 📏 **Vu : 2026-09-20 12 h 48 → 13 h 10 UTC — V35 (2) FAITE PAR LE PROPRIÉTAIRE : 14 CONTENEURS HORS PRODUCTION ARRÊTÉS,
   ET LA MACHINE RESPIRE À MOITIÉ.** `docker stop -t 20` (jamais `down`) sur `maalem-dev` ×6, `maestroo-dev` ×4,
   `tracky-demo` ×4 (110 s) ; **gardés** : `dg-epaviste-website` (site public d'un client), `dronely` ×2,
@@ -6163,7 +6175,14 @@ confondre les deux ferait accuser le mauvais coupable.
 
 ## VPS-046 — La démo n'est mise à jour que par une commande que le déploiement ne lance pas, et l'import hebdomadaire a échoué dessus
 
-- **Domaine** : docker · **Gravité** : 2 · **Statut** : `A_TRAITER` — 🆕 **V36** (a : 10 s sur le VPS, quand VPS-045 est levé ; b : `deploy.sh`, code applicatif)
+- **Domaine** : docker · **Gravité** : 2 · **Statut** : `A_TRAITER` — **V36 (a) FAITE le 2026-09-20 13 h 40 UTC** (démo recréée, migrations jouées, import réussi 13 h 47) ; **(b) `deploy.sh` reste à coder** — sans lui le même décalage revient au prochain déploiement
+- ✅ **Vu : 2026-09-20 13 h 40 → 13 h 47 — V36 (a) FAITE, ET L'IMPORT RÉUSSIT.** `docker compose --env-file .env.demo -f
+  docker-compose.demo.yml up -d` : `tracky-demo-api` recréé sur **`6b15f68b1061`** (= `tracky-api:latest`, il tournait sur
+  `608a608fae0d` du 09/09), `tracky-demo-web` sur `f94a4599f539` ; **5 migrations jouées à 13 h 40** au démarrage
+  (`20260913200000_tracker_command_sent_unconfirmed` → `20260917120000_rdv_lot_d_synchro_manager`) ; colonne
+  `managedByManagerAt` **présente** ; API démo `healthy` en 40 s. Puis `systemctl start tracky-demo-refresh` : **« Import
+  réussi » à 13 h 47 min 15** (309 s ; 37 véhicules, 15 630 trajets, 572 006 positions, 12 967 analyses), positions jusqu'au
+  19/09 21 h 59, démo 200 en 70 ms, production 200 en 97 ms pendant l'import. La démo est à jour du **code et du schéma**.
 - **Vu** : 2026-09-20 (1ᵉʳ passage ; l'échec date du **20/09 04:07:58 UTC**) · **Mesure** :
   `tracky-demo-refresh.service` **`exit-code`, status=1** (section 7 « unités en échec » — la ligne qui a déclenché
   la lecture) ; `/var/log/tracky-demo-refresh.log` : *« Arrêt de l'API de démo »* 04:00:03, *« Import… »* 04:02:32,
