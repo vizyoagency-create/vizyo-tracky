@@ -241,10 +241,24 @@ disjoncteur_docker() {   # a appeler la ou un vide docker doit etre EXPLIQUE (se
 # ⚠️ Le seuil porte sur le STEAL, pas sur la charge : une charge haute avec du CPU servi est
 #    justement ce que l audit doit mesurer ; un CPU non servi, il ne peut que l aggraver.
 # ⚠️ Cout : 2 s d attente, deux lectures de /proc/stat, aucun fork de plus.
-MODE_ALLEGE=0; STEAL_T0_PCT=0
+MODE_ALLEGE=0; MODE_MINIMAL="${MODE_MINIMAL:-0}"; STEAL_T0_PCT=0
 _s0=$(head -1 /proc/stat); sleep 2; _s1=$(head -1 /proc/stat)
 STEAL_T0_PCT=$(awk -v a="$_s0" -v b="$_s1" 'BEGIN{split(a,x," ");split(b,y," ");t=0;for(i=2;i<=9;i++)t+=y[i]-x[i]; if(t>0) printf "%d", 100*(y[9]-x[9])/t; else print 0}')
-if [ "${STEAL_T0_PCT:-0}" -ge 50 ]; then MODE_ALLEGE=1; fi
+case "${STEAL_T0_PCT:-0}" in ''|*[!0-9]*) STEAL_T0_PCT=0 ;; esac
+if [ "$STEAL_T0_PCT" -ge 50 ]; then MODE_ALLEGE=1; fi
+# ⚠️⚠️ 2e JET, 2026-09-20 (VPS-M107, 1er jet mesure INSUFFISANT le jour meme) : en mode allege, la passe 2
+# a encore fait monter la charge de 8,9 a 68 — les gzip n etaient qu une part, le reste est la MASSE
+# DE FORKS (ps, awk, sous-shells, ~30 clients docker) d une collecte de 4 900 lignes sur une VM qui
+# ne sert qu un cycle sur dix. Au-dela de 80 % de steal, la collecte passe en MODE MINIMAL : les
+# sections 3 a 8 et 10 a 12 ne sont PAS jouees (chacune le dit), et une section « M » rend ce qui
+# compte pour trancher — charge, steal, clients docker bloques, garde-fou, sar, sante publique —
+# avec des LECTURES DE FICHIERS et zero client docker. Les sections 1, 2 et 9 (des lectures) et le
+# bloc BUDGET restent. Toutes les cles chiffrees qui dependent d une section sautee sont NON MESUREES.
+# ⚠️ Le seuil de 80 % est celui du 20/09 01:10 → 05:20 (part servie ~10 %) ; a 50-80 % le mode allege
+#    reste le bon compromis (mesure : 413 s a 89 % … mais charge x8 — d ou ce 2e jet).
+# ⚠️ MODE_MINIMAL=1 force par l environnement (`MODE_MINIMAL=1 bash -s`) pour rejouer la branche a
+#    froid, machine saine : c est ainsi que ce jet a ete banc le 20/09 (VPS-M35 : le script entier).
+if [ "${MODE_MINIMAL:-0}" = "1" ] || [ "$STEAL_T0_PCT" -ge 80 ]; then MODE_MINIMAL=1; MODE_ALLEGE=1; fi
 mode_allege_dit() {   # a appeler dans chaque bloc saute : le vide se NOMME
   echo "  ⏭️ MODE ALLEGE (steal ${STEAL_T0_PCT} % au depart, seuil 50 % — VPS-M107) : $1 NON FAIT ce passage."
   echo "     Ce n est pas « rien a signaler » : c est une mesure volontairement non faite pour ne pas"
@@ -664,6 +678,48 @@ done | sort -rn | head -10 | awk -F'\t' '{printf "  %6d Mo  %s\n", $1/1024, $2}'
 sub "Tues par manque de memoire (30 j)"
 journalctl --since "30 days ago" 2>/dev/null | grep -icE "out of memory|oom-kill" | xargs echo "  occurrences OOM :"
 
+# ═════ MODE MINIMAL (VPS-M107, 2e jet) : les sections 3 a 8 sont dans ce `if` ; le `fi` est juste avant la 9 ═════
+if [ "$MODE_MINIMAL" = "1" ]; then
+  section "M. MODE MINIMAL — steal ${STEAL_T0_PCT} % au depart : sections 3 a 8 et 10 a 12 NON JOUEES"
+  echo "  ⏭️ La machine ne recoit qu une fraction de son CPU (VPS-045) : une collecte complete y prendrait"
+  echo "     dix fois son temps ET le prendrait a la production (20/09 : 647 s, charge 15,8 → 81,7 ; en mode"
+  echo "     allege 413 s, charge 8,9 → 68). Ce passage ne fait que des LECTURES DE FICHIERS — aucun client"
+  echo "     docker, aucun du, aucun gzip — et rend ce qui suffit a trancher. Tout le reste est NON MESURE :"
+  echo "     ce n est pas « rien a signaler ». Les cles chiffrees des sections sautees sont NON MESUREES."
+  sub "Clients docker vivants (la cause de VPS-016) — par nom de processus, sans client"
+  _cli=$(ps -eo pid=,ppid=,etimes=,tty=,args= 2>/dev/null | awk '$5=="docker" || $5 ~ /\/docker$/ {print}')
+  if [ -z "$_cli" ]; then echo "  ✅ aucun processus client docker"; else
+    echo "$_cli" | awk '{printf "  %s pid=%s ppid=%s age=%ss tty=%s : ", ($3>60?"🔴":"  "), $1, $2, $3, $4; for(i=5;i<=NF&&i<12;i++) printf "%s ", $i; print ""}'
+    echo "  → tout client de plus de 60 s est une occurrence de VPS-016 : parent d abord (VPS-M51)."
+  fi
+  echo "  connexions sur /run/docker.sock : $(ss -xp state established 2>/dev/null | grep -c docker.sock)"
+  sub "Garde-fou docker-orphelins (V34)"
+  if [ -r /run/docker-orphelins/dernier ]; then echo "  temoin : $(cat /run/docker-orphelins/dernier)"; else echo "  🔴 pas de temoin : le garde-fou n a pas tourne depuis le demarrage"; fi
+  echo "  minuterie : $(systemctl is-active docker-orphelins.timer 2>/dev/null) ; tues 24 h : $(journalctl -t docker-orphelins --since '-24h' --no-pager 2>/dev/null | grep -c 'TUÉ')"
+  sub "dockerd maintenant (3 s) et cumul"
+  if [ -n "${DOCKERD_PID:-}" ] && [ -r "/proc/$DOCKERD_PID/stat" ]; then
+    _a=$(awk '{print $14+$15}' "/proc/$DOCKERD_PID/stat"); sleep 3; _b=$(awk '{print $14+$15}' "/proc/$DOCKERD_PID/stat")
+    echo "  dockerd pid $DOCKERD_PID : $(( (_b-_a)*100/300 )) % d un coeur sur 3 s ; cumul $(( _b/100/3600 )) h"
+  else echo "  dockerd : PID introuvable"; fi
+  sub "steal / idle : les 12 derniers releves sar (10 min) et l instant"
+  sar -u 2>/dev/null | grep -E '^[0-9]{2}:[0-9]{2}' | grep -v Average | tail -12 | awk '{printf "  %s  user %5s  sys %5s  steal %5s  idle %5s\n",$1,$3,$5,$7,$8}'
+  _s0=$(head -1 /proc/stat); sleep 5; _s1=$(head -1 /proc/stat)
+  awk -v a="$_s0" -v b="$_s1" 'BEGIN{split(a,x," ");split(b,y," ");t=0;for(i=2;i<=9;i++)t+=y[i]-x[i]; if(t>0) printf "  instant (5 s) : steal %.0f %%  idle %.0f %%  user+sys %.0f %%  → part servie %.0f %%\n",100*(y[9]-x[9])/t,100*(y[5]-x[5])/t,100*(y[2]+y[4]-x[2]-x[4])/t,100-100*(y[9]-x[9])/t}'
+  sub "Conteneurs : etat lu dans config.v2.json (sans client docker)"
+  _run=0; _tot=0; for _f in /var/lib/docker/containers/*/config.v2.json; do [ -r "$_f" ] || continue; _tot=$((_tot+1)); grep -q '"Running":true' "$_f" && _run=$((_run+1)); done
+  echo "  $_run running sur $_tot (la sante des sondes n est PAS lue ici : NON MESUREE)"
+  sub "La production repond-elle ? (2 URL, 10 s max)"
+  for _u in https://app-tracky.vizyoagency.com/api/health https://app-tracky.vizyoagency.com/; do
+    printf '  %-46s %s\n' "$_u" "$(curl -s -o /dev/null -m 10 -w '%{http_code} %{time_total}s' "$_u" 2>/dev/null || echo 'ECHEC')"
+  done
+  sub "Sauvegardes de la nuit : fichier le plus recent par dossier (ls seul)"
+  for _d in /var/backups/vizyo-tracky /var/backups/vizyo-verify /var/backups/vizyo-auth /var/backups/vizyo_manager /var/backups/vizyo_texto; do
+    _l=$(ls -t "$_d" 2>/dev/null | head -1); [ -n "$_l" ] && echo "  $(basename $_d) : $_l ($(date -r "$_d/$_l" '+%m-%d %H:%M' 2>/dev/null))"
+  done
+  echo "  disque : $(df -h / | awk 'NR==2{print $3" / "$2" ("$5")"}')"
+  echo
+  echo "  ⏭️ Sections 3 (disque), 4 (docker), 5 (donnees), 6 (securite), 7 (planification), 8 (journaux) NON JOUEES."
+else
 # ─────────────────────────────────────────────────────────────────────────────────────────────
 section "3. DISQUE"
 # ─────────────────────────────────────────────────────────────────────────────────────────────
@@ -3587,6 +3643,8 @@ section "8. JOURNAUX"
 journalctl --disk-usage 2>/dev/null | sed 's/^/  /'
 timeout 20 $LOW du -sh /var/log/* 2>/dev/null | sort -rh | head -8
 
+fi   # ═════ fin de l enveloppe MODE MINIMAL des sections 3 a 8 (VPS-M107) ═════
+
 # ─────────────────────────────────────────────────────────────────────────────────────────────
 section "9. HISTORIQUE (sysstat — TOUTES les journees conservees, jour en cours compris)"
 # ─────────────────────────────────────────────────────────────────────────────────────────────
@@ -3700,6 +3758,13 @@ else
   echo "     ponctuel d'une derive de fond.  Installer :  apt install sysstat"
 fi
 
+# ═════ MODE MINIMAL (VPS-M107) : les sections 10 a 12 sont dans ce `if` ; le `fi` est juste avant le BUDGET ═════
+if [ "$MODE_MINIMAL" = "1" ]; then
+  printf '\n\n═════ 10-12. PREVISIONS, SAUVEGARDES, LEVIERS — NON JOUEES (mode minimal, steal %s %% au depart) ═════\n' "$STEAL_T0_PCT"
+  echo "  ⏭️ Elles reposent sur docker system df, ~10 docker exec, des gzip -dc et des find : rien de tout cela"
+  echo "     sur une VM sans CPU. La section M ci-dessus a lu ce qui se lit sans forker (sauvegardes de la nuit,"
+  echo "     disque, production). disqueRecuperableGo, cacheBuildGo, healthchecksParMin, registre* : NON MESURES."
+else
 # ─────────────────────────────────────────────────────────────────────────────────────────────
 section "10. PREVISIONS — ce que chaque nettoyage rendrait"
 # ─────────────────────────────────────────────────────────────────────────────────────────────
@@ -4705,6 +4770,8 @@ UPH=$(awk '{printf "%.1f", $1/3600}' /proc/uptime)
 [ "${DUP:-0}" -le 400 ] && verdict "memoire de dockerd" "${DUP} Mo (uptime ${UPH} h)" "< 400 Mo" ok "" \
   || verdict "memoire de dockerd" "${DUP} Mo (uptime ${UPH} h)" "< 400 Mo" ko "suit les BUILDS, pas l'uptime — un redemarrage ne regle rien de durable"
 
+fi   # ═════ fin de l enveloppe MODE MINIMAL des sections 10 a 12 (VPS-M107) ═════
+
 # ⚠️ AJOUTE LE 2026-08-10 (VPS-M24) — LE BUDGET ETAIT INSTRUMENTE, JAMAIS ARBITRE.
 # VPS-M16 avait pose les `[t+Ns]` sur chaque en-tete de section : on savait donc OU le temps
 # passait. Mais aucune ligne ne disait si le budget de 90 s etait tenu — il fallait lire la
@@ -4720,7 +4787,11 @@ CHARGE_FIN=$(cut -d' ' -f1 /proc/loadavg)
 printf '\n\n═════ BUDGET DE LA COLLECTE ═════\n'
 printf '  duree totale : %s s   (budget impose : %s s)\n' "$DUREE" "${BUDGET:-90}"
 disjoncteur_docker   # VPS-M104 : un vide docker se dit AUSSI ici, la ou l on relit le budget
-if [ "$MODE_ALLEGE" = "1" ]; then
+if [ "$MODE_MINIMAL" = "1" ]; then
+  echo "  ⏭️ MODE MINIMAL : steal ${STEAL_T0_PCT} % au depart (seuil 80 %, VPS-M107 2e jet) — sections 3-8 et 10-12 NON JOUEES ;"
+  echo "     seules les sections 1, 2, M, 9 et ce bloc. Aucun client docker lance. Comparer la charge de fin a celle"
+  echo "     du debut : c est la preuve attendue de ce mode (< 2x)."
+elif [ "$MODE_ALLEGE" = "1" ]; then
   echo "  ⏭️ MODE ALLEGE : steal ${STEAL_T0_PCT} % au depart (seuil 50 %, VPS-M107) — relecture des archives > 50 Mo,"
   echo "     parcours de /opt et balayage par contenu NON FAITS. Les cles qui en dependent sont NON MESUREES."
 else

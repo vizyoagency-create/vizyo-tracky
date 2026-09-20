@@ -6247,7 +6247,18 @@ confondre les deux ferait accuser le mauvais coupable.
 
 ### VPS-M107 — Sur une VM qui ne reçoit que 12 % de son CPU, l'audit en prenait la majorité : 647 s, charge 15,8 → 81,7
 
-- **Domaine** : méthode · **Gravité** : 2 · **Statut** : `A_TRAITER` — **1ᵉʳ jet posé le 2026-09-20 (mode allégé), mesuré INSUFFISANT le jour même** : passe 2 **413 s** (−36 %) mais charge **8,9 → 68,0** ; 2ᵉ jet = un *mode minimal* au-delà de 80 % de steal (sections 1, 2, 9 et sauvegardes seulement — des lectures de fichiers, aucun fork de masse)
+- **Domaine** : méthode · **Gravité** : 2 · **Statut** : `APPLIQUE` (2ᵉ jet posé et banc le 2026-09-20 19 h 23 UTC ; à confirmer au premier vrai passage sous steal ≥ 80 %)
+- ✅ **Vu : 2026-09-20 19 h 23 — 2ᵉ JET : LE MODE MINIMAL.** Au-delà de **80 %** de steal au départ (ou `MODE_MINIMAL=1` dans
+  l'environnement, pour le banc), les sections **3 à 8 et 10 à 12 ne sont pas jouées** — chacune le dit — et une section
+  **« M »** rend ce qui suffit à trancher, par des lectures de fichiers et **zéro client docker** : clients docker vivants
+  (`ps`), connexions sur la socket, témoin et minuterie du garde-fou, `dockerd` sur 3 s et cumul, 12 relevés `sar` +
+  l'instant sur 5 s, conteneurs `running` lus dans `config.v2.json`, 2 URL de production, dernière sauvegarde par
+  dossier (`ls`), disque. Restent les sections 1, 2, 9 et le BUDGET. **Banc, script entier, machine saine** : `MODE_MINIMAL=1`
+  → **28 s, charge 0,61 → 0,56**, 0 erreur, 186 lignes ; puis mode complet → **143 s, 12 sections, charge 0,43 → 1,32**,
+  0 erreur — l'enveloppe `if … fi` n'a rien cassé (les sections 1, 2, 9 et BUDGET sont autonomes : vérifié variable par
+  variable avant d'envelopper). Les clés chiffrées des sections sautées sont **NON MESURÉES** au manifeste, jamais des zéros.
+- **Vu : 2026-09-20 11 h 41 — 1ᵉʳ jet (mode allégé), mesuré INSUFFISANT le jour même** : passe 2 **413 s** (−36 %) mais
+  charge **8,9 → 68,0** — les `gzip` n'étaient qu'une part ; le reste est la masse de forks.
 - **Vu** : 2026-09-20 · **Mesure** : collecte **647 s** (7,2× le budget), charge **15,82 au début → 81,67 à la fin** ;
   bloc BUDGET : *« coût réel de l'audit : 292,3 s de CPU = 22,6 % de la machine »* pour `user`+`sys` **9,4 %** au
   total et `steal` **87,7 %** sur la même fenêtre — l'audit était **la majorité de ce que la VM recevait**. Postes :

@@ -58,3 +58,6 @@ apps/web/playwright-report/
 outils/*.log
 outils/.osm/
 outils/node_modules/
+
+# Dossier de travail du proprietaire (prompts, brouillons) : jamais versionne.
+tmp/
