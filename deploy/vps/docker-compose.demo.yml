@@ -3,11 +3,15 @@
 #   docker compose --env-file .env.demo -f docker-compose.demo.yml up -d
 #
 # Une pile SÉPARÉE de la production, sur le même VPS, faite des MÊMES IMAGES que la prod :
-# aucun `build:` ici. Déployer la prod (`docker-compose.prod.yml up -d --build`) construit
-# `tracky-api:latest` et `tracky-web:latest` ; un `up -d` sur ce fichier recrée alors les
-# conteneurs de la démo sur ces images et joue les migrations. C'est ce qui rend la mise à jour
-# du code automatique : la démo ne peut pas être en retard sur la prod autrement que par l'oubli
-# de cette seule commande (cf. deploy/vps/README.md).
+# aucun `build:` ici. Déployer la prod construit `tracky-api:latest` et `tracky-web:latest` ; un
+# `up -d` sur ce fichier recrée alors les conteneurs de la démo sur ces images et joue les
+# migrations au démarrage.
+#
+# ⚠️ 2026-09-20 (VPS-046) : « la démo ne peut pas être en retard autrement que par l'oubli de cette
+# seule commande » — et elle a été oubliée trois déploiements de suite (17/09 ×2, 19/09) : l'import
+# hebdomadaire a échoué sur une colonne du lot D absente de la base de démo. Depuis, c'est
+# `deploy.sh` qui lance ce `up -d` LUI-MÊME, après que la production est saine (`--sans-demo` pour
+# ne pas le faire, en le sachant). Ce fichier ne se lance à la main que hors déploiement.
 #
 # ⚠️ Trois choses font que la démo NE PEUT PAS atteindre un véhicule, et elles sont ici :
 #   1. aucun `ports:` sur l'API — le port boîtiers 5023 n'est pas publié (et le serveur TCP

@@ -71,6 +71,11 @@ Les traitements CUT et RESTORE sont volontairement asymétriques :
 33. [Journée S21 du 14/09 — diagnostic, configuration du téléphone, tests SMS (T43, T61)](./33-JOURNEE-S21-DIAGNOSTIC-ET-CONFIGURATION-2026-09-14.md)
 34. [Fiche de fusion — les 28 + 5 commits, dans l'ordre, et comment les relire](./34-FICHE-DE-FUSION-2026-09-14.md)
 35. [Correctif T62 — une SIM injoignable par SMS met le véhicule en « TCP seul » ; pourquoi deux boîtiers sur dix restent sourds](./35-CORRECTIF-SIM-INJOIGNABLE-TCP-SEUL-2026-09-14.md)
+36. [Incident du 19–20/09 — deux `docker logs` oubliés, l'hébergeur retire 90 % du CPU : reprises par SMS payant, sauvegarde de 64 min ; le garde-fou `docker-orphelins.timer`, `deploy.sh` corrigé (V32 b, V36 b)](./36-INCIDENT-VPS-BRIDE-2026-09-20-DEUX-DOCKER-LOGS-ET-90-POURCENT-DE-CPU-RETIRES.md)
+
+Incident hors numérotation, du même chantier :
+[Incident du 17/09 — une migration ratée a tenu l'API à terre 56 min : 28 véhicules coupés au réveil](./31-INCIDENT-DEPLOIEMENT-2026-09-17-API-A-TERRE-56-MIN.md)
+*(le numéro 31 est partagé avec le correctif P2-10, le fichier n'a pas été renuméroté pour ne pas casser les liens)*.
 
 ## État du chantier au 14 septembre 2026 (07 h)
 

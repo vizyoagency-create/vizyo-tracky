@@ -33,7 +33,7 @@ Voir `docs/DEPLOYMENT-VPS.md` pour la procédure complète.
     bash /opt/vizyo-tracky/deploy/vps/deploy.sh                 # refuse si un passage tourne ou va partir
     bash /opt/vizyo-tracky/deploy/vps/deploy.sh --attendre      # patiente (65 min au plus) au lieu de refuser
     bash /opt/vizyo-tracky/deploy/vps/deploy.sh --force         # déploie quand même, et le dit
-    bash /opt/vizyo-tracky/deploy/vps/deploy.sh --avec-demo     # et la démo dans la foulée
+    bash /opt/vizyo-tracky/deploy/vps/deploy.sh --sans-demo     # la démo SUIT par défaut depuis le 20/09 ; ceci la laisse en place
     bash /opt/vizyo-tracky/deploy/vps/deploy.sh --marketing-seul # seulement tracky-lp
     bash /opt/vizyo-tracky/deploy/vps/deploy.sh --branche X     # une autre branche que main (recette)
     bash /opt/vizyo-tracky/deploy/vps/deploy.sh --repli avant-20260913-1130-a8f9575e
@@ -45,20 +45,30 @@ Voir `docs/DEPLOYMENT-VPS.md` pour la procédure complète.
    `trip_automation_runs`, « la ligne au départ » du 2026-09-08). Refus, attente ou passage
    en force selon l'option.
 2. **Les repères de repli** — `tracky-api:avant-<date>-<sha>`, `tracky-web:…` et
-   `tracky-lp:…`, posés AVANT de
-   toucher au code (c'est ce qui tourne qu'on étiquette). Trois par image, les plus vieux
-   s'élaguent seuls. `--repli <étiquette>` revient dessus par le même chemin, garde comprise.
+   `tracky-lp:…`, posés AVANT de toucher au code, **sur l'image du conteneur en service** (depuis
+   le 20/09 — avant, sur `:latest`, qui n'est pas toujours ce qui tourne : une image pré-construite
+   ou retenue par la garde donnait un repère qui mentait, VPS-044). Quand `latest` diffère de
+   l'image en service, le script le dit. Trois par image, les plus vieux s'élaguent seuls ; le
+   ménage du VPS garde une étiquette 72 h. `--repli <étiquette>` revient dessus par le même
+   chemin, garde comprise.
 3. **Le code** — `git checkout` + `git pull --ff-only`.
 4. **La construction** — les images de la production applicative et du site marketing sont
    construites sans effet sur ce qui tourne.
 5. **La garde, À NOUVEAU** — c'est maintenant que ça tue (TRK-077, ci-dessous).
 6. **La recréation** — les piles applicative et marketing sont recréées, puis leur santé est
    attendue. Un échec remet automatiquement les trois images précédentes.
-7. **Le journal** — date, sha, périmètre, identifiants API/Web/marketing, qui, d'où, options.
+7. **La démo suit** — une fois la production saine, `docker compose … demo.yml up -d` recrée
+   l'API et le web de démo sur les mêmes images (leurs migrations se jouent au démarrage) et
+   attend la santé de l'API de démo. **Un échec de la démo ne met jamais la production en cause**
+   (elle n'a pas de véhicule) : il est dit, et journalisé (`"demo":"malade"`). `--sans-demo` pour
+   ne pas la toucher — le journal porte alors `"demo":"non"`, et l'importeur du dimanche échouera
+   si le schéma a bougé (c'est l'échec du 20/09, VPS-046).
+8. **Le journal** — date, sha, périmètre, identifiants API/Web/marketing, qui, d'où, options,
+   santé, démo.
 
 `--marketing-seul` applique les mêmes repères, contrôle de santé, journal et repli automatique,
-mais uniquement à `tracky-lp`. Il ne lit pas la garde des trajets, ne joue aucune migration et
-ne recrée ni `tracky-api` ni `tracky-web`. Il est incompatible avec `--avec-demo`.
+mais uniquement à `tracky-lp`. Il ne lit pas la garde des trajets, ne joue aucune migration, ne
+recrée ni `tracky-api` ni `tracky-web`, et ne touche pas à la démo (l'API n'a pas changé).
 
 Lors de la toute première livraison qui introduit cette option sur un VPS encore équipé de
 l'ancien script, faire d'abord un simple `git pull --ff-only origin main` dans
@@ -84,14 +94,17 @@ il rend seulement la nouvelle option disponible.
 > alerte critique partira. Un correctif urgent vaut parfois un passage perdu, mais ce doit être
 > un choix, pas une surprise.
 
-Le script se teste à blanc, sans VPS : `pnpm verif:deploiement` (47 contrôles, `deploy.test.sh`).
+Le script se teste à blanc, sans VPS : `pnpm verif:deploiement` (131 contrôles, `deploy.test.sh`).
 
 ## Environnement de démonstration (2026-09)
 
-Une pile séparée sur les MÊMES images que la prod (pas de `build:`). Après le déploiement de la
-prod, **une ligne de plus** — c'est ce qui met la démo à jour :
+Une pile séparée sur les MÊMES images que la prod (pas de `build:`). **Depuis le 20/09,
+`deploy.sh` la met à jour lui-même** après chaque déploiement de la production (étape 7). Avant,
+c'était « une ligne de plus » à taper à la main — et elle n'a pas été tapée trois déploiements de
+suite : l'import hebdomadaire du 20/09 a échoué sur une colonne du lot D absente de la base de
+démo (VPS-046). Si la démo doit être recréée hors déploiement (elle a été arrêtée, par exemple) :
 
-    docker compose --env-file .env.demo -f docker-compose.demo.yml up -d      # démo
+    docker compose --env-file .env.demo -f docker-compose.demo.yml up -d      # démo, à la main
 
 Installation, rafraîchissement (hebdomadaire + à la demande), comptes et procédure prospect :
 `docs/environnement-demo/EXPLOITATION.md`. Plan et garanties : `docs/environnement-demo/PLAN-2026-09-07.md`.

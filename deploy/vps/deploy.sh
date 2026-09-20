@@ -7,7 +7,7 @@
 #     bash /opt/vizyo-tracky/deploy/vps/deploy.sh                # refuse si un passage tourne ou va partir
 #     bash /opt/vizyo-tracky/deploy/vps/deploy.sh --attendre     # patiente (65 min au plus) au lieu de refuser
 #     bash /opt/vizyo-tracky/deploy/vps/deploy.sh --force        # déploie quand même, et le dit
-#     bash /opt/vizyo-tracky/deploy/vps/deploy.sh --avec-demo    # met aussi la démo à jour
+#     bash /opt/vizyo-tracky/deploy/vps/deploy.sh --sans-demo    # ne met PAS la démo à jour (elle suit par défaut)
 #     bash /opt/vizyo-tracky/deploy/vps/deploy.sh --marketing-seul # ne recrée que le site public
 #     bash /opt/vizyo-tracky/deploy/vps/deploy.sh --branche X    # une autre branche que main
 #     bash /opt/vizyo-tracky/deploy/vps/deploy.sh --repli avant-20260913-1130-a8f9575e
@@ -73,6 +73,23 @@
 #   3. LA FENÊTRE DU MATIN (`fenetre_du_matin`) : pas de déploiement entre 05:30 et 09:00
 #      (Europe/Paris), quand les reprises dépendent de l'API — sauf `--force`, et jamais pour
 #      un `--repli`, qui lui rétablit le service.
+#
+# ── 2026-09-20 : DEUX DÉFAUTS TROUVÉS PAR L'AUDIT VPS, LE JOUR OÙ L'HÉBERGEUR A BRIDÉ LA VM ─
+#
+# (a) LE REPÈRE DE REPLI MENTAIT (VPS-044, V32 b). `etiqueter_repli` étiquetait `image:latest` —
+#     juste quand `latest` est ce qui tourne, FAUX dès qu'une image a été pré-construite ou
+#     construite puis retenue par la garde : le 15/09 les deux repères `avant-*` pointaient des
+#     images jamais mises en service, et le vrai repère avait été effacé par le ménage. Un repli
+#     sur une étiquette qui ment ne rétablit rien. Désormais on étiquette L'IMAGE DU CONTENEUR EN
+#     SERVICE (`docker inspect --format '{{.Image}}' <conteneur>`) ; `latest` n'est qu'un repli,
+#     quand il n'y a pas encore de conteneur.
+# (b) LA DÉMO NE SUIVAIT QUE SUR OPTION (VPS-046, V36 b). `--avec-demo` existait ; personne ne le
+#     passait. Trois déploiements plus tard (17/09 ×2, 19/09) l'importeur hebdomadaire — qui, lui,
+#     tourne sur `tracky-api:latest` — a parlé à une base de démo au schéma d'avant le lot D :
+#     « column managedByManagerAt does not exist », import en échec, démo figée au 13/09, API de
+#     démo arrêtée 8 min 35 pour rien. La démo SUIT désormais la production PAR DÉFAUT, APRÈS que
+#     la production est saine (un échec de la démo ne provoque jamais un repli de la production),
+#     et le journal le dit (`"demo"`). `--sans-demo` pour ne pas la toucher.
 set -euo pipefail
 
 RACINE="${RACINE:-/opt/vizyo-tracky}"
@@ -85,7 +102,8 @@ IMAGES_COMPLETES="tracky-api tracky-web tracky-lp"
 IMAGES="$IMAGES_COMPLETES"
 FORCE=0
 ATTENDRE=0
-AVEC_DEMO=0
+# La démo suit la production par défaut (V36 b, 2026-09-20) ; `--sans-demo` la laisse en place.
+AVEC_DEMO=1
 MARKETING_SEUL=0
 BRANCHE=main
 REPLI=""
@@ -131,7 +149,8 @@ lire_options() {
     case "$arg" in
       --force) FORCE=1 ;;
       --attendre) ATTENDRE=1 ;;
-      --avec-demo) AVEC_DEMO=1 ;;
+      --avec-demo) AVEC_DEMO=1 ;;   # accepté pour les habitudes : c'est déjà le défaut
+      --sans-demo) AVEC_DEMO=0 ;;
       --marketing-seul) MARKETING_SEUL=1 ;;
       --branche) attend_valeur=branche ;;
       --repli) attend_valeur=repli ;;
@@ -139,11 +158,8 @@ lire_options() {
     esac
   done
   if [ -n "$attend_valeur" ]; then echo "Option --$attend_valeur sans valeur" >&2; return 2; fi
-  if [ "$MARKETING_SEUL" -eq 1 ] && [ "$AVEC_DEMO" -eq 1 ]; then
-    echo "Options incompatibles : --marketing-seul ne met pas à jour la démo." >&2
-    return 2
-  fi
-  if [ "$MARKETING_SEUL" -eq 1 ]; then IMAGES="tracky-lp"; else IMAGES="$IMAGES_COMPLETES"; fi
+  # Le site marketing seul ne recrée pas l'API : la démo (mêmes images que l'API) n'a rien à suivre.
+  if [ "$MARKETING_SEUL" -eq 1 ]; then AVEC_DEMO=0; IMAGES="tracky-lp"; else IMAGES="$IMAGES_COMPLETES"; fi
   return 0
 }
 
@@ -258,14 +274,37 @@ garde() {
 # Posés AVANT le pull : c'est le code qui tourne qu'on étiquette, sous le sha qui est le sien.
 # Trois par image, le nouveau compris — l'élagage retire l'étiquette, jamais une image encore
 # étiquetée `latest` ; les couches devenues orphelines partent avec l'élagage habituel du VPS.
+#
+# ⚠️ V32 (b), 2026-09-20 : on étiquette L'IMAGE DU CONTENEUR EN SERVICE, pas `image:latest`.
+# Le conteneur porte le même nom que l'image (`tracky-api`, `tracky-web`, `tracky-lp`). `latest`
+# peut être une image pré-construite (doc 25 étape 4, 15/09 17:28) ou construite puis retenue par
+# la garde (14/09 11:47) : un repère posé dessus pointe une image qui n'a JAMAIS tourné, et un
+# `--repli` dessus ne rétablit rien — c'est ce que VPS-044 a mesuré deux fois. Quand `latest` et
+# l'image en service diffèrent, on le dit : c'est l'information qui manquait le 15/09.
+image_en_service() {   # $1 = nom d'image = nom de conteneur ; rend l'ID d'image, ou rien
+  docker inspect --format '{{.Image}}' "$1" 2>/dev/null || true
+}
+
 etiqueter_repli() {
   local etiquette="avant-$(horodatage_etiquette)-$(git -C "$RACINE" rev-parse --short HEAD)"
   ETIQUETTE_POSEE="$etiquette"
   local image
   for image in $IMAGES; do
-    if ! docker image inspect "$image:latest" >/dev/null 2>&1; then
-      dire "   (pas d'image $image:latest à étiqueter — premier déploiement ?)"
-      continue
+    local source; source="$(image_en_service "$image")"
+    local source_dite="l'image du conteneur $image"
+    if [ -z "$source" ]; then
+      # Pas de conteneur (premier déploiement, ou pile arrêtée) : `latest` est le seul repère possible.
+      if ! docker image inspect "$image:latest" >/dev/null 2>&1; then
+        dire "   (ni conteneur $image ni image $image:latest à étiqueter — premier déploiement ?)"
+        continue
+      fi
+      source="$image:latest"; source_dite="$image:latest (pas de conteneur $image en service)"
+    else
+      local latest_id; latest_id="$(docker image inspect --format '{{.Id}}' "$image:latest" 2>/dev/null || true)"
+      if [ -n "$latest_id" ] && [ "$latest_id" != "$source" ]; then
+        dire "   ⚠️ $image:latest (${latest_id:7:12}) ≠ image en service (${source:7:12}) — image pré-construite ou retenue :"
+        dire "      le repère pointe ce qui TOURNE, pas latest (V32 b)."
+      fi
     fi
     # Les étiquettes se trient par leur date : les plus anciennes d'abord.
     local anciennes; anciennes="$(docker images "$image" --format '{{.Tag}}' | grep '^avant-' | sort || true)"
@@ -275,8 +314,8 @@ etiqueter_repli() {
       docker rmi "$image:$vieille" >/dev/null 2>&1 || true
       dire "   repère élagué : $image:$vieille"
     done
-    docker tag "$image:latest" "$image:$etiquette"
-    dire "   repère posé : $image:$etiquette"
+    docker tag "$source" "$image:$etiquette"
+    dire "   repère posé : $image:$etiquette ← $source_dite"
   done
   dire "   Revenir en arrière : bash deploy/vps/deploy.sh --repli $etiquette"
 }
@@ -406,6 +445,40 @@ repli_automatique() {
   attendre_sante "après repli automatique"
 }
 
+# ── LA DÉMO SUIT LA PRODUCTION (V36 b, 2026-09-20) ──────────────────────────────────────────
+#
+# Après — et seulement après — que la production est saine. La pile de démo tourne sur les MÊMES
+# images (`tracky-api:latest`, `tracky-web:latest`) : un `up -d` la recrée dessus et joue ses
+# migrations au démarrage (CMD de l'image). Sans ce `up -d`, la démo garde l'ancien code sur
+# l'ancien schéma pendant que l'importeur hebdomadaire — lui, sur `latest` — attend le nouveau :
+# c'est l'échec du 20/09 04:07 (« column managedByManagerAt does not exist »).
+#
+# Rend le mot qui ira au journal : `saine`, `malade` (la production n'est PAS mise en cause : la
+# démo se répare seule ou à la main, elle n'a pas de véhicule), `absente` (pas de compose/.env de
+# démo sur cette machine), `non` (--sans-demo ou --marketing-seul).
+DEMO_ETAT="non"
+mettre_a_jour_demo() {
+  if [ "$AVEC_DEMO" -ne 1 ]; then DEMO_ETAT="non"; return 0; fi
+  cd "$RACINE/deploy/vps"
+  if [ ! -f "$COMPOSE_DEMO" ] || [ ! -f .env.demo ]; then
+    dire "   (pas de démo sur cette machine : $COMPOSE_DEMO ou .env.demo absent)"
+    DEMO_ETAT="absente"; return 0
+  fi
+  dire "docker compose up -d (démo, mêmes images — les migrations de la démo se jouent au démarrage)"
+  if ! docker compose --env-file .env.demo -f "$COMPOSE_DEMO" up -d; then
+    dire "⚠️  La démo n'a pas pu être recréée. La PRODUCTION n'est pas concernée — voir « docker compose --env-file .env.demo -f $COMPOSE_DEMO ps »."
+    DEMO_ETAT="malade"; return 0
+  fi
+  if attendre_sante_conteneur tracky-demo-api "démo"; then
+    DEMO_ETAT="saine"
+  else
+    dire "⚠️  L'API de démo n'est pas saine après recréation. La PRODUCTION n'est pas concernée ; la démo n'a pas de véhicule."
+    dire "   Cause probable : une migration en échec au démarrage (journal ci-dessus). Corriger, puis relancer ce script (la démo suit)."
+    DEMO_ETAT="malade"
+  fi
+  return 0
+}
+
 # ── LE JOURNAL — ce qui rend un contournement visible ────────────────────────────────────────
 journaliser() {
   local sha="$1" duree="$2" sante="${3:-healthy}"
@@ -423,8 +496,8 @@ journaliser() {
   [ -n "$REPLI" ] && repli="\"$REPLI\""
   [ "$MARKETING_SEUL" -eq 1 ] && perimetre=marketing
   mkdir -p "$(dirname "$JOURNAL")"
-  printf '{"at":"%s","sha":"%s","branche":"%s","perimetre":"%s","apiContainerId":"%s","webContainerId":"%s","lpContainerId":"%s","force":%s,"attente":%s,"repli":%s,"par":"%s","dureeS":%s,"sante":"%s"}\n' \
-    "$(maintenant_iso)" "$sha" "$BRANCHE" "$perimetre" "$id_api" "$id_web" "$id_lp" "$force" "$attente" "$repli" "$par" "$duree" "$sante" >> "$JOURNAL"
+  printf '{"at":"%s","sha":"%s","branche":"%s","perimetre":"%s","apiContainerId":"%s","webContainerId":"%s","lpContainerId":"%s","force":%s,"attente":%s,"repli":%s,"par":"%s","dureeS":%s,"sante":"%s","demo":"%s"}\n' \
+    "$(maintenant_iso)" "$sha" "$BRANCHE" "$perimetre" "$id_api" "$id_web" "$id_lp" "$force" "$attente" "$repli" "$par" "$duree" "$sante" "$DEMO_ETAT" >> "$JOURNAL"
   dire "   journal : $JOURNAL"
 }
 
@@ -486,10 +559,6 @@ main() {
   # serait créé vide par Docker, appartenant à root, hors de tout contrôle.
   mkdir -p "$(dirname "$JOURNAL")"
   recreer_perimetre
-  if [ "$AVEC_DEMO" -eq 1 ]; then
-    dire "docker compose up -d (démo, mêmes images)"
-    docker compose --env-file .env.demo -f "$COMPOSE_DEMO" up -d
-  fi
 
   # ── 6. LA SANTÉ — et le repli automatique si elle ne vient pas (incident du 17/09) ──
   local sante=healthy
@@ -510,6 +579,9 @@ main() {
     exit 4
   fi
 
+  # ── 6 bis. LA DÉMO SUIT — la production est saine, elle ne sera plus touchée (V36 b) ──
+  mettre_a_jour_demo
+
   # ── 7. LE JOURNAL, puis ce qui tourne vraiment ──
   journaliser "$sha" "$(( $(epoch_s) - t0 ))" "$sante"
   # ⚠️ Un `up -d` peut rendre la main en exit 0 SANS avoir recréé les conteneurs (mesuré le
@@ -520,7 +592,12 @@ main() {
   if [ "$MARKETING_SEUL" -eq 1 ]; then
     dire "Déploiement terminé : site marketing sain ; API et Web applicatif non recréés. Vérifier les URLs publiques, pas seulement docker ps."
   else
-    dire "Déploiement terminé : API et site marketing sains. Vérifier les artefacts servis, pas seulement docker ps."
+    case "$DEMO_ETAT" in
+      saine)   dire "Déploiement terminé : API et site marketing sains, démo à jour et saine. Vérifier les artefacts servis, pas seulement docker ps." ;;
+      malade)  dire "Déploiement terminé : API et site marketing sains — ⚠️ la DÉMO n'est pas saine (voir ci-dessus ; la production n'est pas concernée)." ;;
+      absente) dire "Déploiement terminé : API et site marketing sains (pas de démo sur cette machine). Vérifier les artefacts servis, pas seulement docker ps." ;;
+      *)       dire "Déploiement terminé : API et site marketing sains ; démo NON mise à jour (--sans-demo) : elle reste sur l'ancien code ET l'ancien schéma." ;;
+    esac
   fi
 }
 

@@ -103,6 +103,12 @@ Plusieurs sessions y travaillent en même temps — mesuré le 2026-09-07 : **7 
   d'audit la portent ; une commande tapée à la main ne la porte que si vous l'écrivez.
 - Avant tout diagnostic : `pgrep -a -x docker` — s'il rend quelque chose de plus vieux que 60 s,
   c'est déjà une occurrence, et c'est la première chose à traiter.
+- Depuis le 20/09 un **garde-fou** tourne sur le VPS (`docker-orphelins.timer`, toutes les 5 min : tue
+  les clients `docker logs|stats|events|attach` sans terminal de plus de 10 min — source
+  `deploy/vps/docker-orphelins/`). Il rattrape ; il ne dispense pas du `timeout`. Récit complet :
+  `docs/fiabilite-coupe-circuit-2026-09/36-INCIDENT-VPS-BRIDE-2026-09-20-DEUX-DOCKER-LOGS-ET-90-POURCENT-DE-CPU-RETIRES.md`.
+- `deploy.sh` met la **démo à jour par défaut** depuis le 20/09 (`--sans-demo` pour l'éviter) et pose
+  les repères de repli sur **l'image du conteneur en service**, pas sur `:latest`.
 
 ## ✅ Vérification
 

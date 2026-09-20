@@ -18,6 +18,10 @@
 # terre 56 min (P3009 en boucle), et le script avait dit « terminé » sans regarder. Les cas
 # « la migration avant la recréation », « l'attente de santé et le repli automatique » et « la
 # fenêtre du matin » fixent ce qui a manqué ce jour-là.
+#
+# 2026-09-20 (audit VPS, VPS-044 et VPS-046) : le repère de repli était posé sur `latest` — qui
+# n'est pas toujours ce qui tourne — et la démo ne suivait que sur option, donc jamais. Les cas
+# « les repères pointent ce qui TOURNE » et « la démo suit la production » fixent les deux.
 set -u
 cd "$(dirname "$0")"
 
@@ -59,6 +63,15 @@ declare -a REPONSES_SANTE=()  # une réponse `docker inspect` par lecture : « s
 COMPTEUR_SANTE="$(mktemp)"
 declare -a REPONSES_SANTE_LP=()
 COMPTEUR_SANTE_LP="$(mktemp)"
+declare -a REPONSES_SANTE_DEMO=()
+COMPTEUR_SANTE_DEMO="$(mktemp)"
+# L'image de chaque conteneur EN SERVICE (V32 b) — vide = pas de conteneur ; et l'ID de :latest.
+IMG_API="sha256:cc1fec4a6ebb0000000000000000000000000000000000000000000000000000"
+IMG_WEB="sha256:c8d99972e2eb0000000000000000000000000000000000000000000000000000"
+IMG_LP="sha256:744ac977a0390000000000000000000000000000000000000000000000000000"
+IMAGE_EN_SERVICE_API="$IMG_API"; IMAGE_EN_SERVICE_WEB="$IMG_WEB"; IMAGE_EN_SERVICE_LP="$IMG_LP"
+LATEST_ID_API="$IMG_API"; LATEST_ID_WEB="$IMG_WEB"; LATEST_ID_LP="$IMG_LP"
+CODE_UP_DEMO=0
 
 noter() { echo "$1" >> "$TRACE"; }
 trace() { paste -sd'|' "$TRACE"; }
@@ -99,10 +112,23 @@ docker() {
       echo $((n + 1)) > "$COMPTEUR_SANTE_LP"
       echo "$r"
       ;;
-    "compose --env-file .env.demo -f docker-compose.demo.yml up -d")   noter "up-demo" ;;
+    "compose --env-file .env.demo -f docker-compose.demo.yml up -d")   noter "up-demo"; return "$CODE_UP_DEMO" ;;
+    "inspect -f {{.State.Status}} {{.State.Health.Status}} {{.RestartCount}} tracky-demo-api")
+      local n; n="$(cat "$COMPTEUR_SANTE_DEMO" 2>/dev/null || echo 0)"
+      local r="${REPONSES_SANTE_DEMO[$n]:-running healthy 0}"
+      echo $((n + 1)) > "$COMPTEUR_SANTE_DEMO"
+      echo "$r"
+      ;;
     "inspect --format {{.Id}} tracky-api") echo "d144f11ee90f4169978e5e8b2ad133722c5ddbaf44a863ab302aac2cc2eace17" ;;
     "inspect --format {{.Id}} tracky-web") echo "66dc3d93049a0000000000000000000000000000000000000000000000000000" ;;
     "inspect --format {{.Id}} tracky-lp") echo "77ec3d93049a0000000000000000000000000000000000000000000000000000" ;;
+    # V32 b : l'image du conteneur en service — vide + code 1 = pas de conteneur
+    "inspect --format {{.Image}} tracky-api") [ -n "$IMAGE_EN_SERVICE_API" ] && echo "$IMAGE_EN_SERVICE_API" || return 1 ;;
+    "inspect --format {{.Image}} tracky-web") [ -n "$IMAGE_EN_SERVICE_WEB" ] && echo "$IMAGE_EN_SERVICE_WEB" || return 1 ;;
+    "inspect --format {{.Image}} tracky-lp")  [ -n "$IMAGE_EN_SERVICE_LP" ]  && echo "$IMAGE_EN_SERVICE_LP"  || return 1 ;;
+    "image inspect --format {{.Id}} tracky-api:latest") echo "$LATEST_ID_API" ;;
+    "image inspect --format {{.Id}} tracky-web:latest") echo "$LATEST_ID_WEB" ;;
+    "image inspect --format {{.Id}} tracky-lp:latest")  echo "$LATEST_ID_LP" ;;
     "image inspect "*) return 0 ;;
     "images "*"--format {{.Tag}}") echo "$ETIQUETTES_EXISTANTES" | tr ' ' '\n' | sed '/^$/d' ;;
     "images "*) echo "   tracky-api:avant-x  (2 days ago)" ;;
@@ -133,12 +159,21 @@ reinitialiser() {
   REPONSES_PSQL=(); echo 0 > "$COMPTEUR_PSQL"; : > "$TRACE"
   REPONSES_SANTE=(); echo 0 > "$COMPTEUR_SANTE"
   REPONSES_SANTE_LP=(); echo 0 > "$COMPTEUR_SANTE_LP"
+  REPONSES_SANTE_DEMO=(); echo 0 > "$COMPTEUR_SANTE_DEMO"
   FAUSSE_MINUTE=30; FAUSSE_SECONDE=0; FAUSSE_EPOCH=1000; ETIQUETTES_EXISTANTES=""
   FAUSSE_HEURE_PARIS=1200; CODE_MIGRATION=0; ETIQUETTE_POSEE=""
-  FORCE=0; ATTENDRE=0; AVEC_DEMO=0; MARKETING_SEUL=0; BRANCHE=main; REPLI=""
+  FORCE=0; ATTENDRE=0; AVEC_DEMO=1; MARKETING_SEUL=0; BRANCHE=main; REPLI=""; DEMO_ETAT="non"
+  IMAGE_EN_SERVICE_API="$IMG_API"; IMAGE_EN_SERVICE_WEB="$IMG_WEB"; IMAGE_EN_SERVICE_LP="$IMG_LP"
+  LATEST_ID_API="$IMG_API"; LATEST_ID_WEB="$IMG_WEB"; LATEST_ID_LP="$IMG_LP"; CODE_UP_DEMO=0
   IMAGES="$IMAGES_COMPLETES"
   JOURNAL="$(mktemp)"; RACINE="$(mktemp -d)"; mkdir -p "$RACINE/deploy/vps"
+  # la démo existe sur la machine de test (compose + .env) — un cas les retire pour lire « absente »
+  : > "$RACINE/deploy/vps/docker-compose.demo.yml"; : > "$RACINE/deploy/vps/.env.demo"
 }
+# Les repères attendus : posés sur l'IMAGE EN SERVICE (V32 b), pas sur latest.
+REPERE_API="tag $IMG_API tracky-api:avant-20260913-1130-a8f9575e"
+REPERE_WEB="tag $IMG_WEB tracky-web:avant-20260913-1130-a8f9575e"
+REPERE_LP="tag $IMG_LP tracky-lp:avant-20260913-1130-a8f9575e"
 
 echo "deploy.sh — la garde"
 
@@ -204,11 +239,39 @@ echo "deploy.sh — les repères de repli"
 
 reinitialiser
 sortie="$( (etiqueter_repli) 2>&1 )"
-contient "l'image de l'API reçoit une étiquette avant-<date>-<sha>" "tag tracky-api:latest tracky-api:avant-20260913-1130-a8f9575e" "$(trace)"
-contient "…celle du web aussi, la MÊME" "tag tracky-web:latest tracky-web:avant-20260913-1130-a8f9575e" "$(trace)"
-contient "…et celle du site marketing aussi" "tag tracky-lp:latest tracky-lp:avant-20260913-1130-a8f9575e" "$(trace)"
+contient "l'IMAGE EN SERVICE de l'API reçoit une étiquette avant-<date>-<sha> (V32 b : pas latest)" "$REPERE_API" "$(trace)"
+contient "…celle du web aussi, la MÊME" "$REPERE_WEB" "$(trace)"
+contient "…et celle du site marketing aussi" "$REPERE_LP" "$(trace)"
+absent "…jamais « tag tracky-api:latest » : latest n'est plus la source du repère" "tag tracky-api:latest" "$(trace)"
 absent "…et rien n'est élagué quand il n'y a rien" "rmi" "$(trace)"
+absent "…latest = image en service : aucun avertissement" "≠" "$sortie"
 contient "…et le script dit comment revenir en arrière" "--repli avant-20260913-1130-a8f9575e" "$sortie"
+
+echo "deploy.sh — les repères pointent ce qui TOURNE (VPS-044, 2026-09-20)"
+
+reinitialiser; LATEST_ID_API="sha256:82d57a7d4cb70000000000000000000000000000000000000000000000000000"
+sortie="$( (etiqueter_repli) 2>&1 )"
+contient "🔴 latest ≠ image en service (image PRÉ-CONSTRUITE, cas du 15/09) : le repère pointe l'image du CONTENEUR" "$REPERE_API" "$(trace)"
+absent "…et surtout pas la pré-construite" "tag sha256:82d57a7d4cb7" "$(trace)"
+absent "…ni latest" "tag tracky-api:latest" "$(trace)"
+contient "…et le script le DIT, avec les deux identifiants" "82d57a7d4cb7" "$sortie"
+contient "…en nommant la règle" "V32 b" "$sortie"
+
+reinitialiser; IMAGE_EN_SERVICE_API=""
+sortie="$( (etiqueter_repli) 2>&1 )"
+contient "pas de conteneur tracky-api (premier déploiement, pile arrêtée) : latest est le seul repère possible" "tag tracky-api:latest tracky-api:avant-20260913-1130-a8f9575e" "$(trace)"
+contient "…et le script dit pourquoi" "pas de conteneur tracky-api en service" "$sortie"
+contient "…les autres images gardent la règle" "$REPERE_WEB" "$(trace)"
+
+reinitialiser; IMAGE_EN_SERVICE_LP=""
+# ni conteneur tracky-lp, ni image tracky-lp:latest : on enveloppe le double pour ce seul appel
+eval "$(declare -f docker | sed '1s/^docker/docker_double/')"
+docker() { case "$*" in "image inspect tracky-lp:latest") return 1 ;; *) docker_double "$@" ;; esac; }
+sortie="$( (etiqueter_repli) 2>&1 )"
+absent "ni conteneur ni latest pour tracky-lp : aucun repère lp posé (rien à étiqueter)" "tracky-lp:avant-" "$(trace)"
+contient "…et le script le dit" "ni conteneur tracky-lp ni image tracky-lp:latest" "$sortie"
+contient "…les deux autres sont posés" "$REPERE_API" "$(trace)"
+eval "$(declare -f docker_double | sed '1s/^docker_double/docker/')"; unset -f docker_double
 
 reinitialiser; ETIQUETTES_EXISTANTES="avant-20260910-0027-3f7b9d2d avant-20260911-1000-aaaa1111 latest avant-20260908-0800-bbbb2222 avant-20260912-2200-cccc3333"
 sortie="$( (etiqueter_repli) 2>&1 )"
@@ -224,10 +287,12 @@ echo "deploy.sh — le déroulé complet"
 reinitialiser
 sortie="$( (main) 2>&1 )"; code=$?
 attend "un déploiement ordinaire rend 0" 0 "$code"
-attend "⚠️ l'ORDRE : garde, repères, pull, builds prod/marketing, MIGRATION, GARDE À NOUVEAU, up prod/marketing" \
-  "psql|tag tracky-api:latest tracky-api:avant-20260913-1130-a8f9575e|tag tracky-web:latest tracky-web:avant-20260913-1130-a8f9575e|tag tracky-lp:latest tracky-lp:avant-20260913-1130-a8f9575e|git checkout -q main|git pull --ff-only origin main|build|build-lp|migrate|psql|up|up-lp" "$(trace)"
+attend "⚠️ l'ORDRE : garde, repères, pull, builds prod/marketing, MIGRATION, GARDE À NOUVEAU, up prod/marketing, PUIS la démo" \
+  "psql|$REPERE_API|$REPERE_WEB|$REPERE_LP|git checkout -q main|git pull --ff-only origin main|build|build-lp|migrate|psql|up|up-lp|up-demo" "$(trace)"
 contient "…et le script ne dit « terminé » qu'avec l'API et le marketing sains" "API et site marketing sains" "$sortie"
+contient "…et il dit que la démo est à jour" "démo à jour et saine" "$sortie"
 ligne="$(tail -n 1 "$JOURNAL")"
+contient "le journal dit que la démo a suivi" '"demo":"saine"' "$ligne"
 contient "le journal porte l'identifiant du conteneur API créé" '"apiContainerId":"d144f11ee90f4169978e5e8b2ad133722c5ddbaf44a863ab302aac2cc2eace17"' "$ligne"
 contient "…et l'identifiant du conteneur marketing créé" '"lpContainerId":"77ec3d93049a0000000000000000000000000000000000000000000000000000"' "$ligne"
 contient "…le sha déployé" '"sha":"a8f9575e"' "$ligne"
@@ -240,12 +305,14 @@ fi
 reinitialiser
 sortie="$( (main --marketing-seul) 2>&1 )"; code=$?
 attend "--marketing-seul rend 0" 0 "$code"
-attend "…ne touche qu'à l'image et à la pile marketing, sans garde API ni migration" \
-  "tag tracky-lp:latest tracky-lp:avant-20260913-1130-a8f9575e|git checkout -q main|git pull --ff-only origin main|build-lp|up-lp" "$(trace)"
+attend "…ne touche qu'à l'image et à la pile marketing, sans garde API ni migration ni démo" \
+  "$REPERE_LP|git checkout -q main|git pull --ff-only origin main|build-lp|up-lp" "$(trace)"
 absent "…ne recrée pas l'API/Web" "|up|" "$(trace)"
 absent "…ne joue aucune migration" "migrate" "$(trace)"
+absent "…ne touche pas à la démo (l'API n'a pas changé)" "up-demo" "$(trace)"
 contient "…le message confirme que l'application n'a pas été recréée" "API et Web applicatif non recréés" "$sortie"
 contient "…le journal identifie le périmètre marketing" '"perimetre":"marketing"' "$(tail -n 1 "$JOURNAL")"
+contient "…et dit que la démo n'a pas été touchée" '"demo":"non"' "$(tail -n 1 "$JOURNAL")"
 
 reinitialiser; REPONSES_PSQL=("" "11:45:00|scheduled|1")
 sortie="$( (main) 2>&1 )"; code=$?
@@ -283,6 +350,7 @@ attend "🔴 l'API REDÉMARRE après la recréation → repli automatique, code 
 contient "…le journal du conteneur est montré (la cause se lit tout de suite)" "logs" "$(trace)"
 contient "…le repère posé au départ redevient latest pour les trois images, puis les deux piles repartent" \
   "up|up-lp|sleep 5|logs|tag tracky-api:avant-20260913-1130-a8f9575e tracky-api:latest|tag tracky-web:avant-20260913-1130-a8f9575e tracky-web:latest|tag tracky-lp:avant-20260913-1130-a8f9575e tracky-lp:latest|up|up-lp" "$(trace)"
+absent "…et la démo n'est PAS touchée quand la production n'est pas saine" "up-demo" "$(trace)"
 contient "…le message dit ANNULÉ et que l'image d'avant est de retour" "DÉPLOIEMENT ANNULÉ" "$sortie"
 contient "…le journal dit repli-auto" '"sante":"repli-auto"' "$(tail -n 1 "$JOURNAL")"
 
@@ -344,9 +412,37 @@ reinitialiser; FAUSSE_HEURE_PARIS=0700; REPLI="avant-20260913-1130-a8f9575e"
 code=$( (main) >/dev/null 2>&1; echo $? )
 attend "07:00 + --repli : JAMAIS retenu — un repli rétablit le service (code 0)" 0 "$code"
 
-reinitialiser; AVEC_DEMO=1
-sortie="$( (main) 2>&1 )"
-contient "--avec-demo : la démo suit, après la prod et le marketing" "|up|up-lp|up-demo" "$(trace)"
+echo "deploy.sh — la démo suit la production (VPS-046, 2026-09-20)"
+
+reinitialiser
+sortie="$( (main) 2>&1 )"; code=$?
+contient "PAR DÉFAUT la démo suit, après la prod et le marketing — et après leur santé" "|up|up-lp|up-demo" "$(trace)"
+contient "…le script attend la santé de l'API de démo" "tracky-demo-api est sain" "$sortie"
+
+reinitialiser
+sortie="$( (main --sans-demo) 2>&1 )"; code=$?
+attend "--sans-demo : rend 0" 0 "$code"
+absent "…et ne touche pas à la démo" "up-demo" "$(trace)"
+contient "…mais le dit : elle reste sur l'ancien code ET l'ancien schéma" "ancien schéma" "$sortie"
+contient "…et le journal le porte" '"demo":"non"' "$(tail -n 1 "$JOURNAL")"
+
+reinitialiser; REPONSES_SANTE_DEMO=("running starting 0" "restarting starting 1")
+sortie="$( (main) 2>&1 )"; code=$?
+attend "🔴 la démo redémarre en boucle après recréation (migration en échec) : la PRODUCTION n'est PAS mise en cause, code 0" 0 "$code"
+absent "…aucun repli de la production" "tag tracky-api:avant-20260913-1130-a8f9575e tracky-api:latest" "$(trace)"
+contient "…le message dit que la démo n'est pas saine et que la production n'est pas concernée" "la production n'est pas concernée" "$sortie"
+contient "…le journal dit demo malade, production saine" '"sante":"healthy","demo":"malade"' "$(tail -n 1 "$JOURNAL")"
+
+reinitialiser; CODE_UP_DEMO=1
+sortie="$( (main) 2>&1 )"; code=$?
+attend "🔴 le up -d de la démo échoue : code 0 quand même" 0 "$code"
+contient "…journal : demo malade" '"demo":"malade"' "$(tail -n 1 "$JOURNAL")"
+
+reinitialiser; rm -f "$RACINE/deploy/vps/.env.demo"
+sortie="$( (main) 2>&1 )"; code=$?
+attend "pas de .env.demo sur la machine : code 0" 0 "$code"
+absent "…aucun up -d de démo tenté" "up-demo" "$(trace)"
+contient "…journal : demo absente" '"demo":"absente"' "$(tail -n 1 "$JOURNAL")"
 
 reinitialiser; REPLI="avant-20260913-1130-a8f9575e"
 sortie="$( (main) 2>&1 )"; code=$?
@@ -354,12 +450,18 @@ attend "--repli : rend 0" 0 "$code"
 absent "…sans pull" "git pull" "$(trace)"
 absent "…sans build" "build" "$(trace)"
 contient "…l'étiquette redevient latest, API, web et marketing" "tag tracky-api:avant-20260913-1130-a8f9575e tracky-api:latest|tag tracky-web:avant-20260913-1130-a8f9575e tracky-web:latest|tag tracky-lp:avant-20260913-1130-a8f9575e tracky-lp:latest" "$(trace)"
-contient "…puis la garde, puis les deux piles" "psql|up|up-lp" "$(trace)"
+contient "…puis la garde, puis les deux piles, puis la démo (mêmes images : elle suit le repli aussi)" "psql|up|up-lp|up-demo" "$(trace)"
 contient "…et le journal dit que c'est un repli" '"repli":"avant-20260913-1130-a8f9575e"' "$(tail -n 1 "$JOURNAL")"
 
 reinitialiser
 code=$( (lire_options --marketing-seul --avec-demo) >/dev/null 2>&1; echo $? )
-attend "--marketing-seul et --avec-demo sont refusés ensemble" 2 "$code"
+attend "--marketing-seul et --avec-demo ne sont plus refusés : le marketing seul force simplement la démo à « non »" 0 "$code"
+reinitialiser; lire_options --marketing-seul --avec-demo
+attend "…AVEC_DEMO retombe à 0" "0" "$AVEC_DEMO"
+reinitialiser; lire_options --sans-demo
+attend "--sans-demo met AVEC_DEMO à 0" "0" "$AVEC_DEMO"
+reinitialiser; lire_options
+attend "sans option, la démo suit (AVEC_DEMO=1 par défaut)" "1" "$AVEC_DEMO"
 
 reinitialiser
 lire_options --marketing-seul
@@ -373,7 +475,7 @@ reinitialiser
 lire_options --force --attendre --avec-demo --branche recette --repli avant-x
 attend "les options se lisent" "1 1 1 0 recette avant-x" "$FORCE $ATTENDRE $AVEC_DEMO $MARKETING_SEUL $BRANCHE $REPLI"
 
-rm -f "$COMPTEUR_PSQL" "$COMPTEUR_SANTE" "$COMPTEUR_SANTE_LP" "$TRACE"
+rm -f "$COMPTEUR_PSQL" "$COMPTEUR_SANTE" "$COMPTEUR_SANTE_LP" "$COMPTEUR_SANTE_DEMO" "$TRACE"
 echo
 if [ "$ECHECS" -eq 0 ]; then
   echo "deploy.sh : $TOTAL contrôles, tous verts."

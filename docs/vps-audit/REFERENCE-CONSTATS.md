@@ -6030,7 +6030,7 @@ confondre les deux ferait accuser le mauvais coupable.
 
 ## VPS-044 — Le repère de repli du chantier a été effacé par le ménage 6 h 25 après le déploiement, et les étiquettes qui restent pointent des images qui n'ont jamais tourné
 
-- **Domaine** : docker · **Gravité** : 3 · **Statut** : `A_TRAITER` (✅ **V32 (a) FAITE le 2026-09-20 13 h 12** : `until=72h`, sauvegarde `/root/docker-image-prune.avant-v32a-2026-09-20` ; 🔧 **(b)** à coder côté `deploy.sh`)
+- **Domaine** : docker · **Gravité** : 3 · **Statut** : `CORRECTIF_PROPOSE` (✅ **V32 (a) FAITE le 2026-09-20 13 h 12** : `until=72h` ; ✅ **(b) CODÉE ET TESTÉE le 2026-09-20 ~14 h 30** : `deploy.sh` étiquette l'image du **conteneur en service**, 131 contrôles verts — **en ligne au prochain `git pull` du VPS**) ; `APPLIQUE` à la première ligne « repère posé : … ← l'image du conteneur » suivie d'un « ✅ repli RÉEL » du collecteur
 - ✅ **Vu : 2026-09-20 13 h 12 — V32 (a) FAITE** : `/etc/cron.d/docker-image-prune` = `40 0 * * * root docker image prune -af
   --filter "until=72h"`. Preuve attendue le 21/09 : `avant-20260919-1537-1d1521b2` **encore présente** après le ménage de
   00 h 40 (elle aurait 32 h ; à 24 h elle partait). Contrepartie : ~4 Go d'images 2 jours de plus sur 45 Go libres.
@@ -6175,7 +6175,7 @@ confondre les deux ferait accuser le mauvais coupable.
 
 ## VPS-046 — La démo n'est mise à jour que par une commande que le déploiement ne lance pas, et l'import hebdomadaire a échoué dessus
 
-- **Domaine** : docker · **Gravité** : 2 · **Statut** : `A_TRAITER` — **V36 (a) FAITE le 2026-09-20 13 h 40 UTC** (démo recréée, migrations jouées, import réussi 13 h 47) ; **(b) `deploy.sh` reste à coder** — sans lui le même décalage revient au prochain déploiement
+- **Domaine** : docker · **Gravité** : 2 · **Statut** : `CORRECTIF_PROPOSE` — **V36 (a) FAITE le 2026-09-20 13 h 40 UTC** (démo recréée, migrations jouées, import réussi 13 h 47) ; **(b) CODÉE ET TESTÉE ~14 h 30** : dans `deploy.sh` la démo **suit par défaut** après la santé de la production (`--sans-demo` pour l'éviter, `"demo"` au journal, 131 contrôles verts) — **en ligne au prochain `git pull` du VPS** ; `APPLIQUE` au premier import du dimanche réussi **après** un déploiement de production sans geste manuel
 - ✅ **Vu : 2026-09-20 13 h 40 → 13 h 47 — V36 (a) FAITE, ET L'IMPORT RÉUSSIT.** `docker compose --env-file .env.demo -f
   docker-compose.demo.yml up -d` : `tracky-demo-api` recréé sur **`6b15f68b1061`** (= `tracky-api:latest`, il tournait sur
   `608a608fae0d` du 09/09), `tracky-demo-web` sur `f94a4599f539` ; **5 migrations jouées à 13 h 40** au démarrage

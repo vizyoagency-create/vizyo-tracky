@@ -1557,7 +1557,9 @@ if [ -s "$JDEP" ]; then
     [ -n "$SEUIL_48H" ] && [ "$at" \< "$SEUIL_48H" ] && continue
     NDEP=$((NDEP+1))
     { [ -z "$SEUIL_24H_J" ] || [ ! "$at" \< "$SEUIL_24H_J" ]; } && NDEP24=$((NDEP24+1))
-    printf '  %s  sha=%s  branche=%s  duree=%ss  attente=%s  force=%s  repli=%s  par=%s\n' \
+    # `sante` (depuis le 17/09) et `demo` (depuis le 20/09, V36 b : « saine / malade / absente /
+    # non ») — absents des lignes plus anciennes : « - », jamais un vide qui se lirait « ok ».
+    printf '  %s  sha=%s  branche=%s  duree=%ss  attente=%s  force=%s  repli=%s  sante=%s  demo=%s  par=%s\n' \
       "$at" \
       "$(printf '%s' "$l" | sed -n 's/.*"sha":"\([^"]*\)".*/\1/p')" \
       "$(printf '%s' "$l" | sed -n 's/.*"branche":"\([^"]*\)".*/\1/p')" \
@@ -1565,7 +1567,20 @@ if [ -s "$JDEP" ]; then
       "$(printf '%s' "$l" | sed -n 's/.*"attente":\([a-z]*\).*/\1/p')" \
       "$(printf '%s' "$l" | sed -n 's/.*"force":\([a-z]*\).*/\1/p')" \
       "$(printf '%s' "$l" | sed -n 's/.*"repli":\([^,}]*\).*/\1/p')" \
+      "$(printf '%s' "$l" | sed -n 's/.*"sante":"\([^"]*\)".*/\1/p' | grep . || echo '-')" \
+      "$(printf '%s' "$l" | sed -n 's/.*"demo":"\([^"]*\)".*/\1/p' | grep . || echo '-')" \
       "$(printf '%s' "$l" | sed -n 's/.*"par":"\([^"]*\)".*/\1/p')"
+    # V36 (b) : une ligne de production sans « demo » ou avec demo=non/malade = la demo a decroche
+    # du code de production ; l importeur hebdomadaire (dimanche 04:00) echouera (VPS-046).
+    case "$(printf '%s' "$l" | sed -n 's/.*"demo":"\([^"]*\)".*/\1/p')" in
+      saine|absente) ;;
+      non)    printf '%s' "$l" | grep -q '"perimetre":"marketing"' || echo "     ⚠️ demo NON mise a jour a ce deploiement (--sans-demo) : elle est en retard d un deploiement (VPS-046)" ;;
+      malade) echo "     🔴 demo MALADE apres ce deploiement : a reparer avant dimanche 04:00 (VPS-046)" ;;
+      *)      # avant le 20/09 13:50 (deploy.sh sans V36 b), le champ n existe pas : la demo a ete recreee a la main a 13:40
+              if [ "$at" \> "2026-09-20T13:50:00Z" ]; then
+                printf '%s' "$l" | grep -q '"perimetre":"marketing"' || echo "     🔴 ligne SANS champ demo APRES le 20/09 : deploy.sh en place n est pas celui du depot (V36 b absente) — la demo n a PAS suivi (VPS-046)"
+              fi ;;
+    esac
   done < "$JDEP"
   [ "$NDEP" -eq 0 ] && echo "  (aucune ligne depuis $SEUIL_48H — aucun deploiement journalise sur 48 h)"
   # Builds de tracky-api sur 24 h (par date de creation d image, meme source que le bloc
