@@ -51,6 +51,12 @@ Plusieurs sessions y travaillent en même temps — mesuré le 2026-09-07 : **7 
 - **Vérifier la branche** (`git branch --show-current`) avant de committer, et la dire.
 - ⚠️ `git checkout -- <fichier>` restaure depuis le `HEAD` **courant**, qui peut avoir changé sous
   vous.
+- 🤝 **Les sessions ne sont pas toutes des sessions Claude.** Depuis le 07/09/2026, **OpenAI Codex**
+  (l'application `ChatGPT.exe`) est aussi déclaré `trusted` sur cet arbre de travail **et** sur le
+  worktree `../wt-allowlist`. Un fichier modifié que vous n'avez pas touché peut donc venir de lui.
+  Règle de cohabitation : **un agent = un worktree** (`git worktree add ../wt-<sujet>`), jamais deux
+  agents sur le même arbre en même temps — et jamais deux agents qui pilotent la souris ou Chrome
+  (*computer-use*) simultanément : ils ont le même curseur et le même navigateur.
 
 ## 🚀 Déployer la production : `deploy.sh`, et rien d'autre (décision D1, 2026-09-13)
 
@@ -74,6 +80,29 @@ Plusieurs sessions y travaillent en même temps — mesuré le 2026-09-07 : **7 
 - Après le déploiement, vérifier **l'artefact compilé dans le conteneur**, pas `docker ps`.
 - Le script se teste à blanc : `pnpm verif:deploiement`. Les migrations se rejouent à blanc :
   `pnpm verif:migrations` (dans `pnpm verify`).
+
+## 🛑 Toute commande `docker` sur le VPS est BORNÉE — sans exception (règle V34, 2026-09-20)
+
+    ssh root@72.62.26.240 "timeout 20 docker logs --tail 200 tracky-api"      # ✅
+    ssh root@72.62.26.240 "docker logs --tail 15 vizyo-auth-api"              # ❌ INTERDIT, même pour 15 lignes
+
+- **`timeout 20` devant chaque `docker logs` / `exec` / `inspect` / `images` / `stats` / `ps`**, et
+  **`--tail ≤ 2000`** : sur cet hôte, un `docker logs` lancé depuis une session SSH qui se ferme
+  avant lui **ne rend jamais la main** et fait tourner `dockerd` à 100 % d'un cœur **pendant des
+  jours**. **Sept occurrences sur sept** (VPS-016, du 05/08 au 19/09) viennent d'une commande de
+  diagnostic tapée depuis le poste — par un agent ou un humain — sans `timeout`. La 7ᵉ (19/09 18:30,
+  `docker logs --tail 500` sur `foodsqan-traefik`, dans un `bash -c "echo … ; docker logs … | cut"`)
+  a pris le second cœur ; l'hébergeur a alors **retiré 80–90 % du CPU de la VM** pendant 12 h
+  (VPS-045) : reprises du coupe-circuit passées par SMS payant, sauvegarde de 64 min, « Tracky down ».
+- **Jamais de `docker` dans un `bash -c` enchaîné sans `timeout`** : si le premier bloque, tuer le
+  client ne suffit pas — `bash` passe au suivant. Pour tuer un client bloqué : **le parent d'abord**
+  (`ps -o pid,ppid,etimes,cmd -p …`, puis `kill <parent>` puis `kill <client>`), jamais
+  `systemctl restart docker`.
+- ⚠️ Il n'existe **aucun réglage global** (`DOCKER_CLIENT_TIMEOUT` n'existe pas dans le CLI Go) : la
+  protection est **par convention, à chaque appel**. `deploy.sh`, `collecte.sh` et les scripts
+  d'audit la portent ; une commande tapée à la main ne la porte que si vous l'écrivez.
+- Avant tout diagnostic : `pgrep -a -x docker` — s'il rend quelque chose de plus vieux que 60 s,
+  c'est déjà une occurrence, et c'est la première chose à traiter.
 
 ## ✅ Vérification
 

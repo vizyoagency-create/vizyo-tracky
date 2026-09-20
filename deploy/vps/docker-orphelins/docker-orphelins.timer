@@ -1,0 +1,13 @@
+[Unit]
+Description=Toutes les 5 min : balayage des clients docker orphelins (coût : un ps, ~20 ms) — garde-fou VPS-016 / V34
+
+[Timer]
+OnBootSec=3min
+OnUnitActiveSec=5min
+# Regroupe le réveil avec les autres (moins de réveils distincts) et évite de tomber pile à :10, :15, :35 (hyperviseur).
+AccuracySec=30s
+RandomizedDelaySec=20s
+Persistent=false
+
+[Install]
+WantedBy=timers.target

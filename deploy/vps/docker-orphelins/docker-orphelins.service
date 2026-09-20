@@ -1,0 +1,12 @@
+[Unit]
+Description=Tue les clients docker logs/stats/events/attach orphelins (> 10 min, sans terminal) — garde-fou VPS-016 / V34 (2026-09-20)
+Documentation=file:///opt/vizyo-tracky/docs/vps-audit/REFERENCE-CONSTATS.md
+After=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/docker-clients-orphelins.sh
+Nice=19
+IOSchedulingClass=idle
+# 60 s suffisent largement (un ps + au plus quelques kill avec 5 s d'attente) : au-delà, quelque chose cloche.
+TimeoutStartSec=60

@@ -64,6 +64,14 @@ VPS. C'est délibéré :
 - Si le poste est éteint, l'audit ne tourne pas — et c'est acceptable : un jour manqué se voit
   dans le journal des passages, alors qu'un doublon silencieux ne se voit nulle part.
 
+> ⚠️ **Une exception, décidée par le propriétaire le 2026-09-20, et elle n'est pas de l'audit** :
+> `docker-orphelins.timer` (toutes les 5 min) tue les clients `docker logs|stats|events|attach`
+> sans terminal de plus de 10 min — le garde-fou de VPS-016, après sept occurrences que la règle
+> écrite n'a pas empêchées. Source et banc : `deploy/vps/docker-orphelins/`. **L'audit ne l'a pas
+> posé et ne le pilote pas ; il le LIT** (`journalctl -t docker-orphelins`,
+> `/run/docker-orphelins/dernier`) — un garde-fou doit prouver qu'il tourne (VPS-M06). La règle
+> « aucun agent, aucun cron, aucun timer » reste entière pour tout ce que l'audit écrirait lui-même.
+
 **Vérifier que la collecte est complète avant d'analyser** : le script se termine par
 `FIN DE COLLECTE`. S'il manque, une section a été tronquée — relancer plutôt qu'interpréter.
 

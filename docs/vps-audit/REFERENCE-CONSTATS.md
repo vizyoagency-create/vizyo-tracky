@@ -1614,6 +1614,14 @@ déploiement. C'est la différence entre fermer un incident et fermer sa cause.
 ## VPS-016 — `dockerd` tourne en boucle et brûle un cœur depuis 24 heures
 
 - **Domaine** : docker · **Gravité** : **2** (1 → 2 le 2026-09-20 : les deux clients sont morts ; la classe reste) · **Statut** : `A_TRAITER` — **nº 6 ET nº 7 CLOS vers 05 h 25 UTC le 2026-09-20 par le propriétaire (V33 ✅ FAIT) ; la CLASSE reste ouverte — V34 (une ligne dans `CLAUDE.md`)** *(5ᵉ close le 2026-09-15 17 h 20, V28 · 4ᵉ close le 2026-08-20 05 h 08 min 14 · ⚠️ sa première remédiation avait échoué, VPS-M51)*
+- 🛡️ **Vu : 2026-09-20 13 h 08 UTC — UN MÉCANISME, ENFIN : `docker-orphelins.timer` (V34).** Décision du propriétaire :
+  toutes les 5 min, `/usr/local/sbin/docker-clients-orphelins.sh` tue tout client `docker logs|stats|events|attach`
+  **sans terminal et vieux de plus de 10 min**, **parent d'abord** si c'est un shell sans terminal qui porte encore
+  du `docker` (VPS-M51). Banc sur la machine : faux client → tué ; chaîne `bash -c` → parent tué d'abord (journal) ;
+  client avec pseudo-terminal → **vu 1, tué 0** ; **vrai** `docker logs -f` orphelin → tué ; premier passage réel :
+  0 vu, `Result=success`, 0,6 s de CPU. Source : `deploy/vps/docker-orphelins/`. Fenêtre de dégât : **15 min au lieu
+  de jours**. ⚠️ Il ne remplace pas la règle `timeout 20` (`CLAUDE.md`, écrite le même jour) : il la rattrape.
+  Sept occurrences sans mécanisme ; la 8ᵉ, si elle vient, durera un quart d'heure.
 - ✅🔴 **Vu : 2026-09-20 — 7ᵉ OCCURRENCE LE 19/09 À 18 H 30 (LE SECOND CŒUR), LES DEUX CLOSES PAR LE PROPRIÉTAIRE
   VERS 05 H 25 — ET LE CPU N'EST PAS REVENU (→ VPS-045).** `bash -c` *« === PROXY/ROUTEURS === … docker ps --filter
   ancestor=traefik … »* (pid 2060192 → `init`) → **`docker logs --tail 500 ae54b0ff3f79`** (= `foodsqan-traefik`, pid
@@ -4361,7 +4369,14 @@ pas supposé (même famille que VPS-M04, le crontab Alpine).
 
 ## VPS-030 — 1,70 Go de sauvegardes empilées hors de toute rétention, dans **deux** dossiers, et hors de tous les contrôles
 
-- **Domaine** : disque · **Gravité** : 3 · **Statut** : `A_TRAITER`
+- **Domaine** : disque · **Gravité** : 3 · **Statut** : `A_TRAITER` — **volet « fenêtre du chantier » FERMÉ le 2026-09-20 (V17 faite)** ; reste `/root/backups` (1,68 Go, 12 fichiers du 18 août)
+- ✅ **Vu : 2026-09-20 13 h 12 — V17 FAITE PAR LE PROPRIÉTAIRE : LES 4 ARCHIVES DE LA FENÊTRE SONT RANGÉES, RIEN N'EST
+  SUPPRIMÉ.** `mv -n` vers **`/var/backups/instantanes-chantier-20260915/`** (nom en `-YYYYMMDD` : le collecteur le lit
+  « instantané ponctuel, gardé volontairement », jamais « PÉRIMÉE ») : `avant-chantier-20260915-1720.dump` (161 Mo),
+  `capcom6-sms-avant-chantier-20260915-1721.sql`, `vizyo-texto-avant-chantier-20260915-1721.dump`,
+  `vizyo_leads_pre_multiclient_20260321.sql.gz` ; dossier `700`. **Racine de `/var/backups` : 0 fichier** (hors dpkg/apt).
+  Le dossier apparaîtra **NEUF** dans `dossiersSauvegardeListe` au prochain passage (VPS-M92) — c'est voulu, et c'est
+  écrit ici. Reste ouvert : `/root/backups` (V17 bis, décision sur des dumps d'août).
 - 🔴 **Vu : 2026-09-16 — 1,70 → 1,86 Go, 13 → 17 FICHIERS : LA FENÊTRE DU CHANTIER A DÉPOSÉ
   161 Mo HORS DE TOUTE RÉTENTION, ET LE COLLECTEUR NE LES VOYAIT PAS.** À 17 h 21 UTC le 15/09
   (doc 25 §12, étape 1 « sauvegardes des trois bases ») : `/var/backups/vizyo-tracky/avant-chantier-20260915-1720.dump`
@@ -4575,8 +4590,14 @@ mesurant le phénomène (VPS-M12, nouvelle forme).
 
 ## VPS-033 — La mesure des correctifs de sécurité est perdue 4 passages sur 5, parce que sa source est aléatoire par conception
 
-- **Domaine** : sécurité · **Gravité** : 2 · **Statut** : `A_TRAITER` — **cause entièrement lue dans
-  le code le 2026-09-14, geste V14 confirmé**
+- **Domaine** : sécurité · **Gravité** : 2 · **Statut** : `CORRECTIF_PROPOSE` → **V14 POSÉE le 2026-09-20 13 h 12 UTC**, preuve attendue au passage du 21/09 (cache `apt` < 6 h à 02 h 22)
+- ✅ **Vu : 2026-09-20 13 h 12 — V14 POSÉE PAR LE PROPRIÉTAIRE.** Drop-in `/etc/systemd/system/apt-daily.timer.d/override.conf` :
+  `OnCalendar=*-*-* 01:30:00`, `RandomizedDelaySec=15m` ; `daemon-reload` fait ; `TimersCalendar` **avant** :
+  `*-*-* 06,18:00:00` (avec le délai aléatoire de 12 h du paquet : sonneries entre 06 h et 18 h, puis 18 h et 06 h —
+  d'où la loterie), **après** : `01:30:00`, prochaine échéance **21/09 01 h 41 min 32**. À 02 h 22 le cache aura ≤ 52 min :
+  la mesure des correctifs de sécurité redevient possible **tous les jours**. `APPLIQUE` au premier passage qui rend
+  « ✅ MESURE VALIDE » deux jours de suite. ⚠️ Ne déplace pas `apt-daily-upgrade` (06 h 20, l'installateur) : lui
+  reste où il est.
 - 🟠 **Vu : 2026-09-17 — NON MESURABLE (4 valides / 20), MAIS LE CANAL EST PROUVÉ : LES 3 CORRECTIFS D'HIER
   SONT INSTALLÉS.** Cache `apt` du 16/09 **01 h 26** (25 h) — `apt-daily` a sonné à **20 h 34** (2ᵉ sonnerie
   du jour UTC, 1 s, rien), exactement la loi du 14/09. ✅ **VPS-M74 tranché** : `unattended-upgrades.log`
@@ -6009,7 +6030,10 @@ confondre les deux ferait accuser le mauvais coupable.
 
 ## VPS-044 — Le repère de repli du chantier a été effacé par le ménage 6 h 25 après le déploiement, et les étiquettes qui restent pointent des images qui n'ont jamais tourné
 
-- **Domaine** : docker · **Gravité** : 3 · **Statut** : `A_TRAITER` (🟡 PRÉPARÉ côté VPS, 10 s — **V32 (a)** ; 🔧 à coder côté `deploy.sh` — **V32 (b)**)
+- **Domaine** : docker · **Gravité** : 3 · **Statut** : `A_TRAITER` (✅ **V32 (a) FAITE le 2026-09-20 13 h 12** : `until=72h`, sauvegarde `/root/docker-image-prune.avant-v32a-2026-09-20` ; 🔧 **(b)** à coder côté `deploy.sh`)
+- ✅ **Vu : 2026-09-20 13 h 12 — V32 (a) FAITE** : `/etc/cron.d/docker-image-prune` = `40 0 * * * root docker image prune -af
+  --filter "until=72h"`. Preuve attendue le 21/09 : `avant-20260919-1537-1d1521b2` **encore présente** après le ménage de
+  00 h 40 (elle aurait 32 h ; à 24 h elle partait). Contrepartie : ~4 Go d'images 2 jours de plus sur 45 Go libres.
 - ✅ **Vu : 2026-09-20 — SECONDE MOITIÉ DE LA PREUVE, PAR LA MÊME CHANCE : LA FICHE NE SE FERME PAS.**
   `tracky-api:avant-20260919-1537-1d1521b2` = **`84cc3fe36db2`** (créée **17/09 14 h 45 min 58** = l'image de
   `1d1521b2`, en service du 17/09 15 h 37 au 19/09 16 h 36), `tracky-web:avant-…` = `99811d3a61a2` (14 h 44 min 48),
@@ -6078,7 +6102,17 @@ confondre les deux ferait accuser le mauvais coupable.
 
 ## VPS-045 — L'hôte retient 80 à 90 % du CPU de la machine, et il ne l'a pas rendu quand la cause interne a disparu
 
-- **Domaine** : charge · **Gravité** : **1** · **Statut** : `A_TRAITER` — 🆕 **V35** (ticket hébergeur + arrêt des piles hors production) ; **V4 re-bloquée**
+- **Domaine** : charge · **Gravité** : **1** · **Statut** : `A_TRAITER` — 🆕 **V35** : (2) **FAIT à 12 h 48 UTC** (14 conteneurs arrêtés, pas 18), (1) ticket hébergeur **à faire** ; **V4 re-bloquée**
+- 📏 **Vu : 2026-09-20 12 h 48 → 13 h 10 UTC — V35 (2) FAITE PAR LE PROPRIÉTAIRE : 14 CONTENEURS HORS PRODUCTION ARRÊTÉS,
+  ET LA MACHINE RESPIRE À MOITIÉ.** `docker stop -t 20` (jamais `down`) sur `maalem-dev` ×6, `maestroo-dev` ×4,
+  `tracky-demo` ×4 (110 s) ; **gardés** : `dg-epaviste-website` (site public d'un client), `dronely` ×2,
+  `foodsqan-maquettes` (statiques, sans sonde, coût nul) — donc **14 sur les 18** de la fiche, à dessein. 38 → **24
+  conteneurs**, toute la production répond (Tracky 200 en 0,5–1,5 s, Auth 307, Verify 302, Manager 200, Vault 200).
+  Mémo de rallumage : `/root/conteneurs-arretes-2026-09-20.txt`. **Effet mesuré** : charge **18 → 3,7–8** ; `sar`
+  13:00 et 13:10 : `steal` **75–81 → 52 %**, `idle` **8–15 → 41 %** ; `docker ps -q` **20 → 4 s**. ⚠️ **Ce n'est pas
+  l'hôte qui a rendu** : `%steal` ne se compte que sur le temps où la VM *veut* du CPU — moins de demande = moins de
+  steal déclaré ; un échantillon de 10 s à 13:11 rend encore `steal 89 %, idle 1 %`. Le plafond est toujours là ; la
+  VM y tient mieux parce qu'elle demande moins. **V35 (1), le ticket, reste la seule voie vers le CPU lui-même.**
 - **Vu** : 2026-09-20 (1ᵉʳ passage ; le premier palier date du **19/09 22:10 UTC**) · **Mesure** — `sar -u`,
   part de CPU **servie** (100 − `%steal`) : **97 %** jusqu'à 22:00 → **79,2 %** (22:10) → **54,2 %** (23:10) →
   **32,5 %** (00:10) → **11,3 %** (01:10) → **9,4–10,7 %** de 02:00 à 05:20 → **15,3 %** (05:30) → **18,1–24,6 %** de

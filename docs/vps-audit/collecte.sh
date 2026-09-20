@@ -3276,6 +3276,29 @@ done
 sub "Services en echec"
 systemctl --failed --no-pager 2>/dev/null | head -8 | sed 's/^/  /'
 
+# ── LE GARDE-FOU DE VPS-016 (docker-orphelins.timer, pose le 2026-09-20 par le proprietaire) ───────
+# Un garde-fou doit PROUVER qu il tourne (VPS-M06 : fail2ban s annoncait actif et ne surveillait
+# rien). Trois lectures, toutes locales, zero client docker : la minuterie (active ? dernier
+# declenchement ?), le temoin ecrit par le script a chaque passage, et ce qu il a tue depuis 24 h.
+# ⚠️ « 0 tue » n est PAS « il ne marche pas » : c est « rien a tuer » — le temoin date le passage.
+sub "Garde-fou docker-orphelins (V34) : tourne-t-il, et qu a-t-il tue ?"
+if systemctl list-unit-files docker-orphelins.timer >/dev/null 2>&1 && [ -f /etc/systemd/system/docker-orphelins.timer ]; then
+  echo "  minuterie : $(systemctl is-active docker-orphelins.timer 2>/dev/null) / $(systemctl is-enabled docker-orphelins.timer 2>/dev/null)  |  $(systemctl show docker-orphelins.timer -p LastTriggerUSec -p NextElapseUSecRealtime 2>/dev/null | tr '\n' ' ')"
+  if [ -r /run/docker-orphelins/dernier ]; then
+    echo "  temoin    : $(cat /run/docker-orphelins/dernier)"
+    _dernier=$(sed -n 's/^dernier=\([^ ]*\).*/\1/p' /run/docker-orphelins/dernier)
+    _age=$(( $(date +%s) - $(date -d "$_dernier" +%s 2>/dev/null || echo 0) ))
+    if [ "$_age" -gt 900 ]; then echo "  🔴 dernier passage il y a ${_age} s (> 15 min) : la minuterie ne tourne PAS — VPS-M06, le garde-fou est un decor"; else echo "  ✅ dernier passage il y a ${_age} s"; fi
+  else
+    echo "  🔴 AUCUN temoin /run/docker-orphelins/dernier : le script n a jamais tourne depuis le demarrage (ou la minuterie est morte)"
+  fi
+  _tues=$(journalctl -t docker-orphelins --since '-24h' --no-pager 2>/dev/null | grep -c 'TUÉ')
+  echo "  tues sur 24 h : ${_tues}  (chaque ligne = une occurrence de VPS-016 rattrapee en < 15 min au lieu de jours)"
+  journalctl -t docker-orphelins --since '-24h' --no-pager -o short-iso 2>/dev/null | grep 'TUÉ' | tail -5 | cut -c1-200 | sed 's/^/    /'
+else
+  echo "  ⚠️ docker-orphelins.timer ABSENT de cette machine : le garde-fou de VPS-016 n est pas pose (voir deploy/vps/docker-orphelins/)"
+fi
+
 # ── LA QUATRIEME COUCHE : l HYPERVISEUR (VPS-027, ajoute le 2026-08-19) ──────────────────────
 # Trois couches de planification etaient catalogues — crons de la machine, timers systemd,
 # tache Claude Code cote poste. Il y en a une QUATRIEME, et elle execute du root : l hote KVM
