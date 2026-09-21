@@ -2726,6 +2726,33 @@ if [ -n "$SRC" ]; then
   echo "    par jour :"
   echo "$ECH" | grep "Accepted" | cut -c1-10 | sort | uniq -c \
     | hist_jour '      ' "$DEPUIS" "$(date '+%Y-%m-%dT%H:%M')"
+  # ⚠️⚠️ AJOUTE LE 2026-09-21 (VPS-M110 — angle mort n° 4 « qui parle a cette machine », 10e
+  # report). Le 20/09 a porte 7 946 sessions reussies en un jour (record : 4 252 le 08-20,
+  # 935 le 17/09) et le bloc ci-dessus ne pouvait dire que le NOMBRE. Tout ce qu il faut pour
+  # dire D OU, AVEC QUELLE CLE et A QUELLE HEURE est deja dans `$ECH` : la ligne « Accepted
+  # publickey for <user> from <ip> port <p> ssh2: <type> SHA256:<fp> » porte les trois. Zero
+  # commande de plus ; on ventile le JOUR DE PIC (le seul qui vaut la peine d etre lu) et on
+  # nomme la cle par son commentaire d authorized_keys quand il est connu (inventaire VPS-M77).
+  # ⚠️ PORTEE : une IP et une cle disent le POSTE et l IDENTITE, pas l OUTIL — deux agents et un
+  #    humain sur le meme poste ont la meme adresse et la meme cle. L heure, elle, tranche entre
+  #    « une journee de travail » et « une rafale », et c est ce qu on lit ensuite (VPS-M01).
+  PIC_J=$(echo "$ECH" | grep "Accepted" | cut -c1-10 | sort | uniq -c | sort -rn | awk 'NR==1{print $2}')
+  if [ -n "$PIC_J" ]; then
+    PIC_L=$(echo "$ECH" | grep "Accepted" | grep "^$PIC_J")
+    PIC_N=$(printf '%s\n' "$PIC_L" | grep -c "Accepted")
+    printf '    ── le jour de PIC (%s, %s sessions), ventile : d ou, avec quelle cle, a quelle heure (VPS-M110) ──\n' "$PIC_J" "$PIC_N"
+    printf '%s\n' "$PIC_L" | grep -oE 'for [a-z_][a-z0-9_-]* from [0-9a-f.:]+' | awk '{print $2" depuis "$4}' \
+      | sort | uniq -c | sort -rn | head -4 | awk '{printf "      %6d  %s %s %s\n", $1, $2, $3, $4}'
+    printf '%s\n' "$PIC_L" | grep -oE 'SHA256:[A-Za-z0-9+/]+' | sort | uniq -c | sort -rn | head -4 \
+      | while read -r n fp; do
+          nom=$(printf '%s\n' "${TOUTES_DECL:-}" | awk -v f="$fp" '$2==f {print $3; exit}')
+          printf '      %6d  cle %s  (%s)\n' "$n" "$fp" "${nom:-non declaree}"
+        done
+    echo "      par heure UTC (une journee de travail est un plateau ; une rafale, un pic) :"
+    printf '%s\n' "$PIC_L" | cut -c12-13 | sort | uniq -c \
+      | awk '{h[$2]=$1} END {for (i=0;i<24;i++) {k=sprintf("%02d",i); printf "        %sh %5d %s\n", k, h[k]+0, (h[k]+0>0)? substr("############################################################",1,int((h[k]+0)/20)+1):""}}'
+    echo "      (une barre = 20 sessions ; ~54 processus par session, plancher mesure le 2026-08-22)"
+  fi
   # La fenetre de MA collecte, bornee par T_DEBUT : qui d autre parlait a la machine pendant
   # que je la mesurais ? Le denominateur est explicite, et ma propre session est RETIREE — mais
   # seulement si j en ai une (VPS-M34 : un denominateur suppose est un denominateur faux).
@@ -3240,6 +3267,29 @@ systemctl list-timers --no-pager 2>/dev/null | sed 's/^/  /'
 # ExecMainExitTimestamp` rend bien deux blocs separes par une ligne VIDE, chacun portant son
 # `Id=`. ⚠️ L ordre des proprietes rendu par systemd N EST PAS celui demande — l analyse se fait
 # donc sur le NOM de la propriete, jamais sur sa position.
+# ⚠️⚠️ AJOUTE LE 2026-09-21 (VPS-M108) — « JAMAIS EXECUTEE » LE LENDEMAIN D UN REDEMARRAGE.
+# `ExecMainExitTimestamp` vit dans la MEMOIRE de systemd : un redemarrage (V4, 20/09 16 h 17)
+# la vide pour toute unite qui n a pas encore tourne depuis le boot. Le 21/09 a 02 h 25, les
+# SIX unites de sauvegarde (tracky, verify, auth, manager, texto, capcom6) et quatre autres
+# affichaient « ⬜ JAMAIS EXECUTEE — aucun resultat a lire » dans DEUX blocs (sections 7 et 11),
+# alors que leurs archives de la veille etaient listees dix lignes plus bas, relues et
+# completes. VPS-M09 (« un jour de redemarrage rend l historique illisible ») sous une forme
+# nouvelle, et VPS-M87 a l envers : le bloc ecrit pour ne plus dire « succes » sur une unite
+# jamais partie disait « jamais partie » sur une unite qui avait tourne la veille.
+# Le journal, lui, est PERSISTANT (/var/log/journal, 233 Mo) : la ligne de fin de la derniere
+# execution y est, tous boots confondus. On la lit — UNIQUEMENT quand `ExecMainExitTimestamp`
+# est vide (sur un jour sans reboot : ~5 unites hebdomadaires ; le lendemain d un reboot :
+# toutes), et on distingue les trois cas que le vide confondait :
+#   « pas encore tournee depuis le REDEMARRAGE, derniere fin au journal : … » (resultat lu),
+#   « aucune trace au journal sur 7 j » (vraiment jamais, ou plus vieux que 7 j — on le dit),
+#   et l ancienne branche VPS-015 (minuterie active sans echeance), inchangee.
+# COUT : un `journalctl -u` borne a 7 j par unite sans horodatage — lecture d index, pas de disque.
+UPTIME_H=$(awk '{printf "%.1f", $1/3600}' /proc/uptime 2>/dev/null)
+_dernier_run_journal() {  # $1 = unite → « <horodatage ISO> <succes|ECHEC> » de la derniere fin connue, tous boots confondus ; vide si aucune
+  journalctl -u "$1" --no-pager -q -o short-iso --since '-7d' 2>/dev/null \
+    | grep -E 'Deactivated successfully|Failed with result' | tail -1 \
+    | awk '{v=($0 ~ /Failed/)?"ECHEC":"succes"; print $1, v}'
+}
 sub "Chaque timer pointe-t-il un script REELLEMENT executable ? (verifie avant l echeance)"
 TMR_LISTE=$(systemctl list-timers --all --no-legend --no-pager 2>/dev/null)
 TMR_SVC=$(printf '%s\n' "$TMR_LISTE" | awk '{print $NF}' | grep '\.service$' | sort -u)
@@ -3315,7 +3365,12 @@ for t in $TMR_SVC; do
   if [ -z "$fin" ]; then
     if [ -n "$ech" ] && [ "$ech" != "n/a" ]; then
       _nb_jam=$((_nb_jam+1))
-      printf '  ⬜ %-34s JAMAIS EXECUTEE — aucun resultat a lire ; prochaine echeance : %s\n' "$t" "$ech"
+      _jrn=$(_dernier_run_journal "$t")   # VPS-M108 : le journal survit au redemarrage, pas ExecMainExitTimestamp
+      if [ -n "$_jrn" ]; then
+        printf '  ⬜ %-34s pas encore tournee DEPUIS LE REDEMARRAGE (uptime %s h) — derniere fin au journal : %s ; prochaine echeance : %s\n' "$t" "$UPTIME_H" "$_jrn" "$ech"
+      else
+        printf '  ⬜ %-34s JAMAIS EXECUTEE — aucun resultat, ni AUCUNE trace au journal sur 7 j ; prochaine echeance : %s\n' "$t" "$ech"
+      fi
     elif [ -n "$act" ] && [ "$act" != "active" ]; then
       _nb_dorm=$((_nb_dorm+1))
       printf '  ⬜ %-34s minuterie %s NON DEMARREE (%s) — sans echeance, et cest normal\n' "$t" "$tmr" "$act"
@@ -3877,6 +3932,7 @@ section "11. SAUVEGARDES — chaque application a-t-elle une copie RECENTE ?"
 # a-t-elle reussi ?). On interroge donc desormais la SOURCE.
 sub "L'unite qui PRODUIT chaque sauvegarde a-t-elle reussi ? (la trace peut mentir, pas elle)"
 for u in $(systemctl list-unit-files --no-legend --no-pager '*backup*.service' 2>/dev/null | awk '{print $1}'); do
+  _jrn=""
   etat=$(systemctl show "$u" -p ActiveState --value 2>/dev/null)
   res=$(systemctl show "$u" -p Result --value 2>/dev/null)
   code=$(systemctl show "$u" -p ExecMainStatus --value 2>/dev/null)
@@ -3907,7 +3963,14 @@ for u in $(systemctl list-unit-files --no-legend --no-pager '*backup*.service' 2
   # ment pas : elle ne dit RIEN. C'est VPS-M02 — une mesure NON FAITE n'est pas un succes.
   # COUT : ZERO commande de plus, `$fin` etait deja lu pour la ligne d'en dessous.
   if [ -z "$fin" ]; then
-    verdict="⬜ JAMAIS EXECUTEE — aucun resultat a lire (le « success » de systemd est sa valeur par defaut)"
+    # VPS-M108 (2026-09-21) : le lendemain de V4, les six unites de sauvegarde tombaient ici a
+    # tort — ExecMainExitTimestamp est vide par le REDEMARRAGE, pas par l absence d execution.
+    _jrn=$(_dernier_run_journal "$u")
+    if [ -n "$_jrn" ]; then
+      verdict="⬜ pas encore tournee DEPUIS LE REDEMARRAGE (uptime ${UPTIME_H:-?} h) — derniere fin au journal : $_jrn (VPS-M108)"
+    else
+      verdict="⬜ JAMAIS EXECUTEE — aucun resultat, ni AUCUNE trace au journal sur 7 j (le « success » de systemd est sa valeur par defaut)"
+    fi
   else
     case "$res" in
       success|"") verdict="✅ dernier resultat : succes" ;;
@@ -3915,7 +3978,7 @@ for u in $(systemctl list-unit-files --no-legend --no-pager '*backup*.service' 2
     esac
   fi
   printf '  %-34s %-14s %s\n' "$u" "$etat" "$verdict"
-  printf '    derniere fin : %s\n' "${fin:-jamais executee}"
+  printf '    derniere fin : %s\n' "${fin:-${_jrn:-jamais executee}}"
   # ⚠️ « Jamais executee » n'est pas un defaut en soi : une unite posee ce matin pour ce soir
   # est normale. Ce qui la qualifie, c'est l'existence d'une ECHEANCE — et son absence est le
   # mode d'echec exact de VPS-015 (un script pose, une unite declaree, et rien qui declenche).
@@ -4468,16 +4531,29 @@ else
   case "$ALP_TAG" in
     [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]*) ALP_EPOCH=$(date -d "$ALP_TAG" +%s 2>/dev/null) ;;
   esac
+  # ⚠️⚠️ CORRIGE LE 2026-09-21 (VPS-M109) — LE SEUIL « 24 h » ETAIT ECRIT EN DUR, ET LE CRON
+  # NE DIT PLUS CA. V32 (a) a porte `/etc/cron.d/docker-image-prune` a `until=72h` le 20/09 a
+  # 13 h 12 ; le lendemain, ce bloc a imprime « 🔴 PLUS DE 24 h : le menage de 00 h 40 le
+  # supprimera » sur une image de 46 h que le menage de 00 h 40 venait d EPARGNER. La grandeur
+  # qui gouverne (l age de l image) etait lue sur la machine ; le seuil auquel on la compare
+  # etait une constante du script — la moitie d une comparaison venait du VPS, l autre d un
+  # souvenir. On lit donc `until=` dans le cron lui-meme ; s il est illisible, on le DIT et on
+  # ne predit rien (VPS-M02), plutot que de retomber sur 24 h en silence.
+  PRUNE_UNTIL_H=$(grep -hoE 'until=[0-9]+h' /etc/cron.d/docker-image-prune 2>/dev/null | head -1 | grep -oE '[0-9]+')
   if [ -n "$ALP_EPOCH" ]; then
     ALP_AGE_H=$(( ( $(date +%s) - ALP_EPOCH ) / 3600 ))
     printf '  present, tire localement le %s — soit il y a %s h\n' "$ALP_TAG" "$ALP_AGE_H"
-    if [ "$ALP_AGE_H" -lt 24 ]; then
-      echo "  🟠 EPARGNE CETTE NUIT (moins de 24 h), SUPPRIME LA SUIVANTE : le menage de 00 h 40"
-      echo "     filtre sur until=24h. La sauvegarde de cette nuit ne tirera pas ; celle d apres,"
-      echo "     si. C est l alternance de periode 2 jours decrite dans VPS-026."
+    if [ -z "$PRUNE_UNTIL_H" ]; then
+      echo "  ⚠️ seuil du menage NON LU (/etc/cron.d/docker-image-prune sans until=<N>h) : aucune"
+      echo "     prediction — l age ci-dessus ne se compare a rien de connu (VPS-M109)."
+    elif [ "$ALP_AGE_H" -lt "$PRUNE_UNTIL_H" ]; then
+      ALP_RESTE_H=$(( PRUNE_UNTIL_H - ALP_AGE_H ))
+      echo "  🟠 EPARGNE par le menage de 00 h 40 tant que l image a moins de ${PRUNE_UNTIL_H} h (seuil LU dans"
+      echo "     le cron) : encore ~${ALP_RESTE_H} h de sursis, puis la sauvegarde suivante tirera depuis Docker Hub."
+      echo "     (avec until=24h c etait l alternance de periode 2 jours de VPS-026 ; a 72 h la periode est 4 jours)"
     else
-      echo "  🔴 PLUS DE 24 h : le menage de 00 h 40 le supprimera, et la sauvegarde suivante"
-      echo "     tirera l image depuis Docker Hub."
+      echo "  🔴 PLUS DE ${PRUNE_UNTIL_H} h (seuil LU dans le cron) : le menage de 00 h 40 le supprimera, et"
+      echo "     la sauvegarde suivante tirera l image depuis Docker Hub."
     fi
   else
     echo "  present, mais AGE LOCAL NON LU (LastTagTime vide ou illisible) : ne pas conclure sur"
