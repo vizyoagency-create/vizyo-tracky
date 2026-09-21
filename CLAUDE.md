@@ -110,6 +110,28 @@ Plusieurs sessions y travaillent en même temps — mesuré le 2026-09-07 : **7 
 - `deploy.sh` met la **démo à jour par défaut** depuis le 20/09 (`--sans-demo` pour l'éviter) et pose
   les repères de repli sur **l'image du conteneur en service**, pas sur `:latest`.
 
+## 🛑 Une boucle du poste qui parle au VPS = UNE session, et un `sleep` qui dort (règle V37, 2026-09-21)
+
+    ssh root@72.62.26.240 'while :; do …; sleep 20; done'                       # ✅ une session, la boucle côté serveur
+    while :; do ssh root@72.62.26.240 '…'; /usr/bin/sleep 20; done              # ✅ acceptable, chemin ABSOLU du sleep
+    while :; do ssh root@72.62.26.240 '…'; sleep 20; done                       # ❌ INTERDIT dans un Monitor : sleep n'y existe pas
+
+- **Dans l'outil `Monitor` de Claude Code (et tout `Bash` en arrière-plan), `sleep` et `date` ne sont PAS
+  dans le `PATH`.** Un `sleep 30` nu échoue en silence (*command not found*, avalé) et la boucle repart
+  aussitôt, **à la vitesse d'un aller-retour SSH**. Mesuré le 20/09 (VPS-047) : quatre `Monitor` de
+  30 min à la suite ont ouvert **7 774 sessions SSH en 2 h, une par seconde** — `proc/s` ×4,2,
+  `user`+`sys` 10 → 23 % — **50 min après** que l'hébergeur avait levé sa limitation CPU en prévenant
+  *« may be reapplied after sustained usage »*. Preuve : `guetteur.log`, 1 751 lignes en 30 min, champ
+  `$(date …)` vide sur chacune.
+- **Écrire `/usr/bin/sleep` et `/usr/bin/date`**, jamais les noms nus ; en tête de boucle :
+  `S=/usr/bin/sleep; [ -x "$S" ] || exit 9`. Et **relire la cadence réelle après 1 min** (compter les
+  lignes du journal du guetteur) avant de le laisser tourner 30 min.
+- **Préférer une seule session SSH qui boucle côté serveur** : les forks de `sshd` + PAM + `logind` +
+  `systemd --user` (~54 par session) sont ceux de l'**hôte** — `nice`, `timeout` et
+  `docker-orphelins.timer` n'y voient rien, et le centre d'alerte non plus. Jamais sous 5 s d'intervalle.
+- L'audit VPS ventile désormais le jour de pic des sessions SSH par heure (`collecte.sh`, VPS-M110) :
+  🔴 dès qu'une heure porte plus de 600 sessions. Fiche : `docs/vps-audit/REFERENCE-CONSTATS.md` § VPS-047.
+
 ## ✅ Vérification
 
 `pnpm verify` (typecheck + rejeu des migrations + smoke-boot DI + tests). ⚠️ Si la suite est

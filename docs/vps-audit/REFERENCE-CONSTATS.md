@@ -5216,6 +5216,18 @@ confondre les deux ferait accuser le mauvais coupable.
 
 - **Domaine** : sauvegardes · **Gravité** : **2** (3 → 2 le 2026-09-16) · **Statut** : `A_TRAITER` — **volet SYMPTÔME refermé
   le 2026-09-03, volet CAUSE intact — AGGRAVÉ le 2026-09-15 par VPS-043, et MESURÉ COMME PANNE COMMUNE le 2026-09-16**
+- 🔧 **Vu : 2026-09-21 05 h 08 Paris — V6 POSÉE À MOITIÉ, ET LA MOITIÉ QUI MANQUE EST EN ADMIN.** Sur « Go » du propriétaire :
+  (a) `Vizyo-Verify-Copie-HorsSite` → `WakeToRun=True` (StartWhenAvailable gardé, 2 h, batterie autorisée comme avant ;
+  prochaine 22/09 06 h 30 — la copie du 21/09 06 h 30 min 01 a réussi, `Result 0`, 6ᵉ nuit) ; (b) 🆕 tâche `Vizyo-Reveil-Audits`,
+  quotidienne **04 h 15 Paris**, `WakeToRun`, action vide, **`DisallowStartIfOnBatteries`** (S4U refusé sans élévation → principal
+  interactif comme les 6 autres tâches). **Ce que la mesure a appris en le faisant** : `STANDBYIDLE = 0` sur secteur **et**
+  batterie — *le PC ne s'endort jamais par inactivité* ; ses veilles sont le capot, le bouton ou **la batterie critique**
+  (`Kernel-Power 524`, audit PC du 16/09), et le poste était **sur batterie à 64 %** à 05 h. Et chaque veille **ferme la session**
+  (hiberfile `reduced`, audit PC du 17/09) : la copie est `LogonType=Interactive`, l'audit Claude a besoin de l'app — un réveil
+  rend un écran de verrouillage. **Le geste qui rend V6 réel est en admin, hors périmètre** : `powercfg /h /type full`
+  (+3,15 Go sur C: ; vérification `powercfg /a` → « Mise en veille prolongée » listée) ; et le secteur branché la nuit. Preuve
+  attendue : une nuit où le journal Windows montre un réveil à 04 h 15 (`Power-Troubleshooter 1`) **et** une session ouverte,
+  puis l'audit à 02 h 2x UTC et la copie à 04 h 30 UTC le même jour.
 - ✅ **Vu : 2026-09-21 — CET AUDIT EST PARTI À L'HEURE (02 h 23, +1 min), SEUL, ET LA COPIE DU 20/09 A TENU (5ᵉ NUIT).**
   `copie hors-site` : *« vizyo-verify OK 21 h à jour, 15 copies locales, contenu 22 h ; aucune paire produite depuis la
   dernière copie réussie »* (JSON du VPS 20/09 04 h 30). La paire du 21/09 tombe à **03 h 30** et la copie à **04 h 30** —
@@ -6144,7 +6156,7 @@ confondre les deux ferait accuser le mauvais coupable.
 
 ## VPS-044 — Le repère de repli du chantier a été effacé par le ménage 6 h 25 après le déploiement, et les étiquettes qui restent pointent des images qui n'ont jamais tourné
 
-- **Domaine** : docker · **Gravité** : 3 · **Statut** : `CORRECTIF_PROPOSE` (✅ **V32 (a) FAITE le 2026-09-20 13 h 12 et PROUVÉE le 21/09** : `until=72h`, l'étiquette du 19/09 a survécu au ménage ; ✅ **(b) CODÉE ET TESTÉE le 2026-09-20 ~14 h 30** : `deploy.sh` étiquette l'image du **conteneur en service**, 131 contrôles verts — **en ligne au prochain `git pull` du VPS**) ; `APPLIQUE` à la première ligne « repère posé : … ← l'image du conteneur » suivie d'un « ✅ repli RÉEL » du collecteur
+- **Domaine** : docker · **Gravité** : 3 · **Statut** : `CORRECTIF_PROPOSE` (✅ **V32 (a) FAITE le 2026-09-20 13 h 12 et PROUVÉE le 21/09** : `until=72h`, l'étiquette du 19/09 a survécu au ménage ; ✅ **(b) CODÉE ET TESTÉE le 2026-09-20 ~14 h 30** : `deploy.sh` étiquette l'image du **conteneur en service**, 131 contrôles verts — **EN LIGNE sur le VPS depuis le 20/09 14 h 18 UTC** (pull du propriétaire : `/opt/vizyo-tracky` à `fcb1303a`, md5 de `deploy.sh` identique — vérifié le 21/09 03 h 05, ce référentiel disait à tort « au prochain `git pull` »)) ; `APPLIQUE` à la première ligne « repère posé : … ← l'image du conteneur » suivie d'un « ✅ repli RÉEL » du collecteur
 - ✅ **Vu : 2026-09-21 — V32 (a) PROUVÉE : LE REPÈRE DU 19/09 A SURVÉCU AU MÉNAGE DE 00 H 40.** `tracky-api:avant-20260919-1537-1d1521b2`
   = `84cc3fe36db2` et `tracky-web:avant-…` = `99811d3a61a2` **présentes** à 02 h 24 (33 h ; à 24 h elles partaient — la
   prédiction du 20/09 disait « 28 images attendues sans V32 (a) » : il y en a **31**, les mêmes). `alpine:latest` (46 h)
@@ -6307,7 +6319,7 @@ confondre les deux ferait accuser le mauvais coupable.
 
 ## VPS-046 — La démo n'est mise à jour que par une commande que le déploiement ne lance pas, et l'import hebdomadaire a échoué dessus
 
-- **Domaine** : docker · **Gravité** : 2 · **Statut** : `CORRECTIF_PROPOSE` — **V36 (a) FAITE le 2026-09-20 13 h 40 UTC** (démo recréée, migrations jouées, import réussi 13 h 47) ; **(b) CODÉE ET TESTÉE ~14 h 30** : dans `deploy.sh` la démo **suit par défaut** après la santé de la production (`--sans-demo` pour l'éviter, `"demo"` au journal, 131 contrôles verts) — **en ligne au prochain `git pull` du VPS** ; `APPLIQUE` au premier import du dimanche réussi **après** un déploiement de production sans geste manuel
+- **Domaine** : docker · **Gravité** : 2 · **Statut** : `CORRECTIF_PROPOSE` — **V36 (a) FAITE le 2026-09-20 13 h 40 UTC** (démo recréée, migrations jouées, import réussi 13 h 47) ; **(b) CODÉE ET TESTÉE ~14 h 30** : dans `deploy.sh` la démo **suit par défaut** après la santé de la production (`--sans-demo` pour l'éviter, `"demo"` au journal, 131 contrôles verts) — **EN LIGNE sur le VPS depuis le 20/09 14 h 18 UTC** (même vérification que VPS-044, 21/09 03 h 05) ; `APPLIQUE` au premier import du dimanche réussi **après** un déploiement de production sans geste manuel
 - ✅ **Vu : 2026-09-21 — LA DÉMO EST BIEN SUR LES IMAGES COURANTES, ET LE COLLECTEUR LE VOIT SEUL.** Section 4 :
   `tracky-demo-api` et `tracky-demo-web` **RECRÉÉS 2026-09-20 13:40:06** (hors journal T33 — geste V36 (a), pas un
   déploiement) ; `tracky-demo-api` `healthy`, `memlimit 512 Mo`, base `tracky_demo` **640 Mo** (581 hier : l'import a
@@ -6360,8 +6372,12 @@ confondre les deux ferait accuser le mauvais coupable.
 
 ## VPS-047 — Une session SSH par seconde pendant deux heures depuis le poste, 50 min après que l'hébergeur a levé sa limitation « en avertissant qu'elle peut revenir »
 
-- **Domaine** : ordonnancement / charge · **Gravité** : 2 · **Statut** : `A_TRAITER` — 🆕 **V37** (identifier la boucle
-  côté poste, puis une règle : *une boucle de surveillance = une session persistante, jamais un `ssh` par itération*)
+- **Domaine** : ordonnancement / charge · **Gravité** : 2 · **Statut** : `CORRECTIF_PROPOSE` — **V37 (1) identifiée et (2) POSÉE le 2026-09-21 05 h 05 Paris** (section « 🛑 Une boucle du poste qui parle au VPS = UNE session, et un `sleep` qui dort » dans `CLAUDE.md`, après la règle V34 ; mémoire des agents `claude_monitor_tool_sleep_path.md`) ; (3) seuil au collecteur posé (VPS-M110) ; `SURVEILLANCE` après 7 jours sans heure > 600 sessions, `APPLIQUE` quand le premier `Monitor` suivant a été relu avec `/usr/bin/sleep`
+- ✅ **Vu : 2026-09-21 05 h 05 Paris — V37 (2) POSÉE, sur « Go » du propriétaire.** `CLAUDE.md` porte désormais, juste sous la règle
+  V34 : les trois formes (✅ une session qui boucle côté serveur · ✅ `/usr/bin/sleep` en chemin absolu · ❌ `sleep` nu dans un
+  `Monitor`), le fait mesuré (7 774 sessions / 2 h, `proc/s` ×4,2, 50 min après la levée Hostinger), le garde
+  `S=/usr/bin/sleep; [ -x "$S" ] || exit 9`, la relecture de la cadence après 1 min, et le renvoi à cette fiche. *La règle est là
+  où les boucles s'écrivent ; V34 avait mis 7 occurrences à y arriver, V37 une.*
 - **Vu** : 2026-09-21 (1ᵉʳ passage ; la rafale date du **20/09 14 h 20 → 16 h 22 UTC**) · **Mesure** — `auth.log`, lu par le
   bloc VPS-M110 posé ce passage puis en marge :
 
