@@ -1643,6 +1643,17 @@ déploiement. C'est la différence entre fermer un incident et fermer sa cause.
 ## VPS-016 — `dockerd` tourne en boucle et brûle un cœur depuis 24 heures
 
 - **Domaine** : docker · **Gravité** : **2** · **Statut** : `SURVEILLANCE` (depuis le 2026-09-21 — 2ᵉ passage de suite avec `pgrep -x docker` vide **et** `dockerd` < 10 % ; **V33 ✅ FAIT**, **V34 posée** : garde-fou `docker-orphelins.timer` + règle dans `CLAUDE.md`, preuve attendue = 7 jours sans client > 15 min, jour **1 / 7**) *(nº 6 et nº 7 clos le 2026-09-20 ~05 h 25 · 5ᵉ close le 2026-09-15 17 h 20, V28 · 4ᵉ close le 2026-08-20 05 h 08 min 14 · ⚠️ sa première remédiation avait échoué, VPS-M51)*
+- ✅ **Vu : 2026-09-22 — JOUR 2 / 7 : 0 « TUÉ » SUR 24 H (PREMIER JOUR SANS LE BANC), `dockerd` 0,7 %, CUMUL 0,4 H = CE QUE 1 %
+  × 36 H PRÉDIT.** `pgrep -a -x docker` **vide** en marge (04 h 5x) et pendant la collecte ; 0 connexion sur la socket (3
+  sondages) ; `dockerd` **0,7 %** instantané, cumul **0,4 h / 36,3 h** (hier : *« ~0,3 h attendu — > 2 h = boucle »* : 0,4,
+  pas de boucle) ; `docker-orphelins.timer` actif, dernier passage **169 s** avant la lecture, témoin `vus=0 tues=0`,
+  `journalctl -t docker-orphelins --since -24h | grep TU` → **0** (les 3 lignes du banc sont sorties de la fenêtre — l'angle
+  mort n° 9 d'hier est tombé seul, comme prévu). ⚠️ **Vu en marge, et ce n'est pas VPS-016 mais VPS-036** : l'hyperviseur a
+  poussé le 21/09 16 h 49 min 23 son **propre** tueur de clients (`ps` → `docker logs|stats` ou pagers de plus de 21 600 s →
+  `kill -TERM` puis `-KILL`, `exit 10`) — 1 seule occurrence sur 14 j, rien à tuer ce jour-là (0 client depuis le 20/09
+  05 h 25). *Deux garde-fous visent désormais la même classe de processus, l'un posé par nous toutes les 5 min, l'autre par
+  l'hébergeur quand il le décide.* Seuil inchangé : gravité 1 au premier client > 60 s ; `APPLIQUE` à 7 jours sans « TUÉ »
+  hors banc (**2 / 7**).
 - ✅ **Vu : 2026-09-21 — SEUIL « DEUX PASSAGES » ATTEINT → `SURVEILLANCE` ; LE GARDE-FOU TOURNE, ET LA RÈGLE EST ENFIN LÀ
   OÙ LES COMMANDES SE TAPENT.** `pgrep -a -x docker` **vide** avant la collecte (02 h 23 min 10, lu et dit — V34 (3)) et
   pendant (0 client, 0 connexion sur la socket, 3 sondages) ; `dockerd` **1,0 %** instantané, cumul **0,1 h / 10,1 h**
@@ -3677,6 +3688,13 @@ Un facteur **3** entre les deux nombres Docker, et **ce facteur a varié** (1,8�
 ## VPS-026 — La sauvegarde de Vizyo Verify télécharge une image depuis Docker Hub pour s'exécuter
 
 - **Domaine** : sauvegardes · **Gravité** : **3** · **Statut** : `A_TRAITER` — ✅ **CAUSE ÉTABLIE le 2026-08-16, et VÉRIFIÉE PAR PRÉDICTION le 2026-08-17**
+- ✅ **Vu : 2026-09-22 — 25ᵉ PRÉDICTION JUSTE : PRÉSENT À 73 H, ÉPARGNÉ PAR LE MÉNAGE DE 00 H 40 (69 H À CE MOMENT-LÀ), ET
+  LE COLLECTEUR CORRIGÉ LE DIT AVEC LE BON SEUIL.** `alpine:latest` `294b683cb724`, tiré le 19/09 03 h 31 min 33 — **présent**
+  à 04 h 41 (73 h) ; le ménage de 00 h 40 l'a vu à **69 h < 72** et l'a gardé ; la sauvegarde Verify de 03 h 30 min 45 **n'a pas
+  tiré** (`registry-1.docker.io` 243 ms / 401 sondé pour rien). Collecteur : *« 🔴 PLUS DE 72 h (seuil LU dans le cron) : le
+  ménage de 00 h 40 le supprimera »* — juste cette fois (VPS-M109) : au ménage du **23/09 00 h 40** il aura 93 h. **Prédiction
+  inchangée** : absent le 23/09 à 02 h 2x, re-tiré 03 h 31, période 4 jours. V16 (épingler par empreinte, absorbée par V17)
+  reste le seul geste qui ferme la fiche.
 - ✅ **Vu : 2026-09-21 — 24ᵉ PRÉDICTION JUSTE, ET LA PÉRIODE CHANGE : 4 JOURS AU LIEU DE 2 (V32 (a)).** `alpine:latest`
   `294b683cb724`, `LastTagTime` **19/09 03 h 31 min 33** (46 h) — **présent après le ménage de 00 h 40** : sous `until=24h`
   il serait parti ; sous `until=72h` il a 26 h de sursis. ⚠️ Le collecteur a imprimé *« 🔴 PLUS DE 24 h : le ménage de
@@ -4646,7 +4664,17 @@ mesurant le phénomène (VPS-M12, nouvelle forme).
 
 ## VPS-033 — La mesure des correctifs de sécurité est perdue 4 passages sur 5, parce que sa source est aléatoire par conception
 
-- **Domaine** : sécurité · **Gravité** : 2 · **Statut** : `CORRECTIF_PROPOSE` → **V14 POSÉE le 2026-09-20 13 h 12 UTC**, **1ʳᵉ preuve le 21/09** (cache 0 h à 02 h 25, sonnerie 01 h 33) ; `APPLIQUE` à la 2ᵉ de suite
+- **Domaine** : sécurité · **Gravité** : 2 · **Statut** : `APPLIQUE` (**2026-09-22 — V14 prouvée deux nuits de suite** : cache 01 h 33 le 21/09, 01 h 37 le 22/09, « MESURE VALIDE » les deux fois **par construction**)
+- ✅ **Vu : 2026-09-22 — SECONDE PREUVE SUR DEUX → `APPLIQUE`. LA MESURE DES CORRECTIFS DE SÉCURITÉ EST DEVENUE QUOTIDIENNE.**
+  `apt-daily.timer` a sonné **01 h 35 min 34** (fenêtre 01 h 30–01 h 45 tenue, 2ᵉ nuit), `apt-daily.service` *« succès, fin
+  01:38:13 »*, cache **01 h 37 min 47**, update-notifier 01 h 38 min 05 ; collecteur à 04 h 41 : *« cache de 3 h — MESURE
+  VALIDE »* (l'audit lui-même est parti en retard, VPS-037 — la mesure, elle, reste valide jusqu'à 25 h). **77 paquets en
+  retard, dont 7 estampillés sécurité** (0 hier) — et c'est le premier jour où ce chiffre a un sens : découverts à 01 h 37,
+  soit **19 h après** le dernier passage de l'installateur (21/09 06 h 31 min 30, qui n'a rien installé : `history.log`
+  s'arrête au 18/09 `sqlite3`) ; prochaine installation **22/09 06 h 53 min 01 UTC**. *Ce n'est pas un retard (VPS-M74) —
+  c'est la position dans le cycle.* **Test daté, à lire le 23/09** : les 7 tombent à 0 après 06 h 53 = canal sain ; ils
+  restent = panne établie, et cette fois la mesure est là pour le dire. La fiche ne se rouvre qu'au premier passage où le
+  cache dépasse 25 h à 02 h 2x sans reboot ni `override.conf` retiré.
 - ✅ **Vu : 2026-09-21 — V14, PREMIÈRE PREUVE SUR DEUX : « cache de 0 h — MESURE VALIDE » À 02 H 25.** `apt-daily.timer`
   a sonné **01 h 33 min 24** (`NextElapse` annoncé hier 01 h 41 min 32 ; `OnCalendar=01:30` + `RandomizedDelaySec=15m` →
   fenêtre 01 h 30–01 h 45 tenue), `apt-daily.service` *« succès, fin 01:33:52 »*, cache **01 h 33 min 29**, update-notifier
@@ -5096,7 +5124,23 @@ confondre les deux ferait accuser le mauvais coupable.
 ## VPS-036 — Un tiers exécute `kill -KILL` en root sur la production, par un canal qui ne passe ni par SSH ni par le pare-feu
 
 - **Domaine** : sécurité · **Gravité** : 2 · **Statut** : `A_TRAITER` *(était `SURVEILLANCE` —
-  monté le 2026-09-02)*
+  monté le 2026-09-02)* · **3ᵉ occurrence le 2026-09-21 16 h 49 min 23 UTC** (le même tueur qu'au 28/08)
+- 🟠 **Vu : 2026-09-22 — TROISIÈME OCCURRENCE : LE MÊME SCRIPT `kill` QU'AU 28/08, À L'OCTET PRÈS (1 420 CARACTÈRES), LE
+  LENDEMAIN DU TICKET HOSTINGER — ET IL N'AVAIT RIEN À TUER.** `journalctl -u qemu-guest-agent` : `guest-ping` 16 h 49 min 22,
+  `guest-exec` 16 h 49 min 23 (`/bin/sh -c echo c25hcD0k… | base64 -d | sh`), `guest-exec-status` pid 2465566. Décodé par le
+  collecteur (VPS-M72) : `ps -eo pid,etimes,comm,args` → `r1` = clients `docker logs|stats` de plus de **21 600 s** sans
+  `flock`/`timeout`/`-f`, `r2` = pagers `more|less|sngrep|htop|ugrep` de plus de 21 600 s → `kill -TERM`, 3 s, `kill -KILL`,
+  `exit 10` s'il a tué. **Une seule occurrence sur 14 jours** de journal ; à cette heure la machine n'avait **aucun** client
+  docker (0 depuis le 20/09 05 h 25, `docker-orphelins` témoin `vus=0`), donc il est sorti en `exit 0` sans rien toucher —
+  *ce que le journal ne dit pas : `guest-exec-status` ne consigne pas le code de sortie*. ⚠️ **Concomitance, pas
+  identification (VPS-M01)** : le ticket Hostinger de V35 a été clos le 20/09 13 h 36 ; le 28/08, le même script était
+  arrivé 8 jours après VPS-016 nº 4. *Il ressemble à une remédiation standard de l'hébergeur contre les `docker logs`
+  orphelins — la classe exacte de VPS-016 —, posée quand un ticket ou une alarme de leur côté la déclenche. On ne le sait
+  pas, et le canal ne le dira pas.* Ce que ça change : **deux tueurs visent la même classe de processus** — le nôtre
+  (`docker-orphelins.timer`, 5 min, > 10 min, journalisé) et le leur (à leur heure, > 6 h, non journalisé côté effet). Le
+  nôtre passera toujours avant. Seuil inchangé : la fiche reste `A_TRAITER` — c'est la question au propriétaire (*« ce
+  canal est-il voulu ? »*, V15) qui la ferme, pas un compte d'occurrences. 3 exécutions d'écriture connues : 28/08 (kill),
+  01/09 (mask `multipathd`), 21/09 (kill).
 - 🔴 **Vu : 2026-09-02 — DEUXIÈME OCCURRENCE, ET CELLE-CI MASQUE UN SERVICE SYSTEMD. LE SEUIL
   ÉCRIT D'AVANCE EST FRANCHI DEUX FOIS.**
 
@@ -5216,6 +5260,23 @@ confondre les deux ferait accuser le mauvais coupable.
 
 - **Domaine** : sauvegardes · **Gravité** : **2** (3 → 2 le 2026-09-16) · **Statut** : `A_TRAITER` — **volet SYMPTÔME refermé
   le 2026-09-03, volet CAUSE intact — AGGRAVÉ le 2026-09-15 par VPS-043, et MESURÉ COMME PANNE COMMUNE le 2026-09-16**
+- 🔴 **Vu : 2026-09-22 — LA MOITIÉ POSÉE N'A PAS SUFFI, ET LA PANNE COMMUNE S'EST REJOUÉE EXACTEMENT COMME ÉCRIT LA VEILLE :
+  BATTERIE CRITIQUE À 03 H 44, RIEN JUSQU'AU BRANCHEMENT À 06 H 37, AUDIT +137 MIN ET COPIE MANQUÉE.** Journal Windows du
+  poste (lu à 06 h 40 Paris) : `Kernel-Power 42` *« Le système entre en veille »* **03 h 44 min 14**, puis `Kernel-General 1`
+  *« l'heure système est passée de 2026-09-22T01:44:15Z »* horodaté **06 h 37 min 07** — la machine a été **éteinte 2 h 53**
+  (batterie critique : **1 %** au réveil, `PowerOnline=True`, `Discharging=False` à 06 h 50 : c'est le **câble** qui l'a
+  réveillée, pas une minuterie). `Vizyo-Reveil-Audits` (04 h 15, `DisallowStartIfOnBatteries`) : **`LastTaskResult 267011`
+  — jamais tournée**, par conception : le poste était sur batterie. `Vizyo-Verify-Copie-HorsSite` (04 h 30 UTC = 06 h 30
+  Paris, `WakeToRun=True`, `StartWhenAvailable=True`) : **dernier passage 21/09 06 h 30 min 01, prochain 23/09 06 h 30** —
+  le rendez-vous du 22/09 est **manqué ET non rattrapé** 15 min après le réveil (`copie.log` s'arrête au 21/09 06 h 30 min 12).
+  Côté VPS : `DERNIERE-COPIE-LOCALE.json` du **21/09 04 h 30** ; collecteur : *« 🔴 1 paire produite DEPUIS la dernière copie
+  réussie — elle n'existe qu'ICI ; rendez-vous de 04 h 30 écoulé sans tentative : 1 »*. L'audit VPS est parti à **04 h 39 min 32
+  UTC (+137 min)** — le 6ᵉ retard de VPS-M73, le 3ᵉ pour la même cause (poste endormi : 16/09, 17/09, 22/09). **Seuil VPS-037 :
+  1 paire sans copie sur 7 j** (gravité 1 à la 3ᵉ). 🔑 *Hier le rapport écrivait : « sans `powercfg /h /type full`, attendre
+  un “réveillé mais session fermée” ». C'est pire : sur batterie, il n'y a pas eu de réveil du tout — la tâche de réveil
+  refuse la batterie à dessein, et la batterie était la seule alimentation.* **Ce qui manque n'a pas changé, il est
+  simplement prouvé** : `powercfg /h /type full` en admin **et** le secteur branché la nuit. ❌ Ne pas lancer le copieur à la
+  main pour rattraper (VPS-M81) : demain 04 h 30 doit copier **2** paires, et c'est cela qu'on veut lire.
 - 🔧 **Vu : 2026-09-21 05 h 08 Paris — V6 POSÉE À MOITIÉ, ET LA MOITIÉ QUI MANQUE EST EN ADMIN.** Sur « Go » du propriétaire :
   (a) `Vizyo-Verify-Copie-HorsSite` → `WakeToRun=True` (StartWhenAvailable gardé, 2 h, batterie autorisée comme avant ;
   prochaine 22/09 06 h 30 — la copie du 21/09 06 h 30 min 01 a réussi, `Result 0`, 6ᵉ nuit) ; (b) 🆕 tâche `Vizyo-Reveil-Audits`,
@@ -5321,6 +5382,12 @@ confondre les deux ferait accuser le mauvais coupable.
 
 - **Domaine** : données · **Gravité** : **2** (montée à 1 le 2026-09-05 sur le seuil écrit le 09-03 ;
   **redescendue à 2 le 2026-09-13 sur le seuil écrit le 09-05**) · **Statut** : `A_TRAITER`
+- ✅ **Vu : 2026-09-22 — LUNDI 09-21 COMPLET = 34, NEUVIÈME JOURNÉE ≥ 32 ; ×1,14 DU LUNDI J-7, ET LES TROIS ÉTAGES S'ACCORDENT.**
+  3 comptes = **34 / 34 / 34** (VPS-M89 ✅) ; positions **24 408** / 24 h = ×1,72 du dimanche mais **×1,14 du lundi 14/09**
+  (21 380) — calendrier (VPS-M71) ; wire_logs **120,5 trames/h/boîtier** (×1,05), décisions 93,6 (×1,01) ; **11 muets > 6 h**
+  sur positions à 04 h 41 (dernier arrêt 16 h 56 UTC — la nuit, comme chaque matin ; 3 sur décisions) ; registre **10 / 10 / 10**,
+  cumuls inchangés. Série VPS-M93, lundi complet : `MOVING` **21,4 %**, `INSERTED` **30,4 %** (dimanche 7,6 / 18,4 ; vendredi
+  24,8 / 33,5) — le point de référence « lundi » est posé. `tracky_prod` 1 219 Mo (+9), positions 462 Mo / 61 j.
 - ✅ **Vu : 2026-09-21 — DIMANCHE 09-20 COMPLET = 34, HUITIÈME JOURNÉE ≥ 32, ET LE REGISTRE NE BOUGE PAS.** 3 comptes =
   **34 / 34 / 34** (positions, wire_logs, décisions — contrôle croisé VPS-M89 ✅) ; positions **14 222** / 24 h = ×0,62 du
   samedi mais **×0,96 du dimanche J-7** (14 809) — calendrier, pas panne (VPS-M71) ; wire_logs **114,7 trames/h/boîtier**
@@ -5805,7 +5872,17 @@ confondre les deux ferait accuser le mauvais coupable.
 
 ## VPS-041 — Deux rotateurs se partagent les journaux de conteneur, et l'un des deux perce des trous d'octets NUL
 
-- **Domaine** : docker · **Gravité** : 2 · **Statut** : `SURVEILLANCE` — **V29 FAITE le 2026-09-20 16 h 24 UTC et PROUVÉE le 21/09** (1ʳᵉ nuit : un seul rotateur, 0,6 s de CPU, aucun **nouveau** trou, `tracky-postgres` sorti) ; `APPLIQUE` au **second** passage de suite sans nouveau trou (le second prouve que la rotation Docker purge les 6 restants)
+- **Domaine** : docker · **Gravité** : 2 · **Statut** : `APPLIQUE` (**2026-09-22 — V29 FAITE le 20/09 16 h 24, prouvée deux nuits de suite** : 0,6 s puis 0,4 s de CPU, un seul rotateur, aucun nouveau trou, et **la rotation Docker a bien purgé deux des six troués**)
+- ✅ **Vu : 2026-09-22 — SECONDE NUIT : 0,4 s DE CPU, ET LA ROTATION DOCKER A PURGÉ DEUX TROUÉS SUR SIX → `APPLIQUE`.**
+  `logrotate.service` **00 h 00 min 02 → 00 h 00 min 14**, `CPUUsageNSec` **0,40 s** (0,60 hier, 7,2 le 20/09, 21,9 le 17/09) ;
+  collecteur : *« ✅ un seul rotateur »*. Troués **4** (6 hier) : `maestroo-dev-web` 74 % sur 4 288 Ko (84 % / 3 798 Ko hier),
+  `maalem-dev-web` 84 % / 6 775 Ko (91 / 6 270), `maalem-dev-admin` 84 % / 6 622 Ko (92 / 6 041), `maestroo-dev-lp` 71 % /
+  3 405 Ko (83 / 2 923) — **les quatre grossissent et leur part de NUL baisse** : le trou est fixe, rien n'a re-percé.
+  **`maalem-dev-api` (48 %) et `maestroo-dev-api` (21 %) sont sortis** : leur fichier courant a passé les 10 Mo et Docker l'a
+  tourné — *c'est la preuve que le second passage attendait : les trous restants s'effacent par la rotation Docker seule,
+  sans geste.* Les 4 derniers partiront de même (à ~1 Mo/j pour les `-dev-`, sous une semaine). Total journaux 48,6 Mo,
+  `/var/lib/docker/containers` **279 Mo** (245 hier : les fichiers grossissent, plafond 30 Mo × 38 = 1,1 Go). **V29 bis**
+  inchangée (les 316 `*.log.N` anciens, 434 Mo, ménage simulé planifié au 05/10).
 - ✅ **Vu : 2026-09-21 — PREMIÈRE NUIT À UN SEUL ROTATEUR : 0,6 s DE CPU, AUCUN NOUVEAU TROU, `tracky-postgres` SORTI.**
   `logrotate.service` **00 h 00 min 00 → 00 h 00 min 09**, `CPUUsageNSec` **0,60 s** (7,2 s la veille, 21,9 s le 17/09) ;
   journal : *« Deactivated successfully »* à 00:00:09 ; le collecteur : *« ✅ un seul rotateur : le pilote json-file de
@@ -5950,6 +6027,17 @@ confondre les deux ferait accuser le mauvais coupable.
   **V30**, élargie le 2026-09-15 à un **troisième compte**) · ⚠️ **le titre est à moitié faux
   depuis le 2026-09-14** : *seul un tirage extérieur les sauvegarde* vaut pour le **coffre** ; pour
   Conductor **et désormais Dispocar**, c'est **cette machine qui est le dépôt**.
+- 🟠 **Vu : 2026-09-22 — `prd` DISPOCAR ENFIN LU CHAQUE NUIT : 1 172 OCTETS CE MATIN ENCORE, 10ᵉ NUIT À L'IDENTIQUE, PENDANT
+  QUE `dev` PÈSE 49 KO ET QUE LES DEUX INSTANCES CONDUCTOR SONT PLEINES.** Banc du bloc corrigé (VPS-M111) : `dispocar-distant`
+  → `prd-dispocar-20260922-033907.sql.gz.age` **1 172 o** 🟠, `dev-dispocar-20260922-033607` **49 553 o** ✅ ;
+  `vizyo-conductor-distant` → `prd-vizyo_conductor-20260922-030943` **36 142 o**, `dev-…-030641` **39 077 o**. Marge : les
+  quatre derniers `prd` Dispocar (19, 20, 21, 22/09) font **tous 1 172 o**. *Le collecteur ne l'imprimait qu'une nuit sur
+  deux — il lisait LE fichier le plus récent du dossier, et `dev` arrive tantôt avant, tantôt après `prd` (21/09 : dev
+  03 h 35 min 53 après prd 03 h 34 min 07 ; 22/09 : prd 03 h 39 après dev 03 h 36). « 8ᵉ nuit non mesurée » hier n'était pas
+  un angle mort du VPS : c'était un fichier présent que le collecteur regardait une fois sur deux.* La question reste **côté
+  expéditeur** (la clé `age` n'est pas ici — VPS-M01) : un `pg_dump` de la mauvaise base, ou d'une base vide, ou d'un rôle
+  sans droit. Dépôts : Conductor 28 copies (03 h 06 / 03 h 09), Dispocar **18** (03 h 36 / 03 h 39) ; `vaultbk` 7 connexions / 7 j
+  (0 session > 1 j) ; comptes 4 = 4, dossiers 13 = 13, 0 empreinte inconnue.
 - 🔵 **Vu : 2026-09-21 — LA SESSION `vaultbk` DE 253 H EST PARTIE AVEC LE REBOOT, PAS AVEC UNE DÉCISION ; LES DÉPÔTS
   CONTINUENT.** *« ✅ aucune session de plus d'un jour »* — V4 (16 h 17) a fermé le canal ouvert depuis le 09-09 22 h 22 ;
   le tirage de la nuit est passé par une session neuve (`vaultbk` 1 connexion sur le 20/09, à son heure). Dépôts :
@@ -6157,6 +6245,13 @@ confondre les deux ferait accuser le mauvais coupable.
 ## VPS-044 — Le repère de repli du chantier a été effacé par le ménage 6 h 25 après le déploiement, et les étiquettes qui restent pointent des images qui n'ont jamais tourné
 
 - **Domaine** : docker · **Gravité** : 3 · **Statut** : `CORRECTIF_PROPOSE` (✅ **V32 (a) FAITE le 2026-09-20 13 h 12 et PROUVÉE le 21/09** : `until=72h`, l'étiquette du 19/09 a survécu au ménage ; ✅ **(b) CODÉE ET TESTÉE le 2026-09-20 ~14 h 30** : `deploy.sh` étiquette l'image du **conteneur en service**, 131 contrôles verts — **EN LIGNE sur le VPS depuis le 20/09 14 h 18 UTC** (pull du propriétaire : `/opt/vizyo-tracky` à `fcb1303a`, md5 de `deploy.sh` identique — vérifié le 21/09 03 h 05, ce référentiel disait à tort « au prochain `git pull` »)) ; `APPLIQUE` à la première ligne « repère posé : … ← l'image du conteneur » suivie d'un « ✅ repli RÉEL » du collecteur
+- ✅ **Vu : 2026-09-22 — LE REPÈRE TIENT À 4 JOURS (2ᵉ MÉNAGE PASSÉ), ET IL N'Y A TOUJOURS RIEN À PROUVER POUR (b).**
+  `tracky-api:avant-20260919-1537-1d1521b2` (1,84 Go, *« 4 days ago »*) présente à 04 h 40 après le ménage de 00 h 40 ;
+  **31 images**, 0 créée sur 24 h, 0 déploiement journalisé sur 48 h ; `tracky-api` / `tracky-web` tournent sur `latest`
+  (`6b15f68b1061` / `f94a4599f539`). ⚠️ Sous `until=72h`, **l'étiquette du 19/09 partira au ménage du 23/09 00 h 40** (elle aura
+  ~103 h) — *c'est le comportement voulu : un repli de 72 h, pas un repli éternel* ; le prochain `deploy.sh` en posera un
+  neuf sur l'image du conteneur (b). Rien à faire ; la fiche se ferme au premier déploiement qui écrit *« repère posé : … ←
+  l'image du conteneur »*.
 - ✅ **Vu : 2026-09-21 — V32 (a) PROUVÉE : LE REPÈRE DU 19/09 A SURVÉCU AU MÉNAGE DE 00 H 40.** `tracky-api:avant-20260919-1537-1d1521b2`
   = `84cc3fe36db2` et `tracky-web:avant-…` = `99811d3a61a2` **présentes** à 02 h 24 (33 h ; à 24 h elles partaient — la
   prédiction du 20/09 disait « 28 images attendues sans V32 (a) » : il y en a **31**, les mêmes). `alpine:latest` (46 h)
@@ -6237,6 +6332,13 @@ confondre les deux ferait accuser le mauvais coupable.
 ## VPS-045 — L'hôte retient 80 à 90 % du CPU de la machine, et il ne l'a pas rendu quand la cause interne a disparu
 
 - **Domaine** : charge · **Gravité** : **2** (1 → 2 le 2026-09-20 13 h 36 : limitation levée) · **Statut** : `SURVEILLANCE` — **V35 FAITE** : (1) ticket → **limitation CONFIRMÉE et LEVÉE par Hostinger à 13 h 36 UTC**, (2) 14 conteneurs arrêtés 12 h 48 puis **rallumés 13 h 38** ; **V4 FAITE** ; jour **1 / 7** de steal < 10 % (21/09)
+- ✅ **Vu : 2026-09-22 — JOUR 2 / 7 : LE 21/09 EST LA PREMIÈRE JOURNÉE CALENDAIRE COMPLÈTE SANS LIMITATION — STEAL MOYEN
+  0,24 %, MAXIMUM 2,78 %, IDLE 87,03 %.** `sar -u` sur les **143 relevés** du 21/09 : steal moyen **0,24 %**, max **2,78 %**
+  (00 h 10, le ménage) ; section 9 : 09-21 **87,03 %** d'idle, user 5,72, sys 4,23 ; 22/09 partiel (28 relevés) : moyen 0,34 %,
+  max 4,04 %, idle 87,40 %. Pendant la collecte (04 h 39–04 h 42) : steal **4,5 %** sur la fenêtre du discriminant — l'hôte
+  retient un peu quand la VM demande, ce qui est le comportement normal d'un vCPU partagé, pas une politique. `dockerd` 0,7 %,
+  0 client, `/api/health` **38 ms**, `docker system df` 8,2 s. Seuil inchangé : `APPLIQUE` après 7 jours < 10 % en moyenne
+  journalière (**2 / 7**) ; gravité 1 si > 30 % sur 3 relevés avec `dockerd` < 10 %.
 - ✅ **Vu : 2026-09-21 — PREMIER JOUR ENTIER SANS LIMITATION : STEAL 0,1–0,3 % SUR 34 RELEVÉS DE SUITE.** `sar` 20/09
   13 h 40 → 23 h 50 : steal **0,13–0,99 %** (un seul relevé à 2,66 % à 19 h 30), idle **86–89 %** dès 17 h ; 21/09 00 h 00 →
   02 h 20 : steal 0,15–0,23 % (2,78 % à 00 h 10, le ménage), idle 82–89 % ; instant à 02 h 23 : **0,2 %**. Section 9 :
@@ -6373,6 +6475,17 @@ confondre les deux ferait accuser le mauvais coupable.
 ## VPS-047 — Une session SSH par seconde pendant deux heures depuis le poste, 50 min après que l'hébergeur a levé sa limitation « en avertissant qu'elle peut revenir »
 
 - **Domaine** : ordonnancement / charge · **Gravité** : 2 · **Statut** : `CORRECTIF_PROPOSE` — **V37 (1) identifiée et (2) POSÉE le 2026-09-21 05 h 05 Paris** (section « 🛑 Une boucle du poste qui parle au VPS = UNE session, et un `sleep` qui dort » dans `CLAUDE.md`, après la règle V34 ; mémoire des agents `claude_monitor_tool_sleep_path.md`) ; (3) seuil au collecteur posé (VPS-M110) ; `SURVEILLANCE` après 7 jours sans heure > 600 sessions, `APPLIQUE` quand le premier `Monitor` suivant a été relu avec `/usr/bin/sleep`
+- ✅ **Vu : 2026-09-22 — JOUR 1 / 7 : LA VEILLE A PORTÉ 172 SESSIONS, POINTE 22 / H, `proc/s` 27–42 — ET LE BLOC QUI DEVAIT
+  « LE DIRE SEUL » NE LE DISAIT PAS.** `auth.log` 21/09 par heure UTC (marge) : 00 h 2 · 01 h 20 · 02 h 19 · 04 h 14 · 06 h **22** ·
+  10 h 18 · 12 h 17 · 16 h 19 · 20 h 10, ≤ 9 ailleurs — **172** au total (7 946 la veille) ; 22/09 partiel : 21. `sar -w` sur
+  les 143 relevés du 21/09 : `proc/s` **26,9 → 41,8**, moyenne **27,6** (117 pendant la rafale). *La règle a été lue, ou
+  personne n'a bouclé : aucun `Monitor` n'a été lancé depuis le 21/09, donc la seconde moitié de la preuve (« le premier
+  `Monitor` suivant relu avec `/usr/bin/sleep` ») n'a pas eu d'occasion.* ⚠️ **Correction du rapport d'hier** : il écrivait
+  *« le bloc VPS-M110 le dit seul »* — **faux**. VPS-M110 ventile le **jour de pic de la fenêtre de 7 jours**, c'est-à-dire
+  le 20/09 jusqu'au 27/09 ; la veille n'y est jamais lue à l'heure. Une rafale de 500 / h un jour à 2 000 sessions serait
+  restée invisible six jours de suite. 🆕 **VPS-M112** posé et bancé ce passage : la veille, son total, son heure de pointe
+  et le seuil 600 / h — *« ✅ la VEILLE (2026-09-21) : 172 sessions, heure de pointe 06h=22 — sous le seuil V37 »*. Seuil
+  inchangé : `APPLIQUE` à 7 jours sans heure > 600 **et** un `Monitor` relu ; gravité 1 si une heure > 600 revient.
 - ✅ **Vu : 2026-09-21 05 h 05 Paris — V37 (2) POSÉE, sur « Go » du propriétaire.** `CLAUDE.md` porte désormais, juste sous la règle
   V34 : les trois formes (✅ une session qui boucle côté serveur · ✅ `/usr/bin/sleep` en chemin absolu · ❌ `sleep` nu dans un
   `Monitor`), le fait mesuré (7 774 sessions / 2 h, `proc/s` ×4,2, 50 min après la levée Hostinger), le garde
@@ -6441,9 +6554,55 @@ confondre les deux ferait accuser le mauvais coupable.
 
 ## Constats de méthode (sur l'audit lui-même)
 
+### VPS-M112 — Le bloc écrit pour surveiller les rafales SSH ne ventilait que le jour de pic de la fenêtre : la veille n'y était jamais lue, et le rapport a écrit « il le dit seul »
+
+- **Domaine** : méthode · **Gravité** : 3 · **Statut** : `APPLIQUE` (2026-09-22 — bloc « la VEILLE » posé, banc sur la machine)
+- **Vu** : 2026-09-22 · **Mesure** : le post-scriptum du 21/09 demandait *« VPS-047 : `auth.log` du 21/09 — aucune heure
+  > 600 (le bloc VPS-M110 le dit seul) »*, et `taches.json` fixait la preuve de V37 sur ce bloc. Or VPS-M110 choisit **le jour
+  qui porte le plus de sessions sur les 7 jours** — le 20/09 (7 946) — et ventile celui-là. Il l'aurait ventilé jusqu'au
+  27/09, quel que soit le 21, le 22 ou le 23. La sortie du 22/09 le montre : l'histogramme est **celui du 20/09**, et le
+  21/09 (172 sessions) n'apparaît que comme un total.
+- **QUOI** : un bloc conçu pour *expliquer* un pic (« le seul qui vaille une lecture », écrit dans son propre commentaire)
+  a été promu, le soir même, en instrument de *surveillance* — sans que personne ne relise ce qu'il sélectionne. Un
+  sélecteur « max sur 7 jours » est aveugle à tout ce qui est sous le max : une rafale de 500 / h un jour à 2 000
+  sessions serait restée invisible six jours de suite, **derrière une ligne verte**. C'est VPS-M65 sous une autre forme :
+  une portée écrite avait pris la place de la mesure.
+- **Correctif** : après le jour de pic, **la veille** (dernier jour complet) : total, heure de pointe (`HHh=N`), et le
+  seuil V37 (600 / h) → ✅ / 🔴 ; si la veille *est* le jour de pic, une ligne le dit pour ne pas doubler l'histogramme.
+  **Zéro commande de plus** (`$ECH` est en mémoire). **Banc** sur la machine : *« ✅ la VEILLE (2026-09-21) : 172
+  sessions, heure de pointe 06h=22 — sous le seuil V37 (600/h) »* ; branche « EST le jour de pic » exercée en forçant
+  `VEILLE=$PIC_J`. `taches.json` (V37) et cette fiche renvoient désormais à **VPS-M112** pour la preuve, plus à M110.
+- **`aNePasFaire`** : ❌ ne pas remplacer le jour de pic par la veille — le pic reste ce qu'on veut *expliquer*, la veille
+  ce qu'on veut *surveiller* ; ce sont deux questions. ❌ Ne pas ventiler les 7 jours (M110 le dit déjà).
+
+### VPS-M111 — Le garde « base VIDE » ne lisait que le fichier le plus récent du dossier : dans un dépôt à deux instances, `prd` n'était imprimé qu'une nuit sur deux — et huit nuits ont été publiées « non mesurées » pour un fichier qui était là
+
+- **Domaine** : méthode · **Gravité** : 3 · **Statut** : `APPLIQUE` (2026-09-22 — sous-lignes par instance pour les dépôts, banc)
+- **Vu** : 2026-09-22 · **Mesure** : le bloc « âge par dossier » (section 11) prend, par dossier, **le** fichier le plus
+  récent (`sort -rn | head -1`) et n'applique le garde `< 2 048 o` (ajouté le 16/09, angle mort n° 4 du 15/09) qu'à lui.
+  `dispocar-distant` reçoit chaque nuit **deux** dumps à trois minutes d'écart — `dev-…` (49 Ko) et `prd-…` (1 172 o) —
+  dans un ordre qui change : 21/09 `prd` 03 h 34 puis `dev` 03 h 35 → la ligne montre `dev`, 284 Ko, *« à jour »*, rien
+  d'autre ; 22/09 `dev` 03 h 36 puis `prd` 03 h 39 → *« 🟠 1 172 o : probablement une base VIDE »*. Les rapports du 16, 17,
+  20 et 21/09 ont écrit **« 8ᵉ nuit à 1 172 o NON MESURÉE »** et posé « lire la taille de `prd` » en angle mort n° 2, alors
+  que le fichier était sur le disque chaque nuit et que le collecteur le trouvait — puis le jetait.
+- **QUOI** : « un dossier = une sauvegarde = un fichier » est vrai pour les dossiers écrits par une unité de cette machine
+  et faux pour un **dépôt** (VPS-M99 : *le dépôt d'une autre machine*), qui porte autant de séries que l'expéditeur a
+  d'instances. Le bloc avait appris à reconnaître un dépôt (propriétaire non-root, 14/09) et à imprimer le garde (16/09),
+  mais **pas à multiplier la ligne** — la reconnaissance et le garde se sont ajoutés sans se rencontrer. Et la fausse
+  absence s'est lue comme un angle mort *du collecteur* qu'on reportait, alors que c'était une **sélection** : la classe de
+  VPS-M42 (*un angle mort désignait un objet qui n'existe pas, re-reporté sans être relu*) — ici l'inverse, un objet qui
+  existe désigné comme non mesuré.
+- **Correctif** : pour un dossier reconnu dépôt (`_dep` non vide), un `find` de plus (même dossier, déjà parcouru), groupé
+  par **préfixe d'instance** (ce qui précède le premier tiret : `prd`, `dev`) — dernier fichier, âge, taille, garde VIDE, une
+  sous-ligne chacun. Coût : un `find` × 2 dossiers. **Banc** sur la machine : Dispocar `prd` **1 172 o 🟠** / `dev` 49 553 ✅ ;
+  Conductor `prd` 36 142 ✅ / `dev` 39 077 ✅. *Quatre nombres, dont un seul dit quelque chose — et c'est le bon.*
+- **`aNePasFaire`** : ❌ ne pas conclure de la taille au contenu — 1 172 o est la taille d'un `pg_dump` vide *ou* d'une base
+  sans table *ou* d'un rôle qui ne voit rien ; seul l'expéditeur, qui a la clé `age`, tranche (VPS-M01). ❌ Ne pas étendre
+  la ventilation aux dossiers non-dépôts : ils ont une série, et la ligne unique est juste.
+
 ### VPS-M110 — Le compteur de sessions SSH lisait 7 946 et 935 sur la même échelle : sans l'heure, une rafale de deux heures et une journée de travail sont le même nombre
 
-- **Domaine** : méthode · **Gravité** : 3 · **Statut** : `APPLIQUE` (2026-09-21 — bloc posé, banc sur la machine)
+- **Domaine** : méthode · **Gravité** : 3 · **Statut** : `APPLIQUE` (2026-09-21 — bloc posé, banc sur la machine) · ⚠️ **portée corrigée le 2026-09-22 (VPS-M112)** : ce bloc *explique* le jour de pic ; il ne *surveille* pas la veille — la preuve de V37 est lue par M112
 - **Vu** : 2026-09-21 · **Mesure** : le bloc « Sessions SSH RÉUSSIES » (VPS-032, 22/08) rend un total 7 j et un
   histogramme **par jour**. Le 20/09 y vaut **7 946** — et rien d'autre. En marge, ventilé par heure : **2 563 · 3 894 ·
   1 317** sur 14 h–16 h, ≤ 29 partout ailleurs. Angle mort n° 4 (*« qui parle à cette machine »*), **10ᵉ report** — le
@@ -8192,6 +8351,15 @@ lecture — et c'est exactement ce que VPS-M31 punit.
 ### VPS-M73 — Cinq passages manqués, et une conséquence que le raisonnement écrit n'avait pas prévue
 
 - **Domaine** : méthode · **Gravité** : 3 · **Statut** : `A_TRAITER`
+- 🔴 **Vu : 2026-09-22 — 6ᵉ RETARD, +137 MIN (04 h 39 min 32 UTC), 3ᵉ POUR LA MÊME CAUSE : LE POSTE DORMAIT — ET CETTE FOIS
+  LA CAUSE EST MESURÉE À LA MINUTE, PAS SUPPOSÉE.** Journal Windows : veille (batterie critique) **03 h 44 min 14 Paris**,
+  réveil **06 h 37 min 07** par le branchement du câble (1 %). La tâche de réveil de V6 (04 h 15) **n'a pas sonné** — elle
+  refuse la batterie, à dessein. Un seul passage, seul (*« ✅ ma collecte était SEULE »*). Effet sur la sortie : toutes les
+  fenêtres « 24 h » sont décalées de 2 h 17 (le collecteur le dit lui-même, `BUDGET`), `/opt/maalem` à cache froid (> 12 s),
+  et la copie hors-site du même poste **manquée aussi** (VPS-037 : *« a probablement été manquée AUSSI »* — vérifié :
+  oui). Retards : 16/09 +134 (poste endormi), 17/09 +56 (idem), 18/09 interrompu, 19/09 rattrapage 14 h 12, 20/09 +528
+  (VPS-045), **22/09 +137 (poste endormi, batterie)**. *La règle de VPS-M73 tient : quand le poste manque, il manque tout
+  ce qui dépend de lui, dans le même quart d'heure.*
 - ✅ **Vu : 2026-09-21 — UN PASSAGE, UN RAPPORT, À L'HEURE : 02 h 23 min 09 (pré-contrôle) → 02 h 23 min 23 (collecte),
   +1 min.** Seul (la seconde session de la fenêtre est le pré-contrôle V34, identifié par l'heure et le contenu). Le
   poste était éveillé — sans `WakeToRun` (V6), donc **par chance**, comme les 4 nuits de copie. Le rattrapage qui
@@ -9060,6 +9228,16 @@ traiter la machine.* ⚠️ **Et ne pas en conclure que VPS-M56 est annulé** : 
 ### VPS-M56 — Le budget de 90 s est dépassé 8 fois sur 9 ~~sans aucune cause extérieure~~
 
 - **Domaine** : méthode · **Gravité** : 2 · **Statut** : `A_TRAITER` — **arbitrage humain requis, il n'est pas technique**
+- 📏 **Vu : 2026-09-22 — 157 s (1,7×), 30ᵉ DÉPASSEMENT, ET LA LIMITE DE CHARGE FRANCHIE DE 0,07 PARCE QUE LA MACHINE ÉTAIT
+  DÉJÀ À 1,09 AU DÉPART.** Steal au départ 2 % (mode complet), charge **1,09 → 2,07** (*« CHARGE PARTAGÉE : la machine était
+  DÉJÀ à 1,09 avant la collecte »* — `sar -q` 04 h 30 : `ldavg-1` **0,14**, 04 h 40 : 1,51 ; quelque chose a tourné entre
+  04 h 30 et 04 h 39 — `vizyo-manager-backup` 04 h 30 min 51, `usage-telemetry.py` de l'hyperviseur 04 h 35, `docker-orphelins`
+  04 h 38 min 50 : trois lectures courtes, **aucune ne fait 1,09 à elle seule ; cause NON NOMMÉE**, et 5 min à 0,58 dit que c'était
+  bref). Discriminant : idle 41,8 % · user 16,7 · sys 27,9 · iowait 6,9 · steal 4,5 ; *« coût réel : 75,2 s de CPU = 23,9 % »*,
+  `dockerd` 2,5 %, inexpliqué 20,4 %. Postes : `/opt` **36 s** pour **20 / 21** (`maalem` > 12 s NON MESURÉ — cache froid après
+  2 h 17 de décalage d'horaire, VPS-M18 ; somme partielle, VPS-M95), `[t+64s]` Docker, `[t+82s]` données (18 s), `[t+116s]`
+  sécurité (34 s), `[t+127s]` planification, `[t+141s]` journaux. Sans le `maalem` manqué : ~145 s = la référence saine
+  d'hier. **Les deux réponses (a) et (b) restent posées ; aucune n'est choisie — 16 jours.**
 - 📏 **Vu : 2026-09-21 — 149 s (1,7×), 29ᵉ DÉPASSEMENT, MACHINE À PLEINE PUISSANCE : LA RÉFÉRENCE SAINE DU COLLECTEUR
   CORRIGÉ.** Steal au départ **0 %** (mode complet), charge **0,20 → 1,93** (sous la limite de 2, de 0,07), discriminant :
   idle 42,6 % · user 16,9 · sys 29,9 · steal 3,8 ; *« coût réel de l'audit : 67,3 s de CPU = 22,6 % de la machine »*,

@@ -2753,6 +2753,25 @@ if [ -n "$SRC" ]; then
       | awk '{h[$2]=$1} END {for (i=0;i<24;i++) {k=sprintf("%02d",i); printf "        %sh %5d %s\n", k, h[k]+0, (h[k]+0>0)? substr("############################################################",1,int((h[k]+0)/20)+1):""}}'
     echo "      (une barre = 20 sessions ; ~54 processus par session, plancher mesure le 2026-08-22)"
   fi
+  # ⚠️⚠️ VPS-M112 — AJOUTE LE 2026-09-22. Le bloc ci-dessus ventile le jour de PIC de la fenetre
+  # de 7 jours — donc le 20/09 (7 946) reste « le jour ventile » jusqu au 27/09, et la VEILLE
+  # n est jamais lue a l heure. Or la preuve demandee par V37 est « aucune heure > 600 sessions
+  # SUR LA VEILLE », et le rapport du 21/09 a ecrit « le bloc VPS-M110 le dit seul » : c etait
+  # faux — il ne disait rien du 21/09. Une rafale de 500/h un jour a 2 000 sessions serait
+  # invisible six jours de suite. On lit donc la VEILLE (dernier jour complet) : son total, son
+  # heure de pointe, et le seuil. Zero commande de plus (`$ECH` est deja en memoire).
+  VEILLE=$(date -d 'yesterday' '+%Y-%m-%d')
+  V_L=$(echo "$ECH" | grep "Accepted" | grep "^$VEILLE")
+  V_N=$(printf '%s\n' "$V_L" | grep -c "Accepted")
+  V_H=$(printf '%s\n' "$V_L" | cut -c12-13 | sort | uniq -c | sort -rn | awk 'NR==1{printf "%sh=%s", $2, $1}')
+  V_MAX=${V_H#*=}; V_MAX=${V_MAX:-0}
+  if [ "$VEILLE" = "$PIC_J" ]; then
+    printf '    ── la VEILLE (%s) EST le jour de pic ventile ci-dessus (V37 : seuil 600/h)\n' "$VEILLE"
+  elif [ "$V_MAX" -gt 600 ]; then
+    printf '    🔴 la VEILLE (%s) : %s sessions, heure de pointe %s — AU-DESSUS du seuil V37 (600/h) : une boucle du poste a tourne sans dormir\n' "$VEILLE" "$V_N" "$V_H"
+  else
+    printf '    ✅ la VEILLE (%s) : %s sessions, heure de pointe %s — sous le seuil V37 (600/h)\n' "$VEILLE" "$V_N" "${V_H:-aucune}"
+  fi
   # La fenetre de MA collecte, bornee par T_DEBUT : qui d autre parlait a la machine pendant
   # que je la mesurais ? Le denominateur est explicite, et ma propre session est RETIREE — mais
   # seulement si j en ai une (VPS-M34 : un denominateur suppose est un denominateur faux).
@@ -4234,6 +4253,27 @@ for d in /var/backups/*/; do
   _oct=$(stat -c %s "$fic" 2>/dev/null || echo 0)
   _vide=""; [ "$_oct" -gt 0 ] && [ "$_oct" -lt 2048 ] && _vide="  🟠 ${_oct} o : probablement une base VIDE (ou la mauvaise base) — a verifier cote expediteur"
   printf '  %-26s %3s h  %-42s %2d copies, %s  %s%s%s\n' "$app" "$age_h" "$verdict" "$nb" "$taille" "$(basename "$fic")" "$_dep" "$_vide"
+  # ⚠️⚠️ VPS-M111 — CORRIGE LE 2026-09-22 (angle mort n° 2 du 21/09, « la taille de prd n est
+  # pas lue »). Le garde « base VIDE » ci-dessus ne regardait que LE fichier le plus recent du
+  # dossier. Un depot d une autre machine porte PLUSIEURS instances (`dev-…`, `prd-…`), deposees
+  # a quelques minutes d ecart : la ligne montrait tantot dev (284 Ko, 21/09), tantot prd
+  # (1 172 o, 22/09) — selon laquelle etait arrivee la derniere. Le 1 172 o de prd, present
+  # CHAQUE nuit depuis le 14/09, n a ete imprime qu une nuit sur deux, et 8 nuits ont ete
+  # publiees « non mesurees » alors que le fichier etait la. Pour un depot, on ventile donc par
+  # PREFIXE d instance (ce qui precede le premier tiret suivi d un nom) : dernier fichier, age,
+  # taille, garde VIDE — un sous-bloc par instance. COUT : un `find` de plus sur un dossier deja
+  # parcouru, uniquement pour les depots (2 dossiers).
+  if [ -n "$_dep" ]; then
+    find "$d" -maxdepth 1 -type f \( -name '*.gz' -o -name '*.gpg' -o -name '*.age' \) -printf '%T@ %s %f\n' 2>/dev/null \
+      | sort -rn | awk '{pre=$3; sub(/-.*/,"",pre); if (!(pre in vu)) {vu[pre]=1; print}}' \
+      | while read -r _ts _oct2 _nom; do
+          _age2=$(( (MAINTENANT - ${_ts%.*}) / 3600 ))
+          _pre=${_nom%%-*}
+          _v2="✅ ${_oct2} o"
+          [ "$_oct2" -gt 0 ] && [ "$_oct2" -lt 2048 ] && _v2="🟠 ${_oct2} o : probablement une base VIDE (ou la mauvaise base) — a verifier cote expediteur"
+          printf '      instance %-6s %3s h  %s  %s\n' "$_pre" "$_age2" "$_nom" "$_v2"
+        done
+  fi
 done
 
 # ── Fichiers poses a la RACINE de /var/backups — hors de tout dossier, donc hors de toute retention ──
