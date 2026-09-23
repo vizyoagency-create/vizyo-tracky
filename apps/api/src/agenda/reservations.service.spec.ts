@@ -890,3 +890,80 @@ describe('ReservationsService.reorganiser — geste de masse', () => {
     ).rejects.toBeInstanceOf(BadRequestException);
   });
 });
+
+/**
+ * LA DÉCISION NE LAISSAIT AUCUNE TRACE.
+ *
+ * Relevé le 2026-09-24 en recette : deux demandes de « Client test » étaient passées à CONFIRMED
+ * et rien, nulle part, ne permettait de dire qui les avait validées ni quand. Le DÉPÔT d'une
+ * demande publique était journalisé (`public_booking_submitted`), la DÉCISION ne l'était pas —
+ * exactement l'inverse de ce qu'il faut : chez un client dont le standard valide les demandes des
+ * conducteurs, c'est la décision qui engage.
+ */
+describe('ReservationsService — la décision laisse une trace', () => {
+  const journal = () => ({ record: jest.fn() });
+
+  const prismaAvec = (status: string) =>
+    makePrisma({
+      vehicleEvent: {
+        findMany: jest.fn().mockResolvedValue([]),
+        findUnique: jest.fn().mockResolvedValue({
+          id: 'r1', fleetId: 'f1', vehicleId: 'v1', status,
+          type: 'RESERVATION', startAt: new Date('2026-10-01T08:00:00Z'),
+          endAt: new Date('2026-10-01T10:00:00Z'), metadata: null,
+        }),
+        create: jest.fn(),
+        update: jest.fn().mockResolvedValue({
+          id: 'r1', fleetId: 'f1', vehicleId: 'v1', status: 'CANCELLED',
+          type: 'RESERVATION', category: null, severity: null, title: 'Sortie', description: null,
+          startAt: new Date('2026-10-01T08:00:00Z'), endAt: new Date('2026-10-01T10:00:00Z'),
+          allDay: false, blocksVehicle: true, odometerKm: null, planId: null, linkedEventId: null,
+          resolvedAt: new Date('2026-10-01T09:00:00Z'), source: 'MANUAL',
+          createdAt: new Date('2026-09-01T08:00:00Z'), updatedAt: new Date('2026-09-24T01:00:00Z'),
+          vehicle: { plate: 'AA-123-BB' }, metadata: null,
+        }),
+      },
+    });
+
+  it('journalise un REFUS quand la demande était en attente', async () => {
+    const j = journal();
+    const svc = new ReservationsService(
+      prismaAvec('REQUESTED'), access('ALL'), makeEvents(), makePerms(true), undefined, j as never,
+    );
+    await svc.cancel(makeUser(), 'r1');
+    expect(j.record).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'reservation_refusee', category: 'RESERVATION' }),
+    );
+  });
+
+  /** ⚠️ Refuser une demande et annuler une réservation ferme sont deux gestes différents. */
+  it('journalise une ANNULATION quand la réservation était déjà ferme', async () => {
+    const j = journal();
+    const svc = new ReservationsService(
+      prismaAvec('CONFIRMED'), access('ALL'), makeEvents(), makePerms(true), undefined, j as never,
+    );
+    await svc.cancel(makeUser(), 'r1');
+    expect(j.record).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'reservation_annulee' }),
+    );
+  });
+
+  it('nomme QUI a décidé — sans ça la trace ne sert à rien', async () => {
+    const j = journal();
+    const svc = new ReservationsService(
+      prismaAvec('REQUESTED'), access('ALL'), makeEvents(), makePerms(true), undefined, j as never,
+    );
+    await svc.cancel(makeUser({ id: 'standard-42' }), 'r1');
+    expect(j.record).toHaveBeenCalledWith(
+      expect.objectContaining({ meta: expect.objectContaining({ parUtilisateur: 'standard-42' }) }),
+    );
+  });
+
+  /** Un journal indisponible ne doit JAMAIS empêcher une décision d'aboutir. */
+  it('aboutit même sans journal', async () => {
+    const svc = new ReservationsService(
+      prismaAvec('CONFIRMED'), access('ALL'), makeEvents(), makePerms(true),
+    );
+    await expect(svc.cancel(makeUser(), 'r1')).resolves.toBeDefined();
+  });
+});

@@ -615,6 +615,7 @@ export class ReservationsService {
         endAt: row.endAt ? row.endAt.toISOString() : null,
         metadata: (row.metadata as Record<string, unknown> | null) ?? null,
       });
+      this.tracerDecision('validee', user, row);
       return this.toDto(row);
     } catch (err) {
       if (this.isExclusionConflict(err)) {
@@ -632,12 +633,48 @@ export class ReservationsService {
       throw new BadRequestException('Une réservation terminée ne peut pas être annulée.');
     }
     if (resa.status === VehicleEventStatus.CANCELLED) return this.toDto(resa);
+    const etait = resa.status;
     const row = await this.prisma.vehicleEvent.update({
       where: { id },
       data: { status: VehicleEventStatus.CANCELLED, resolvedAt: new Date() },
       include: INCLUDE_PLATE,
     });
+    // « Refusée » et « annulée » sont deux gestes différents pour un même appel : refuser une
+    // demande en attente n'a pas le même sens qu'annuler une réservation déjà ferme. Le journal
+    // doit les distinguer, sinon il raconte une histoire fausse.
+    this.tracerDecision(etait === VehicleEventStatus.REQUESTED ? 'refusee' : 'annulee', user, row);
     return this.toDto(row);
+  }
+
+  /**
+   * ── LA DÉCISION LAISSE UNE TRACE ───────────────────────────────────────────────────────
+   *
+   * ⚠️ ELLE N'EN LAISSAIT AUCUNE. Le DÉPÔT d'une demande publique était journalisé
+   * (`public_booking_submitted`), mais valider ou refuser ne l'était pas — exactement l'inverse
+   * de ce qu'il faut. Relevé le 2026-09-24 en recette : deux demandes de « Client test » étaient
+   * passées à CONFIRMED et RIEN ne permettait de dire qui les avait validées, ni quand.
+   *
+   * Chez un client dont le standard valide les demandes des conducteurs, c'est la décision qui
+   * engage — pas la demande. Elle doit être attribuable.
+   *
+   * Best-effort (`?.`) comme partout ailleurs : un journal indisponible ne doit jamais empêcher
+   * une validation d'aboutir.
+   */
+  private tracerDecision(
+    quoi: 'validee' | 'refusee' | 'annulee',
+    user: AuthUser,
+    row: { id: string; fleetId: string; startAt: Date; vehicle?: { plate: string | null } | null },
+  ): void {
+    const libelle = quoi === 'validee' ? 'validée' : quoi === 'refusee' ? 'refusée' : 'annulée';
+    this.systemActivity?.record?.({
+      category: 'RESERVATION',
+      action: `reservation_${quoi}`,
+      status: 'SUCCESS',
+      actor: 'utilisateur',
+      detail: `Réservation ${libelle} — ${row.vehicle?.plate ?? 'véhicule inconnu'}, ${row.startAt.toISOString()}`,
+      fleetId: row.fleetId,
+      meta: { reservationId: row.id, parUtilisateur: user.id, plaque: row.vehicle?.plate ?? null },
+    });
   }
 
   /**
