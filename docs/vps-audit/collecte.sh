@@ -108,6 +108,22 @@ T_DEBUT=$(date +%s)
 # seul, double la limite de 2 que cette procedure impose. Huit passages sans que ce soit visible.
 # C'est la famille de VPS-M21 : un defaut qui RASSURE n'a aucun plaignant. On capture les deux.
 CHARGE_DEBUT=$(cut -d' ' -f1 /proc/loadavg)
+# ⚠️⚠️ AJOUTE LE 2026-09-23 (VPS-M113, angle mort n° 9 du 22/09) — LA CHARGE DE DEPART ETAIT
+# UN NOMBRE SANS AUTEUR. Le 22/09 la collecte est partie a 1,09 (sar 04:30 = 0,14) et le bloc
+# BUDGET a conclu « CHARGE PARTAGEE … cause non nommee » : `sar` et `pidstat` ne se relisent pas
+# a la seconde a posteriori. On photographie donc, AVANT toute autre commande, ce qui est ne dans
+# les 5 dernieres minutes (hors ma propre session : pid $$ et ses parents directs, et tout ce qui
+# a moins de 10 s = l ouverture SSH), plus le compte des etats R et D — ceux que loadavg additionne.
+# COUT : un seul `ps`, aucun parcours, aucun appel docker. PORTEE : un processus deja MORT au
+# depart n y figure pas — la photo nomme ce qui tourne encore, pas tout ce qui a tourne.
+_PPID_MOI=$(awk '{print $4}' "/proc/$$/stat" 2>/dev/null)
+DEPART_RD=$(ps -eo stat= 2>/dev/null | awk '{s=substr($1,1,1); if(s=="R")r++; if(s=="D")d++} END{printf "R=%d D=%d", r, d}')
+# Banc du 23/09 : trie par AGE, la liste etait faite de threads noyau et de connexions postgres
+# `idle` — vraies, inutiles. On ecarte les threads noyau (`[...]`) et on trie par %CPU (moyenne
+# sur la vie du processus, donc juste pour un processus de moins de 5 min).
+DEPART_NES=$(ps -eo pid=,ppid=,etimes=,stat=,pcpu=,args= --sort=-pcpu 2>/dev/null \
+  | awk -v me="$$" -v pp="${_PPID_MOI:-0}" '$3>=10 && $3<=300 && $1!=me && $2!=me && $1!=pp && $2!=pp && $6 !~ /^\[/ {
+      a=""; for(i=6;i<=NF;i++) a=a" "$i; printf "      %5s%%  %4ss  pid %-7s %-4s %.90s\n", $5, $3, $1, $4, a; n++ } END{if(!n) print "      (aucun)"}' | head -8)
 # ⚠️⚠️ AJOUTE LE 2026-08-15 (VPS-M35) — LE VERDICT DE CHARGE ACCUSAIT L'AUDIT A TORT.
 # Angle mort n° 1 du rapport du 2026-08-14. Le bloc BUDGET a annonce ce jour-la une charge
 # passee de 2,43 a 14,70 — « +12,27 sur 2 coeurs », qui se lit comme une catastrophe. `sar`
@@ -4942,6 +4958,9 @@ else
 fi
 printf '  charge 1 min : %s au DEBUT  →  %s a la FIN   (limite imposee : 2.0 sur 2 coeurs)\n' \
        "$CHARGE_DEBUT" "$CHARGE_FIN"
+# VPS-M113 : qui portait la charge de DEPART (photo prise avant la 1re commande de la collecte)
+printf '  ── au DEPART (VPS-M113) : %s ; processus nes dans les 5 min avant moi (hors ma session) :\n' "${DEPART_RD:-NON MESURE}"
+printf '%s\n' "${DEPART_NES:-      NON MESURE}"
 # ⚠️ VPS-M27 : c'est le DELTA qui arbitre, pas la valeur finale. Une charge finale elevee peut
 # venir de la machine (l'audit est victime) ou de l'audit lui-meme (l'audit est coupable), et
 # les deux lectures menent a des actions opposees. Sans la charge de depart, le lecteur choisit
