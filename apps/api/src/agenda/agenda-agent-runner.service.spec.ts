@@ -93,12 +93,17 @@ const makeAiUsage = () => ({ record: jest.fn().mockResolvedValue(undefined) });
  */
 function makeDetector(
   patterns: RecurringPattern[],
-  excluded: { skippedDormantVehicles?: number; skippedStalePatterns?: number } = {},
+  excluded: {
+    skippedDormantVehicles?: number;
+    skippedOutOfServiceVehicles?: number;
+    skippedStalePatterns?: number;
+  } = {},
 ) {
   return {
     detectWithStats: jest.fn().mockResolvedValue({
       patterns,
       skippedDormantVehicles: excluded.skippedDormantVehicles ?? 0,
+      skippedOutOfServiceVehicles: excluded.skippedOutOfServiceVehicles ?? 0,
       skippedStalePatterns: excluded.skippedStalePatterns ?? 0,
     }),
   };
@@ -125,7 +130,11 @@ function monter(opts: {
   settings?: unknown;
   existing?: unknown;
   patterns?: RecurringPattern[];
-  excluded?: { skippedDormantVehicles?: number; skippedStalePatterns?: number };
+  excluded?: {
+    skippedDormantVehicles?: number;
+    skippedOutOfServiceVehicles?: number;
+    skippedStalePatterns?: number;
+  };
   reservations?: ReturnType<typeof makeReservations>;
   detector?: { detectWithStats: jest.Mock };
   aiOn?: boolean;
@@ -174,15 +183,37 @@ function travailFait(reviews: unknown, over: { contexte?: Record<string, unknown
 }
 
 describe('AgendaAgentRunnerService (P3.3 — agent nocturne)', () => {
-  it('auto (confiance ≥ seuil) : crée des réservations FERMES (auto_applied)', async () => {
-    const { svc, prisma, reservations } = monter();
+  /**
+   * ── L'AGENT NE RÉSERVE PLUS, MÊME RÉGLÉ SUR « AUTO » (2026-09-23) ──────────────────────────
+   *
+   * Ce test disait l'inverse jusqu'au 23/09 : il VERROUILLAIT la réservation ferme. La mesure
+   * l'a renversé — 321 réservations automatiques passées de cdef31, 57 % seulement ont vu le
+   * véhicule rouler sur le créneau, 23 % ne l'ont pas vu bouger du tout, et toutes étaient
+   * au-dessus du seuil de confiance. Une réservation ferme à ±47 min bloque le mauvais créneau.
+   *
+   * Le réglage reste en base — c'est le RÉSULTAT qui change : proposition, jamais réservation.
+   */
+  it('même en autonomie « auto », l’agent PROPOSE et ne réserve JAMAIS', async () => {
+    const { svc, prisma, reservations } = monter(); // `makeSettings()` = auto_high_confidence
 
     const res = await svc.runForFleet('f1', 'scheduled');
-    expect(res.created).toBeGreaterThanOrEqual(1);
-    expect(reservations.systemConfirm).toHaveBeenCalled();
+    expect(res.created).toBe(0);
+    expect(reservations.systemConfirm).not.toHaveBeenCalled();
     const data = proposalsOf(prisma).create.mock.calls[0][0].data;
-    expect(data.status).toBe('auto_applied');
-    expect(data.createdEventId).toBe('ev1');
+    expect(data.status).toBe('pending');
+    expect(data.createdEventId).toBeNull();
+  });
+
+  /**
+   * Et la conséquence qui compte pour l'exploitant : une proposition n'entre dans AUCUN calcul
+   * de disponibilité. Le véhicule reste réservable par un humain — c'est toute la différence
+   * entre un pré-remplissage et un blocage.
+   */
+  it('la proposition passe par isVehicleFree, pas par systemConfirm', async () => {
+    const { svc, reservations } = monter();
+    await svc.runForFleet('f1', 'scheduled');
+    expect(reservations.isVehicleFree).toHaveBeenCalled();
+    expect(reservations.systemConfirm).not.toHaveBeenCalled();
   });
 
   it('suggestions seules : ne réserve PAS, ajoute des propositions pending', async () => {
@@ -259,8 +290,8 @@ describe('AgendaAgentRunnerService (P3.3 — agent nocturne)', () => {
       const res = await svc.runForFleet('f1', 'scheduled');
 
       // Le travail utile a bien eu lieu, malgré la traçabilité en panne.
-      expect(res.created).toBeGreaterThanOrEqual(1);
-      expect(reservations.systemConfirm).toHaveBeenCalled();
+      expect(res.proposed).toBeGreaterThanOrEqual(1);
+      expect(reservations.systemConfirm).not.toHaveBeenCalled();
       // Les propositions seront jugées ; seul le badge « IA » du passage manquera.
       expect(travauxIa.enfiler).toHaveBeenCalledTimes(1);
       expect(travauxIa.enfiler.mock.calls[0][2]).toEqual(expect.objectContaining({ runId: null }));
@@ -351,13 +382,19 @@ describe('AgendaAgentRunnerService (P3.3 — agent nocturne)', () => {
       expect(travauxIa.enfiler.mock.calls[0][1]).toEqual(expect.objectContaining({ maxTokens: 16000 }));
     });
 
-    it('(b bis) autonomie haute : les réservations FERMES partent comme avant, et sont soumises au verdict', async () => {
+    /**
+     * Le réglage « auto » ne change plus le RÉSULTAT (cf. le test du haut) — mais il ne doit pas
+     * non plus casser la chaîne de jugement : les propositions qu'il produit partent au verdict
+     * exactement comme celles du mode « suggestions seules ».
+     */
+    it('(b bis) réglage « auto » : des propositions, et elles sont soumises au verdict', async () => {
       const { svc, prisma, reservations, travauxIa } = monter({ aiOn: true });
 
       const res = await svc.runForFleet('f1', 'scheduled');
 
-      expect(res.created).toBeGreaterThanOrEqual(1);
-      expect(reservations.systemConfirm).toHaveBeenCalled();
+      expect(res.proposed).toBeGreaterThanOrEqual(1);
+      expect(res.created).toBe(0);
+      expect(reservations.systemConfirm).not.toHaveBeenCalled();
       const ids = proposalsOf(prisma).create.mock.calls.map((_, i) => `p${i + 1}`);
       expect(travauxIa.enfiler.mock.calls[0][2].motifs).toEqual([{ index: 0, proposalIds: ids }]);
     });

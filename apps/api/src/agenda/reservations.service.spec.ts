@@ -19,7 +19,9 @@ function makePrisma(over: Record<string, unknown> = {}) {
     // tests d'engagement basculeraient sur le chemin « dormant » sans le vouloir.
     vehicle: {
       findMany: jest.fn().mockResolvedValue([]),
-      findUnique: jest.fn().mockResolvedValue({ tracker: { id: 't1', lastSeenAt: new Date() } }),
+      findUnique: jest
+        .fn()
+        .mockResolvedValue({ outOfServiceReason: null, tracker: { id: 't1', lastSeenAt: new Date() } }),
     },
     trip: { findMany: jest.fn().mockResolvedValue([]), findFirst: jest.fn().mockResolvedValue(null) },
     ...over,
@@ -674,11 +676,18 @@ describe('ReservationsService.isVehicleFree — dormance', () => {
   const start = new Date('2026-07-27T08:00:00Z');
   const end = new Date('2026-07-27T10:00:00Z');
 
-  function build(lastSeenAt: Date | null, trackerId: string | null = 't1') {
+  function build(
+    lastSeenAt: Date | null,
+    trackerId: string | null = 't1',
+    outOfServiceReason: string | null = null,
+  ) {
     const prisma = makePrisma({
       vehicle: {
         findMany: jest.fn().mockResolvedValue([]),
-        findUnique: jest.fn().mockResolvedValue({ tracker: trackerId ? { id: trackerId, lastSeenAt } : null }),
+        findUnique: jest.fn().mockResolvedValue({
+          outOfServiceReason,
+          tracker: trackerId ? { id: trackerId, lastSeenAt } : null,
+        }),
       },
     }) as unknown as { vehicle: { findUnique: jest.Mock } };
     const svc = new ReservationsService(
@@ -712,6 +721,28 @@ describe('ReservationsService.isVehicleFree — dormance', () => {
     await expect(svc.isVehicleFree('v1', start, end)).resolves.toBe(true);
   });
 
+  /**
+   * HORS SERVICE — le garde qui manquait sur CE chemin (23/09).
+   *
+   * `computeSuggestions` l'appliquait déjà, et son commentaire prétendait couvrir « l'attribution
+   * automatique » : faux, l'agent nocturne ne passe pas par le vivier. Chez cdef31 les quatre
+   * véhicules hors service se taisaient AUSSI, donc la dormance les retenait — par accident.
+   */
+  it('REFUSE un véhicule déclaré HORS SERVICE, même boîtier vu à l’instant', async () => {
+    const { svc } = build(new Date(), 't1', 'ACCIDENT');
+    await expect(svc.isVehicleFree('v1', start, end)).resolves.toBe(false);
+  });
+
+  it('REFUSE un HORS SERVICE sans boîtier (la fiche suffit)', async () => {
+    const { svc } = build(null, null, 'TRACKER_UNPLUGGED');
+    await expect(svc.isVehicleFree('v1', start, end)).resolves.toBe(false);
+  });
+
+  it('⚠️ ACCEPTE un véhicule EN SERVICE au boîtier frais — la garde ne mord pas à tort', async () => {
+    const { svc } = build(new Date(), 't1', null);
+    await expect(svc.isVehicleFree('v1', start, end)).resolves.toBe(true);
+  });
+
   it('la lecture du boîtier n’a lieu QUE si le véhicule est par ailleurs libre', async () => {
     // Un conflit de réservation doit court-circuiter avant la requête supplémentaire.
     const prisma = makePrisma({
@@ -726,5 +757,136 @@ describe('ReservationsService.isVehicleFree — dormance', () => {
     );
     await expect(svc.isVehicleFree('v1', start, end)).resolves.toBe(false);
     expect(prisma.vehicle.findUnique).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * ── LOT 3C (2026-09-23) — REPRENDRE UN LOT DE RÉSERVATIONS ──────────────────────────────────
+ *
+ * Ce que ces tests protègent : un geste de MASSE se trompe en masse. Quatre garde-fous, et le
+ * plus important est le premier — la simulation n'écrit RIEN, et c'est le mode par défaut.
+ * Sans lui, on proposerait à un exploitant d'annuler cent réservations sans lui montrer
+ * lesquelles.
+ */
+describe('ReservationsService.reorganiser — geste de masse', () => {
+  const H = 3_600_000;
+  /** Une réservation À VENIR (le passé est hors périmètre par construction). */
+  const resa = (over: Record<string, unknown> = {}) => ({
+    id: 'e1',
+    vehiclePlate: 'AA-111-BB',
+    type: 'RESERVATION',
+    status: 'CONFIRMED',
+    source: 'SYSTEM',
+    startAt: new Date(Date.now() + 48 * H).toISOString(),
+    endAt: new Date(Date.now() + 50 * H).toISOString(),
+    ...over,
+  });
+
+  function monter(liste: unknown[]) {
+    const events = makeEvents({ list: jest.fn().mockResolvedValue(liste) });
+    const prisma = makePrisma();
+    // ⚠️ ORDRE RÉEL du constructeur : (prisma, vehicleAccess, events, permissions, emitter).
+    const svc = new ReservationsService(
+      prisma as never, access('ALL'), events, makePerms(true), { emit: jest.fn() } as never,
+    );
+    return { svc, prisma, events };
+  }
+
+  const fenetre = () => ({
+    from: new Date(Date.now() - 24 * H).toISOString(),
+    to: new Date(Date.now() + 30 * 24 * H).toISOString(),
+  });
+
+  it('SIMULATION par défaut : compte, montre, et n’écrit RIEN', async () => {
+    const { svc, prisma } = monter([resa(), resa({ id: 'e2' })]);
+    const r = await svc.reorganiser({ role: 'FLEET_ADMIN', fleetId: 'f1' } as never, {
+      ...fenetre(),
+      action: 'annuler',
+    });
+    expect(r.simulation).toBe(true);
+    expect(r.concernees).toBe(2);
+    expect(r.appliquees).toBe(0);
+    expect(r.apercu).toHaveLength(2);
+    expect((prisma as unknown as { vehicleEvent: { update: jest.Mock } }).vehicleEvent.update).not.toHaveBeenCalled();
+  });
+
+  it('`origine: auto` par défaut : ne touche QUE les réservations de l’agent', async () => {
+    const { svc } = monter([resa(), resa({ id: 'e2', source: 'MANUAL' })]);
+    const r = await svc.reorganiser({ role: 'FLEET_ADMIN', fleetId: 'f1' } as never, {
+      ...fenetre(),
+      action: 'annuler',
+    });
+    expect(r.concernees).toBe(1); // la manuelle est épargnée
+  });
+
+  it('`origine: toutes` prend les deux', async () => {
+    const { svc } = monter([resa(), resa({ id: 'e2', source: 'MANUAL' })]);
+    const r = await svc.reorganiser({ role: 'FLEET_ADMIN', fleetId: 'f1' } as never, {
+      ...fenetre(),
+      action: 'annuler',
+      origine: 'toutes',
+    });
+    expect(r.concernees).toBe(2);
+  });
+
+  it('⚠️ n’emporte JAMAIS une réservation terminée ou déjà annulée', async () => {
+    const { svc } = monter([resa({ status: 'DONE' }), resa({ id: 'e2', status: 'CANCELLED' })]);
+    const r = await svc.reorganiser({ role: 'FLEET_ADMIN', fleetId: 'f1' } as never, {
+      ...fenetre(),
+      action: 'annuler',
+      origine: 'toutes',
+    });
+    expect(r.concernees).toBe(0);
+  });
+
+  it('⚠️ n’emporte JAMAIS le passé, même si la fenêtre demandée le couvre', async () => {
+    const { svc } = monter([resa({ startAt: new Date(Date.now() - 5 * H).toISOString() })]);
+    const r = await svc.reorganiser({ role: 'FLEET_ADMIN', fleetId: 'f1' } as never, {
+      ...fenetre(),
+      action: 'annuler',
+    });
+    expect(r.concernees).toBe(0);
+  });
+
+  it('refuse une fenêtre entièrement passée, au lieu de ne rien faire en silence', async () => {
+    const { svc } = monter([]);
+    await expect(
+      svc.reorganiser({ role: 'FLEET_ADMIN', fleetId: 'f1' } as never, {
+        from: new Date(Date.now() - 10 * H).toISOString(),
+        to: new Date(Date.now() - 2 * H).toISOString(),
+        action: 'annuler',
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('« decaler » sans minutes : refus explicite (0 n’est pas un décalage)', async () => {
+    const { svc } = monter([resa()]);
+    await expect(
+      svc.reorganiser({ role: 'FLEET_ADMIN', fleetId: 'f1' } as never, { ...fenetre(), action: 'decaler' }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('un décalage qui ramènerait la réservation dans le passé est REFUSÉ, avec son motif', async () => {
+    const { svc } = monter([resa({ startAt: new Date(Date.now() + 2 * H).toISOString(), endAt: new Date(Date.now() + 3 * H).toISOString() })]);
+    const r = await svc.reorganiser({ role: 'FLEET_ADMIN', fleetId: 'f1' } as never, {
+      ...fenetre(),
+      action: 'decaler',
+      decalageMinutes: -600, // −10 h
+      simulation: false,
+    });
+    expect(r.appliquees).toBe(0);
+    expect(r.refusees).toHaveLength(1);
+    expect(r.refusees[0].motif).toMatch(/passé/);
+    expect(r.refusees[0].plate).toBe('AA-111-BB'); // le refus NOMME la réservation
+  });
+
+  it('action inconnue : refus', async () => {
+    const { svc } = monter([]);
+    await expect(
+      svc.reorganiser({ role: 'FLEET_ADMIN', fleetId: 'f1' } as never, {
+        ...fenetre(),
+        action: 'supprimer' as never,
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException);
   });
 });

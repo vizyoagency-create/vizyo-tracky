@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { AlertType, Prisma } from '@prisma/client';
-import { DORMANT_STOP_ACTING_MS, isVehicleDormant } from '@vizyo/tracky-shared';
+import { DORMANT_STOP_COUNTING_MS, isVehicleDormant } from '@vizyo/tracky-shared';
 import { ReverseGeocodeService } from '../geocoding/reverse-geocode.service';
 import { ErrorLogger } from '../observability/error-logger.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -72,8 +72,14 @@ export interface RecurringPattern {
  */
 export interface RecurrenceDetectionResult {
   patterns: RecurringPattern[];
-  /** Véhicules dont le boîtier s'est tu depuis > 72 h : ils ne roulent plus, leurs habitudes non plus. */
+  /** Véhicules dont le boîtier s'est tu depuis > 7 jours : ils ne roulent plus, leurs habitudes non plus. */
   skippedDormantVehicles: number;
+  /**
+   * Véhicules dont la FICHE les déclare hors service (accident, boîtier déposé, immobilisation).
+   * Compté à part de la dormance : « il ne parle plus » et « on a déclaré qu'il ne roule plus »
+   * appellent deux gestes différents, et les confondre rend le bilan du passage illisible.
+   */
+  skippedOutOfServiceVehicles: number;
   /** Motifs réguliers mais ÉTEINTS (dernière occurrence > {@link PATTERN_RECENCY_MS}). */
   skippedStalePatterns: number;
 }
@@ -101,7 +107,7 @@ type Cluster = {
  * et deux tournées différentes du même jour. Déterministe : aucun appel LLM, fiable et gratuit.
  *
  * DEUX GARDES DE VIVACITÉ, parce qu'un motif se déduit d'un passé qui, lui, ne bouge plus :
- *  - le VÉHICULE doit être vivant (boîtier entendu dans les 72 h) ;
+ *  - le VÉHICULE doit être vivant (boîtier entendu dans les 7 jours — même seuil que l'engagement) ;
  *  - le MOTIF doit être récent (dernière occurrence < 3 semaines).
  * Toutes deux sont dérivées au read-time — rien n'est écrit, rien n'est supprimé, et un véhicule
  * qui recommence à émettre retrouve ses récurrences tout seul.
@@ -148,7 +154,16 @@ export class RecurrenceDetectorService {
         // source fiable pour savoir si le véhicule roule encore. On ne peut PAS le déduire des
         // trajets eux-mêmes — en mode vie privée les positions sont jetées alors que le boîtier
         // parle, on classerait « mort » tout véhicule sous RGPD.
-        vehicle: { select: { plate: true, tracker: { select: { id: true, lastSeenAt: true } } } },
+        // `outOfServiceReason` est joint ici pour la MÊME raison que `lastSeenAt` : c'est un fait
+        // du véhicule, pas du trajet, et le lire ici évite une seconde requête. Cf. la garde
+        // « HORS SERVICE » dans la boucle ci-dessous.
+        vehicle: {
+          select: {
+            plate: true,
+            outOfServiceReason: true,
+            tracker: { select: { id: true, lastSeenAt: true } },
+          },
+        },
       },
       // ⚠️ `desc` et non `asc` : `take` TRONQUE, et la garde de récence ci-dessous juge un motif sur
       // sa DERNIÈRE occurrence. En ordre croissant, une flotte qui dépasse MAX_TRIPS ne recevait que
@@ -171,27 +186,65 @@ export class RecurrenceDetectorService {
     const clusters = new Map<string, Cluster>();
     /** Véhicules écartés pour dormance (Set : un véhicule compte UNE fois, pas une par trajet). */
     const dormantVehicles = new Set<string>();
+    /** Véhicules écartés parce que leur FICHE les déclare hors service. */
+    const outOfServiceVehicles = new Set<string>();
 
     for (const t of trips) {
-      // DORMANCE (seuil « arrêter d'agir », 72 h) : ce détecteur alimente un agent qui RÉSERVE
-      // des véhicules. Un boîtier muet depuis 3 jours n'ajoutera plus un seul trajet à cet
-      // historique — continuer d'en tirer des habitudes revient à bloquer un créneau pour un
-      // véhicule qui, très probablement, n'est plus sur la route.
-      //
-      // Le cas qui MORD est le silence intermédiaire, pas l'extrême : à 89 jours (FV-941-LZ) la
-      // fenêtre d'apprentissage de 10 semaines ne voit déjà plus aucun trajet. À 52 jours
-      // (FL-787-KV) elle en voit encore ~5 semaines — largement de quoi franchir le seuil des
-      // 4 semaines et faire pré-réserver, la nuit prochaine, un véhicule qui ne bouge plus.
-      //
-      // On ne touche NI aux trajets NI aux propositions déjà créées : l'historique reste entier,
-      // et la première trame reçue remet le véhicule dans la détection dès le passage suivant.
-      // Un véhicule sans boîtier (ou dont le boîtier n'a jamais émis) n'est pas dormant : ses
-      // trajets — s'il en a — continuent de compter.
+      /**
+       * HORS SERVICE — avant la dormance, parce que c'est un fait DÉCLARÉ et non déduit.
+       *
+       * Ce garde manquait, et la dormance le masquait : les quatre véhicules hors service de
+       * cdef31 (accident, boîtier déposé) se taisaient aussi depuis des semaines, donc la garde
+       * suivante les écartait — par accident. Le cas qui MORD est celui du véhicule déclaré hors
+       * service dont le boîtier PARLE ENCORE : accident déclaré le matin même, hivernage avec
+       * boîtier alimenté, ou véhicule rebranché le temps d'être déplacé. Il n'est pas dormant, il
+       * continuait donc de produire des habitudes — et l'agent de le pré-réserver.
+       *
+       * Proposer un véhicule hors service au standard, c'est lui promettre une voiture qui
+       * n'existe pas. Le motif est déclaré par un super-admin : aucun délai, aucun doute à lever,
+       * et le véhicule revient dans la détection à la seconde où il est remis en service.
+       */
+      if (t.vehicle?.outOfServiceReason != null) {
+        outOfServiceVehicles.add(t.vehicleId);
+        continue;
+      }
+      /**
+       * DORMANCE — seuil « arrêter de COMPTER » (7 jours).
+       *
+       * ┌─ POURQUOI 7 JOURS ET NON 72 H (changé le 2026-09-23) ─────────────────┐
+       * │ 72 h MORDAIT SUR UN LONG WEEK-END. Un véhicule garé le vendredi soir  │
+       * │ dans un parking SOUTERRAIN se tait jusqu'au mardi matin : 86 heures,  │
+       * │ au-dessus de l'ancien seuil. Ses habitudes disparaissaient donc du    │
+       * │ passage de la nuit — et le standard perdait ses suggestions sur des   │
+       * │ tournées bien réelles. Signalé par le propriétaire le 23/09 : chez    │
+       * │ cdef31, plusieurs véhicules dorment en souterrain.                    │
+       * │                                                                        │
+       * │ 7 jours est le seuil que `isVehicleFree` applique déjà avant          │
+       * │ d'engager un véhicule : les deux bouts de la chaîne disent désormais  │
+       * │ la même chose, ce qui supprime la zone entre 72 h et 7 j où le        │
+       * │ détecteur taisait un véhicule que la réservation acceptait encore.    │
+       * └────────────────────────────────────────────────────────────────────────┘
+       *
+       * Le cas qui MORD reste le silence intermédiaire, pas l'extrême : à 89 jours (FV-941-LZ)
+       * la fenêtre d'apprentissage de 10 semaines ne voit déjà plus aucun trajet. À 52 jours
+       * (FL-787-KV) elle en voit encore ~5 semaines — de quoi franchir le seuil des 4 semaines
+       * et faire proposer, la nuit prochaine, un véhicule qui ne bouge plus. 7 jours l'écarte
+       * toujours.
+       *
+       * ⚠️ Ne PAS confondre avec la perte de GPS : la dormance se juge sur `lastSeenAt` (la
+       * trame du boîtier), jamais sur la dernière position. Un véhicule qui émet sans fix
+       * satellite — souterrain, tunnel, antenne masquée — n'est pas dormant.
+       *
+       * On ne touche NI aux trajets NI aux propositions déjà créées : l'historique reste entier,
+       * et la première trame reçue remet le véhicule dans la détection dès le passage suivant.
+       * Un véhicule sans boîtier (ou dont le boîtier n'a jamais émis) n'est pas dormant : ses
+       * trajets — s'il en a — continuent de compter.
+       */
       if (
         isVehicleDormant(
           { trackerId: t.vehicle?.tracker?.id ?? null, lastSeenAt: t.vehicle?.tracker?.lastSeenAt ?? null },
           nowMs,
-          DORMANT_STOP_ACTING_MS,
+          DORMANT_STOP_COUNTING_MS,
         )
       ) {
         dormantVehicles.add(t.vehicleId);
@@ -279,15 +332,17 @@ export class RecurrenceDetectorService {
     for (let i = 0; i < built.length && i < cap; i++) {
       await this.enrichDestination(built[i].pattern, built[i].cluster, depot);
     }
-    if (dormantVehicles.size > 0 || skippedStalePatterns > 0) {
+    if (dormantVehicles.size > 0 || outOfServiceVehicles.size > 0 || skippedStalePatterns > 0) {
       this.logger.log(
-        `detect(${fleetId}) : ${dormantVehicles.size} véhicule(s) au boîtier muet et ` +
+        `detect(${fleetId}) : ${dormantVehicles.size} véhicule(s) au boîtier muet, ` +
+          `${outOfServiceVehicles.size} véhicule(s) hors service et ` +
           `${skippedStalePatterns} motif(s) éteint(s) écartés.`,
       );
     }
     return {
       patterns: built.map((b) => b.pattern),
       skippedDormantVehicles: dormantVehicles.size,
+      skippedOutOfServiceVehicles: outOfServiceVehicles.size,
       skippedStalePatterns,
     };
   }

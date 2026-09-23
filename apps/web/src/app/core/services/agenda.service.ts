@@ -159,6 +159,8 @@ export class AgendaApiService {
     to?: string;
     vehicleId?: string;
     groupId?: string;
+    /** Filtre société global (SUPER_ADMIN) : sans lui, la file mélange toutes les sociétés. */
+    fleetId?: string;
   }): Observable<VehicleEventDto[]> {
     const params: Record<string, string> = {};
     if (filters?.status) params['status'] = filters.status;
@@ -166,6 +168,7 @@ export class AgendaApiService {
     if (filters?.to) params['to'] = filters.to;
     if (filters?.vehicleId) params['vehicleId'] = filters.vehicleId;
     if (filters?.groupId) params['groupId'] = filters.groupId;
+    if (filters?.fleetId) params['fleetId'] = filters.fleetId;
     return this.http.get<VehicleEventDto[]>('/api/reservations', { params });
   }
 

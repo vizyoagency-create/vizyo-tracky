@@ -214,6 +214,19 @@ function toLocalInput(d: Date): string {
                       @if (pi.seats) { · {{ pi.seats }} places demandées }
                     </p>
                   }
+                  <!--
+                    Lot 3b — CE QUE LA VALIDATION VA DÉPLACER.
+                    Quand aucun véhicule n'était libre de tout engagement, la demande a pris celui
+                    qu'une proposition de l'agent retenait sur ce créneau. Valider écarte cette
+                    proposition : ça se dit AVANT le clic, pas après.
+                  -->
+                  @if (deplacements(r); as dep) {
+                    <p class="rs-q-deplace">
+                      <lucide-icon [img]="AlertIcon" [size]="12"></lucide-icon>
+                      Valider écartera {{ dep.length }} proposition{{ dep.length > 1 ? 's' : '' }} de l'agent
+                      sur ce créneau ({{ dep.join(', ') }}). Le véhicule revient à ce demandeur.
+                    </p>
+                  }
                   <div class="rs-q-actions">
                     <button type="button" class="rs-btn rs-btn--ok" [disabled]="busyId() === r.id" (click)="confirm(r)"><lucide-icon [img]="CheckIcon" [size]="13"></lucide-icon> Valider</button>
                     <button type="button" class="rs-btn rs-btn--no" [disabled]="busyId() === r.id" (click)="reject(r)">Refuser</button>
@@ -294,6 +307,9 @@ function toLocalInput(d: Date): string {
     .rs-q-title { font-size: 13px; font-weight: 600; color: var(--fg-primary); margin: 6px 0 0; }
     .rs-q-req { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; font-size: 11.5px; color: var(--fg-tertiary); margin: 5px 0 0; }
     .rs-q-contact { font-weight: 700; color: var(--tracky-light); }
+    .rs-q-deplace { display: flex; align-items: flex-start; gap: 6px; margin: 8px 0 0;
+                    padding: 8px 10px; border-radius: 9px; font-size: 11.5px; line-height: 1.45;
+                    background: color-mix(in srgb, var(--warning) 12%, transparent); color: var(--texte-attente); }
     .rs-q-actions { display: flex; gap: 8px; margin-top: 9px; }
     .rs-empty { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 26px; text-align: center; font-size: 13px; color: var(--fg-tertiary); }
     .rs-empty-ic { opacity: .3; }
@@ -469,6 +485,21 @@ export class ReservationSheetComponent {
 
   protected valOf(n: number | null): string { return n === null || n === undefined ? '—' : String(n); }
   protected scoreClass(v: number): string { return v >= 0.7 ? 'rs-chip--hi' : v >= 0.4 ? 'rs-chip--mid' : 'rs-chip--lo'; }
+
+  /**
+   * Plaques dont une proposition de l'agent sera écartée si l'on valide (lot 3b), sinon `null`.
+   *
+   * Vide dans le cas normal : ce bandeau n'apparaît que le jour où le parc était entièrement
+   * pré-rempli et où la demande a dû déplacer quelque chose.
+   */
+  protected deplacements(r: VehicleEventDto): string[] | null {
+    const brut = (r.metadata as Record<string, unknown> | null)?.['deplaceePropositions'];
+    if (!Array.isArray(brut) || brut.length === 0) return null;
+    const plaques = brut
+      .map((d) => (d as { plate?: unknown })?.plate)
+      .filter((p): p is string => typeof p === 'string' && p.length > 0);
+    return plaques.length > 0 ? plaques : null;
+  }
 
   /** Infos du demandeur PUBLIC (P4) si la demande vient d'un lien public, sinon null. */
   protected publicInfo(r: VehicleEventDto): { requester: string; contact: string; seats: number | null } | null {

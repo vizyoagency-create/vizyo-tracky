@@ -110,19 +110,29 @@ import { BottomSheetComponent } from '../../../shared/ui/bottom-sheet/bottom-she
 
             <!-- Autonomie -->
             <div class="aas-row aas-row--col">
+              <!--
+                ── L'AUTONOMIE NE SE RÈGLE PLUS (lot 3a, 2026-09-23) ──────────────────────────
+                Le segment proposait « Auto si confiance haute » et un curseur de seuil. Le
+                serveur ne réserve plus fermement, quel que soit le réglage : laisser le
+                contrôle actif promettrait un comportement que l'application n'a plus. On
+                affiche donc l'état, et le CHIFFRE qui l'a décidé — sinon « pourquoi ça ne
+                réserve plus ? » n'a pas de réponse à l'écran.
+              -->
               <span class="aas-lbl">Niveau d'autonomie</span>
-              <div class="aas-seg">
-                <button type="button" class="aas-seg-btn" [class.aas-seg-btn--on]="autonomy() === 'suggest'" (click)="autonomy.set('suggest')">Suggestions seules</button>
-                <button type="button" class="aas-seg-btn" [class.aas-seg-btn--on]="autonomy() === 'auto_high_confidence'" (click)="autonomy.set('auto_high_confidence')">Auto si confiance haute</button>
+              <div class="aas-fige">
+                <span class="aas-fige-etat">Suggestions seules</span>
+                <span class="aas-sub">
+                  L'agent <strong>propose</strong>, il ne réserve jamais. Ses propositions
+                  apparaissent en pointillé sur le calendrier et n'immobilisent aucun véhicule
+                  tant que tu ne les as pas validées.
+                </span>
+                <span class="aas-sub aas-fige-pourquoi">
+                  Mesuré le 23/09 sur 321 réservations automatiques passées : le véhicule avait
+                  réellement roulé sur le créneau <strong>57 fois sur 100</strong> — et pas du tout
+                  ce jour-là 23 fois sur 100. Le jour est juste, l'heure dérape de 47 min en
+                  médiane. Une réservation ferme bloquait donc le mauvais créneau.
+                </span>
               </div>
-              @if (autonomy() === 'auto_high_confidence') {
-                <div class="aas-slider">
-                  <span class="aas-sub">Réserve fermement au-dessus de <strong>{{ confidenceThreshold() }} %</strong> de confiance ; le reste reste en suggestions.</span>
-                  <input type="range" min="50" max="100" step="5" [value]="confidenceThreshold()" (input)="confidenceThreshold.set(+$any($event.target).value)">
-                </div>
-              } @else {
-                <span class="aas-sub">L'IA propose, rien n'entre dans l'agenda sans ta validation.</span>
-              }
             </div>
 
             <!-- Auto-complétion -->
@@ -247,6 +257,12 @@ import { BottomSheetComponent } from '../../../shared/ui/bottom-sheet/bottom-she
   `,
   styles: [`
     .aas { display: flex; flex-direction: column; padding: 2px 2px 0; }
+    /* Réglage FIGÉ : on montre l'état et sa raison, sans contrôle — un interrupteur qui
+       n'agit plus est pire qu'un interrupteur absent. */
+    .aas-fige { display: flex; flex-direction: column; gap: 5px; padding: 10px 12px; border-radius: 11px;
+                background: var(--bg-tertiary); border: 1px solid var(--border-subtle); }
+    .aas-fige-etat { font-size: 13px; font-weight: 700; color: var(--texte-succes); }
+    .aas-fige-pourquoi { padding-top: 6px; border-top: 1px dashed var(--border-strong); }
     .aas-head { display: flex; align-items: center; justify-content: space-between; padding-bottom: 10px; border-bottom: 1px solid var(--border-subtle); }
     .aas-title { display: flex; align-items: center; gap: 7px; font-size: 15px; font-weight: 700; color: var(--fg-primary); font-family: var(--font-display, inherit); }
     .aas-x { width: 34px; height: 34px; border-radius: 9px; color: var(--fg-tertiary); display: inline-flex; align-items: center; justify-content: center; }

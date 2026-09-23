@@ -51,6 +51,9 @@ const POLITIQUE: Record<EmailTemplateId, Politique> = {
   mission_tournee_modifiee: 'automatique',
   depot_incident: 'automatique',
   reservation_requested: 'automatique',
+  // Avis INTERNE : il part vers ceux qui valident, pas vers le demandeur. Automatique —
+  // on y repond en ouvrant l'agenda, pas en repondant au courriel.
+  reservation_request_pending: 'automatique',
   reservation_confirmed: 'automatique',
 
   // ── Conversations : une réponse est la suite normale ──

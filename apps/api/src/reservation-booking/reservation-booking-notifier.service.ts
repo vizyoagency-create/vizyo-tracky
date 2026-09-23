@@ -1,6 +1,8 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
+import { getDefaultPermissions, type UserPermissions, type UserRoleSlug } from '@vizyo/tracky-shared';
 import { EmailService, type EmailTemplateId } from '../email/email.service';
+import { NotificationDispatchService } from '../notifications/notification-dispatch.service';
 import { ErrorLogger } from '../observability/error-logger.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { SmsGatewayService } from '../sms/sms-gateway.service';
@@ -22,6 +24,11 @@ export class ReservationBookingNotifier {
     private readonly sms: SmsGatewayService,
     private readonly errors: ErrorLogger,
     private readonly prisma: PrismaService,
+    /**
+     * Socle de notification. `@Optional()` parce que les specs de ce fichier montent le service à
+     * la main, et qu'un avis non poussé ne doit jamais empêcher un e-mail de partir.
+     */
+    @Optional() private readonly dispatch?: NotificationDispatchService,
   ) {}
 
   /** Accusé de réception (à la soumission publique) — e-mail AU THÈME (charte 2026). Best-effort. */
@@ -64,7 +71,148 @@ export class ReservationBookingNotifier {
     await this.notify(contact, payload.fleetId, built, 'reservation_confirmed');
   }
 
+  /**
+   * P0-1 (2026-09-23) — PRÉVENIR CEUX QUI PEUVENT VALIDER.
+   *
+   * ┌─ LE TROU QUE CETTE MÉTHODE BOUCHE ────────────────────────────────────────┐
+   * │ Ce service savait parler au demandeur deux fois (accusé de réception,     │
+   * │ confirmation) et à la société ZÉRO fois. Entre les deux, la demande       │
+   * │ s'écrivait en base et attendait qu'on la découvre — or le seul écran qui  │
+   * │ l'affiche exige `reservations_manage` ET n'apparaît que si la demande     │
+   * │ tombe dans le mois affiché. Mesuré le 22/09 : cdef31, lien actif, ouvert  │
+   * │ 55 fois, `standard@cdef31.org` sans la permission. Une demande y serait   │
+   * │ restée invisible pour toujours.                                           │
+   * └────────────────────────────────────────────────────────────────────────────┘
+   *
+   * DESTINATAIRES : ceux qui peuvent réellement VALIDER, c'est-à-dire dont les permissions
+   * effectives portent `reservations_manage`. Pas « les admins » (recodés en dur, ils passeraient
+   * à côté du standard, qui est justement le poste visé), pas « ceux qui reçoivent les alertes de
+   * flotte » (c'est un autre réglage, qui parle des alertes véhicule).
+   *
+   * DEUX CANAUX, VOLONTAIREMENT :
+   *  - l'e-mail, qui part vraiment aujourd'hui ;
+   *  - le socle de notification (`notifyUsers`), qui applique préférences et anti-spam — et qui,
+   *    tant que `PUSH_ROLLOUT=SUPER_ADMIN_ONLY`, ne poussera qu'aux super-admins. Le câbler
+   *    maintenant évite d'avoir à y revenir le jour où le rollout s'ouvre.
+   *
+   * Best-effort intégral : cette méthode ne lève jamais. Une demande enregistrée dont la
+   * notification échoue reste une demande enregistrée — on la trace, on ne la perd pas.
+   */
+  async notifyFleetOfPendingRequest(input: {
+    fleetId: string;
+    requester: string;
+    contact: string;
+    destination: string | null;
+    startAt: string;
+    endAt: string;
+    seats: number | null;
+    vehicleCount: number;
+  }): Promise<number> {
+    try {
+      const validators = await this.validatorsOf(input.fleetId);
+      if (validators.length === 0) {
+        /**
+         * PERSONNE NE PEUT VALIDER — et c'est exactement le cas de cdef31 avant le correctif
+         * de permissions. Ce n'est pas un échec d'envoi : c'est une société mal configurée, et
+         * le silence serait ici le pire des deux. On l'écrit au centre d'alerte pour que la
+         * demande ne disparaisse pas dans un trou de configuration.
+         */
+        await this.errors.record(
+          `Demande de réservation publique sans destinataire : aucun compte de cette société ne porte « reservations_manage ». La demande de ${input.requester} attend, personne n'est prévenu.`,
+          SOURCE,
+          { fleetId: input.fleetId, motif: 'aucun_valideur' },
+          'ERROR',
+        );
+        return 0;
+      }
+
+      const slotLabel = this.fmtSlot(input.startAt, input.endAt);
+      const built = this.email.buildReservationRequestPendingEmail({
+        fleetName: await this.fleetNameOf(input.fleetId),
+        requester: input.requester,
+        contact: input.contact,
+        slotLabel,
+        destination: input.destination,
+        seats: input.seats,
+        vehicleCount: input.vehicleCount,
+        agendaUrl: `${(process.env.APP_BASE_URL || '').replace(/\/$/, '')}/agenda`,
+      });
+
+      let envoyes = 0;
+      for (const v of validators) {
+        if (!v.email) continue;
+        try {
+          const res = await this.email.send({
+            to: v.email,
+            subject: built.subject,
+            html: built.html,
+            text: built.text,
+            template: 'reservation_request_pending',
+            fleetId: input.fleetId,
+            context: { kind: 'public_reservation_pending' },
+          });
+          if (res.ok) envoyes++;
+          else {
+            await this.errors.record(
+              `Avis de demande à valider non remis : ${res.error ?? 'erreur inconnue'}`,
+              SOURCE,
+              { fleetId: input.fleetId, destinataire: this.mask(v.email) },
+            );
+          }
+        } catch (e) {
+          await this.errors.record(e instanceof Error ? e : String(e), SOURCE, {
+            fleetId: input.fleetId,
+            destinataire: this.mask(v.email),
+          });
+        }
+      }
+
+      // Socle générique : mêmes préférences, même anti-spam, même journal que toute notification.
+      // `subjectKey` cloisonne le refroidissement par créneau — deux demandes pour le même créneau
+      // se groupent, deux créneaux différents passent tous les deux.
+      if (this.dispatch) {
+        await this.dispatch
+          .notifyUsers({
+            userIds: validators.map((v) => v.id),
+            category: 'SYSTEM',
+            kind: 'reservation-request',
+            subjectKey: `${input.fleetId}:${input.startAt}`,
+            title: 'Demande de réservation à valider',
+            body: `${input.requester} — ${slotLabel}${input.destination ? ` → ${input.destination}` : ''}`,
+            url: '/agenda',
+            fleetId: input.fleetId,
+          })
+          .catch(() => 0);
+      }
+      return envoyes;
+    } catch (e) {
+      await this.errors
+        .record(e instanceof Error ? e : String(e), SOURCE, { fleetId: input.fleetId, motif: 'avis_valideurs' })
+        .catch(() => undefined);
+      return 0;
+    }
+  }
+
   // ─── Interne ───────────────────────────────────────────────────────────────
+
+  /**
+   * Les comptes ACTIFS de la société dont les permissions effectives portent `reservations_manage`.
+   *
+   * Effectif = défauts du rôle, recouverts par le JSON du compte — la même règle que partout
+   * ailleurs. ⚠️ Une clé ABSENTE du JSON ne vaut pas `false` : elle vaut le défaut du rôle. Lire
+   * le JSON seul ferait disparaître le fleet-admin, dont le JSON est souvent vide.
+   */
+  private async validatorsOf(fleetId: string): Promise<{ id: string; email: string | null }[]> {
+    const membres = await this.prisma.user.findMany({
+      where: { fleetId, isActive: true },
+      select: { id: true, email: true, role: true, permissions: true },
+    });
+    return membres.filter((m) => {
+      const defauts = getDefaultPermissions(m.role as UserRoleSlug);
+      const explicites = (m.permissions ?? {}) as Partial<UserPermissions>;
+      return { ...defauts, ...explicites }.reservations_manage === true;
+    });
+  }
 
   /** Nom de la flotte (pour l'e-mail). Best-effort → « la société » si indisponible. */
   private async fleetNameOf(fleetId: string): Promise<string> {

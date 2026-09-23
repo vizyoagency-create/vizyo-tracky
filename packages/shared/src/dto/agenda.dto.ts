@@ -145,6 +145,59 @@ export interface OdometerEstimateDto {
   estimatedKm: number | null;
 }
 
+/* ── Lot 3c (2026-09-23) — RÉORGANISATION EN MASSE ─────────────────────────────────────────── */
+
+/** Quelle origine de réservation la réorganisation vise. */
+export type OrigineReservation = 'auto' | 'manuelle' | 'toutes';
+
+/**
+ * Reprendre un LOT de réservations d'un coup.
+ *
+ * Né d'un constat chiffré : chez cdef31, l'agent avait posé 108 réservations à venir sur 21
+ * véhicules. Les reprendre une par une, par une feuille à remplir, n'est pas tenable — et sur un
+ * téléphone, c'est pire. Deux gestes suffisent : tout annuler, ou tout décaler.
+ *
+ * ⚠️ `simulation: true` N'ÉCRIT RIEN et rend le même compte-rendu : c'est le mode par défaut de
+ * l'écran, et la seule façon honnête de proposer un geste de masse — on montre ce qui va se
+ * passer avant de le faire.
+ */
+export interface ReorganiserReservationsDto {
+  /** Fenêtre visée (ISO). Seules les réservations À VENIR sont reprises (cf. le service). */
+  from: string;
+  to: string;
+  vehicleId?: string;
+  /** Défaut : `auto` — c'est le cas qui a motivé la fonction. */
+  origine?: OrigineReservation;
+  action: 'annuler' | 'decaler';
+  /** Requis pour `decaler` : minutes (négatif = avancer). */
+  decalageMinutes?: number;
+  /** Société visée (SUPER_ADMIN) ; ignoré pour les autres rôles. */
+  fleetId?: string;
+  /** `true` (défaut) = on calcule et on montre, sans rien écrire. */
+  simulation?: boolean;
+}
+
+/** Une réservation que le lot n'a pas pu reprendre, et pourquoi. */
+export interface ReorganisationRefusDto {
+  plate: string | null;
+  startAt: string;
+  motif: string;
+}
+
+export interface ReorganisationResultDto {
+  /** Vrai si rien n'a été écrit. */
+  simulation: boolean;
+  /** Nombre de réservations dans le périmètre. */
+  concernees: number;
+  /** Nombre effectivement repris (0 en simulation). */
+  appliquees: number;
+  refusees: ReorganisationRefusDto[];
+  /** Échantillon lisible pour l'écran (les premières du lot). */
+  apercu: { plate: string | null; startAt: string; endAt: string | null; source: string }[];
+  /** Vrai si le périmètre dépasse le plafond de sûreté et a été tronqué. */
+  plafonne: boolean;
+}
+
 export interface AgendaSummaryDto {
   /** PLANNED/OPEN dont l'échéance est passée (en retard). */
   overdue: number;

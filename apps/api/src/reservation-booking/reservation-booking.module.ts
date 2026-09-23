@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { AgendaModule } from '../agenda/agenda.module';
 import { AuthModule } from '../auth/auth.module';
+import { NotificationsModule } from '../notifications/notifications.module';
 import { SmsModule } from '../sms/sms.module';
 import { PublicReservationBookingController } from './public-reservation-booking.controller';
 import { ReservationBookingNotifier } from './reservation-booking-notifier.service';
@@ -12,9 +13,13 @@ import { ReservationBookingService } from './reservation-booking.service';
  * AgendaModule fournit ReservationsService (dispo + création REQUESTED) ; AuthModule les guards ;
  * SmsModule fournit SmsGatewayService (notif SMS). EmailService, ErrorLogger, SystemActivityService,
  * PrismaService sont globaux.
+ *
+ * NotificationsModule (2026-09-23, P0-1) : `NotificationDispatchService` pour prévenir ceux qui
+ * peuvent VALIDER une demande publique. Sens d'import sûr — ReservationBooking → Notifications →
+ * Sms ; c'est l'inverse (Sms → Notifications) qui ferait un cycle.
  */
 @Module({
-  imports: [AuthModule, AgendaModule, SmsModule],
+  imports: [AuthModule, AgendaModule, SmsModule, NotificationsModule],
   controllers: [ReservationBookingController, PublicReservationBookingController],
   // IA (AiRouter) fournie par AiCoreModule @Global : analyse rapide du besoin dicté (voix).
   providers: [ReservationBookingService, ReservationBookingNotifier],

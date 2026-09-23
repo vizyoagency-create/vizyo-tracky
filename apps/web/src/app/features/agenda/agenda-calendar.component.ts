@@ -32,6 +32,8 @@ interface CalendarCell {
   active: number;
   /** Sprint 8 (Palier C) — nb de véhicules dont l'usage est prévu ce jour (couche fantôme). */
   forecast: number;
+  /** Lot 3a — nb de PROPOSITIONS de l'agent en attente ce jour (réservations fantômes). */
+  proposals: number;
 }
 
 const MAX_PILLS = 3;
@@ -88,14 +90,24 @@ const weekdayFmt = new Intl.DateTimeFormat('fr-FR', { weekday: 'long', day: 'num
               @if (c.overflow > 0) {
                 <span class="cal-more">+{{ c.overflow }}</span>
               }
+              <!-- Lot 3a — les propositions de l'agent. Contour POINTILLÉ et fond transparent :
+                   elles se lisent d'un coup d'œil comme « prévu, pas réservé ». -->
+              @if (c.proposals > 0) {
+                <span class="cal-pill cal-pill--fantome"
+                      [attr.title]="c.proposals + ' proposition(s) de l’agent à valider — aucun véhicule n’est bloqué'">
+                  <span class="cal-pill-text">{{ c.proposals }} proposé{{ c.proposals > 1 ? 's' : '' }}</span>
+                </span>
+              }
             </span>
             <!-- Mobile compact : pastilles colorées (les pilules texte sont masquées en CSS) -->
-            @if (c.count > 0) {
+            @if (c.count > 0 || c.proposals > 0) {
               <span class="cal-dots" aria-hidden="true">
                 @for (p of c.pills; track p.id) {
                   <span class="cal-dot" [style.background]="p.color"></span>
                 }
                 @if (c.overflow > 0) { <span class="cal-dot cal-dot--more"></span> }
+                <!-- Point CREUX = proposition. Le plein dit « réservé », le creux « prévu ». -->
+                @if (c.proposals > 0) { <span class="cal-dot cal-dot--fantome"></span> }
               </span>
             }
             <!-- Mobile : indicateurs de coin (les compteurs chiffrés sont masqués faute de place) -->
@@ -193,6 +205,18 @@ const weekdayFmt = new Intl.DateTimeFormat('fr-FR', { weekday: 'long', day: 'num
       background: color-mix(in srgb, var(--pill, var(--texte-succes)) 14%, transparent);
       border-left: 2px solid var(--pill, var(--texte-succes));
     }
+    /* ── Lot 3a — la réservation FANTÔME ──────────────────────────────────────
+       Contour pointillé, fond transparent, encre violette : la même famille que la
+       couche « usage prévu » (~N), parce que c'est la même nature d'information —
+       quelque chose d'attendu, pas quelque chose d'acté. La pilule pleine reste
+       réservée à ce qui BLOQUE réellement un véhicule. */
+    .cal-pill--fantome {
+      color: var(--texte-violet);
+      background: transparent;
+      border: 1px dashed color-mix(in srgb, var(--violet) 55%, transparent);
+      border-left-width: 1px;
+      font-weight: 700;
+    }
     .cal-pill--muted {
       color: var(--fg-tertiary);
       background: var(--bg-secondary);
@@ -244,6 +268,11 @@ const weekdayFmt = new Intl.DateTimeFormat('fr-FR', { weekday: 'long', day: 'num
       border-radius: 50%;
       flex-shrink: 0;
     }
+    /* Point CREUX : la proposition n'est pas une réservation. Bordure et non fond. */
+    .cal-dot--fantome {
+      background: transparent !important;
+      border: 1.5px solid var(--texte-violet);
+    }
     .cal-dot--more {
       background: var(--fg-tertiary) !important;
       opacity: .6;
@@ -282,6 +311,14 @@ export class AgendaCalendarComponent {
   readonly activityByDay = input<Map<string, number>>(new Map());
   /** Sprint 8 (Palier C) — nb de véhicules dont l'usage est PRÉVU ce jour (couche fantôme). */
   readonly forecastByDay = input<Map<string, number>>(new Map());
+  /**
+   * Lot 3a — nb de PROPOSITIONS de l'agent en attente ce jour.
+   *
+   * Rendues en pastille à CONTOUR POINTILLÉ, jamais en pilule pleine : une proposition ne bloque
+   * aucun véhicule, et la confondre avec une réservation ferme est exactement l'erreur qui a
+   * conduit à pré-prendre 21 véhicules sur 30 chez cdef31.
+   */
+  readonly proposalsByDay = input<Map<string, number>>(new Map());
   /** Émis avec l'ISO (YYYY-MM-DD) du jour cliqué. */
   readonly dayClick = output<string>();
 
@@ -308,6 +345,7 @@ export class AgendaCalendarComponent {
     const byDay = this.eventsByDay();
     const byActivity = this.activityByDay();
     const byForecast = this.forecastByDay();
+    const byProposals = this.proposalsByDay();
     const start = startOfWeekMonday(monthFirst);
 
     return Array.from({ length: 42 }, (_, i) => {
@@ -338,6 +376,7 @@ export class AgendaCalendarComponent {
         count: sorted.length,
         active: byActivity.get(iso) ?? 0,
         forecast: byForecast.get(iso) ?? 0,
+        proposals: byProposals.get(iso) ?? 0,
       };
     });
   });

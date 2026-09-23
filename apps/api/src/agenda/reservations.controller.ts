@@ -3,6 +3,7 @@ import {
   Body,
   Controller,
   Get,
+  HttpCode,
   Param,
   ParseUUIDPipe,
   Patch,
@@ -14,6 +15,7 @@ import {
 import { UserRole, VehicleEventStatus } from '@prisma/client';
 import type {
   ConfirmReservationDto,
+  ReorganiserReservationsDto,
   RequestReservationDto,
   UpdateReservationDto,
 } from '@vizyo/tracky-shared';
@@ -86,6 +88,13 @@ export class ReservationsController {
     @Query('status') status?: string,
     @Query('vehicleId') vehicleId?: string,
     @Query('groupId') groupId?: string,
+    /**
+     * Filtre société du bandeau (SUPER_ADMIN). ⚠️ IL MANQUAIT : sans lui, `scopedWhere` ne posait
+     * aucune borne de flotte pour un super-admin, et la file « À valider » mélangeait les demandes
+     * de TOUTES les sociétés — avec le risque d'en valider une sur la mauvaise. Ses voisines
+     * `/agenda/events` et `/agenda/summary` le portaient depuis toujours.
+     */
+    @Query('fleetId') fleetId?: string,
   ) {
     const now = Date.now();
     const f = from ? new Date(from) : new Date(now - 31 * DAY_MS);
@@ -99,6 +108,7 @@ export class ReservationsController {
       status: status ? (status as VehicleEventStatus) : undefined,
       vehicleId,
       groupId,
+      fleetId,
     });
   }
 
@@ -128,6 +138,23 @@ export class ReservationsController {
   @RequirePermissions('reservations_manage')
   cancel(@Req() req: AuthenticatedRequest, @Param('id', ParseUUIDPipe) id: string) {
     return this.reservations.cancel(req.user, id);
+  }
+
+  /**
+   * Lot 3c — REPRENDRE UN LOT de réservations (annuler / décaler), en masse.
+   *
+   * Même permission que la validation, et pour la même raison : reprendre cent réservations d'un
+   * coup, c'est la même autorité que d'en valider une — en plus lourd de conséquences.
+   *
+   * ⚠️ `simulation` vaut VRAI par défaut côté service : un appel sans ce champ ne modifie RIEN et
+   * rend le compte-rendu. Il faut demander explicitement `simulation: false` pour écrire.
+   */
+  @Post('reorganiser')
+  @HttpCode(200)
+  @Roles(...ALL_ROLES)
+  @RequirePermissions('reservations_manage')
+  reorganiser(@Req() req: AuthenticatedRequest, @Body() dto: ReorganiserReservationsDto) {
+    return this.reservations.reorganiser(req.user, dto);
   }
 
   /** Éditer une réservation (créneau / critères / libellé). */

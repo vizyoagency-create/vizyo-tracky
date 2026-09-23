@@ -234,7 +234,7 @@ export class ReservationBookingService {
     const end = new Date(slot.endAt);
     // #5 — Entrée publique non authentifiée : borne la destination comme requester(120)/contact(160)/freeText(500).
     const destination = ((dto?.destination?.trim() || this.extractDestination(dto?.freeText)) ?? null)?.slice(0, 120) ?? null;
-    const { combination, freeCount, withSeatsCount } = await this.pickCombination(link.fleetId, slot, seatsNeeded);
+    const { combination, freeCount, withSeatsCount, deplacements } = await this.pickCombination(link.fleetId, slot, seatsNeeded);
     const totalSeats = combination.reduce((s, v) => s + (v.seats ?? 0), 0);
     if (combination.length === 0 || totalSeats < seatsNeeded) {
       // Messages SANS chiffre (anti-sondage capacité) + cause juste : si des véhicules sont libres mais
@@ -271,6 +271,16 @@ export class ReservationBookingService {
           seatsNeeded,
           destination,
           freeText: (dto?.freeText || '').slice(0, 500),
+          /**
+           * Lot 3b — LE DÉPLACEMENT SE DIT AU VALIDEUR.
+           *
+           * Quand plus aucun véhicule n'est libre de tout engagement, on pioche dans ceux qu'une
+           * proposition de l'agent retenait sur ce créneau. C'est le bon arbitrage — une demande
+           * humaine passe avant une suggestion de machine — mais il ne doit pas être SILENCIEUX :
+           * valider cette demande écartera la proposition, et celui qui valide doit le savoir.
+           * Vide dans le cas normal, donc invisible tant que ça n'arrive pas.
+           */
+          ...(deplacements.length > 0 ? { deplaceePropositions: deplacements } : {}),
         },
       });
       created++;
@@ -284,6 +294,27 @@ export class ReservationBookingService {
       startAt: slot.startAt,
       endAt: slot.endAt,
       seats: seatsNeeded,
+    });
+
+    /**
+     * P0-1 — ET ON PRÉVIENT LA SOCIÉTÉ (2026-09-23).
+     *
+     * La ligne du dessus existait depuis l'origine ; celle-ci manquait. Promettre au demandeur
+     * « vous recevrez la confirmation dès sa validation » sans prévenir personne qu'il y a
+     * quelque chose à valider, c'est une promesse que l'application ne pouvait pas tenir.
+     *
+     * `void` comme l'accusé de réception : l'envoi ne doit ni retarder ni faire échouer la
+     * réponse au demandeur. La demande est déjà en base quand on arrive ici.
+     */
+    void this.notifier.notifyFleetOfPendingRequest({
+      fleetId: link.fleetId,
+      requester,
+      contact,
+      destination,
+      startAt: slot.startAt,
+      endAt: slot.endAt,
+      seats: seatsNeeded,
+      vehicleCount: created,
     });
 
     this.systemActivity.record({
@@ -302,27 +333,83 @@ export class ReservationBookingService {
   // ─── Helpers ───────────────────────────────────────────────────────────────
 
   /** Écarte les véhicules déjà retenus par une PROPOSITION EN ATTENTE de l'agent (chevauchant le créneau). */
-  private async withoutAgentHeld(
+  /**
+   * ── LOT 3B — LE CLASSEMENT EN TROIS RANGS (2026-09-23) ──────────────────────────────────────
+   *
+   * ┌─ CE QUE FAISAIT LA VERSION PRÉCÉDENTE ────────────────────────────────────┐
+   * │ Elle RETIRAIT purement et simplement les véhicules retenus par une        │
+   * │ proposition de l'agent. Conséquence : quand l'agent avait pré-rempli le   │
+   * │ créneau — ce qui, chez cdef31, concernait 21 véhicules sur 30 — la        │
+   * │ demande d'un conducteur était REFUSÉE (« aucun véhicule disponible »)     │
+   * │ alors que des voitures étaient bel et bien libres. Une suggestion faite   │
+   * │ par la machine l'emportait sur une demande faite par un humain.           │
+   * └────────────────────────────────────────────────────────────────────────────┘
+   *
+   * On CLASSE au lieu d'exclure, dans l'ordre demandé par le propriétaire :
+   *
+   *   RANG 1 — aucun engagement du tout sur l'horizon : ni réservation, ni proposition.
+   *            C'est le véhicule qu'on veut donner : le prendre ne déplace rien.
+   *   RANG 2 — libre sur CE créneau, mais engagé D'AUTRES JOURS (proposition ou réservation
+   *            automatique ailleurs). Le prendre ne casse rien non plus, c'est juste moins net.
+   *   RANG 3 — une proposition de l'agent couvre CE créneau précis. Le prendre la DÉPLACE :
+   *            c'est un dernier recours, et le valideur doit le savoir avant de dire oui.
+   *
+   * À rang égal, le plus grand nombre de places d'abord (inchangé) : c'est ce qui permet de
+   * couvrir le besoin avec le moins de véhicules.
+   */
+  private async classerParEngagement(
     fleetId: string,
     startAt: string,
     endAt: string,
     vehicles: SuggestedVehicleDto[],
-  ): Promise<SuggestedVehicleDto[]> {
-    if (vehicles.length === 0) return vehicles;
+  ): Promise<{ vehicule: SuggestedVehicleDto; rang: 1 | 2 | 3; propositionDeplacee: string | null }[]> {
+    if (vehicles.length === 0) return [];
     const start = new Date(startAt);
     const end = new Date(endAt);
-    const held = await this.prisma.agendaAgentProposal.findMany({
+    const ids = vehicles.map((v) => v.vehicleId);
+
+    // Horizon d'« engagé ailleurs » : la fenêtre de projection de l'agent (14 j). Au-delà, un
+    // engagement lointain ne dit plus rien de la disponibilité réelle de ce véhicule.
+    const horizon = new Date(start.getTime() + 14 * 24 * 3600 * 1000);
+
+    const [surLeCreneau, ailleurs] = await Promise.all([
+      // Propositions qui couvrent CE créneau : les prendre déplace quelque chose.
+      this.prisma.agendaAgentProposal.findMany({
+        where: { fleetId, status: 'pending', startAt: { lt: end }, endAt: { gt: start }, vehicleId: { in: ids } },
+        select: { id: true, vehicleId: true },
+      }),
+      // Engagements AILLEURS sur l'horizon : propositions en attente…
+      this.prisma.agendaAgentProposal.findMany({
+        where: { fleetId, status: 'pending', startAt: { gte: start, lt: horizon }, vehicleId: { in: ids } },
+        select: { vehicleId: true },
+      }),
+    ]);
+
+    // …et réservations fermes déjà posées (dont les réservations SYSTÈME héritées de l'agent).
+    const resaAilleurs = await this.prisma.vehicleEvent.findMany({
       where: {
         fleetId,
-        status: 'pending',
-        startAt: { lt: end },
-        endAt: { gt: start },
-        vehicleId: { in: vehicles.map((v) => v.vehicleId) },
+        type: 'RESERVATION',
+        status: { in: ['CONFIRMED', 'IN_PROGRESS', 'REQUESTED'] },
+        startAt: { gte: start, lt: horizon },
+        vehicleId: { in: ids },
       },
       select: { vehicleId: true },
     });
-    const heldSet = new Set(held.map((h) => h.vehicleId));
-    return vehicles.filter((v) => !heldSet.has(v.vehicleId));
+
+    const deplaceePar = new Map(surLeCreneau.map((p) => [p.vehicleId, p.id]));
+    const engageAilleurs = new Set<string>([
+      ...ailleurs.map((p) => p.vehicleId),
+      ...resaAilleurs.map((e) => e.vehicleId),
+    ]);
+
+    return vehicles
+      .map((v) => {
+        const propositionDeplacee = deplaceePar.get(v.vehicleId) ?? null;
+        const rang: 1 | 2 | 3 = propositionDeplacee ? 3 : engageAilleurs.has(v.vehicleId) ? 2 : 1;
+        return { vehicule: v, rang, propositionDeplacee };
+      })
+      .sort((a, b) => a.rang - b.rang || (b.vehicule.seats ?? 0) - (a.vehicule.seats ?? 0));
   }
 
   /**
@@ -334,13 +421,32 @@ export class ReservationBookingService {
     fleetId: string,
     slot: { startAt: string; endAt: string },
     seatsNeeded: number,
-  ): Promise<{ combination: SuggestedVehicleDto[]; freeCount: number; withSeatsCount: number }> {
+  ): Promise<{
+    combination: SuggestedVehicleDto[];
+    freeCount: number;
+    withSeatsCount: number;
+    /** Propositions de l'agent que cette attribution déplace (rang 3). Vide dans le cas normal. */
+    deplacements: { proposalId: string; plate: string | null }[];
+  }> {
     const avail = await this.reservations.availableForFleet(fleetId, slot.startAt, slot.endAt, undefined, { excludeRequested: true });
-    const freeVehicles = await this.withoutAgentHeld(fleetId, slot.startAt, slot.endAt, avail.vehicles);
-    const withSeats = freeVehicles.filter((v) => v.seats != null).sort((a, b) => (b.seats ?? 0) - (a.seats ?? 0));
+    // Lot 3b : on CLASSE (rang 1 → 3) au lieu d'exclure. `classerParEngagement` rend déjà la liste
+    // triée par rang puis par places — `greedy` n'a plus qu'à cumuler dans cet ordre.
+    const classes = await this.classerParEngagement(fleetId, slot.startAt, slot.endAt, avail.vehicles);
+    const avecPlaces = classes.filter((c) => c.vehicule.seats != null);
+    const retenus = this.greedy(avecPlaces.map((c) => c.vehicule), seatsNeeded);
+    const rangDe = new Map(classes.map((c) => [c.vehicule.vehicleId, c]));
     // freeCount/withSeatsCount : distinguent « créneau complet » de « places non renseignées » dans le
     // message d'erreur, SANS révéler de chiffres exacts (anti-sondage de la capacité via le lien public).
-    return { combination: this.greedy(withSeats, seatsNeeded), freeCount: freeVehicles.length, withSeatsCount: withSeats.length };
+    return {
+      combination: retenus,
+      freeCount: classes.length,
+      withSeatsCount: avecPlaces.length,
+      // Les propositions que cette attribution DÉPLACE : le valideur doit les voir avant de dire oui.
+      deplacements: retenus
+        .map((v) => rangDe.get(v.vehicleId))
+        .filter((c): c is NonNullable<typeof c> => !!c && c.rang === 3)
+        .map((c) => ({ proposalId: c.propositionDeplacee as string, plate: c.vehicule.vehiclePlate ?? null })),
+    };
   }
 
   /** Couvre le besoin avec le MOINS de véhicules : d'abord un seul qui suffit, sinon cumul décroissant. */

@@ -45,6 +45,10 @@ export type EmailTemplateId =
   | 'installation_slot_rejected'
   | 'installation_slot_cancelled'
   | 'reservation_requested'
+  // P0-1 (2026-09-23) : l'AUTRE bout du lien public. `reservation_requested` previent le
+  // DEMANDEUR ; celui-ci previent ceux qui peuvent VALIDER. Sans lui, une demande arrivait en
+  // base et personne n'en savait rien — mesure du 22/09 : aucun canal cote flotte.
+  | 'reservation_request_pending'
   | 'reservation_confirmed'
   | 'ai_invoice_request'
   | 'partner_consent_invitation'
@@ -1795,6 +1799,74 @@ Vous recevrez une confirmation dès qu'elle sera validée.`;
   }
 
   /**
+   * Lien public de réservation — L'AUTRE BOUT : prévenir ceux qui peuvent VALIDER (P0-1, 2026-09-23).
+   *
+   * ┌─ POURQUOI CE MODÈLE EXISTE ───────────────────────────────────────────────┐
+   * │ Le lien public savait remercier le demandeur et le prévenir de la         │
+   * │ validation. Entre les deux : rien. Aucun canal ne prévenait la société    │
+   * │ qu'une demande attendait — mesuré le 22/09 sur cdef31, dont le lien était │
+   * │ actif et ouvert 55 fois. Un conducteur scannait, soumettait, lisait       │
+   * │ « vous recevrez la confirmation » — et personne ne voyait jamais rien.    │
+   * └────────────────────────────────────────────────────────────────────────────┘
+   *
+   * Le bouton mène à l'agenda : c'est là que la file de validation s'ouvre. Le demandeur et son
+   * contact sont dans le corps, parce que la première question d'un standard est « c'est qui ? ».
+   */
+  buildReservationRequestPendingEmail(opts: {
+    fleetName: string;
+    requester: string;
+    contact: string;
+    slotLabel: string;
+    destination?: string | null;
+    seats?: number | null;
+    vehicleCount: number;
+    agendaUrl: string;
+  }): { subject: string; html: string; text: string } {
+    const subject = `Demande de réservation à valider — ${opts.requester}`;
+    const rows = [
+      this.kvRow('Demandeur', opts.requester),
+      this.kvRow('Contact', opts.contact),
+      this.kvRow('Créneau', opts.slotLabel),
+      opts.destination ? this.kvRow('Destination', opts.destination) : '',
+      opts.seats ? this.kvRow('Places demandées', String(opts.seats)) : '',
+      this.kvRow(
+        'Véhicule(s) pré-retenu(s)',
+        String(opts.vehicleCount),
+        true,
+      ),
+    ].filter(Boolean);
+    const body = `
+        <tr><td style="padding:28px 36px 0;">
+          <h1 class="m-title" style="margin:0 0 12px;font-family:${EMAIL_FONT};font-size:25px;line-height:1.15;font-weight:800;letter-spacing:-0.025em;color:#0A1311;">Une demande attend votre validation</h1>
+          <p class="m-text" style="margin:0 0 20px;font-family:${EMAIL_FONT};font-size:15px;line-height:1.65;color:#56635E;">Une demande de véhicule vient d'arriver sur le lien public de <span style="color:${EMAIL_ACCENT_TEXTE};font-weight:600;">${escapeHtml(opts.fleetName)}</span>. Le véhicule est <strong>pré-retenu sans être bloqué</strong> : il reste disponible pour tout le monde tant que vous n'avez pas validé.</p>
+          <table class="m-panel" role="presentation" width="100%" style="background:#F6F9F7;border:1px solid rgba(255,255,255,.07);border-radius:12px;border-collapse:separate;">
+            ${rows.join('')}
+          </table>
+        </td></tr>
+        <tr><td style="padding:22px 36px 0;">
+          <table role="presentation"><tr><td style="border-radius:11px;background:#10E0A0;">
+            <a href="${opts.agendaUrl}" style="display:inline-block;padding:13px 26px;font-family:${EMAIL_FONT};font-size:15px;font-weight:700;color:#04130D;text-decoration:none;">Ouvrir les demandes →</a>
+          </td></tr></table>
+        </td></tr>`;
+    const html = this.shell({
+      eyebrow: 'Réservation · À valider',
+      preheader: `${opts.requester} demande un véhicule — ${opts.slotLabel}.`,
+      footer: 'VIZYO TRACKY · RÉSERVATION DE VÉHICULES · E-mail automatique, ne pas répondre.',
+      body,
+    });
+    const text = `Une demande de réservation attend votre validation (${opts.fleetName}).
+
+Demandeur : ${opts.requester}
+Contact : ${opts.contact}
+Créneau : ${opts.slotLabel}${opts.destination ? `\nDestination : ${opts.destination}` : ''}${opts.seats ? `\nPlaces demandées : ${opts.seats}` : ''}
+Véhicule(s) pré-retenu(s) : ${opts.vehicleCount}
+
+Le véhicule n'est pas bloqué tant que la demande n'est pas validée.
+Ouvrir les demandes : ${opts.agendaUrl}`;
+    return { subject, html, text };
+  }
+
+  /**
    * Lien public de réservation — CONFIRMATION (→ demandeur) quand un gestionnaire valide. Le véhicule
    * attribué est indiqué (post-validation : le demandeur doit savoir quel véhicule il utilisera).
    */
@@ -2204,6 +2276,17 @@ ${this.commercialSignatureText()}`;
           slotLabel: 'mar. 8 juil., 09:00 → 17:00',
           destination: 'Carcassonne',
           seats: 11,
+        });
+      case 'reservation_request_pending':
+        return this.buildReservationRequestPendingEmail({
+          fleetName,
+          requester: 'Camille Roux',
+          contact: 'camille.roux@example.org',
+          slotLabel: 'mar. 8 juil., 09:00 → 17:00',
+          destination: 'Carcassonne',
+          seats: 11,
+          vehicleCount: 1,
+          agendaUrl: `${(process.env.APP_BASE_URL || '').replace(/\/$/, '')}/agenda`,
         });
       case 'reservation_confirmed':
         return this.buildReservationConfirmedEmail({

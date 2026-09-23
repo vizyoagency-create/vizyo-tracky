@@ -4,10 +4,14 @@ import {
   ForbiddenException,
   Injectable,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import { Prisma, UserRole, VehicleEventStatus, VehicleEventType } from '@prisma/client';
 import type {
   ConfirmReservationDto,
+  ReorganisationRefusDto,
+  ReorganisationResultDto,
+  ReorganiserReservationsDto,
   RequestReservationDto,
   SuggestReservationResultDto,
   SuggestedVehicleDto,
@@ -21,6 +25,7 @@ import type { AuthUser } from '../auth/types/auth-user';
 import { resolveReportVehicleScope } from '../common/report-vehicle-scope';
 import { PermissionsResolverService } from '../permissions/permissions-resolver.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { SystemActivityService } from '../system-activity/system-activity.service';
 import { VehicleAccessService } from '../vehicle-access/vehicle-access.service';
 import { VehicleEventsService } from './vehicle-events.service';
 
@@ -42,6 +47,12 @@ const MAX_OPEN_TRIP_MS = 8 * 60 * 60 * 1000;
 /** Fenêtre récente pour le tri par sous-utilisation (auto-complétion). */
 const RECENT_WINDOW_MS = 28 * 24 * 60 * 60 * 1000;
 const UNDERUTILIZED_RATIO = 0.12;
+/**
+ * Plafond d'un geste de masse. 500 couvre très largement le cas réel (108 réservations chez
+ * cdef31) tout en bornant ce qu'une requête peut écrire d'un coup. Au-delà, le lot est tronqué
+ * ET l'écran le dit : un lot silencieusement incomplet serait pire qu'un refus franc.
+ */
+const MAX_REORGANISATION = 500;
 
 /**
  * Sprint 8 (Palier B) — Réservations de véhicules sur le modèle d'événement S7
@@ -59,6 +70,12 @@ export class ReservationsService {
     // EventEmitter2 global : injecté en prod, omis dans les specs. Déclenche l'agent sur une
     // réservation HUMAINE uniquement (jamais depuis systemConfirm/systemRequest → anti-boucle).
     private readonly emitter?: EventEmitter2,
+    /**
+     * Journal d'activité (@Global) : trace un geste de MASSE — qui a annulé ou décalé combien de
+     * réservations, et combien ont été refusées. `@Optional()` : les specs montent ce service à la
+     * main, et un journal absent ne doit pas empêcher la réorganisation.
+     */
+    @Optional() private readonly systemActivity?: SystemActivityService,
   ) {}
 
   // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -703,7 +720,15 @@ export class ReservationsService {
   /** Liste des réservations (scopée). Délègue au scoping/mapping S7. Perm reservations_view. */
   async list(
     user: AuthUser,
-    filters: { from: Date; to: Date; status?: VehicleEventStatus; vehicleId?: string; groupId?: string },
+    filters: {
+      from: Date;
+      to: Date;
+      status?: VehicleEventStatus;
+      vehicleId?: string;
+      groupId?: string;
+      /** Filtre société du bandeau (SUPER_ADMIN) ; ignoré pour les autres rôles, bornés par leur flotte. */
+      fleetId?: string;
+    },
   ): Promise<VehicleEventDto[]> {
     return this.events.list(user, {
       from: filters.from,
@@ -712,7 +737,137 @@ export class ReservationsService {
       status: filters.status,
       vehicleId: filters.vehicleId,
       groupId: filters.groupId,
+      fleetId: filters.fleetId,
     });
+  }
+
+  /**
+   * ── LOT 3C (2026-09-23) — REPRENDRE UN LOT DE RÉSERVATIONS ──────────────────────────────────
+   *
+   * ┌─ POURQUOI CE GESTE EXISTE ────────────────────────────────────────────────┐
+   * │ L'agent avait posé 108 réservations à venir sur 21 véhicules de cdef31.   │
+   * │ Les reprendre une par une, par la feuille d'édition, n'est pas tenable —   │
+   * │ et sur un téléphone, encore moins. La réorganisation demandait donc un    │
+   * │ geste de masse ; elle n'en avait aucun.                                    │
+   * └────────────────────────────────────────────────────────────────────────────┘
+   *
+   * QUATRE GARDE-FOUS, parce qu'un geste de masse se trompe en masse :
+   *
+   *  1. **SIMULATION par défaut.** `simulation !== false` ne touche rien et rend le même
+   *     compte-rendu. C'est la discipline du DRY-RUN de la rétention (Sprint 6) : on montre ce
+   *     qui va se passer avant de le faire, et l'écran ouvre là-dessus.
+   *  2. **À VENIR seulement.** Annuler ou décaler une réservation passée ne libère rien et
+   *     réécrit de l'historique. La borne basse est `max(from, maintenant)`.
+   *  3. **Plafond de {@link MAX_REORGANISATION}.** Au-delà, on tronque et on le DIT (`plafonne`) :
+   *     un lot silencieusement incomplet serait pire qu'un refus.
+   *  4. **Chaque refus est nommé.** Un décalage qui tomberait sur un créneau occupé est rendu
+   *     avec sa plaque et son motif — jamais un total qui ne correspond pas au constat.
+   *
+   * Le périmètre passe par `events.list`, donc par la chaîne de scoping anti-IDOR habituelle :
+   * aucune réservation hors du périmètre de l'appelant ne peut entrer dans le lot.
+   */
+  async reorganiser(user: AuthUser, dto: ReorganiserReservationsDto): Promise<ReorganisationResultDto> {
+    const simulation = dto?.simulation !== false;
+    const action = dto?.action;
+    if (action !== 'annuler' && action !== 'decaler') {
+      throw new BadRequestException('Action inconnue : « annuler » ou « decaler ».');
+    }
+    const decalage = Math.trunc(Number(dto?.decalageMinutes ?? 0));
+    if (action === 'decaler' && (!Number.isFinite(decalage) || decalage === 0)) {
+      throw new BadRequestException('Préciser de combien de minutes décaler (positif ou négatif).');
+    }
+
+    const from = new Date(dto?.from ?? '');
+    const to = new Date(dto?.to ?? '');
+    if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime()) || to.getTime() <= from.getTime()) {
+      throw new BadRequestException('Fenêtre invalide.');
+    }
+    // Garde 2 : jamais le passé. Un lot qui réécrit hier ne libère aucun véhicule.
+    const debut = new Date(Math.max(from.getTime(), Date.now()));
+    if (debut.getTime() >= to.getTime()) {
+      throw new BadRequestException('La fenêtre est entièrement passée : rien à réorganiser.');
+    }
+
+    const origine = dto?.origine ?? 'auto';
+    const toutes = await this.events.list(user, {
+      from: debut,
+      to,
+      type: VehicleEventType.RESERVATION,
+      vehicleId: dto?.vehicleId,
+      fleetId: dto?.fleetId,
+    });
+
+    const candidates = toutes.filter((e) => {
+      if (new Date(e.startAt).getTime() < debut.getTime()) return false; // chevauchant mais déjà commencée
+      if (e.status === VehicleEventStatus.DONE || e.status === VehicleEventStatus.CANCELLED) return false;
+      if (origine === 'auto') return e.source === 'SYSTEM';
+      if (origine === 'manuelle') return e.source !== 'SYSTEM';
+      return true;
+    });
+
+    const plafonne = candidates.length > MAX_REORGANISATION;
+    const lot = candidates.slice(0, MAX_REORGANISATION);
+    const apercu = lot.slice(0, 8).map((e) => ({
+      plate: e.vehiclePlate,
+      startAt: e.startAt,
+      endAt: e.endAt,
+      source: e.source,
+    }));
+    const refusees: ReorganisationRefusDto[] = [];
+
+    if (simulation) {
+      return { simulation: true, concernees: lot.length, appliquees: 0, refusees, apercu, plafonne };
+    }
+
+    let appliquees = 0;
+    for (const e of lot) {
+      try {
+        if (action === 'annuler') {
+          await this.cancel(user, e.id);
+        } else {
+          const debutNouveau = new Date(new Date(e.startAt).getTime() + decalage * 60_000);
+          const finNouvelle = e.endAt ? new Date(new Date(e.endAt).getTime() + decalage * 60_000) : null;
+          if (!finNouvelle) {
+            refusees.push({ plate: e.vehiclePlate, startAt: e.startAt, motif: 'Réservation sans heure de fin.' });
+            continue;
+          }
+          if (debutNouveau.getTime() < Date.now()) {
+            refusees.push({ plate: e.vehiclePlate, startAt: e.startAt, motif: 'Le décalage la ferait passer dans le passé.' });
+            continue;
+          }
+          await this.update(user, e.id, {
+            startAt: debutNouveau.toISOString(),
+            endAt: finNouvelle.toISOString(),
+          });
+        }
+        appliquees++;
+      } catch (err) {
+        // Garde 4 : le motif REMONTE. Un conflit de créneau (EXCLUDE) ou un refus métier doit se
+        // lire ligne par ligne — « 12 sur 108 » sans dire lesquelles ne s'explique pas.
+        refusees.push({
+          plate: e.vehiclePlate,
+          startAt: e.startAt,
+          motif: err instanceof Error ? err.message : 'Refus inattendu.',
+        });
+      }
+    }
+
+    this.systemActivity?.record?.({
+      category: 'RESERVATION',
+      action: 'reservations_reorganisees',
+      // `SKIPPED` quand au moins une ligne a été refusée : le journal ne connaît pas de
+      // « partiel », et dire `SUCCESS` sur un lot incomplet ferait passer un refus pour un succès.
+      // Le détail ci-dessous porte les deux nombres.
+      status: refusees.length > 0 ? 'SKIPPED' : 'SUCCESS',
+      actor: 'utilisateur',
+      detail:
+        `Réorganisation (${action}${action === 'decaler' ? ` ${decalage > 0 ? '+' : ''}${decalage} min` : ''}, ` +
+        `origine ${origine}) : ${appliquees} reprise(s), ${refusees.length} refus.`,
+      fleetId: dto?.fleetId,
+      meta: { action, decalage, origine, concernees: lot.length, appliquees, refusees: refusees.length },
+    });
+
+    return { simulation: false, concernees: lot.length, appliquees, refusees, apercu, plafonne };
   }
 
   // ─── Agent d'agenda (P3) : disponibilité + création système ────────────────
@@ -740,8 +895,29 @@ export class ReservationsService {
     // Un véhicule SANS boîtier reste engageable — `isVehicleDormant` renvoie déjà false sans
     // trackerId, et beaucoup de flottes exploitent des véhicules non équipés.
     const veh = await this.prisma.vehicle
-      .findUnique({ where: { id: vehicleId }, select: { tracker: { select: { id: true, lastSeenAt: true } } } })
+      .findUnique({
+        where: { id: vehicleId },
+        select: {
+          outOfServiceReason: true,
+          tracker: { select: { id: true, lastSeenAt: true } },
+        },
+      })
       .catch(() => null);
+    /**
+     * HORS SERVICE — le garde qui MANQUAIT sur ce chemin.
+     *
+     * `computeSuggestions` écarte les hors-service depuis toujours, et son commentaire affirmait
+     * couvrir « l'attribution automatique ». C'était faux : l'agent d'agenda NE PASSE PAS par ce
+     * vivier (il applique un motif récurrent puis appelle directement ce prédicat, cf. l'en-tête
+     * ci-dessus). Un véhicule déclaré hors service dont le boîtier parle encore — accident
+     * déclaré le matin, hivernage alimenté, véhicule rebranché pour être déplacé — franchissait
+     * donc les quatre conditions et se retrouvait RÉSERVÉ FERMEMENT.
+     *
+     * Testé AVANT la dormance : c'est un fait déclaré, pas déduit, et il n'a aucun délai de
+     * levée. Chez cdef31 les quatre véhicules hors service se taisaient aussi, donc la dormance
+     * les retenait — par accident. On ne laisse pas un garde reposer sur une coïncidence.
+     */
+    if (veh?.outOfServiceReason != null) return false;
     if (
       isVehicleDormant(
         { trackerId: veh?.tracker?.id ?? null, lastSeenAt: veh?.tracker?.lastSeenAt ?? null },

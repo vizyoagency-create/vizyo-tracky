@@ -66,6 +66,25 @@ export interface QrCardData {
   model?: string | null;
   qrSvg: string;
   domain?: string;
+  /**
+   * Textes de la carte. Absents = carte de DÉVERROUILLAGE VÉHICULE, mot pour mot comme avant —
+   * aucune carte déjà imprimée ne change d'apparence.
+   *
+   * Ce paramètre existe parce qu'une deuxième carte est née le 23/09 : le lien public de
+   * RÉSERVATION, que le conducteur scanne pour demander un véhicule. Deux usages, un seul
+   * gabarit : dupliquer la carte aurait fait diverger la marque, les marges et le format
+   * d'autocollant à la première retouche.
+   */
+  textes?: {
+    /** Surtitre monospace au-dessus du titre (ex. « Réservation de véhicule »). */
+    eyebrow?: string;
+    /** Titre de la carte (ex. « Scannez pour demander un véhicule »). */
+    titre?: string;
+    /** Libellé du champ principal (ex. « Société » au lieu de « Immatriculation »). */
+    champLabel?: string;
+    /** Phrase d'usage sous le QR. Le HTML y est échappé sauf `<strong>` déjà présent côté appelant. */
+    note?: string;
+  };
 }
 
 /**
@@ -78,15 +97,22 @@ export function buildQrCardHtml(d: QrCardData): string {
     ? `<div class="field"><div class="mono lbl">Véhicule</div><div class="model">${esc(d.model)}</div></div>`
     : '';
   const gridCols = d.model ? '1fr 1fr' : '1fr';
+  // Défauts = la carte de déverrouillage, inchangée.
+  const eyebrow = d.textes?.eyebrow ?? 'Déverrouillage véhicule';
+  const titre = d.textes?.titre ?? 'Scannez pour démarrer votre trajet';
+  const champLabel = d.textes?.champLabel ?? 'Immatriculation';
+  const note =
+    d.textes?.note ??
+    "Ouvrez l'appareil photo de votre téléphone et cadrez le code pour <strong>déverrouiller le véhicule</strong>. Un compte Tracky disposant des permissions sur ce véhicule est requis.";
   return `<div class="tq-scope"><div class="card">
   <div class="topbar"></div>
   <div class="body">
     <svg class="motif" viewBox="0 0 452 620" preserveAspectRatio="xMidYMid slice"><g fill="none" stroke="#0A9E6C" stroke-width="1.2" opacity="0.06"><path d="M-30 78 C 90 46, 150 126, 250 96 S 430 52, 520 110"/><path d="M-30 108 C 90 76, 150 156, 250 126 S 430 82, 520 140"/></g><path d="M52 556 C 140 520, 200 604, 288 566 S 404 520, 452 556" fill="none" stroke="#0A9E6C" stroke-width="1.4" stroke-dasharray="2 9" stroke-linecap="round" opacity="0.12"/></svg>
     <div class="rel">
       <div class="head"><div class="brand">${LOGO('calc(23 * var(--tqu))')}Tracky</div><span class="mono cap">Suivi de flotte</span></div>
-      <div class="lede"><div class="mono eyebrow">Déverrouillage véhicule</div><h1>Scannez pour démarrer votre trajet</h1></div>
+      <div class="lede"><div class="mono eyebrow">${esc(eyebrow)}</div><h1>${esc(titre)}</h1></div>
       <div class="grid" style="grid-template-columns:${gridCols}">
-        <div class="field"><div class="mono lbl">Immatriculation</div><div class="mono plate">${esc(d.plate || '—')}</div></div>
+        <div class="field"><div class="mono lbl">${esc(champLabel)}</div><div class="mono plate">${esc(d.plate || '—')}</div></div>
         ${modelField}
       </div>
       <div class="qrcard"><div class="qrwrap">
@@ -94,7 +120,7 @@ export function buildQrCardHtml(d: QrCardData): string {
         <div class="qrslot">${d.qrSvg}</div>
         <div class="badge">${LOGO('58%')}</div>
       </div></div>
-      <div class="note"><span class="ic"><svg style="width:calc(13 * var(--tqu));height:calc(13 * var(--tqu))" viewBox="0 0 24 24" fill="none" stroke="#0A9E6C" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="2" width="16" height="20" rx="2"></rect><path d="M12 18h.01"></path></svg></span><p>Ouvrez l'appareil photo de votre téléphone et cadrez le code pour <strong>déverrouiller le véhicule</strong>. Un compte Tracky disposant des permissions sur ce véhicule est requis.</p></div>
+      <div class="note"><span class="ic"><svg style="width:calc(13 * var(--tqu));height:calc(13 * var(--tqu))" viewBox="0 0 24 24" fill="none" stroke="#0A9E6C" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="2" width="16" height="20" rx="2"></rect><path d="M12 18h.01"></path></svg></span><p>${note}</p></div>
       <div class="foot"><span class="mono sec"><svg style="width:calc(12 * var(--tqu));height:calc(12 * var(--tqu))" viewBox="0 0 24 24" fill="none" stroke="#0A9E6C" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>Connexion chiffrée · UE</span><span class="mono url">${esc(domain)}</span></div>
     </div>
   </div>

@@ -200,8 +200,40 @@ export class AgendaAgentRunnerService {
           "L'agent d'agenda est désactivé pour cette société. Activez-le et enregistrez avant de lancer une analyse.",
         );
       }
-      // On ne réserve AUTO que si l'agent est en autonomie « auto si confiance haute ».
-      const autoOn = enabled && (settings?.autonomy ?? 'suggest') === 'auto_high_confidence';
+      /**
+       * ── L'AGENT NE RÉSERVE PLUS RIEN (décision du propriétaire, 2026-09-23) ─────────────────
+       *
+       * ┌─ LA MESURE QUI A TRANCHÉ ─────────────────────────────────────────────┐
+       * │ 321 réservations automatiques déjà PASSÉES de cdef31, confrontées aux  │
+       * │ trajets réels du véhicule sur leur créneau :                           │
+       * │                                                                         │
+       * │   • 183 (57 %) le véhicule a roulé PENDANT le créneau                  │
+       * │   •  63 (20 %) il a roulé ce jour-là, à une AUTRE heure                │
+       * │   •  75 (23 %) il n'a PAS BOUGÉ de la journée                          │
+       * │                                                                         │
+       * │ Écart d'heure quand le jour est bon : médiane 47 min, p90 4 h.         │
+       * │ Et toutes ces réservations étaient au-dessus du seuil de confiance de  │
+       * │ 80 % : la confiance déclarée n'est pas corrélée à la réalité. Monter   │
+       * │ le seuil n'aurait donc rien réglé.                                     │
+       * └─────────────────────────────────────────────────────────────────────────┘
+       *
+       * Ce que ça dit : la détection d'HABITUDES est bonne — le jour est juste 77 fois sur 100 —
+       * mais le placement HORAIRE ne l'est pas. Or une réservation ferme BLOQUE un créneau précis :
+       * à ±47 minutes elle occupe le mauvais, et fait échouer la vraie demande d'un conducteur.
+       * Sur cdef31, 430 réservations sur 435 venaient de l'agent, et 21 véhicules sur 30 étaient
+       * pré-pris jusqu'au 05/10 — par personne.
+       *
+       * L'agent produit donc UNIQUEMENT des propositions (« réservations fantômes ») : visibles sur
+       * le calendrier, jamais bloquantes, validées d'un clic. C'est ce que le propriétaire appelait
+       * déjà du « pré-remplissage » — le mot et la chose sont enfin d'accord.
+       *
+       * ⚠️ Le réglage `autonomy` et sa colonne RESTENT en base : le remettre à `auto_high_confidence`
+       * ne suffit plus à réserver, et c'est voulu. Rebrancher l'automatisme, si la calibration
+       * s'améliore un jour, se fait en redonnant une valeur à cette constante — un seul endroit.
+       */
+      const AUTONOMIE_FERME_AUTORISEE = false;
+      const autoOn =
+        AUTONOMIE_FERME_AUTORISEE && enabled && (settings?.autonomy ?? 'suggest') === 'auto_high_confidence';
       const threshold = (settings?.confidenceThreshold ?? 80) / 100;
 
       // AUDIT DORMANCE : l'agent ne choisit pas ses véhicules, il applique les motifs du détecteur —
@@ -221,7 +253,10 @@ export class AgendaAgentRunnerService {
       // Les exclusions du détecteur entrent dans « ignoré(s) » — le seul compteur qui existe déjà
       // pour « vu, pas traité ». Le détail (dormants / éteints) est écrit en clair par `track()` :
       // aucune migration, et aucun chiffre qui baisse sans explication.
-      let skipped = detection.skippedDormantVehicles + detection.skippedStalePatterns;
+      let skipped =
+        detection.skippedDormantVehicles +
+        detection.skippedOutOfServiceVehicles +
+        detection.skippedStalePatterns;
       // Propositions créées CE passage, par rang de motif : c'est ce que le jugement de l'IA
       // pourra écarter ou commenter après coup. Une occurrence déjà proposée une nuit précédente
       // n'y entre pas — elle a eu (ou aura eu) son verdict la nuit où elle est née.
@@ -835,21 +870,70 @@ export class AgendaAgentRunnerService {
     }
   }
 
+  /**
+   * ── LOT 3B — LE MÉNAGE APRÈS UNE VALIDATION QUI DÉPLACE (2026-09-23) ────────────────────────
+   *
+   * Quand une demande publique n'a trouvé de véhicule qu'en piochant dans ceux qu'une proposition
+   * retenait sur ce créneau, la soumission l'a noté dans ses métadonnées (`deplaceePropositions`).
+   * La validation tranche : la demande HUMAINE l'emporte, et la proposition n'a plus lieu d'être.
+   *
+   * Sans ce ménage, elle resterait affichée en pointillé sur un créneau désormais pris — et
+   * reviendrait dans la file des propositions à valider, sur un véhicule qui n'est plus libre.
+   *
+   * Par ÉVÉNEMENT, et non par appel direct : `ReservationsService` n'a aucune raison de connaître
+   * les propositions de l'agent, et l'inverse ferait un cycle (l'agent, lui, appelle déjà les
+   * réservations). Best-effort intégral : un ménage raté ne doit jamais faire échouer une
+   * validation déjà écrite en base.
+   */
+  @OnEvent('reservation.confirmed', { async: true })
+  async menagerApresValidation(payload: { metadata?: Record<string, unknown> | null }): Promise<void> {
+    const brut = payload?.metadata?.['deplaceePropositions'];
+    if (!Array.isArray(brut) || brut.length === 0) return;
+    const ids = brut
+      .map((d) => (d as { proposalId?: unknown })?.proposalId)
+      .filter((id): id is string => typeof id === 'string' && id.length > 0);
+    if (ids.length === 0) return;
+    try {
+      const { count } = await this.prisma.agendaAgentProposal.updateMany({
+        // `status: 'pending'` dans le WHERE : si elle a déjà été validée ou écartée entre-temps,
+        // on ne la retouche pas — on ne réécrit jamais une décision humaine déjà prise.
+        where: { id: { in: ids }, status: 'pending' },
+        data: { status: 'dismissed', reasoning: 'Écartée : une demande de réservation a pris ce créneau.' },
+      });
+      if (count > 0) this.logger.log(`${count} proposition(s) écartée(s) après validation d'une demande.`);
+    } catch (e) {
+      this.errorLogger?.recordBackground?.(
+        e instanceof Error ? e : new Error(String(e)),
+        'AGENDA_AGENT',
+        { motif: 'menage-apres-validation', ids },
+      );
+    }
+  }
+
   private track(
     fleetId: string,
     origin: string,
     counts: { created: number; proposed: number; skipped: number },
-    excluded?: { skippedDormantVehicles: number; skippedStalePatterns: number },
+    excluded?: {
+      skippedDormantVehicles: number;
+      skippedOutOfServiceVehicles: number;
+      skippedStalePatterns: number;
+    },
     aiVerdictQueued = false,
   ): void {
     // Le détail des exclusions n'apparaît que s'il y en a : un libellé propre les jours normaux,
     // et une explication le jour où l'exploitant se demande où sont passées ses propositions.
     const dormant = excluded?.skippedDormantVehicles ?? 0;
+    const horsService = excluded?.skippedOutOfServiceVehicles ?? 0;
     const stale = excluded?.skippedStalePatterns ?? 0;
-    const why =
-      dormant > 0 || stale > 0
-        ? ` (dont ${dormant} véhicule(s) au boîtier muet, ${stale} habitude(s) éteinte(s))`
-        : '';
+    // Trois motifs, trois phrases : « muet », « déclaré hors service » et « habitude éteinte »
+    // appellent trois gestes différents. Les fondre dans un total unique ferait relire la fiche
+    // d'un véhicule accidenté à qui cherchait un boîtier en panne.
+    const motifs: string[] = [];
+    if (dormant > 0) motifs.push(`${dormant} véhicule(s) au boîtier muet`);
+    if (horsService > 0) motifs.push(`${horsService} véhicule(s) hors service`);
+    if (stale > 0) motifs.push(`${stale} habitude(s) éteinte(s)`);
+    const why = motifs.length > 0 ? ` (dont ${motifs.join(', ')})` : '';
     // Dire si un verdict est attendu : sans ça, « l'IA ne dit jamais rien » se lirait comme une
     // panne alors que l'IA est simplement coupée pour la société, ou qu'il n'y avait rien à juger.
     const ia = aiVerdictQueued ? ' · avis de l\'IA confié au poste' : '';
@@ -860,7 +944,13 @@ export class AgendaAgentRunnerService {
       actor: origin === 'manual' ? 'utilisateur' : 'system',
       detail: `Agent agenda (${origin}) : ${counts.created} réservé(s), ${counts.proposed} proposé(s), ${counts.skipped} ignoré(s)${why}${ia}`,
       fleetId,
-      meta: { ...counts, skippedDormantVehicles: dormant, skippedStalePatterns: stale, aiVerdictQueued },
+      meta: {
+        ...counts,
+        skippedDormantVehicles: dormant,
+        skippedOutOfServiceVehicles: horsService,
+        skippedStalePatterns: stale,
+        aiVerdictQueued,
+      },
     });
   }
 }

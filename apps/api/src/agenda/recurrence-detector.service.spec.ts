@@ -27,6 +27,8 @@ function trip(
     vehicleId?: string;
     /** Boîtier du véhicule tel que joint par la requête (absent = véhicule non équipé). */
     tracker?: { id: string; lastSeenAt: Date | null } | null;
+    /** Motif HORS SERVICE de la fiche véhicule (null = en service). */
+    outOfServiceReason?: string | null;
   } = {},
 ) {
   const start = new Date(new Date(baseIso).getTime() + weekOffset * 7 * DAY);
@@ -35,7 +37,11 @@ function trip(
   return {
     vehicleId: over.vehicleId ?? 'v1', startedAt: start, endedAt: end, endLat: lat, endLng: lng,
     trackerId: over.trackerId ?? null, startLat: over.startLat ?? 0, startLng: over.startLng ?? 0,
-    vehicle: { plate: 'AA-1', tracker: over.tracker ?? null },
+    vehicle: {
+      plate: 'AA-1',
+      outOfServiceReason: over.outOfServiceReason ?? null,
+      tracker: over.tracker ?? null,
+    },
   };
 }
 
@@ -163,7 +169,7 @@ describe('RecurrenceDetectorService (P3.2 + #3 itinéraire réel)', () => {
   /**
    * VIVACITÉ. Un motif se déduit d'un passé qui, lui, ne bouge plus : sans garde, un véhicule mort
    * depuis 89 jours (cas réel : FV-941-LZ) « justifie » encore une réservation ferme la semaine
-   * prochaine. Deux gardes indépendantes — le véhicule (boîtier muet > 72 h) et le motif (dernière
+   * prochaine. Deux gardes indépendantes — le véhicule (boîtier muet > 7 jours) et le motif (dernière
    * occurrence > 3 semaines) — parce qu'un véhicule bien vivant peut avoir abandonné une tournée.
    */
   describe('gardes de vivacité (dormance véhicule + récence du motif)', () => {
@@ -183,6 +189,69 @@ describe('RecurrenceDetectorService (P3.2 + #3 itinéraire réel)', () => {
       expect(res.patterns).toEqual([]);
       expect(res.skippedDormantVehicles).toBe(1); // compté UNE fois, pas une fois par trajet
       expect(res.skippedStalePatterns).toBe(0);
+    });
+
+    /**
+     * HORS SERVICE — le cas qui MORD, et que la dormance ne couvrait pas.
+     *
+     * Les quatre véhicules hors service de cdef31 se taisaient aussi depuis des semaines : la
+     * garde de dormance les écartait, donc le trou ne se voyait pas. Ici le boîtier parle
+     * (silence de 2 h) ET la fiche déclare le véhicule hors service : sans la garde, le motif
+     * survivait et l'agent pré-réservait une voiture accidentée.
+     */
+    it('déclaré HORS SERVICE mais boîtier vivant : écarté, et compté à part de la dormance', async () => {
+      const svc = new RecurrenceDetectorService(
+        makePrisma(weekly(1, { tracker: heard(2 * H), outOfServiceReason: 'ACCIDENT' })),
+        makeGeocode(),
+        makeStops(),
+      );
+      const res = await svc.detectWithStats('f1');
+      expect(res.patterns).toEqual([]);
+      expect(res.skippedOutOfServiceVehicles).toBe(1);
+      expect(res.skippedDormantVehicles).toBe(0); // il parle : ce n'est PAS de la dormance
+    });
+
+    /**
+     * ⚠️ LA GARDE NE DOIT PAS MORDRE SUR UNE PERTE DE GPS.
+     *
+     * Demande explicite du propriétaire (23/09) : plusieurs véhicules cdef31 dorment en parking
+     * SOUTERRAIN et n'ont donc pas de position GPS. Ce n'est pas un véhicule hors service, et les
+     * écarter viderait l'agenda de tournées bien réelles. La dormance se juge sur `lastSeenAt`
+     * (trame du boîtier) et le hors-service sur la FICHE — ni l'un ni l'autre ne regarde le fix GPS.
+     */
+    it('sans position GPS mais boîtier vivant et fiche EN SERVICE : le motif reste', async () => {
+      const svc = new RecurrenceDetectorService(
+        makePrisma(weekly(1, { tracker: heard(2 * H), outOfServiceReason: null })),
+        makeGeocode(),
+        makeStops(), // aucun arrêt dérivable = aucune position exploitable
+      );
+      const res = await svc.detectWithStats('f1');
+      expect(res.patterns.length).toBe(1);
+      expect(res.skippedOutOfServiceVehicles).toBe(0);
+      expect(res.skippedDormantVehicles).toBe(0);
+    });
+
+    /**
+     * ⚠️ LE LONG WEEK-END EN SOUTERRAIN — la raison du passage de 72 h à 7 jours (23/09).
+     *
+     * Un véhicule garé le vendredi soir dans un parking souterrain se tait jusqu'au mardi matin :
+     * 86 heures. Sous l'ancien seuil de 72 h, ses habitudes disparaissaient du passage de la nuit
+     * et le standard perdait ses suggestions sur des tournées bien réelles. Plusieurs véhicules
+     * cdef31 sont dans ce cas.
+     */
+    it('86 h de silence (week-end prolongé en souterrain) : le motif SURVIT', async () => {
+      const svc = new RecurrenceDetectorService(makePrisma(weekly(1, { tracker: heard(86 * H) })), makeGeocode(), makeStops());
+      const res = await svc.detectWithStats('f1');
+      expect(res.patterns.length).toBe(1);
+      expect(res.skippedDormantVehicles).toBe(0);
+    });
+
+    /** Et le seuil mord toujours : 8 jours, c'est un véhicule qui ne fait plus partie du parc roulant. */
+    it('8 jours de silence : écarté — le seuil n’a pas disparu, il a été déplacé', async () => {
+      const svc = new RecurrenceDetectorService(makePrisma(weekly(1, { tracker: heard(8 * 24 * H) })), makeGeocode(), makeStops());
+      const res = await svc.detectWithStats('f1');
+      expect(res.patterns).toEqual([]);
+      expect(res.skippedDormantVehicles).toBe(1);
     });
 
     it('silence de 2 h : le motif reste (un véhicule garé se tait aussi)', async () => {
@@ -207,7 +276,9 @@ describe('RecurrenceDetectorService (P3.2 + #3 itinéraire réel)', () => {
     });
 
     it('réintégration : le même historique redevient un motif dès que le boîtier reparle', async () => {
-      const muet = new RecurrenceDetectorService(makePrisma(weekly(1, { tracker: heard(80 * H) })), makeGeocode(), makeStops());
+      // 9 jours : au-delà du seuil de 7 j. (C'était 80 h, valeur qui encodait l'ancien seuil
+      // de 72 h — sous 7 jours, un silence de 80 h est désormais un long week-end, pas une mort.)
+      const muet = new RecurrenceDetectorService(makePrisma(weekly(1, { tracker: heard(9 * 24 * H) })), makeGeocode(), makeStops());
       expect((await muet.detectWithStats('f1')).patterns).toEqual([]);
 
       const revenu = new RecurrenceDetectorService(makePrisma(weekly(1, { tracker: heard(60_000) })), makeGeocode(), makeStops());

@@ -35,6 +35,7 @@ const EVERY_TEMPLATE: Record<EmailTemplateId, true> = {
   installation_slot_rejected: true,
   installation_slot_cancelled: true,
   reservation_requested: true,
+  reservation_request_pending: true,
   reservation_confirmed: true,
   ai_invoice_request: true,
   partner_consent_invitation: true,

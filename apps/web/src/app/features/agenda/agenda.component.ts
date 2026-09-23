@@ -18,9 +18,10 @@ import { apiErrorMessage } from '../../core/error/api-error';
 import {
   LucideAngularModule, CalendarDays, ChevronDown, ChevronLeft, ChevronRight, Check,
   Layers, Truck, Plus, AlertTriangle, CalendarClock, Wrench, X, Trash2, Play, ListChecks,
-  Gauge, CalendarCheck, Inbox, Sparkles, Activity, ShieldCheck, Ban, Info, Pencil, Settings,
+  Gauge, CalendarCheck, Inbox, Sparkles, Activity, ShieldCheck, Ban, Info, Pencil, Settings, QrCode, Shuffle,
 } from 'lucide-angular';
 import type {
+  AgendaAgentProposalDto,
   AgendaSummaryDto,
   AiCapacityResultDto,
   CreateVehicleEventDto,
@@ -43,6 +44,8 @@ import { ReservationSheetComponent } from './sheets/reservation-sheet.component'
 import { OptimizationSheetComponent } from './sheets/optimization-sheet.component';
 import { AgendaAgentSettingsSheetComponent } from './sheets/agenda-agent-settings-sheet.component';
 import { AgendaAgentProposalsSheetComponent } from './sheets/agenda-agent-proposals-sheet.component';
+import { ReservationQrDialogComponent } from './reservation-qr-dialog.component';
+import { ReorganisationSheetComponent } from './sheets/reorganisation-sheet.component';
 import { AiJobPillComponent } from './ai-job-pill.component';
 import { AiJobService, type AiJob } from '../../core/services/ai-job.service';
 import { AuthService } from '../../core/services/auth.service';
@@ -72,7 +75,7 @@ interface GroupOption {
   selector: 'app-agenda',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [FormsModule, LucideAngularModule, DatePipe, GroupBadgeComponent, AgendaCalendarComponent, ReservationSheetComponent, OptimizationSheetComponent, AgendaAgentSettingsSheetComponent, AgendaAgentProposalsSheetComponent, AiJobPillComponent, VehicleLinkDirective, PlanUpsellComponent, MissionsPanelComponent],
+  imports: [FormsModule, LucideAngularModule, DatePipe, GroupBadgeComponent, AgendaCalendarComponent, ReservationSheetComponent, OptimizationSheetComponent, AgendaAgentSettingsSheetComponent, AgendaAgentProposalsSheetComponent, AiJobPillComponent, VehicleLinkDirective, PlanUpsellComponent, MissionsPanelComponent, ReservationQrDialogComponent, ReorganisationSheetComponent],
   template: `
     <div class="flex flex-col gap-5">
       <app-plan-upsell feature="agenda" />
@@ -104,6 +107,28 @@ interface GroupOption {
             @if (canValidate() && pendingCount() > 0) {
               <button type="button" (click)="openValidate()" class="ag-btn-soft">
                 <lucide-icon [img]="InboxIcon" [size]="15"></lucide-icon><span>Demandes</span><span class="ag-badge">{{ pendingCount() }}</span>
+              </button>
+            }
+            <!--
+              P0-1 — LA PORTE D'ENTRÉE DES CONDUCTEURS.
+              Le lien public existait, mais seulement en copier-coller au fond des paramètres.
+              Ici il devient imprimable : c'est le standard qui remet le QR aux conducteurs, et
+              c'est lui qui validera leurs demandes — même permission pour les deux gestes.
+            -->
+            @if (canValidate()) {
+              <button type="button" (click)="qrDialogOpen.set(true)" class="ag-btn-soft"
+                      title="Afficher et imprimer le QR de réservation">
+                <lucide-icon [img]="QrCodeIcon" [size]="15"></lucide-icon><span>QR réservation</span>
+              </button>
+            }
+            <!--
+              Lot 3c — le geste de masse. Placé à côté des demandes : c'est le même poste qui
+              valide une demande et qui reprend un lot, et la même permission.
+            -->
+            @if (canValidate()) {
+              <button type="button" (click)="reorgSheetOpen.set(true)" class="ag-btn-soft"
+                      title="Annuler ou décaler un lot de réservations">
+                <lucide-icon [img]="ShuffleIcon" [size]="15"></lucide-icon><span>Réorganiser</span>
               </button>
             }
             @if (canOptimize() && aiCapacity()) {
@@ -284,6 +309,7 @@ interface GroupOption {
           [currentMonth]="currentMonth()"
           [activityByDay]="activityByDay()"
           [forecastByDay]="forecastByDay()"
+          [proposalsByDay]="proposalsByDay()"
           (dayClick)="onDayClick($event)"
         />
         <div class="flex flex-wrap gap-x-4 gap-y-1.5 px-1 pt-2.5 text-[11px] text-fg-tertiary">
@@ -296,6 +322,8 @@ interface GroupOption {
                --texte-* portent la meme signification et basculent. -->
           <span class="inline-flex items-center gap-1.5"><span class="ag-leg-glyphe ag-leg-glyphe--reel">●</span>Activité réelle</span>
           <span class="inline-flex items-center gap-1.5"><span class="ag-leg-glyphe ag-leg-glyphe--prevu">~</span>Usage prévu</span>
+          <!-- Lot 3a — sans cette entrée, le pointillé violet de la grille n'a pas de nom. -->
+          <span class="inline-flex items-center gap-1.5"><span class="ag-leg-fantome"></span>Proposé par l'agent (non réservé)</span>
         </div>
       }
 
@@ -443,6 +471,37 @@ interface GroupOption {
                       <span class="ag-insight-km">{{ a.distanceKm }} km</span>
                     </div>
                   }
+                }
+              </section>
+            }
+
+            <!-- ── Proposé par l'agent (réservations fantômes) ── -->
+            @if (canOptimize() && dayProposals().length > 0) {
+              <section class="ag-sec">
+                <div class="ag-sec-head">
+                  <span class="ag-sec-titr ag-sec-titr--fantome"><lucide-icon [img]="SparklesIcon" [size]="13"></lucide-icon> Proposé par l'agent</span>
+                  <span class="ag-sec-badge ag-sec-badge--fantome">{{ dayProposals().length }}</span>
+                </div>
+                <p class="ag-sec-sub">Déduit des habitudes du véhicule. <strong>Aucun véhicule n'est bloqué</strong> tant que vous n'avez pas validé.</p>
+                @for (p of dayProposals(); track p.id) {
+                  <article class="ag-fantome">
+                    <div class="ag-fantome-top">
+                      <span class="ag-fantome-plate" [vehicleLink]="p.vehicleId" [attr.title]="'Voir ' + (p.vehiclePlate || '')">{{ p.vehiclePlate || '—' }}</span>
+                      <span class="ag-fantome-time">{{ hm(p.startAt) }} → {{ hm(p.endAt) }}</span>
+                      @if (p.destinationLabel) { <span class="ag-fantome-dest">{{ p.destinationLabel }}</span> }
+                    </div>
+                    <p class="ag-fantome-why">{{ p.reasoning }}</p>
+                    @if (canValidate()) {
+                      <div class="ag-fantome-actions">
+                        <button type="button" (click)="applyProposal(p)" [disabled]="busyId() === p.id" class="ag-act ag-act--done">
+                          <lucide-icon [img]="CheckIcon" [size]="12"></lucide-icon> Réserver
+                        </button>
+                        <button type="button" (click)="dismissProposal(p)" [disabled]="busyId() === p.id" class="ag-act ag-act--del">
+                          <lucide-icon [img]="XIcon" [size]="12"></lucide-icon> Écarter
+                        </button>
+                      </div>
+                    }
+                  </article>
                 }
               </section>
             }
@@ -664,6 +723,13 @@ interface GroupOption {
       [open]="proposalsSheetOpen()"
       (closed)="proposalsSheetOpen.set(false)"
       (changed)="onAgentProposalsChanged()" />
+    @if (qrDialogOpen()) {
+      <app-reservation-qr-dialog (closed)="qrDialogOpen.set(false)" />
+    }
+    <app-reorganisation-sheet
+      [open]="reorgSheetOpen()"
+      (closed)="reorgSheetOpen.set(false)"
+      (applique)="onReservationChanged()" />
   `,
   styles: [`
     /* Cibles tactiles au doigt — critère de recette « iPhone 390 px : cibles ≥ 44 px ».
@@ -759,6 +825,25 @@ interface GroupOption {
     .ag-leg-glyphe { font-weight: 800; }
     .ag-leg-glyphe--reel { color: var(--texte-info); }
     .ag-leg-glyphe--prevu { color: var(--texte-violet); }
+    /* ── Panneau jour : la proposition. Encadré POINTILLÉ, comme sa pastille. ── */
+    .ag-sec-titr--fantome { color: var(--texte-violet); }
+    .ag-sec-badge--fantome { color: var(--texte-violet); background: color-mix(in srgb, var(--violet) 14%, transparent); }
+    .ag-fantome {
+      padding: 10px 12px; border-radius: 10px; margin-top: 6px;
+      background: transparent;
+      border: 1px dashed color-mix(in srgb, var(--violet) 45%, transparent);
+    }
+    .ag-fantome-top { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+    .ag-fantome-plate { font-size: 13px; font-weight: 800; color: var(--fg-primary); }
+    .ag-fantome-time { font-size: 12px; color: var(--fg-secondary); }
+    .ag-fantome-dest { font-size: 12px; font-weight: 600; color: var(--texte-violet); }
+    .ag-fantome-why { font-size: 11.5px; color: var(--fg-tertiary); margin-top: 5px; line-height: 1.45; }
+    .ag-fantome-actions { display: flex; gap: 8px; margin-top: 9px; }
+    /* Le carré CREUX de la légende, jumeau de la pastille fantôme du calendrier. */
+    .ag-leg-fantome {
+      width: 10px; height: 10px; border-radius: 3px;
+      border: 1.5px dashed color-mix(in srgb, var(--violet) 65%, transparent);
+    }
     .ag-stat-label {
       font-size: 10px; font-weight: 600; color: var(--fg-tertiary);
       text-transform: uppercase; letter-spacing: .04em; margin-top: 4px;
@@ -1144,6 +1229,7 @@ export class AgendaComponent implements OnInit {
       void this.loadActivity();
       void this.loadForecast();
       void this.loadAgentProposals();
+      void this.loadPendingRequests();
     });
   });
   /** Passe à true après le premier chargement (évite un double-fetch au démarrage). */
@@ -1165,6 +1251,8 @@ export class AgendaComponent implements OnInit {
   protected readonly Trash2Icon = Trash2;
   protected readonly PencilIcon = Pencil;
   protected readonly SettingsIcon = Settings;
+  protected readonly QrCodeIcon = QrCode;
+  protected readonly ShuffleIcon = Shuffle;
   protected readonly PlayIcon = Play;
   protected readonly ListChecksIcon = ListChecks;
   protected readonly GaugeIcon = Gauge;
@@ -1281,14 +1369,40 @@ export class AgendaComponent implements OnInit {
   protected readonly agentSheetOpen = signal(false);
   /** Propositions de l'agent nocturne (revue). */
   protected readonly proposalsSheetOpen = signal(false);
-  protected readonly agentProposalCount = signal(0);
+  /** QR imprimable du lien public de réservation (P0-1). */
+  protected readonly qrDialogOpen = signal(false);
+  /** Reprise en masse des réservations (lot 3c). */
+  protected readonly reorgSheetOpen = signal(false);
+  /**
+   * Propositions de l'agent EN ATTENTE — la liste, plus seulement son compte (lot 3a, 23/09).
+   *
+   * Elles n'étaient visibles que dans une feuille séparée : le calendrier, lui, ignorait qu'un
+   * véhicule était « prévu ». D'où la tentation de les poser en réservations fermes pour qu'elles
+   * se voient — au prix d'un parc bloqué à 70 %. Elles s'affichent maintenant EN FANTÔME sur la
+   * grille : visibles, jamais bloquantes.
+   */
+  protected readonly agentProposals = signal<AgendaAgentProposalDto[]>([]);
+  protected readonly agentProposalCount = computed(() => this.agentProposals().length);
   protected readonly optSheetOpen = signal(false);
   /** Résultat de capacité IA pré-chargé (analyse async) à réafficher quand on ouvre l'optimisation via la pastille. */
   protected readonly optPreset = signal<AiCapacityResultDto | null>(null);
-  /** Nb de demandes de réservation en attente (dérivé des événements déjà chargés). */
-  protected readonly pendingCount = computed(() =>
-    this.events().filter((e) => e.type === 'RESERVATION' && e.status === 'REQUESTED').length,
-  );
+  /**
+   * Nb de demandes de réservation EN ATTENTE, toutes dates confondues.
+   *
+   * ┌─ POURQUOI CE N'EST PLUS UN `computed` SUR `events()` ─────────────────────┐
+   * │ Il l'était, et il ne comptait donc que ce qui tombait dans la fenêtre du  │
+   * │ MOIS AFFICHÉ. Or le bouton « Demandes » ne s'affiche que si ce compte est │
+   * │ > 0 : une demande déposée pour le mois suivant ne le faisait pas          │
+   * │ apparaître. Combiné au fait que rien ne prévenait la société (corrigé     │
+   * │ côté serveur le même jour), une demande publique pouvait rester invisible │
+   * │ indéfiniment — alors que le lien de cdef31 est actif et ouvert 55 fois.   │
+   * │                                                                           │
+   * │ Le compte vient désormais du MÊME endpoint que la file elle-même, avec sa │
+   * │ fenêtre par défaut (−31 j → +365 j) : ce que le badge annonce est         │
+   * │ exactement ce que la feuille affichera.                                   │
+   * └────────────────────────────────────────────────────────────────────────────┘
+   */
+  protected readonly pendingCount = signal(0);
 
   // ─── Dérivés filtres ─────────────────────────────────────────────────────────
   /** Véhicules restreints à la société sélectionnée (filtre global SUPER_ADMIN ; no-op sinon). */
@@ -1394,6 +1508,53 @@ export class AgendaComponent implements OnInit {
     const counts = new Map<string, number>();
     for (const [key, set] of perDay) counts.set(key, set.size);
     return counts;
+  });
+
+  /**
+   * Propositions de l'agent restreintes au périmètre courant (société, groupe, véhicule).
+   *
+   * Même filtrage que les événements : une proposition est un pré-remplissage pour CE parc-là.
+   * Le filtre de TYPE ne s'y applique pas — une proposition n'a pas de type d'événement, elle
+   * deviendra une réservation si on la valide.
+   */
+  private readonly scopedProposals = computed(() => {
+    const vid = this.selectedVehicleId();
+    const gids = this.groupVehicleIdSet();
+    return this.agentProposals().filter((p) => {
+      if (vid && p.vehicleId !== vid) return false;
+      if (gids && !gids.has(p.vehicleId)) return false;
+      return true;
+    });
+  });
+
+  /**
+   * Nb de propositions par jour (clé ISO locale) — la couche FANTÔME du calendrier.
+   *
+   * Compte les PROPOSITIONS, pas les véhicules distincts : deux tournées prévues le même jour sur
+   * le même véhicule sont deux créneaux à valider, et les fondre en « 1 » cacherait du travail.
+   * (C'est l'inverse des couches activité/prévision, qui répondent à « combien de véhicules ».)
+   */
+  protected readonly proposalsByDay = computed<Map<string, number>>(() => {
+    const counts = new Map<string, number>();
+    for (const p of this.scopedProposals()) {
+      const d = new Date(p.startAt);
+      if (Number.isNaN(d.getTime())) continue;
+      const key = localIso(d);
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    }
+    return counts;
+  });
+
+  /** Propositions du jour ouvert, triées par heure — affichées dans le panneau jour. */
+  protected readonly dayProposals = computed(() => {
+    const b = this.selectedDayBounds();
+    if (!b) return [];
+    return this.scopedProposals()
+      .filter((p) => {
+        const t = new Date(p.startAt).getTime();
+        return !Number.isNaN(t) && t >= b.start && t < b.end;
+      })
+      .sort((a, b2) => new Date(a.startAt).getTime() - new Date(b2.startAt).getTime());
   });
 
   /** Nb de véhicules DISTINCTS dont l'usage est PRÉVU par jour (badge violet « ~N »). */
@@ -1584,6 +1745,7 @@ export class AgendaComponent implements OnInit {
     void this.loadActivity();
     void this.loadForecast();
     void this.loadAgentProposals();
+    void this.loadPendingRequests();
     this.initialised = true; // à partir d'ici, un changement de société recharge tout
   }
 
@@ -2022,15 +2184,72 @@ export class AgendaComponent implements OnInit {
     }
   }
 
+  /**
+   * Compteur de demandes de réservation en attente — appel DÉDIÉ, pas un filtre sur le mois.
+   *
+   * Gardé par `reservations_manage` : c'est la permission qu'exige l'endpoint, et c'est aussi
+   * celle qui commande le bouton. Demander ce compte sans le droit ne produirait qu'un 403 et
+   * une notification rouge sur un écran qui, lui, fonctionne.
+   */
+  protected async loadPendingRequests(): Promise<void> {
+    if (!this.canValidate()) { this.pendingCount.set(0); return; }
+    try {
+      const list = await firstValueFrom(
+        this.api.listReservations({ status: 'REQUESTED', fleetId: this.currentFleetId() }),
+      );
+      this.pendingCount.set(list.length);
+    } catch (err) {
+      swallow('agenda:loadPendingRequests', err);
+      this.pendingCount.set(0);
+    }
+  }
+
   /** Compteur de propositions en attente (pour la société active). Silencieux si non éligible. */
   protected async loadAgentProposals(): Promise<void> {
-    if (!this.canOptimize()) { this.agentProposalCount.set(0); return; }
+    if (!this.canOptimize()) { this.agentProposals.set([]); return; }
     try {
-      const list = await firstValueFrom(this.agentApi.listProposals(this.currentFleetId()));
-      this.agentProposalCount.set(list.length);
+      this.agentProposals.set(await firstValueFrom(this.agentApi.listProposals(this.currentFleetId())));
     } catch (err) {
       swallow('agenda:loadAgentProposals', err);
-      this.agentProposalCount.set(0);
+      this.agentProposals.set([]);
+    }
+  }
+
+  /**
+   * Valider une proposition DEPUIS LE PANNEAU JOUR — elle devient une vraie réservation.
+   *
+   * Le même geste existe dans la feuille « Propositions de l'agent ». L'avoir ici aussi est le
+   * point du lot 3a : la décision se prend là où l'on regarde la journée, pas dans un écran à
+   * part qu'il faut penser à ouvrir.
+   */
+  protected async applyProposal(p: AgendaAgentProposalDto): Promise<void> {
+    this.busyId.set(p.id);
+    try {
+      await firstValueFrom(this.agentApi.applyProposal(p.id));
+      this.toast.success('Réservation créée', `${p.vehiclePlate ?? ''} · ${this.hm(p.startAt)}`);
+      // La proposition devient un ÉVÉNEMENT : les deux couches doivent bouger ensemble, sinon la
+      // pastille fantôme et la pilule pleine coexistent le temps d'un rechargement.
+      void this.loadAgentProposals();
+      this.onReservationChanged();
+    } catch (err) {
+      swallow('agenda:applyProposal', err);
+      this.toast.error('Échec', apiErrorMessage(err, 'La proposition n’a pas pu être réservée.'));
+    } finally {
+      this.busyId.set(null);
+    }
+  }
+
+  /** Écarter une proposition : elle disparaît de la grille et ne sera pas re-proposée. */
+  protected async dismissProposal(p: AgendaAgentProposalDto): Promise<void> {
+    this.busyId.set(p.id);
+    try {
+      await firstValueFrom(this.agentApi.dismissProposal(p.id));
+      this.agentProposals.update((l) => l.filter((x) => x.id !== p.id));
+    } catch (err) {
+      swallow('agenda:dismissProposal', err);
+      this.toast.error('Échec', apiErrorMessage(err, 'La proposition n’a pas pu être écartée.'));
+    } finally {
+      this.busyId.set(null);
     }
   }
 
@@ -2046,5 +2265,7 @@ export class AgendaComponent implements OnInit {
     void this.loadEvents();
     void this.loadSummary();
     void this.loadActivity();
+    // Le badge suit la file : valider ou refuser une demande doit le faire tomber tout de suite.
+    void this.loadPendingRequests();
   }
 }
