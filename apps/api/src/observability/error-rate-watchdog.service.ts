@@ -4,7 +4,10 @@ import { Cron } from '@nestjs/schedule';
 import { ConfigService } from '@nestjs/config';
 import { DemoModeService } from '../demo/demo-mode.service';
 import { EmailService } from '../email/email.service';
+import { UserRole } from '@prisma/client';
+import { NotificationDispatchService } from '../notifications/notification-dispatch.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { ReglagesAlertesExploitationService } from './reglages-alertes-exploitation.service';
 
 /** Source de CE service — exclue du comptage (cf. boucle de rétroaction plus bas). */
 export const WATCHDOG_SOURCE = 'error-rate-watchdog';
@@ -56,7 +59,55 @@ export class ErrorRateWatchdogService {
     // Environnement de démonstration : ses erreurs ne concernent pas l'exploitation.
     // Optionnel pour les specs, qui instancient ce service sans conteneur DI.
     @Optional() private readonly demoMode?: DemoModeService,
+    /**
+     * Canaux réglables (2026-09-23). `@Optional()` : les specs montent ce service à la main, et
+     * son absence doit laisser les DEUX canaux ouverts — jamais rendre l'exploitation muette.
+     */
+    @Optional() private readonly canaux?: ReglagesAlertesExploitationService,
+    /** Socle de notification : c'est lui qui pousse aux super-admins. `@Optional()`, même raison. */
+    @Optional() private readonly dispatch?: NotificationDispatchService,
   ) {}
+
+  /**
+   * ── LA VIGIE POUSSE, ELLE NE FAIT PLUS QUE POSTER (2026-09-23) ─────────────────────────────
+   *
+   * Elle n'avait QU'UN canal : l'e-mail. 81 courriels en 14 jours vers la boîte d'exploitation,
+   * dont 65 « erreur critique ». Le propriétaire voulait couper l'e-mail — mais le couper
+   * l'aurait laissé sans rien, puisque rien d'autre ne partait. On ouvre donc le second canal
+   * AVANT de rendre le premier débrayable : c'est l'ordre qui évite le silence.
+   *
+   * Le socle générique s'applique par-dessus : `PUSH_ROLLOUT`, les préférences de chaque
+   * super-admin, l'anti-spam et le journal des notifications. Best-effort — un push qui échoue
+   * ne doit ni casser la vigie ni empêcher l'e-mail.
+   */
+  private async pousser(sujet: string, titre: string, corps: string): Promise<void> {
+    if (!this.dispatch) return;
+    if (this.canaux && !(await this.canaux.pushAutorise())) return;
+    try {
+      const admins = await this.prisma.user.findMany({
+        where: { role: UserRole.SUPER_ADMIN, isActive: true },
+        select: { id: true },
+      });
+      if (admins.length === 0) return;
+      await this.dispatch.notifyUsers({
+        userIds: admins.map((a) => a.id),
+        category: 'SYSTEM',
+        kind: 'centre-alerte',
+        subjectKey: sujet,
+        title: titre,
+        body: corps,
+        url: '/admin/alerts',
+      });
+    } catch (e) {
+      // Volontairement PAS remonté au centre d'alerte : ce serait la boucle de rétroaction.
+      this.logger.warn(`Notification de la vigie non poussée (${sujet}) : ${(e as Error)?.message ?? e}`);
+    }
+  }
+
+  /** L'e-mail est-il autorisé ? Absence de service = oui (fail-open, cf. constructeur). */
+  private async emailAutorise(): Promise<boolean> {
+    return this.canaux ? this.canaux.emailAutorise() : true;
+  }
 
   private get threshold(): number {
     const raw = Number(this.config.get('ERROR_RATE_ALERT_THRESHOLD'));
@@ -145,15 +196,33 @@ export class ErrorRateWatchdogService {
     }
 
     const top = sourcesLesPlusBruyantes(rows);
-    const html = this.email.buildErrorRateAlertEmail({ total, critical, threshold: this.threshold, top, since });
+    const detail = top.map((t) => `${t.source} (${t.count})`).join(', ');
     // Refonte e-mails : pas de crochets de marque en tete de sujet (cf. shell()).
     const subject = `${total} erreurs en 1 h${critical > 0 ? ` (dont ${critical} critiques)` : ''}`;
 
+    // Le PUSH d'abord, et indépendamment de l'e-mail : c'est le canal que le propriétaire a
+    // demandé de privilégier, et il ne doit pas dépendre du sort d'un envoi SMTP.
+    await this.pousser(
+      CLES_REFROIDISSEMENT.VIGIE_SATURATION,
+      subject,
+      `Seuil ${this.threshold} dépassé. Sources : ${detail}.`,
+    );
+
+    if (!(await this.emailAutorise())) {
+      // Canal e-mail coupé par réglage : on pose quand même le refroidissement, sinon la vigie
+      // repousserait à chaque passage de 10 min au lieu d'une fois par heure.
+      await this.refroidissement.marquerEmission(CLES_REFROIDISSEMENT.VIGIE_SATURATION, new Date(now));
+      if (critical > 0) await this.refroidissement.marquerEmission(CLES_REFROIDISSEMENT.VIGIE_CRITIQUE, new Date(now));
+      this.logger.warn(`Centre d'alerte : ${total} erreurs en 1 h — poussé aux super-admins (e-mail coupé par réglage).`);
+      return;
+    }
+
+    const html = this.email.buildErrorRateAlertEmail({ total, critical, threshold: this.threshold, top, since });
     const res = await this.email.send({
       to: this.recipient,
       subject,
       html,
-      text: `${total} erreurs enregistrees sur la derniere heure (seuil ${this.threshold}). Sources : ${top.map((t) => `${t.source} (${t.count})`).join(', ')}.`,
+      text: `${total} erreurs enregistrees sur la derniere heure (seuil ${this.threshold}). Sources : ${detail}.`,
       template: 'error_rate_alert',
       context: { total, critical, threshold: this.threshold },
     });
@@ -185,9 +254,23 @@ export class ErrorRateWatchdogService {
 
     // Le détail ne montre que les sources CRITIQUES : c'est elles qu'on vient lire.
     const top = sourcesLesPlusBruyantes(rows.filter((r) => r.level === 'CRITICAL'));
-    const html = this.email.buildCriticalErrorAlertEmail({ critical, total, top, since });
     const subject = `${critical} erreur${s} critique${s} — ${top[0]?.source ?? "centre d'alerte"}`;
 
+    await this.pousser(
+      CLES_REFROIDISSEMENT.VIGIE_CRITIQUE,
+      subject,
+      `Sources : ${top.map((t) => `${t.source} (${t.count})`).join(', ')}.`,
+    );
+
+    if (!(await this.emailAutorise())) {
+      await this.refroidissement.marquerEmission(CLES_REFROIDISSEMENT.VIGIE_CRITIQUE, new Date(now));
+      this.logger.warn(
+        `Centre d'alerte : ${critical} erreur${s} critique${s} en 1 h — poussé aux super-admins (e-mail coupé par réglage).`,
+      );
+      return;
+    }
+
+    const html = this.email.buildCriticalErrorAlertEmail({ critical, total, top, since });
     const res = await this.email.send({
       to: this.recipient,
       subject,

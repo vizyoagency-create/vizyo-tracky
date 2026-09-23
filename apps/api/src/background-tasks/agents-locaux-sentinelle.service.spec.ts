@@ -1,3 +1,4 @@
+import { NIVEAU_DEGRADATION } from '../observability/niveaux-erreur';
 import { getNowInTimezone } from '../vehicle-schedules/schedule-evaluator';
 import {
   AgentsLocauxSentinelleService,
@@ -76,6 +77,8 @@ function construire(opts: {
   lectureCassee?: string[];
   /** T34 — lignes de pause ouvertes en base (la première est la plus récente). */
   pauses?: Array<Record<string, unknown>>;
+  /** D7 — file des agents du poste, telle que `groupBy` la rend (type, plus ancien, compte). */
+  file?: Array<{ type: string; _min: { creeA: Date | null }; _count: { _all: number } }>;
   /** T34 — historique des passages des agents CLI (findMany), pour la règle des cinq heures. */
   historique?: Array<Passage & { agent: string }>;
   /** T34 — `false` = aucun EmailService injecté ; défaut : un double qui accepte tout. */
@@ -97,11 +100,28 @@ function construire(opts: {
     },
     pauseAgentsLocaux: {
       findFirst: jest.fn(async () => opts.pauses?.[0] ?? null),
-      findMany: jest.fn(async (args: { where: { notifieeA?: null } }) =>
-        (opts.pauses ?? []).filter((p) => !('notifieeA' in args.where) || p['notifieeA'] == null)),
+      /**
+       * Mock FIDÈLE au `where` réel de `aNotifier()` : jamais notifiée, OU sans échéance et
+       * notifiée avant la borne de rappel. Un mock qui rendrait tout ferait passer des tests
+       * sur une requête qui, en base, ne rendrait rien — et l'inverse.
+       */
+      findMany: jest.fn(async (args: {
+        where: { OR?: Array<{ notifieeA?: unknown; jusqua?: unknown }> };
+      }) => {
+        const ou = args.where?.OR;
+        if (!ou) return opts.pauses ?? [];
+        const borne = (ou[1]?.notifieeA as { lte?: Date } | undefined)?.lte;
+        return (opts.pauses ?? []).filter((p) => {
+          const notifiee = p['notifieeA'] as Date | null | undefined;
+          if (notifiee == null) return true;
+          const sansEcheance = p['jusqua'] == null;
+          return sansEcheance && !!borne && notifiee.getTime() <= borne.getTime();
+        });
+      }),
       create: jest.fn(async ({ data }: { data: Record<string, unknown> }) => ({ id: 'p-new', leveeA: null, notifieeA: null, ...data })),
       updateMany: jest.fn(async () => ({ count: 1 })),
     },
+    travailIaLocal: { groupBy: jest.fn(async () => opts.file ?? []) },
     errorLog: {
       updateMany: jest.fn().mockResolvedValue({ count: opts.archivees ?? 0 }),
       // TRK-069 — une cause commune déjà ouverte au centre d'alerte ; `null` = aucune.
@@ -783,6 +803,94 @@ describe('Sentinelle des agents du poste — une cause levée ne revient pas sur
   });
 });
 
+/**
+ * ── D7 (2026-09-23) — LA FILE QUI GROSSIT ───────────────────────────────────────────────────
+ *
+ * Ce que ces tests verrouillent : la sentinelle surveillait les PASSAGES et les PAUSES, jamais
+ * le travail EN ATTENTE. Le 23/09, la production portait six `jugement-agenda` et un
+ * `rapport-activite` en `a-faire` depuis le 17/09 — six jours, zéro ligne. La cause avait crié
+ * (TRK-069) ; la conséquence, non.
+ */
+describe('Sentinelle des agents du poste — la file des travaux (D7)', () => {
+  const now = Date.UTC(2026, 8, 23, 6, 50);
+  const H = 3_600_000;
+  const file = (type: string, ageH: number, n = 1) => ({
+    type,
+    _min: { creeA: new Date(now - ageH * H) },
+    _count: { _all: n },
+  });
+
+  it('file fraîche (4 h) : rien — une file qui s’écoule n’est pas une panne', async () => {
+    const { svc, errorLogger } = construire({ now, file: [file('jugement-agenda', 4)] });
+    await svc.verifier(now);
+    expect(
+      errorLogger.record.mock.calls.filter((c) => (c[2] as { motif?: string })?.motif === 'file'),
+    ).toHaveLength(0);
+  });
+
+  it('plus vieux travail à 13 h : une ligne de DÉGRADATION, sans réveiller personne', async () => {
+    const { svc, errorLogger, dispatch } = construire({ now, file: [file('jugement-agenda', 13, 2)] });
+    await svc.verifier(now);
+    const lignes = errorLogger.record.mock.calls.filter(
+      (c) => (c[2] as { motif?: string })?.motif === 'file',
+    );
+    expect(lignes).toHaveLength(1);
+    expect(lignes[0][3]).toBe(NIVEAU_DEGRADATION);
+    expect(String((lignes[0][0] as Error).message)).toMatch(/2 travail\/travaux « jugement-agenda »/);
+    expect(dispatch!.notifyUsers).not.toHaveBeenCalledWith(
+      expect.objectContaining({ subjectKey: 'file:jugement-agenda' }),
+    );
+  });
+
+  /** 36 h = plus d'un cycle complet perdu : c'est le palier où l'on réveille. */
+  it('plus vieux travail à 6 jours : CRITICAL + notification aux super-admins', async () => {
+    const { svc, errorLogger, dispatch } = construire({ now, file: [file('jugement-agenda', 6 * 24, 6)] });
+    await svc.verifier(now);
+    const ligne = errorLogger.record.mock.calls.find(
+      (c) => (c[2] as { motif?: string })?.motif === 'file',
+    );
+    expect(ligne).toBeDefined();
+    expect(ligne![3]).toBe('CRITICAL');
+    expect(String((ligne![0] as Error).message)).toMatch(/depuis 6 jours/);
+    expect(dispatch!.notifyUsers).toHaveBeenCalledWith(
+      expect.objectContaining({ subjectKey: 'file:jugement-agenda' }),
+    );
+  });
+
+  /**
+   * ⚠️ MUETTE PENDANT UNE PAUSE. Sous pause la file grossit par construction, et la pause a
+   * déjà son canal avec son rappel de 12 h. Crier les deux apprend à ignorer les deux.
+   */
+  it('sous pause : aucune ligne de file, même à 6 jours', async () => {
+    const { svc, errorLogger } = construire({
+      now,
+      // Pause SANS échéance, décrite ici : le fixture `pause()` appartient au describe suivant.
+      pauses: [{
+        id: 'p-9', poseeA: new Date(now - 6 * 24 * H), cause: 'echecs-consecutifs',
+        motif: 'session Claude Code non authentifiee', poseePar: 'sentinelle',
+        jusqua: null, leveeA: null, leveePar: null, notifieeA: new Date(now - H),
+      }],
+      file: [file('jugement-agenda', 6 * 24, 6)],
+    });
+    await svc.verifier(now);
+    expect(
+      errorLogger.record.mock.calls.filter((c) => (c[2] as { motif?: string })?.motif === 'file'),
+    ).toHaveLength(0);
+  });
+
+  it('une ligne PAR TYPE : un rapport bouché ne fait pas taire l’agenda', async () => {
+    const { svc, errorLogger } = construire({
+      now,
+      file: [file('jugement-agenda', 40), file('rapport-activite', 40)],
+    });
+    await svc.verifier(now);
+    const types = errorLogger.record.mock.calls
+      .filter((c) => (c[2] as { motif?: string })?.motif === 'file')
+      .map((c) => (c[2] as { type?: string }).type);
+    expect(types.sort()).toEqual(['jugement-agenda', 'rapport-activite']);
+  });
+});
+
 describe('Sentinelle des agents du poste — la pause (T34)', () => {
   const now = paris(2026, 9, 13, 20, 50);
   const PLAFOND = "You've hit your weekly limit · resets Sep 20, 12pm (Europe/Paris)";
@@ -805,6 +913,33 @@ describe('Sentinelle des agents du poste — la pause (T34)', () => {
 
   it('une pause déjà notifiée ne renvoie rien', async () => {
     const { svc, email } = construire({ now, pauses: [pause({ notifieeA: new Date(now - HEURE) })] });
+    await svc.verifier(now);
+    expect(email!.send).not.toHaveBeenCalled();
+  });
+
+  /**
+   * D7 / 23-09 — UNE PAUSE QUI DURE DOIT REDIRE QU'ELLE DURE.
+   *
+   * La pause du 17/09 (session non authentifiée, sans échéance) a prévenu une fois à 08:50 puis
+   * s'est tue six jours, pendant que 1 357 récits et 6 jugements s'empilaient. Passé 12 h, elle
+   * doit reparler — et le message doit porter son ancienneté, sinon il se lit comme un nouvel
+   * incident.
+   */
+  it('une pause SANS échéance notifiée il y a 13 h : rappel, avec l’ancienneté dans le message', async () => {
+    const { svc, email } = construire({
+      now,
+      pauses: [pause({ jusqua: null, poseeA: new Date(now - 50 * HEURE), notifieeA: new Date(now - 13 * HEURE) })],
+    });
+    await svc.verifier(now);
+    expect(email!.send).toHaveBeenCalledTimes(1);
+    expect(String(email!.send.mock.calls[0][0].text)).toMatch(/RAPPEL — toujours en pause depuis 2 jours/);
+  });
+
+  it('⚠️ une pause AVEC échéance n’est jamais rappelée (elle se lève toute seule)', async () => {
+    const { svc, email } = construire({
+      now,
+      pauses: [pause({ notifieeA: new Date(now - 13 * HEURE) })], // `pause()` porte un `jusqua`
+    });
     await svc.verifier(now);
     expect(email!.send).not.toHaveBeenCalled();
   });

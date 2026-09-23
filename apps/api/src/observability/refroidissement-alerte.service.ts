@@ -175,6 +175,20 @@ export const CLES_REFROIDISSEMENT = {
   /** Résumé des profils de surveillance dormants (journal d'exploitation). */
   SURVEILLANCE_DORMANTS: 'surveillance-dormants',
   /**
+   * D7 (2026-09-23) — LA FILE DES AGENTS DU POSTE QUI GROSSIT.
+   *
+   * La sentinelle savait dire « ce passage a été manqué » et « les agents sont en pause ». Elle
+   * ne regardait JAMAIS le travail en attente. Mesuré en production le 23/09 : six travaux
+   * `jugement-agenda` et un `rapport-activite` empilés depuis le 17/09 — six jours — sans
+   * qu'aucune ligne ne dise que la file montait. La cause était connue (TRK-069), la
+   * CONSÉQUENCE ne l'était pas : 221 propositions d'agenda sans avis, et le rapport
+   * hebdomadaire jamais remis (TRK-094, même racine).
+   *
+   * Clé suffixée par le TYPE de travail : une file bouchée sur les rapports n'a pas à faire
+   * taire une file bouchée sur l'agenda.
+   */
+  FILE_TRAVAUX_IA: 'file-travaux-ia',
+  /**
    * Lot V6 — SENTINELLES DE COHÉRENCE. Quatre de ces clés sont des PRÉFIXES : la société
    * concernée est suffixée (`…:<fleetId>`), pour qu'une flotte bruyante n'impose pas le
    * silence aux autres. Les deux dernières sont globales — elles décrivent des comptes et

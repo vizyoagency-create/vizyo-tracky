@@ -26,6 +26,7 @@ import {
 import { relativeTime } from '../../shared/utils/relative-time';
 import { roleLabel } from '../../shared/utils/role-labels';
 import { NotificationCenterApiService, type NotificationWindow } from '../../core/services/notification-center-api.service';
+import { CanauxExploitationPanelComponent } from './canaux-exploitation-panel.component';
 
 /* ══════════════════════════════════════════════════════════════════════════════
    HELPERS PURS — exportés pour être testés sans DOM (même motif que
@@ -543,7 +544,7 @@ export function windowRange(days: number, nowMs: number = Date.now()): Notificat
   selector: 'app-admin-notifications',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [RouterLink, DatePipe, DecimalPipe, LucideAngularModule],
+  imports: [RouterLink, DatePipe, DecimalPipe, LucideAngularModule, CanauxExploitationPanelComponent],
   template: `
     <div class="nc">
       <a routerLink="/admin" class="nc-back"><lucide-icon [img]="BackIcon" [size]="15"></lucide-icon> Administration</a>
@@ -575,6 +576,9 @@ export function windowRange(days: number, nowMs: number = Date.now()): Notificat
       @if (error()) {
         <div class="nc-alert"><lucide-icon [img]="AlertIcon" [size]="15"></lucide-icon> {{ error() }}</div>
       }
+
+      <!-- Les CANAUX, avant le constat : c'est ici qu'on vient quand on reçoit trop (ou rien). -->
+      <app-canaux-exploitation-panel />
 
       <!-- ════════════ 1) BANDEAU DE SANTÉ ════════════ -->
       @if (health(); as h) {

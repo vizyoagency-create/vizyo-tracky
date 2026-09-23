@@ -31,6 +31,27 @@ export type CausePause = (typeof CAUSES_PAUSE)[number];
 /** Cinq heures d'échecs d'affilée des agents qui passent par la CLI : le chiffre du propriétaire. */
 export const SEUIL_ECHECS_CONSECUTIFS_MS = 5 * 3_600_000;
 
+/**
+ * RAPPEL d'une pause qui DURE — 12 h.
+ *
+ * ┌─ CE QUE CE DÉLAI RÉPARE ──────────────────────────────────────────────────┐
+ * │ `aNotifier()` ne rendait que les pauses jamais notifiées : une pause       │
+ * │ prévenait UNE fois, le jour où elle était posée, puis se taisait pour      │
+ * │ toujours. Mesuré le 23/09 sur la production : pause posée le 17/09 à      │
+ * │ 08:50 (« 401 OAuth access token has expired »), notifiée à 08:50 — et      │
+ * │ SIX JOURS de silence ensuite. Pendant ce temps : 1 357 récits de trajet    │
+ * │ non écrits, 6 jugements d'agenda en attente, le rapport hebdomadaire       │
+ * │ bloqué. Un seul courriel, le premier matin, pour une panne qui a duré      │
+ * │ une semaine.                                                               │
+ * └────────────────────────────────────────────────────────────────────────────┘
+ *
+ * 12 h et non 24 : deux rappels par jour (matin et soir) suffisent à ne pas laisser passer une
+ * journée entière, sans transformer la sentinelle en réveil horaire. Une pause AVEC échéance
+ * (plafond de la CLI, qui se lève seule) n'est jamais rappelée : elle a une fin connue, et la
+ * rappeler apprendrait à ignorer le canal.
+ */
+export const RAPPEL_PAUSE_MS = 12 * 3_600_000;
+
 export interface PauseAgents {
   id: string;
   poseeA: Date;
@@ -111,9 +132,24 @@ export class PauseAgentsLocauxService {
     return count;
   }
 
-  /** Les pauses ouvertes dont le courriel n'est pas parti — la sentinelle les prend une par une. */
-  async aNotifier(): Promise<PauseAgents[]> {
-    return this.prisma.pauseAgentsLocaux.findMany({ where: { leveeA: null, notifieeA: null }, orderBy: { poseeA: 'asc' } });
+  /**
+   * Les pauses ouvertes à signaler — jamais notifiées, OU notifiées il y a plus de
+   * {@link RAPPEL_PAUSE_MS} et SANS échéance (donc qui ne se lèveront pas toutes seules).
+   *
+   * ⚠️ Le rappel ne vise QUE les pauses sans `jusqua`. Une pause de plafond CLI porte l'heure de
+   * remise à zéro annoncée par la CLI : elle se lève d'elle-même, la rappeler serait du bruit.
+   * Une pause `echecs-consecutifs` n'a pas d'échéance — elle attend un geste humain, et c'est
+   * exactement celle qui s'est tue six jours (cf. RAPPEL_PAUSE_MS).
+   */
+  async aNotifier(nowMs = Date.now()): Promise<PauseAgents[]> {
+    const rappelAvant = new Date(nowMs - RAPPEL_PAUSE_MS);
+    return this.prisma.pauseAgentsLocaux.findMany({
+      where: {
+        leveeA: null,
+        OR: [{ notifieeA: null }, { jusqua: null, notifieeA: { lte: rappelAvant } }],
+      },
+      orderBy: { poseeA: 'asc' },
+    });
   }
 
   async marquerNotifiee(id: string, nowMs = Date.now()): Promise<void> {

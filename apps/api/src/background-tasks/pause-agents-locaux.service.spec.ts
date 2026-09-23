@@ -1,6 +1,7 @@
 import {
   CAUSES_PAUSE,
   PauseAgentsLocauxService,
+  RAPPEL_PAUSE_MS,
   SEUIL_ECHECS_CONSECUTIFS_MS,
 } from './pause-agents-locaux.service';
 
@@ -122,9 +123,31 @@ describe('Pause des agents du poste — pose et levée', () => {
 describe('Pause des agents du poste — notification', () => {
   it('aNotifier() rend les pauses ouvertes jamais notifiées, et marquerNotifiee() date l’envoi', async () => {
     const { svc, prisma } = construire([ligne()]);
-    await expect(svc.aNotifier()).resolves.toHaveLength(1);
-    expect(prisma.pauseAgentsLocaux.findMany).toHaveBeenCalledWith({ where: { leveeA: null, notifieeA: null }, orderBy: { poseeA: 'asc' } });
+    await expect(svc.aNotifier(NOW)).resolves.toHaveLength(1);
+    expect(prisma.pauseAgentsLocaux.findMany).toHaveBeenCalledWith({
+      where: {
+        leveeA: null,
+        OR: [{ notifieeA: null }, { jusqua: null, notifieeA: { lte: new Date(NOW - RAPPEL_PAUSE_MS) } }],
+      },
+      orderBy: { poseeA: 'asc' },
+    });
     await svc.marquerNotifiee('p-1', NOW);
     expect(prisma.pauseAgentsLocaux.updateMany).toHaveBeenCalledWith({ where: { id: 'p-1' }, data: { notifieeA: new Date(NOW) } });
+  });
+
+  /**
+   * LE DÉFAUT DU 23/09 : une pause prévenait UNE fois puis se taisait. Celle du 17/09 a été
+   * notifiée à 08:50 et n'a plus rien dit pendant six jours, pendant que la file grossissait.
+   * La requête doit donc rappeler les pauses SANS échéance passé le délai — et elles seules :
+   * une pause de plafond CLI porte son heure de reprise, elle se lève toute seule.
+   */
+  it('le rappel ne vise QUE les pauses sans échéance, passé le délai', async () => {
+    const { svc, prisma } = construire([]);
+    await svc.aNotifier(NOW);
+    const args = (prisma.pauseAgentsLocaux.findMany as jest.Mock).mock.calls[0]?.[0] as
+      | { where: { OR: Record<string, unknown>[] } }
+      | undefined;
+    expect(args?.where.OR[1]).toEqual({ jusqua: null, notifieeA: { lte: new Date(NOW - RAPPEL_PAUSE_MS) } });
+    expect(RAPPEL_PAUSE_MS).toBe(12 * HEURE);
   });
 });

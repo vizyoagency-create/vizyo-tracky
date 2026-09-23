@@ -260,6 +260,10 @@ export const EXCLUS: Readonly<Record<string, string>> = {
     'WireLog', 'ErrorLog', 'DisparitionLignes', 'RefroidissementAlerte', 'SystemActivityLog', 'ApiTrafficLog',
     'SmsLog', 'PushLog', 'EmailLog', 'SystemMetric', 'RetentionSnapshot', 'BackupRun',
     'PositionSamplingDecision', 'PassageAgentLocal', 'PauseAgentsLocaux', 'TravailIaLocal', 'FleetReportDispatch',
+    // Canaux des alertes d'exploitation (2026-09-23) : réglage de PLATEFORME, pas donnée client —
+    // et il gouverne à qui partent les courriels. L'importer poserait les canaux de la production
+    // sur la démo, ou l'inverse.
+    'ReglagesAlertesExploitation',
   ),
   ...exclure(
     "IA : réglages, budgets, traces et conversations — les échanges d'assistance portent sur des données réelles, les analyses de lieux nomment des sites, les rapports d'activité nomment des comptes",

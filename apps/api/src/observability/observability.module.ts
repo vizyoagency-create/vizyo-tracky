@@ -3,6 +3,9 @@ import { RecuperationService } from './recuperation.service';
 import { Global, Module } from '@nestjs/common';
 import { APP_FILTER } from '@nestjs/core';
 import { AuthModule } from '../auth/auth.module';
+import { NotificationsModule } from '../notifications/notifications.module';
+import { ReglagesAlertesExploitationController } from './reglages-alertes-exploitation.controller';
+import { ReglagesAlertesExploitationService } from './reglages-alertes-exploitation.service';
 import { AdminLogsController } from './admin-logs.controller';
 import { AllExceptionsFilter } from './all-exceptions.filter';
 import { CentreAlerteWikiController } from './centre-alerte-wiki.controller';
@@ -22,10 +25,18 @@ import { VpsAuditWikiService } from './vps-audit-wiki.service';
 
 @Global()
 @Module({
-  imports: [AuthModule],
-  controllers: [AdminLogsController, CentreAlerteWikiController, VpsAuditWikiController, RecuperationController],
+  imports: [AuthModule, NotificationsModule],
+  controllers: [
+    AdminLogsController,
+    CentreAlerteWikiController,
+    VpsAuditWikiController,
+    RecuperationController,
+    ReglagesAlertesExploitationController,
+  ],
   providers: [
     RefroidissementAlerteService,
+    // Canaux des alertes d'exploitation (2026-09-23) : e-mail débrayable, push aux super-admins.
+    ReglagesAlertesExploitationService,
     CobanWireLogger,
     // Tableau de ce que chaque couche d'enrichissement a REELLEMENT recupere : sans lui,
     // une couche peut echouer en silence (98,8 % du cache des limites etait faux, invisible).
@@ -64,6 +75,8 @@ import { VpsAuditWikiService } from './vps-audit-wiki.service';
     RefroidissementAlerteService,
     CobanWireLogger,
     ErrorLogger,
+    // Exporté : la sentinelle des agents du poste (BackgroundTasksModule) lit le même réglage.
+    ReglagesAlertesExploitationService,
   ],
 })
 export class ObservabilityModule {}

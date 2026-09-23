@@ -1,3 +1,5 @@
+import { provideHttpClient } from '@angular/common/http';
+import { provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed, type ComponentFixture } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { provideRouter } from '@angular/router';
@@ -572,7 +574,15 @@ describe('centre de notifications — le menu reflète le filtre actif', () => {
   async function render() {
     await TestBed.configureTestingModule({
       imports: [AdminNotificationsComponent],
-      providers: [provideRouter([]), { provide: NotificationCenterApiService, useValue: apiStub }],
+      providers: [
+        provideRouter([]),
+        { provide: NotificationCenterApiService, useValue: apiStub },
+        // Le panneau des CANAUX d'alerte (lot notifications, 23/09) est monté dans cet écran et
+        // lit `/api/admin/alertes-exploitation` : sans client HTTP de test, l'écran entier refuse
+        // de se construire. Le banc de test suit ce que l'écran contient réellement.
+        provideHttpClient(),
+        provideHttpClientTesting(),
+      ],
     }).compileComponents();
 
     const fixture = TestBed.createComponent(AdminNotificationsComponent);

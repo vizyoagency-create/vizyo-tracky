@@ -9,6 +9,7 @@ import { ErrorLogger } from '../observability/error-logger.service';
 import { NIVEAU_DEGRADATION } from '../observability/niveaux-erreur';
 import { CLES_REFROIDISSEMENT, RefroidissementAlerteService } from '../observability/refroidissement-alerte.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { ReglagesAlertesExploitationService } from '../observability/reglages-alertes-exploitation.service';
 import { DemoModeService } from '../demo/demo-mode.service';
 import { AgentDuPoste, BackgroundTasksService, PassageLocal } from './background-tasks.service';
 import { PauseAgents, PauseAgentsLocauxService, SEUIL_ECHECS_CONSECUTIFS_MS } from './pause-agents-locaux.service';
@@ -49,6 +50,20 @@ export const GRACE_MS = 2 * 3_600_000;
  * à la même heure ».
  */
 export const REFROIDISSEMENT_MS = 23 * 3_600_000;
+
+/**
+ * D7 — ÂGE du plus vieux travail en attente dans la file des agents du poste.
+ *
+ * 12 h : la file ne s'écoule plus. Le courrier passe deux fois par jour (06:30 et 14:30) et le
+ * rattrapage toutes les deux heures : à 12 h, plusieurs occasions ont été manquées, ce n'est
+ * plus un retard de créneau.
+ *
+ * 36 h : plus d'un cycle complet perdu. C'est le palier où l'on réveille — en dessous, la ligne
+ * s'écrit et attend le matin. Sur l'épisode du 17 au 23/09, ce seuil aurait parlé le 18/09 au
+ * matin, cinq jours avant que la file ne soit découverte à la main.
+ */
+export const AGE_FILE_WARN_MS = 12 * 3_600_000;
+export const AGE_FILE_CRITIQUE_MS = 36 * 3_600_000;
 
 /**
  * Tolérance sur l'heure de DÉMARRAGE d'un passage face au déclenchement planifié : l'horloge du
@@ -258,6 +273,8 @@ export class AgentsLocauxSentinelleService {
     @Optional() private readonly pauses?: PauseAgentsLocauxService,
     @Optional() private readonly email?: EmailService,
     @Optional() private readonly config?: ConfigService,
+    /** Canaux réglables (2026-09-23). Absent = e-mail autorisé : jamais de silence par omission. */
+    @Optional() private readonly canaux?: ReglagesAlertesExploitationService,
   ) {}
 
   /**
@@ -299,6 +316,72 @@ export class AgentsLocauxSentinelleService {
     // T34 — cinq heures d'échecs d'affilée : on arrête d'essayer, on prévient, un bouton relance.
     await this.entretenirPause('poser une pause après cinq heures d’échecs', () => this.poserApresEchecs(nowMs));
     await this.entretenirPause('notifier les pauses', () => this.notifierPauses(nowMs));
+    // D7 — et le travail QUI ATTEND, que personne ne regardait.
+    await this.entretenirPause('surveiller la file des travaux IA', () => this.surveillerFileTravaux(nowMs));
+  }
+
+  /**
+   * D7 (2026-09-23) — LA FILE QUI GROSSIT, dite avant qu'on la découvre.
+   *
+   * ┌─ L'ANGLE MORT QUE CECI COMBLE ────────────────────────────────────────────┐
+   * │ Cette sentinelle surveillait les PASSAGES (manqués, en échec) et les       │
+   * │ PAUSES. Jamais le travail en attente. Le 23/09, la production portait six  │
+   * │ `jugement-agenda` et un `rapport-activite` en `a-faire` depuis le 17/09 —  │
+   * │ SIX JOURS — sans une ligne pour le dire. La cause avait bien crié          │
+   * │ (TRK-069, session non authentifiée) ; la conséquence, elle, se découvrait  │
+   * │ en lisant la base : 221 propositions d'agenda sans avis de l'IA, et le     │
+   * │ rapport hebdomadaire jamais remis (TRK-094, même racine).                  │
+   * └────────────────────────────────────────────────────────────────────────────┘
+   *
+   * On juge sur l'ÂGE DU PLUS VIEUX travail, pas sur le nombre : une file de trente travaux
+   * créés dans l'heure est normale, un seul travail vieux de deux jours ne l'est pas.
+   *
+   * Deux paliers, parce qu'ils appellent deux gestes : {@link AGE_FILE_WARN_MS} (12 h) = la file
+   * ne s'écoule plus, on regarde ; {@link AGE_FILE_CRITIQUE_MS} (36 h) = plus d'un cycle complet
+   * perdu, on agit. Une ligne PAR TYPE de travail : les trois types ont des consommateurs
+   * différents, et un seul bouché ne dit rien des autres.
+   *
+   * ⚠️ MUETTE PENDANT UNE PAUSE CONNUE. Si les agents sont en pause, la file grossit par
+   * construction — et la pause a déjà son propre canal, avec son rappel toutes les 12 h. Crier
+   * les deux, c'est apprendre à ignorer les deux.
+   */
+  private async surveillerFileTravaux(nowMs: number): Promise<void> {
+    if (await this.pauses?.active(nowMs)) return;
+
+    const plusVieux = await this.prisma.travailIaLocal.groupBy({
+      by: ['type'],
+      where: { statut: 'a-faire' },
+      _min: { creeA: true },
+      _count: { _all: true },
+    });
+
+    for (const ligne of plusVieux) {
+      const creeA = ligne._min.creeA;
+      if (!creeA) continue;
+      const ageMs = nowMs - creeA.getTime();
+      if (ageMs < AGE_FILE_WARN_MS) continue;
+
+      const critique = ageMs >= AGE_FILE_CRITIQUE_MS;
+      const heures = Math.round(ageMs / 3_600_000);
+      const age = heures >= 48 ? `${Math.floor(heures / 24)} jours` : `${heures} h`;
+      const cle = `${CLES_REFROIDISSEMENT.FILE_TRAVAUX_IA}:${ligne.type}`;
+      if (!(await this.refroidissement.tenterEmission(cle, REFROIDISSEMENT_MS))) continue;
+
+      const message =
+        `File des agents du poste bouchée : ${ligne._count._all} travail/travaux « ${ligne.type} » en attente, ` +
+        `le plus ancien depuis ${age} (${dateHeureParis(creeA)} Paris). ` +
+        `Aucune pause n'est posée — les agents devraient donc consommer cette file. ` +
+        `Vérifier le poste (session de la CLI, Planificateur) puis /admin/background-tasks.`;
+      await this.errorLogger.record(
+        new Error(message),
+        SOURCE_AGENTS_LOCAUX,
+        { motif: 'file', type: ligne.type, enAttente: ligne._count._all, plusAncienA: creeA.toISOString(), ageHeures: heures },
+        critique ? 'CRITICAL' : NIVEAU_DEGRADATION,
+      );
+      // Le palier CRITIQUE réveille ; le palier d'avertissement s'écrit et attend le matin.
+      if (critique) await this.prevenir(`file:${ligne.type}`, message);
+      this.logger.warn(message);
+    }
   }
 
   /**
@@ -370,14 +453,25 @@ export class AgentsLocauxSentinelleService {
    * parti — sinon, le contrôle suivant réessaie : mieux vaut un courriel en retard qu'un silence.
    */
   private async notifierPauses(nowMs: number): Promise<void> {
-    for (const pause of await this.pauses!.aNotifier()) {
+    for (const pause of await this.pauses!.aNotifier(nowMs)) {
       const agents = this.catalogue.agentsDuPoste().filter((a) => a.coutIa === 'absorbe').map((a) => a.id);
       const libelle = LIBELLE_CAUSE_PAUSE[pause.cause] ?? pause.cause;
       const reprise = pause.jusqua
         ? `reprise automatique le ${dateHeureParis(pause.jusqua)} (Paris), ou avant par le bouton « Reprendre maintenant »`
         : 'reprise MANUELLE : bouton « Reprendre maintenant » sur /admin/background-tasks';
+      /**
+       * L'ANCIENNETÉ, en tête du rappel. Depuis que `aNotifier` rappelle les pauses sans
+       * échéance toutes les 12 h, le même message reviendrait à l'identique — et se lirait comme
+       * un nouvel incident. Le seul chiffre qui change entre deux rappels est celui-ci, et c'est
+       * précisément celui qui doit faire réagir : « en pause depuis 6 jours » n'appelle pas le
+       * même geste que « depuis 2 heures ».
+       */
+      const heures = Math.max(0, Math.round((nowMs - pause.poseeA.getTime()) / 3_600_000));
+      const anciennete =
+        heures >= 48 ? `depuis ${Math.floor(heures / 24)} jours` : `depuis ${heures} h`;
+      const rappel = pause.notifieeA ? `RAPPEL — toujours en pause ${anciennete}. ` : '';
       const message =
-        `Agents du poste en pause depuis le ${dateHeureParis(pause.poseeA)} (Paris) — ${libelle}, posée par ${pause.poseePar}. ` +
+        `${rappel}Agents du poste en pause depuis le ${dateHeureParis(pause.poseeA)} (Paris) — ${libelle}, posée par ${pause.poseePar}. ` +
         `Motif : ${pause.motif}. Concerne ${agents.join(', ')}. ${reprise}.`;
       if (!(await this.envoyerCourrielPause(pause, agents, message))) continue;
       await this.prevenir(`pause:${pause.cause}`, message);
@@ -389,6 +483,18 @@ export class AgentsLocauxSentinelleService {
   /** `true` si le courriel est parti — ou s'il n'y a pas de service de courriel (rien à attendre). */
   private async envoyerCourrielPause(pause: PauseAgents, agents: string[], texte: string): Promise<boolean> {
     if (!this.email) return true;
+    /**
+     * CANAL E-MAIL DÉBRAYABLE (2026-09-23) — et `true` quand il est coupé, volontairement.
+     *
+     * Cette valeur de retour gouverne `marquerNotifiee` : rendre `false` ferait réessayer
+     * l'envoi à chaque contrôle horaire, pour un canal que l'exploitant a justement fermé.
+     * L'alerte n'est pas perdue pour autant — `prevenir()` la pousse aux super-admins juste
+     * après, et le centre d'alerte la garde de toute façon.
+     */
+    if (this.canaux && !(await this.canaux.emailAutorise())) {
+      this.logger.log(`Courriel de pause non envoyé (canal e-mail coupé par réglage) — ${pause.cause}.`);
+      return true;
+    }
     const to = (this.config?.get<string>('ERROR_RATE_ALERT_TO') || DESTINATAIRE_EXPLOITATION).trim();
     const libelle = LIBELLE_CAUSE_PAUSE[pause.cause] ?? pause.cause;
     const res = await this.email.send({
