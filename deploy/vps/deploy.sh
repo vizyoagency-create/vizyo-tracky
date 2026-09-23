@@ -281,8 +281,29 @@ garde() {
 # la garde (14/09 11:47) : un repère posé dessus pointe une image qui n'a JAMAIS tourné, et un
 # `--repli` dessus ne rétablit rien — c'est ce que VPS-044 a mesuré deux fois. Quand `latest` et
 # l'image en service diffèrent, on le dit : c'est l'information qui manquait le 15/09.
-image_en_service() {   # $1 = nom d'image = nom de conteneur ; rend l'ID d'image, ou rien
+# ⚠️ V39 (2026-09-23) : UN CONTENEUR PEUT TOURNER SUR UNE IMAGE QUI N'EXISTE PLUS.
+#
+# `docker inspect <conteneur> --format '{{.Image}}'` rend TOUJOURS un ID — même quand l'image a
+# été supprimée sous le conteneur (élagage, `rmi -f`). Docker garde alors le système de fichiers
+# du conteneur vivant, mais l'objet image a disparu : `docker tag <cet-id>` répond « No such
+# image » et, sous `set -e`, TUE LE DÉPLOIEMENT.
+#
+# Mesuré le 23/09 13:36 : `tracky-api` tournait depuis 59 min sur `sha256:802071e5…`, absent de
+# `docker image inspect`. Le déploiement du glisser-déposer s'est arrêté là — production saine,
+# mais rien de livré, et le motif (« No such image ») ne disait pas que la faute venait du
+# ménage des repères, trois lignes plus haut.
+#
+# ⚠️ ON NE RABAT PAS SUR `latest` DANS CE CAS. Un conteneur dont l'image a disparu n'est PAS un
+# « pas de conteneur » : `latest` est alors l'image qu'on s'apprête à METTRE EN SERVICE, et un
+# repère posé dessus ferait revenir exactement à la version qu'on voulait quitter. On le dit, et
+# on ne pose rien — `repli_automatique` refuse déjà de partir sans repère pour chaque image.
+image_en_service() {   # $1 = conteneur ; rend l'ID d'image tel quel (présent ou non)
   docker inspect --format '{{.Image}}' "$1" 2>/dev/null || true
+}
+
+# L'image de ce conteneur existe-t-elle encore comme objet image ?
+image_encore_presente() {   # $1 = ID d'image
+  [ -n "$1" ] && docker image inspect "$1" >/dev/null 2>&1
 }
 
 etiqueter_repli() {
@@ -299,6 +320,11 @@ etiqueter_repli() {
         continue
       fi
       source="$image:latest"; source_dite="$image:latest (pas de conteneur $image en service)"
+    elif ! image_encore_presente "$source"; then
+      # Le conteneur tourne sur une image supprimée sous lui : il n'existe AUCUN point de retour.
+      dire "   ⛔ $image : le conteneur tourne sur une image absente (${source:7:19}) — aucun repère posable."
+      dire "      Le repli automatique sera donc refusé pour ce passage. Recréer la pile assainira la situation."
+      continue
     else
       local latest_id; latest_id="$(docker image inspect --format '{{.Id}}' "$image:latest" 2>/dev/null || true)"
       if [ -n "$latest_id" ] && [ "$latest_id" != "$source" ]; then
@@ -306,16 +332,28 @@ etiqueter_repli() {
         dire "      le repère pointe ce qui TOURNE, pas latest (V32 b)."
       fi
     fi
-    # Les étiquettes se trient par leur date : les plus anciennes d'abord.
+    # Les étiquettes se trient par leur date : les plus anciennes d'abord. On CHOISIT ici, mais on
+    # ne retire rien encore (voir juste en dessous). Le nouveau repère n'est pas dans cette liste :
+    # d'où le « − 1 », qui lui réserve sa place parmi les $REPLIS_A_GARDER conservés.
     local anciennes; anciennes="$(docker images "$image" --format '{{.Tag}}' | grep '^avant-' | sort || true)"
     local a_retirer; a_retirer="$(echo "$anciennes" | sed '/^$/d' | head -n "-$((REPLIS_A_GARDER - 1))" || true)"
+
+    # ⚠️ V39 (2026-09-23) — ON POSE LE REPÈRE AVANT D'ÉLAGUER, jamais l'inverse.
+    #
+    # L'ordre d'origine détruisait sa propre source : quand l'image en service n'était nommée QUE
+    # par un vieux repère `avant-*`, l'élagage lui retirait ce nom, l'image devenait orpheline, et
+    # le `docker tag` qui suivait répondait « No such image » — ce qui, sous `set -e`, tuait le
+    # déploiement. Poser d'abord garantit que l'image porte toujours au moins un nom au moment où
+    # on lui en retire d'autres. (Le CHOIX des repères à retirer, lui, est fait au-dessus : il ne
+    # doit pas voir l'étiquette qu'on vient d'ajouter.)
+    docker tag "$source" "$image:$etiquette"
+    dire "   repère posé : $image:$etiquette ← $source_dite"
+
     local vieille
     for vieille in $a_retirer; do
       docker rmi "$image:$vieille" >/dev/null 2>&1 || true
       dire "   repère élagué : $image:$vieille"
     done
-    docker tag "$source" "$image:$etiquette"
-    dire "   repère posé : $image:$etiquette ← $source_dite"
   done
   dire "   Revenir en arrière : bash deploy/vps/deploy.sh --repli $etiquette"
 }

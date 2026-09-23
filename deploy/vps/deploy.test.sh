@@ -282,6 +282,39 @@ absent "…jamais latest" "rmi tracky-api:latest" "$(trace)"
 contient "…le web suit la même règle" "rmi tracky-web:avant-20260908-0800-bbbb2222" "$(trace)"
 contient "…le site marketing suit la même règle" "rmi tracky-lp:avant-20260908-0800-bbbb2222" "$(trace)"
 
+# ── V39 (2026-09-23) — LE SCRIPT DÉTRUISAIT SA PROPRE SOURCE ────────────────────────────────
+#
+# Le 23/09 à 13:36, un déploiement s'est arrêté net sur « No such image: sha256:802071e5… ».
+# L'élagage passait AVANT la pose : quand l'image en service n'était nommée que par un vieux
+# repère `avant-*`, le ménage lui retirait ce nom et le `docker tag` suivant visait un fantôme.
+# Sous `set -e`, tout le déploiement mourait. Rien n'était cassé en production — mais rien
+# n'était livré, et le motif ne désignait pas le coupable.
+reinitialiser; ETIQUETTES_EXISTANTES="avant-20260908-0800-bbbb2222 avant-20260910-0027-3f7b9d2d avant-20260911-1000-aaaa1111 avant-20260912-2200-cccc3333"
+sortie="$( (etiqueter_repli) 2>&1 )"
+trace_api="$(trace | tr '|' '\n' | grep 'tracky-api' | paste -sd'|' -)"
+if [[ "$trace_api" == tag*avant-20260913-1130-a8f9575e* ]]; then
+  ok "🔴 l'ORDRE : le repère est POSÉ avant tout élagage (sinon on retire le seul nom de l'image qu'on va étiqueter)"
+else
+  ko "🔴 l'ORDRE : le repère est POSÉ avant tout élagage" "premier geste sur tracky-api : $trace_api"
+fi
+
+# ── V39 — UN CONTENEUR PEUT TOURNER SUR UNE IMAGE SUPPRIMÉE SOUS LUI ────────────────────────
+#
+# `docker inspect <conteneur> {{.Image}}` rend alors un ID que `docker image inspect` ne connaît
+# plus. Deux exigences : ne pas mourir dessus, et SURTOUT ne pas se rabattre sur `latest` — qui
+# est l'image qu'on s'apprête à mettre en service. Un repère posé là ramènerait exactement à la
+# version qu'on voulait quitter.
+reinitialiser
+eval "$(declare -f docker | sed '1s/^docker/docker_double/')"
+docker() { case "$*" in "image inspect $IMG_API") return 1 ;; *) docker_double "$@" ;; esac; }
+sortie="$( (etiqueter_repli) 2>&1 )"
+absent "🔴 image en service absente : aucun repère posé pour tracky-api" "tracky-api:avant-" "$(trace)"
+absent "🔴 …et SURTOUT pas de repli sur latest (ce serait le build qu'on va déployer)" "tag tracky-api:latest" "$(trace)"
+contient "…le script nomme la cause" "le conteneur tourne sur une image absente" "$sortie"
+contient "…et annonce la conséquence" "repli automatique sera donc refusé" "$sortie"
+contient "…les autres images gardent leur repère" "$REPERE_WEB" "$(trace)"
+eval "$(declare -f docker_double | sed '1s/^docker_double/docker/')"; unset -f docker_double
+
 echo "deploy.sh — le déroulé complet"
 
 reinitialiser
