@@ -6,6 +6,7 @@ import { AgendaAgentController } from './agenda-agent.controller';
 import { AgendaAgentRunnerService } from './agenda-agent-runner.service';
 import { AgendaAgentSettingsController } from './agenda-agent-settings.controller';
 import { AgendaAgentSettingsService } from './agenda-agent-settings.service';
+import { DestinatairesAvisService } from './destinataires-avis.service';
 import { AgendaController } from './agenda.controller';
 import { FleetInsightsController } from './fleet-insights.controller';
 import { FleetInsightsService } from './fleet-insights.service';
@@ -49,7 +50,16 @@ import { VehicleEventsService } from './vehicle-events.service';
     RecurrenceDetectorService,
     TripStopDetectorService,
     AgendaAgentRunnerService,
+    DestinatairesAvisService,
   ],
-  exports: [VehicleEventsService, FleetInsightsService, ReservationsService, ForecastService],
+  // `DestinatairesAvisService` est EXPORTE : le notifieur de reservation-booking s'en sert, et
+  // ce module-ci est deja celui qu'il importe — le sens reste unique, sans cycle.
+  exports: [
+    VehicleEventsService,
+    FleetInsightsService,
+    ReservationsService,
+    ForecastService,
+    DestinatairesAvisService,
+  ],
 })
 export class AgendaModule {}

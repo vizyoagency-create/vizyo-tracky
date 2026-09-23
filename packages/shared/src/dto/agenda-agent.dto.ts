@@ -147,3 +147,33 @@ export interface SetAgendaAgentSettingsDto {
   triggerMaintenance?: boolean;
   triggerReservation?: boolean;
 }
+
+/**
+ * ── QUI EST PRÉVENU QUAND UN CONDUCTEUR DEMANDE UN VÉHICULE ────────────────────────────────
+ *
+ * ⚠️ VALIDER ET ÊTRE PRÉVENU SONT DEUX CHOSES. Le droit de valider est `reservations_manage` ;
+ * l'avis se règle compte par compte. Elles étaient confondues jusqu'au 2026-09-24, si bien
+ * qu'ouvrir la validation à quatre gestionnaires chez cdef31 leur envoyait mécaniquement quatre
+ * courriels par demande.
+ *
+ * La liste rend TOUS ceux qui peuvent valider — pas seulement les destinataires. Ne montrer que
+ * ces derniers cacherait le geste utile : c'est en voyant les autres qu'on décide d'en ajouter.
+ */
+export interface DestinataireAvisDto {
+  userId: string;
+  email: string;
+  role: string;
+  /** Reçoit-il l'avis « une demande attend d'être validée » ? */
+  notifie: boolean;
+}
+
+export interface DestinatairesAvisDto {
+  fleetId: string;
+  comptes: DestinataireAvisDto[];
+}
+
+/** Bascule l'avis pour un compte. Couper le DERNIER destinataire est refusé par le serveur. */
+export interface ReglerAvisDto {
+  userId: string;
+  notifie: boolean;
+}

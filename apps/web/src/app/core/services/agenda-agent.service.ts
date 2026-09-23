@@ -5,6 +5,8 @@ import type {
   AgendaAgentRunDto,
   AgendaAgentRunResultDto,
   AgendaAgentSettingsDto,
+  DestinatairesAvisDto,
+  ReglerAvisDto,
   SetAgendaAgentSettingsDto,
 } from '@vizyo/tracky-shared';
 import { Observable } from 'rxjs';
@@ -22,6 +24,23 @@ export class AgendaAgentApiService {
     return this.http.get<AgendaAgentSettingsDto>('/api/agenda/agent-settings', {
       params: fleetId ? { fleetId } : {},
     });
+  }
+
+  /**
+   * GET …/destinataires-avis — qui PEUT valider une demande de conducteur, et qui en est PRÉVENU.
+   *
+   * La liste rend TOUS les valideurs, pas seulement les destinataires : c'est en voyant les
+   * autres qu'on décide d'en ajouter un.
+   */
+  destinatairesAvis(fleetId?: string) {
+    return this.http.get<DestinatairesAvisDto>('/api/agenda/agent-settings/destinataires-avis', {
+      params: fleetId ? { fleetId } : {},
+    });
+  }
+
+  /** PUT …/destinataires-avis — bascule l'avis. Couper le DERNIER destinataire est refusé. */
+  reglerAvis(body: ReglerAvisDto) {
+    return this.http.put<DestinatairesAvisDto>('/api/agenda/agent-settings/destinataires-avis', body);
   }
 
   /** PUT /api/agenda/agent-settings — met à jour (partiel) les réglages. */

@@ -12,13 +12,14 @@ import {
 import { DatePipe, DecimalPipe } from '@angular/common';
 import { apiErrorMessage } from '../../../core/error/api-error';
 import { RouterLink } from '@angular/router';
-import { LucideAngularModule, Settings, X, Loader, Zap, ExternalLink, Link2, Copy, Plus, Power, History } from 'lucide-angular';
+import { LucideAngularModule, Settings, X, Loader, Zap, ExternalLink, Link2, Copy, Plus, Power, History, Mail } from 'lucide-angular';
 import {
   FLEET_METIER_LABELS,
   type AgendaAgentAutonomy,
   type AgendaAgentFrequency,
   type AgendaAgentRunDto,
   type AgendaAgentRunResultDto,
+  type DestinataireAvisDto,
   type FleetMetier,
   type ReservationBookingLinkDto,
 } from '@vizyo/tracky-shared';
@@ -189,6 +190,40 @@ import { BottomSheetComponent } from '../../../shared/ui/bottom-sheet/bottom-she
           </div>
 
           <!--
+            QUI EST PRÉVENU QUAND UNE DEMANDE ARRIVE.
+
+            Juste sous le lien public, parce que c'est la suite du même geste : le conducteur
+            demande ici, et quelqu'un doit l'apprendre. Jusqu'au 24/09 les deux étaient confondus
+            — être valideur, c'était être notifié —, si bien qu'ouvrir la validation à quatre
+            gestionnaires envoyait quatre courriels par demande.
+          -->
+          <div class="aas-links">
+            <div class="aas-links-head">
+              <span class="aas-lbl"><lucide-icon [img]="MailIcon" [size]="13"></lucide-icon> Qui reçoit les demandes à valider</span>
+            </div>
+            <span class="aas-sub">
+              Tous ceux listés <strong>peuvent valider</strong> une demande. Seuls les cochés en
+              sont <strong>prévenus par e-mail</strong>.
+            </span>
+            @if (avisErreur(); as e) { <p class="aas-avis-err">{{ e }}</p> }
+            @for (d of destinataires(); track d.userId) {
+              <label class="aas-avis" [class.aas-avis--off]="!d.notifie">
+                <span class="aas-avis-main">
+                  <span class="aas-link-url">{{ d.email }}</span>
+                  <span class="aas-link-meta">{{ roleLisible(d.role) }}{{ d.notifie ? '' : ' · ne reçoit pas l’avis' }}</span>
+                </span>
+                <input type="checkbox" class="aas-avis-sw" [checked]="d.notifie" [disabled]="avisEnvoi()"
+                       (change)="basculerAvis(d, $any($event.target).checked)">
+              </label>
+            } @empty {
+              <p class="aas-avis-err">
+                Personne ne peut valider dans cette société : ouvrez « Valider les réservations »
+                à quelqu'un depuis l'écran des droits, sinon les demandes resteront en attente.
+              </p>
+            }
+          </div>
+
+          <!--
             Derniers passages de l'agent. C'est ici qu'on règle l'agent, c'est donc ici qu'on doit
             voir ce qu'il a RÉELLEMENT fait — sinon « rien ne se passe » reste sans explication.
           -->
@@ -302,6 +337,17 @@ import { BottomSheetComponent } from '../../../shared/ui/bottom-sheet/bottom-she
     .aas-links-head { display: flex; align-items: center; justify-content: space-between; }
     .aas-mini { display: inline-flex; align-items: center; gap: 4px; padding: 6px 8px; border-radius: 8px; font-size: 11.5px; font-weight: 700; background: var(--bg-tertiary); border: 1px solid var(--border-subtle); color: var(--fg-secondary); flex: 0 0 auto; }
     .aas-mini--accent { background: rgba(16,224,160,.12); color: var(--tracky-light); border-color: rgba(16,224,160,.25); }
+    /* Destinataires de l'avis : même bloc visuel que les liens publics, avec une bascule.
+       Hauteur 44 px : ça s'actionne au doigt depuis un téléphone. */
+    .aas-avis { display: flex; align-items: center; gap: 10px; padding: 9px 11px; min-height: 44px;
+                border-radius: 10px; background: var(--bg-tertiary);
+                border: 1px solid var(--border-subtle); cursor: pointer; }
+    .aas-avis + .aas-avis { margin-top: 6px; }
+    .aas-avis--off { opacity: .6; }
+    .aas-avis-main { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
+    .aas-avis-sw { flex: none; width: 40px; height: 22px; accent-color: var(--tracky-light); cursor: pointer; }
+    .aas-avis-sw:disabled { opacity: .5; cursor: progress; }
+    .aas-avis-err { margin: 8px 0 0; font-size: 12px; line-height: 1.5; color: var(--texte-attente); }
     .aas-link { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 10px; background: var(--bg-tertiary); border: 1px solid var(--border-subtle); }
     .aas-link--off { opacity: .55; }
     .aas-link-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
@@ -355,6 +401,7 @@ export class AgendaAgentSettingsSheetComponent {
   protected readonly PlusIcon = Plus;
   protected readonly PowerIcon = Power;
   protected readonly HistoryIcon = History;
+  protected readonly MailIcon = Mail;
   protected readonly metiers = Object.keys(FLEET_METIER_LABELS) as FleetMetier[];
 
   protected readonly loading = signal(false);
@@ -395,6 +442,14 @@ export class AgendaAgentSettingsSheetComponent {
   // Liens publics de réservation (P4)
   protected readonly links = signal<ReservationBookingLinkDto[]>([]);
   protected readonly creatingLink = signal(false);
+
+  /**
+   * Qui peut valider une demande, et qui en est PRÉVENU. Deux choses distinctes depuis le
+   * 2026-09-24 ; l'écran montre les deux ensemble pour qu'on voie qui on pourrait ajouter.
+   */
+  protected readonly destinataires = signal<DestinataireAvisDto[]>([]);
+  protected readonly avisEnvoi = signal(false);
+  protected readonly avisErreur = signal<string | null>(null);
 
   /**
    * Historique des passages de l'agent. Répond à la question qu'on se pose devant un agenda qui
@@ -519,6 +574,65 @@ export class AgendaAgentSettingsSheetComponent {
     } catch (err) {
       swallow('agenda-agent-settings-sheet:load', err);
       this.links.set([]);
+    }
+    await this.chargerDestinataires(fleetId);
+  }
+
+  /**
+   * Qui reçoit les demandes à valider. Best-effort comme le reste de la feuille : ne pas
+   * pouvoir lire cette liste ne doit pas empêcher de régler l'agent. Mais on le DIT — une
+   * liste vide sans explication se lirait « personne ne peut valider », ce qui est autre chose.
+   */
+  private async chargerDestinataires(fleetId?: string): Promise<void> {
+    this.avisErreur.set(null);
+    try {
+      const r = await firstValueFrom(this.agentApi.destinatairesAvis(fleetId));
+      this.destinataires.set(r.comptes);
+    } catch (err) {
+      swallow('agenda-agent-settings-sheet:destinataires', err);
+      this.destinataires.set([]);
+      this.avisErreur.set(apiErrorMessage(err, "La liste des destinataires n'a pas pu être lue."));
+    }
+  }
+
+  /**
+   * Bascule l'avis d'un compte.
+   *
+   * ⚠️ On REMET la case dans son état d'avant si le serveur refuse — notamment quand on tente de
+   * couper le dernier destinataire. Sans ça, l'écran montrerait un avis coupé alors qu'il ne
+   * l'est pas : le pire des deux mondes, puisqu'on se croirait tranquille.
+   */
+  protected async basculerAvis(d: DestinataireAvisDto, notifie: boolean): Promise<void> {
+    if (this.avisEnvoi()) return;
+    const avant = this.destinataires();
+    this.avisEnvoi.set(true);
+    this.avisErreur.set(null);
+    this.destinataires.set(avant.map((c) => (c.userId === d.userId ? { ...c, notifie } : c)));
+    try {
+      const r = await firstValueFrom(this.agentApi.reglerAvis({ userId: d.userId, notifie }));
+      this.destinataires.set(r.comptes);
+      this.toast.success(
+        notifie ? 'Destinataire ajouté' : 'Destinataire retiré',
+        `${d.email} — demandes à valider`,
+      );
+    } catch (err) {
+      swallow('agenda-agent-settings-sheet:reglerAvis', err);
+      this.destinataires.set(avant); // on rend l'écran honnête
+      this.toast.error('Réglage refusé', apiErrorMessage(err, "Le réglage n'a pas pu être enregistré."));
+    } finally {
+      this.avisEnvoi.set(false);
+    }
+  }
+
+  /** Le rôle en français — l'écran des droits parle déjà cette langue, pas celle de l'énumération. */
+  protected roleLisible(role: string): string {
+    switch (role) {
+      case 'SUPER_ADMIN': return 'Super-administrateur';
+      case 'FLEET_ADMIN': return 'Administrateur';
+      case 'FLEET_MANAGER': return 'Gestionnaire';
+      case 'NIGHT_WATCHMAN': return 'Veilleur de nuit';
+      case 'VIEWER': return 'Lecture seule';
+      default: return role;
     }
   }
 

@@ -1,0 +1,15 @@
+-- ── QUI REÇOIT L'AVIS « UNE DEMANDE ATTEND D'ÊTRE VALIDÉE » (2026-09-24) ────────────────────
+--
+-- Jusqu'ici, être VALIDEUR c'était être NOTIFIÉ : `notifyFleetOfPendingRequest` écrivait à tous
+-- les comptes portant `reservations_manage`, sans qu'aucun réglage ne puisse l'en empêcher.
+-- Conséquence mesurée chez cdef31 le 23/09 : ouvrir la validation à quatre gestionnaires (ce que
+-- la mise en service exigeait) leur envoyait mécaniquement QUATRE courriels par demande de
+-- conducteur, aux boîtes du client.
+--
+-- Cette colonne sépare les deux. Le DROIT de valider reste `reservations_manage` ; un compte à
+-- `false` voit et valide exactement comme avant, il ne reçoit simplement plus l'avis.
+--
+-- Vrai par défaut, volontairement : personne ne perd en silence un avis qu'il recevait déjà.
+-- Se règle depuis « Paramètres de l'agenda », pas depuis l'écran des droits — ce n'est pas une
+-- permission, et la confondre avec une permission est exactement l'erreur qu'on répare.
+ALTER TABLE "users" ADD COLUMN     "reservationNoticeEnabled" BOOLEAN NOT NULL DEFAULT true;

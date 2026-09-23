@@ -1,6 +1,6 @@
 import { Body, Controller, Get, Put, Query, Req, UseGuards } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
-import type { SetAgendaAgentSettingsDto } from '@vizyo/tracky-shared';
+import type { ReglerAvisDto, SetAgendaAgentSettingsDto } from '@vizyo/tracky-shared';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { AuthenticatedRequest, JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -28,5 +28,24 @@ export class AgendaAgentSettingsController {
   @Roles(UserRole.SUPER_ADMIN, UserRole.FLEET_ADMIN)
   set(@Req() req: AuthenticatedRequest, @Body() dto: SetAgendaAgentSettingsDto) {
     return this.svc.set(req.user, dto ?? {});
+  }
+
+  /**
+   * GET …/destinataires-avis — qui peut valider une demande de conducteur, et qui en est PRÉVENU.
+   *
+   * Même garde de rôle que le reste de l'écran : c'est un réglage de société, pas un réglage
+   * personnel — celui qui le change décide pour les autres.
+   */
+  @Get('destinataires-avis')
+  @Roles(UserRole.SUPER_ADMIN, UserRole.FLEET_ADMIN)
+  destinatairesAvis(@Req() req: AuthenticatedRequest, @Query('fleetId') fleetId?: string) {
+    return this.svc.destinatairesAvis(req.user, fleetId);
+  }
+
+  /** PUT …/destinataires-avis — bascule l'avis pour un compte. Couper le dernier est refusé. */
+  @Put('destinataires-avis')
+  @Roles(UserRole.SUPER_ADMIN, UserRole.FLEET_ADMIN)
+  reglerAvis(@Req() req: AuthenticatedRequest, @Body() dto: ReglerAvisDto) {
+    return this.svc.reglerAvis(req.user, dto);
   }
 }

@@ -1,6 +1,6 @@
 import { Injectable, Optional } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
-import { getDefaultPermissions, type UserPermissions, type UserRoleSlug } from '@vizyo/tracky-shared';
+import { DestinatairesAvisService } from '../agenda/destinataires-avis.service';
 import { EmailService, type EmailTemplateId } from '../email/email.service';
 import { NotificationDispatchService } from '../notifications/notification-dispatch.service';
 import { ErrorLogger } from '../observability/error-logger.service';
@@ -24,6 +24,8 @@ export class ReservationBookingNotifier {
     private readonly sms: SmsGatewayService,
     private readonly errors: ErrorLogger,
     private readonly prisma: PrismaService,
+    /** Qui peut valider, et qui en est prévenu — règle unique, partagée avec l'écran des réglages. */
+    private readonly destinataires: DestinatairesAvisService,
     /**
      * Socle de notification. `@Optional()` parce que les specs de ce fichier montent le service à
      * la main, et qu'un avis non poussé ne doit jamais empêcher un e-mail de partir.
@@ -109,18 +111,25 @@ export class ReservationBookingNotifier {
     vehicleCount: number;
   }): Promise<number> {
     try {
-      const validators = await this.validatorsOf(input.fleetId);
+      /**
+       * DEUX TROUS DIFFÉRENTS, DEUX MESSAGES DIFFÉRENTS.
+       *
+       * « Personne ne peut valider » est une société mal configurée — c'était cdef31 avant le
+       * correctif de permissions du 23/09. « Personne n'est prévenu » est un RÉGLAGE : des gens
+       * peuvent valider, mais tous ont coupé l'avis. Les deux laissent la demande en plan, donc
+       * les deux s'écrivent au centre d'alerte ; les confondre enverrait chercher la panne au
+       * mauvais endroit.
+       */
+      const possibles = await this.destinataires.possibles(input.fleetId);
+      const validators = possibles.filter((v) => v.notifie);
       if (validators.length === 0) {
-        /**
-         * PERSONNE NE PEUT VALIDER — et c'est exactement le cas de cdef31 avant le correctif
-         * de permissions. Ce n'est pas un échec d'envoi : c'est une société mal configurée, et
-         * le silence serait ici le pire des deux. On l'écrit au centre d'alerte pour que la
-         * demande ne disparaisse pas dans un trou de configuration.
-         */
+        const aucunValideur = possibles.length === 0;
         await this.errors.record(
-          `Demande de réservation publique sans destinataire : aucun compte de cette société ne porte « reservations_manage ». La demande de ${input.requester} attend, personne n'est prévenu.`,
+          aucunValideur
+            ? `Demande de réservation publique sans destinataire : aucun compte de cette société ne porte « reservations_manage ». La demande de ${input.requester} attend, personne n'est prévenu.`
+            : `Demande de réservation publique sans destinataire : ${possibles.length} compte(s) peuvent valider, mais AUCUN ne reçoit l'avis (réglage « Paramètres de l'agenda »). La demande de ${input.requester} attend sans que personne ne le sache.`,
           SOURCE,
-          { fleetId: input.fleetId, motif: 'aucun_valideur' },
+          { fleetId: input.fleetId, motif: aucunValideur ? 'aucun_valideur' : 'aucun_destinataire', valideurs: possibles.length },
           'ERROR',
         );
         return 0;
@@ -202,16 +211,15 @@ export class ReservationBookingNotifier {
    * ailleurs. ⚠️ Une clé ABSENTE du JSON ne vaut pas `false` : elle vaut le défaut du rôle. Lire
    * le JSON seul ferait disparaître le fleet-admin, dont le JSON est souvent vide.
    */
+  /**
+   * Ceux à qui l'avis part réellement.
+   *
+   * ⚠️ La règle « qui peut valider / qui est prévenu » vit dans {@link DestinatairesAvisService},
+   * côté agenda, parce que l'écran des réglages en a besoin AUSSI et que `ReservationBooking`
+   * importe déjà `Agenda` — la mettre ici et la lire depuis l'agenda fermerait un cycle.
+   */
   private async validatorsOf(fleetId: string): Promise<{ id: string; email: string | null }[]> {
-    const membres = await this.prisma.user.findMany({
-      where: { fleetId, isActive: true },
-      select: { id: true, email: true, role: true, permissions: true },
-    });
-    return membres.filter((m) => {
-      const defauts = getDefaultPermissions(m.role as UserRoleSlug);
-      const explicites = (m.permissions ?? {}) as Partial<UserPermissions>;
-      return { ...defauts, ...explicites }.reservations_manage === true;
-    });
+    return this.destinataires.notifies(fleetId);
   }
 
   /** Nom de la flotte (pour l'e-mail). Best-effort → « la société » si indisponible. */

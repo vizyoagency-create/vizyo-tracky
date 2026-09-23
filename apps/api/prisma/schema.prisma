@@ -542,6 +542,17 @@ model User {
   role                     UserRole            @default(VIEWER)
   permissions              Json?
   isActive                 Boolean             @default(true)
+  /// Reçoit-il l'avis « une demande de réservation attend d'être validée » ?
+  ///
+  /// ⚠️ CE N'EST PAS UNE PERMISSION, et c'est pour ça que ce n'est pas dans `permissions`.
+  /// Le droit de valider reste `reservations_manage` : quelqu'un qui ne reçoit pas l'avis
+  /// voit et valide exactement comme avant. Jusqu'au 2026-09-24 les deux étaient confondus —
+  /// être valideur, c'était être notifié —, si bien qu'ouvrir la validation à quatre
+  /// gestionnaires chez cdef31 leur envoyait mécaniquement quatre courriels par demande.
+  /// Se règle depuis « Paramètres de l'agenda », pas depuis l'écran des droits.
+  ///
+  /// Vrai par défaut : personne ne perd un avis qu'il recevait déjà.
+  reservationNoticeEnabled Boolean             @default(true)
   /// « Owner » plateforme (niveau au-dessus des SUPER_ADMIN). Le compte reste
   /// techniquement SUPER_ADMIN et garde TOUS ses pouvoirs ; ce flag pilote
   /// UNIQUEMENT l'invisibilité : un compte owner est exclu des listes
