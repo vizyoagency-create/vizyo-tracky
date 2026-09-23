@@ -540,7 +540,17 @@ export class ReservationsService {
           vehicleId,
           type: VehicleEventType.RESERVATION,
           status,
-          title: dto.title?.trim() || 'Réservation',
+          /**
+           * ⚠️ LE MOTIF SAISI DEVIENT LE TITRE. Il était rangé dans `metadata.reason` et plus
+           * jamais montré : le calendrier affiche `title`, qui valait toujours « Réservation ».
+           * Relevé en recette le 2026-09-24 — le champ propose pourtant « Ex. Ramassage scolaire
+           * secteur nord », et le gestionnaire qui le remplit voit son texte disparaître.
+           *
+           * L'ordre dit la priorité : un titre explicite (API, import) prime ; sinon le motif
+           * saisi par la personne ; « Réservation » n'est plus qu'un dernier recours. Le motif
+           * reste AUSSI dans la metadata — il y est lu par le flux public et les exports.
+           */
+          title: dto.title?.trim() || dto.reason?.trim() || 'Réservation',
           startAt: start,
           endAt: end,
           allDay: false,

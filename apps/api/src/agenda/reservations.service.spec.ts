@@ -967,3 +967,78 @@ describe('ReservationsService — la décision laisse une trace', () => {
     await expect(svc.cancel(makeUser(), 'r1')).resolves.toBeDefined();
   });
 });
+
+/**
+ * LE MOTIF SAISI DISPARAISSAIT DE L'ÉCRAN.
+ *
+ * Relevé en recette le 2026-09-24 : on tape « Ramassage scolaire secteur nord » dans le champ
+ * Motif — que le formulaire propose lui-même en exemple — et le calendrier affiche « Réservation ».
+ * Le texte était bien enregistré (`metadata.reason`), mais la grille lit `title`, qui valait
+ * toujours la valeur générique. Un champ dont la saisie n'apparaît nulle part est un champ qui
+ * ment sur son utilité.
+ */
+describe('ReservationsService — le motif devient le titre', () => {
+  const creer = () => {
+    const create = jest.fn().mockResolvedValue({
+      id: 'r9', fleetId: 'f1', vehicleId: 'v1', status: 'CONFIRMED',
+      type: 'RESERVATION', category: null, severity: null, title: 'x', description: null,
+      startAt: new Date('2026-10-01T08:00:00Z'), endAt: new Date('2026-10-01T10:00:00Z'),
+      allDay: false, blocksVehicle: true, odometerKm: null, planId: null, linkedEventId: null,
+      resolvedAt: null, source: 'MANUAL', metadata: null,
+      createdAt: new Date(), updatedAt: new Date(), vehicle: { plate: 'AA-1' },
+    });
+    const prisma = makePrisma({
+      vehicleEvent: { findMany: jest.fn().mockResolvedValue([]), findUnique: jest.fn(), create, update: jest.fn() },
+    });
+    return { prisma, create };
+  };
+
+  const demande = (over: Record<string, unknown>) => ({
+    vehicleId: 'v1',
+    startAt: new Date(Date.now() + 86_400_000).toISOString(),
+    endAt: new Date(Date.now() + 90_000_000).toISOString(),
+    ...over,
+  });
+
+  it('reprend le motif comme titre quand aucun titre explicite n’est donné', async () => {
+    const { prisma, create } = creer();
+    const svc = new ReservationsService(prisma, access('ALL'), makeEvents(), makePerms(true));
+    await svc.request(makeUser(), demande({ reason: 'Ramassage scolaire secteur nord' }) as never);
+    expect(create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ title: 'Ramassage scolaire secteur nord' }),
+      }),
+    );
+  });
+
+  /** Un titre explicite (API, import) prime toujours sur le motif. */
+  it('laisse le titre explicite gagner', async () => {
+    const { prisma, create } = creer();
+    const svc = new ReservationsService(prisma, access('ALL'), makeEvents(), makePerms(true));
+    await svc.request(makeUser(), demande({ title: 'Navette', reason: 'autre chose' }) as never);
+    expect(create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ title: 'Navette' }) }),
+    );
+  });
+
+  it('retombe sur « Réservation » quand ni l’un ni l’autre n’est fourni', async () => {
+    const { prisma, create } = creer();
+    const svc = new ReservationsService(prisma, access('ALL'), makeEvents(), makePerms(true));
+    await svc.request(makeUser(), demande({}) as never);
+    expect(create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ title: 'Réservation' }) }),
+    );
+  });
+
+  /** ⚠️ Le motif reste AUSSI dans la metadata : le flux public et les exports l'y lisent. */
+  it('conserve le motif dans la metadata', async () => {
+    const { prisma, create } = creer();
+    const svc = new ReservationsService(prisma, access('ALL'), makeEvents(), makePerms(true));
+    await svc.request(makeUser(), demande({ reason: 'Sortie piscine' }) as never);
+    expect(create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ metadata: expect.objectContaining({ reason: 'Sortie piscine' }) }),
+      }),
+    );
+  });
+});
