@@ -18,7 +18,7 @@ import { apiErrorMessage } from '../../core/error/api-error';
 import {
   LucideAngularModule, CalendarDays, ChevronDown, ChevronLeft, ChevronRight, Check,
   Layers, Truck, Plus, AlertTriangle, CalendarClock, Wrench, X, Trash2, Play, ListChecks,
-  Gauge, CalendarCheck, Inbox, Sparkles, Activity, ShieldCheck, Ban, Info, Pencil, Settings, QrCode, Shuffle,
+  Gauge, CalendarCheck, Inbox, Sparkles, Activity, ShieldCheck, Ban, Info, Pencil, Settings, QrCode, Shuffle, Route,
 } from 'lucide-angular';
 import type {
   AgendaAgentProposalDto,
@@ -351,7 +351,7 @@ interface GroupOption {
                       [style.--u]="urgencyColor(eventUrgency(ev))">
                 <span class="ag-up-bar"></span>
                 <span class="ag-up-type" [style.--pill]="eventColor(ev)">
-                  <lucide-icon [img]="ev.type === 'INCIDENT' ? AlertTriangleIcon : WrenchIcon" [size]="13"></lucide-icon>
+                  <lucide-icon [img]="iconePourType(ev.type)" [size]="13"></lucide-icon>
                 </span>
                 <span class="ag-up-main">
                   <span class="ag-up-title">{{ ev.title }}</span>
@@ -519,7 +519,7 @@ interface GroupOption {
                 <article class="ag-day-card" [style.--pill]="eventColor(ev)">
                   <div class="ag-day-card-top">
                     <span class="ag-day-card-type">
-                      <lucide-icon [img]="ev.type === 'INCIDENT' ? AlertTriangleIcon : ev.type === 'RESERVATION' ? CalendarCheckIcon : WrenchIcon" [size]="12"></lucide-icon>
+                      <lucide-icon [img]="iconePourType(ev.type)" [size]="12"></lucide-icon>
                       {{ eventTypeLabel(ev.type) }}
                     </span>
                     <span class="ag-day-card-badges">
@@ -1247,6 +1247,28 @@ export class AgendaComponent implements OnInit {
   protected readonly AlertTriangleIcon = AlertTriangle;
   protected readonly CalendarClockIcon = CalendarClock;
   protected readonly WrenchIcon = Wrench;
+  protected readonly RouteIcon = Route;
+
+  /**
+   * L'ICÔNE D'UN TYPE, AU MÊME ENDROIT POUR TOUS LES ÉCRANS.
+   *
+   * Les deux listes (« à venir & en retard » et le panneau du jour) portaient chacune leur propre
+   * ternaire, et aucune des deux ne connaissait `MISSION` : une mission s'affichait avec la CLÉ À
+   * MOLETTE de la maintenance, sous le libellé brut « MISSION » (le `default` d'`eventTypeLabel`).
+   * Deux ternaires divergents, c'est déjà un de trop.
+   */
+  protected iconePourType(type: VehicleEventType) {
+    switch (type) {
+      case 'INCIDENT':
+        return this.AlertTriangleIcon;
+      case 'RESERVATION':
+        return this.CalendarCheckIcon;
+      case 'MISSION':
+        return this.RouteIcon;
+      default:
+        return this.WrenchIcon;
+    }
+  }
   protected readonly XIcon = X;
   protected readonly Trash2Icon = Trash2;
   protected readonly PencilIcon = Pencil;

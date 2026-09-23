@@ -68,6 +68,11 @@ export function eventTypeLabel(type: VehicleEventType): string {
       return 'Incident';
     case 'RESERVATION':
       return 'Réservation';
+    // ⚠️ Sans ce cas, le `default` rendait l'ÉNUMÉRATION BRUTE — « MISSION » en capitales, au
+    // milieu de « Maintenance » et « Réservation ». Les missions vivent dans la même grille que
+    // le reste depuis 2026-08 (A2 § 3.1) : elles doivent se nommer comme le reste.
+    case 'MISSION':
+      return 'Mission';
     default:
       return type;
   }
