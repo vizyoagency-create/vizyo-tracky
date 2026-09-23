@@ -37,7 +37,34 @@ const MAX_DEPTH = 3;
 
 /** Bornes de sûreté : un dossier de documentation ne doit jamais faire tomber l'API. */
 const MAX_FILES = 500;
-const MAX_FILE_BYTES = 1_000_000;
+/**
+ * Taille MAXIMALE d'un document servi (2026-09-23 : 1 Mo → 4 Mo).
+ *
+ * ┌─ CE QUE LA BORNE À 1 Mo A COÛTÉ ──────────────────────────────────────────┐
+ * │ `docs/centre-alerte/REFERENCE-ERREURS.md` grossit d'environ 15 ko par     │
+ * │ nuit (une fiche d'audit par jour). Il a franchi le million d'octets le    │
+ * │ 23/09 — et l'écran /admin s'est mis à servir le document COUPÉ, sans que  │
+ * │ rien ne le dise : le drapeau `truncated` existe dans le DTO mais aucun    │
+ * │ écran ne l'affiche, et la mention « …(document tronqué) » se trouve à la  │
+ * │ fin d'un million de caractères, là où personne ne défile. Les fiches les  │
+ * │ plus récentes — celles qu'on vient justement consulter — devenaient donc  │
+ * │ invisibles dans l'application, alors qu'elles étaient bien dans le        │
+ * │ fichier. Seul un test l'a attrapé.                                        │
+ * └────────────────────────────────────────────────────────────────────────────┘
+ *
+ * 4 Mo tient environ six mois au rythme actuel. La borne reste une borne — elle protège l'API
+ * d'un fichier aberrant — mais elle ne doit plus être atteinte SANS BRUIT : voir
+ * {@link SEUIL_ALERTE_TAILLE} et le journal de `document()`.
+ */
+const MAX_FILE_BYTES = 4_000_000;
+/**
+ * Part de {@link MAX_FILE_BYTES} au-delà de laquelle on PRÉVIENT, avant que la coupe n'arrive.
+ *
+ * Une borne silencieuse qu'on franchit est un piège à retardement : elle se découvre le jour où
+ * du contenu a déjà disparu. À 80 %, il reste plusieurs semaines de marge pour découper le
+ * document ou relever la borne — c'est-à-dire pour décider, pas pour réagir.
+ */
+const SEUIL_ALERTE_TAILLE = 0.8;
 
 /**
  * Comment un wiki se distingue d'un autre. Tout le reste est commun.
@@ -379,6 +406,28 @@ export abstract class DocsWikiService {
 
     const raw = await readFile(absolute, 'utf8');
     const truncated = raw.length > MAX_FILE_BYTES;
+
+    /**
+     * LA COUPE SE DIT, ET L'APPROCHE AUSSI.
+     *
+     * Jusqu'au 23/09 la troncature était totalement muette côté serveur : `REFERENCE-ERREURS.md`
+     * a dépassé la borne pendant une nuit et l'écran a servi un document amputé de ses fiches
+     * les plus récentes — sans une ligne de journal. Deux niveaux, parce qu'ils appellent deux
+     * gestes : `warn` = « il reste de la marge, décidez » ; `error` = « du contenu est DÉJÀ
+     * caché », ce qui est une perte d'information servie à l'utilisateur, pas un détail.
+     */
+    if (truncated) {
+      this.logger.error(
+        `Document TRONQUÉ à l'affichage : ${slug} fait ${Math.round(raw.length / 1000)} ko pour une borne de ` +
+          `${Math.round(MAX_FILE_BYTES / 1000)} ko. La fin du document est INVISIBLE dans l'application. ` +
+          'Découper le fichier ou relever MAX_FILE_BYTES.',
+      );
+    } else if (raw.length > MAX_FILE_BYTES * SEUIL_ALERTE_TAILLE) {
+      this.logger.warn(
+        `Document proche de la borne : ${slug} fait ${Math.round(raw.length / 1000)} ko ` +
+          `(${Math.round((raw.length / MAX_FILE_BYTES) * 100)} % de la limite). À découper avant qu'il ne soit coupé.`,
+      );
+    }
 
     return {
       slug: meta.slug,

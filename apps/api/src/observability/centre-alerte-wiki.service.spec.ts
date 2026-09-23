@@ -1,5 +1,5 @@
 import { NotFoundException } from '@nestjs/common';
-import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { CentreAlerteWikiService } from './centre-alerte-wiki.service';
@@ -59,10 +59,28 @@ describe('CentreAlerteWikiService', () => {
       expect(slugs).not.toContain('app/wiki.json');
     });
 
-    it('sert le contenu d\'un document', async () => {
+    /**
+     * ── LE TEST QUI A ATTRAPÉ LA TRONCATURE (23/09) ──────────────────────────────────────────
+     *
+     * Il n'assertait que `truncated === false`. Assez pour crier, pas assez pour dire CE QUI se
+     * perdait : le référentiel a dépassé la borne d'un million d'octets, et l'écran /admin
+     * servait un document amputé de ses fiches les plus récentes — exactement celles qu'on vient
+     * consulter. On vérifie donc que LA FIN DU FICHIER ARRIVE, pas seulement qu'un drapeau est
+     * baissé : c'est le contrat réel du service.
+     */
+    it('sert le document ENTIER — la fin du fichier arrive jusqu\'à l\'écran', async () => {
       const doc = await service.document('REFERENCE-ERREURS.md');
       expect(doc.format).toBe('markdown');
-      expect(doc.content).toContain('TRK-008');
+      expect(doc.content).toContain('TRK-008'); // une fiche ancienne : le début est bien là
+
+      const surDisque = await readFile(
+        join(resolve(__dirname, '..', '..', '..', '..', 'docs', 'centre-alerte'), 'REFERENCE-ERREURS.md'),
+        'utf8',
+      );
+      // Les 300 derniers caractères du fichier réel : s'ils manquent, le document est coupé —
+      // quel que soit l'état du drapeau, et quelle que soit la borne du jour.
+      expect(doc.content.endsWith(surDisque.slice(-300))).toBe(true);
+      expect(doc.content).not.toContain('…(document tronqué)');
       expect(doc.truncated).toBe(false);
     });
 

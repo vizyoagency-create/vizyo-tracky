@@ -23,7 +23,7 @@
     "verif:couleurs-kit": "node scripts/verif-couleurs-kit.mjs",
     "verif:variables": "node scripts/verif-variables.mjs",
     "verif:migrations": "node scripts/verif-migrations.mjs",
-    "verify": "pnpm typecheck && pnpm verif:migrations && pnpm smoke && pnpm test",
+    "verify": "node scripts/verify.mjs",
     "verif:carte-gardes": "node scripts/verif-carte-gardes.mjs",
     "verif:deploiement": "node scripts/verif-deploiement.mjs"
   },

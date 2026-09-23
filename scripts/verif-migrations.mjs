@@ -128,7 +128,25 @@ if (!STATIQUE_SEULEMENT && echecs.length === 0) {
     const temp = new URL(base.toString()); temp.pathname = `/${nomTemp}`;
     const creation = executerSql(admin.toString(), `CREATE DATABASE "${nomTemp}";`);
     if (creation.code !== 0) {
-      echecs.push(`Base temporaire impossible à créer sur ${admin.host} : le Postgres de dev tourne-t-il ? (docker compose up -d)\n${creation.sortie.trim().split('\n').slice(-3).join('\n')}`);
+      /**
+       * ── « PAS VÉRIFIÉ » N'EST PAS « EN ÉCHEC » (2026-09-23) ────────────────────────────────
+       *
+       * Une base de dev éteinte se rangeait dans `echecs`, au milieu des vraies anomalies de
+       * migration. Mesuré le 23/09 : `pnpm verify` s'arrêtait là, les tests ne tournaient
+       * jamais, et la sortie ressemblait à un défaut de migration — alors que RIEN n'avait été
+       * lu. On ne peut pas conclure « les migrations sont bonnes » ; on ne peut pas non plus
+       * crier « migration cassée ». On n'en sait rien, et c'est exactement ce qu'il faut dire.
+       *
+       * Sortie 2 (et non 1) : le lanceur de `verify` s'en sert pour distinguer « à corriger »
+       * de « à rejouer quand la base sera là », sans jamais faire passer l'un pour l'autre.
+       */
+      console.log('');
+      console.log(`⚠️  NON VÉRIFIÉ — le Postgres de dev (${admin.host}) ne répond pas.`);
+      console.log("    Le rejeu des migrations n'a PAS eu lieu : leur état reste inconnu.");
+      console.log('    Démarrer la base (docker compose up -d) puis relancer `pnpm verif:migrations`.');
+      console.log(`    Détail : ${creation.sortie.trim().split('\n').slice(-2).join(' ')}`);
+      console.log('');
+      process.exit(2);
     } else {
       try {
         const t0 = Date.now();
