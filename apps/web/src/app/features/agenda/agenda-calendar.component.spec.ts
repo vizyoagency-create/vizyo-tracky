@@ -1,4 +1,4 @@
-import { annulationSansObjet } from './agenda-calendar.component';
+import { annulationSansObjet, peutEtreDeplace } from './agenda-calendar.component';
 
 /**
  * LA REPRISE EN MASSE LAISSAIT AUTANT DE LIGNES BARRÉES QU'ELLE ANNULAIT DE RÉSERVATIONS.
@@ -47,5 +47,41 @@ describe('annulationSansObjet', () => {
   /** La borne est le DÉBUT, et elle est stricte : commencer à la seconde présente, c'est commencé. */
   it('ne masque pas une annulation qui commence à l’instant même', () => {
     expect(annulationSansObjet({ status: 'CANCELLED', startAt: dans(0) }, MAINTENANT)).toBe(false);
+  });
+});
+
+/**
+ * LE GLISSER-DÉPOSER DÉPLACE UN ENGAGEMENT EN UN DEMI-SECONDE.
+ *
+ * Ajouté le 2026-09-23 avec le geste lui-même. Ce prédicat est le seul garde-fou entre un
+ * mouvement de pouce et le déplacement d'une réservation : il mérite d'être éprouvé ligne à
+ * ligne, y compris sur les cas qu'on n'a pas envie d'écrire.
+ */
+describe('peutEtreDeplace', () => {
+  const TOUT = { agenda: true, reservations: true };
+  const RIEN = { agenda: false, reservations: false };
+
+  it('laisse déplacer une maintenance planifiée à qui gère l’agenda', () => {
+    expect(peutEtreDeplace({ type: 'MAINTENANCE', status: 'PLANNED' }, TOUT)).toBe(true);
+    expect(peutEtreDeplace({ type: 'MAINTENANCE', status: 'PLANNED' }, RIEN)).toBe(false);
+  });
+
+  /** Déplacer une réservation, c'est la même autorité que la valider — pas celle de l'agenda. */
+  it('exige `reservations_manage` pour une réservation, pas `agenda_manage`', () => {
+    const agendaSeul = { agenda: true, reservations: false };
+    expect(peutEtreDeplace({ type: 'RESERVATION', status: 'CONFIRMED' }, agendaSeul)).toBe(false);
+    expect(peutEtreDeplace({ type: 'RESERVATION', status: 'CONFIRMED' }, TOUT)).toBe(true);
+  });
+
+  /** Le cas qui compte le plus : une mission engage un TIERS. */
+  it('ne laisse JAMAIS déplacer une mission, même avec tous les droits', () => {
+    for (const status of ['PLANNED', 'OPEN', 'IN_PROGRESS'] as const) {
+      expect(peutEtreDeplace({ type: 'MISSION', status }, TOUT)).toBe(false);
+    }
+  });
+
+  it('refuse ce qui est clôturé ou annulé', () => {
+    expect(peutEtreDeplace({ type: 'MAINTENANCE', status: 'DONE' }, TOUT)).toBe(false);
+    expect(peutEtreDeplace({ type: 'RESERVATION', status: 'CANCELLED' }, TOUT)).toBe(false);
   });
 });

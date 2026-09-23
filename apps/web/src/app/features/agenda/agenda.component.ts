@@ -310,6 +310,9 @@ interface GroupOption {
           [activityByDay]="activityByDay()"
           [forecastByDay]="forecastByDay()"
           [proposalsByDay]="proposalsByDay()"
+          [peutGererAgenda]="canManage()"
+          [peutGererReservations]="canValidate()"
+          (evenementDeplace)="deplacerEvenement($event)"
           (dayClick)="onDayClick($event)"
         />
         <div class="flex flex-wrap gap-x-4 gap-y-1.5 px-1 pt-2.5 text-[11px] text-fg-tertiary">
@@ -1996,6 +1999,61 @@ export class AgendaComponent implements OnInit {
   protected onDayClick(iso: string): void {
     this.selectedDay.set(iso);
     this.dayPanelOpen.set(true);
+  }
+
+  /**
+   * ── DÉPLACER UN ÉVÉNEMENT D'UN JOUR À L'AUTRE, D'UN GESTE ──────────────────────────────
+   *
+   * La grille a déjà décidé que la pilule était saisissable (permission + type + statut) ;
+   * ici on traduit « lâché sur le 27 » en un créneau, et on laisse le SERVEUR trancher le
+   * reste. Les conflits ne se devinent pas côté navigateur : la contrainte d'exclusion en
+   * base est le dernier rempart, et son refus se lit tel quel plutôt que d'être reformulé.
+   *
+   * ⚠️ L'HEURE NE BOUGE PAS, seul le jour. Un ramassage scolaire déplacé de mardi à jeudi
+   * reste à 7 h 20 : c'est ce que le geste promet, et supposer autre chose serait une
+   * décision qu'on prendrait à la place du gestionnaire.
+   */
+  protected async deplacerEvenement({ id, versIso }: { id: string; versIso: string }): Promise<void> {
+    const ev = this.events().find((e) => e.id === id);
+    if (!ev) return;
+
+    const debut = new Date(ev.startAt);
+    const [a, m, j] = versIso.split('-').map(Number);
+    const nouveauDebut = new Date(debut);
+    nouveauDebut.setFullYear(a, m - 1, j);
+
+    // Garde de bon sens, avant tout aller-retour : on ne replanifie pas dans le passé.
+    if (nouveauDebut.getTime() < Date.now()) {
+      this.toast.error('Déplacement refusé', 'On ne peut pas replanifier dans le passé.');
+      return;
+    }
+
+    // La DURÉE est conservée telle quelle — pas recalculée depuis le nouveau jour, ce qui
+    // casserait un événement à cheval sur minuit.
+    const dureeMs = ev.endAt ? new Date(ev.endAt).getTime() - debut.getTime() : null;
+    const nouvelleFin = dureeMs != null ? new Date(nouveauDebut.getTime() + dureeMs) : null;
+
+    const libelle = ev.title || ev.vehiclePlate || 'L’événement';
+    const jourLisible = this.dayLabelFmt.format(nouveauDebut);
+    try {
+      const creneau = {
+        startAt: nouveauDebut.toISOString(),
+        ...(nouvelleFin ? { endAt: nouvelleFin.toISOString() } : {}),
+      };
+      await firstValueFrom(
+        ev.type === 'RESERVATION'
+          ? this.api.updateReservation(id, creneau)
+          : this.api.updateEvent(id, creneau),
+      );
+      this.toast.success('Déplacé', `${libelle} — ${jourLisible}`);
+      await Promise.all([this.loadEvents(), this.loadSummary()]);
+      void this.loadForecast();
+    } catch (err) {
+      swallow('agenda:deplacerEvenement', err);
+      // Le motif du serveur passe EN L'ÉTAT : « ce véhicule est déjà pris sur ce créneau » est
+      // une phrase utile ; « échec du déplacement » n'en est pas une.
+      this.toast.error('Déplacement refusé', apiErrorMessage(err, 'Le serveur a refusé ce créneau.'));
+    }
   }
 
   protected onEventClick(ev: VehicleEventDto): void {

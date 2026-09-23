@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, computed, input, output } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, HostListener, input, output, signal } from '@angular/core';
 import type { VehicleEventDto } from '@vizyo/tracky-shared';
 import {
   addDays,
@@ -16,6 +16,15 @@ interface CalendarPill {
   color: string;
   label: string;
   muted: boolean;
+  /**
+   * Peut-on la saisir et la poser ailleurs ?
+   *
+   * ⚠️ UNE MISSION NE L'EST JAMAIS, même pour un compte qui gère l'agenda. Elle vit dans cette
+   * grille pour qu'un gestionnaire ne double-réserve pas (A2 § 3.1), mais elle appartient à
+   * l'espace dépôt et se négocie avec un tiers : la déplacer d'un geste depuis le calendrier
+   * déplacerait un engagement pris avec quelqu'un d'autre.
+   */
+  deplacable: boolean;
 }
 
 /** Cellule du calendrier (un jour). */
@@ -53,6 +62,31 @@ const weekdayFmt = new Intl.DateTimeFormat('fr-FR', { weekday: 'long', day: 'num
  * ⚠️ On borne sur le DÉBUT, pas sur la fin : une réservation annulée qui a déjà commencé a bien
  * occupé son véhicule un moment, et ce trou-là mérite d'être visible.
  */
+/**
+ * CE QU'ON A LE DROIT DE SAISIR ET DE POSER AILLEURS.
+ *
+ * Extrait du composant pour être éprouvable : c'est la règle la plus lourde de conséquences du
+ * glisser-déposer, puisqu'elle décide seule si un geste d'un demi-seconde peut déplacer un
+ * engagement.
+ *
+ * ⚠️ UNE MISSION N'EST JAMAIS DÉPLAÇABLE, même par un compte qui gère l'agenda. Elle vit dans
+ * cette grille pour qu'un gestionnaire ne double-réserve pas (A2 § 3.1), mais elle appartient à
+ * l'espace dépôt et engage un TIERS : la faire glisser depuis le calendrier déplacerait un
+ * rendez-vous pris avec quelqu'un d'autre, sans que personne d'autre ne soit prévenu.
+ *
+ * ⚠️ Une RÉSERVATION relève de `reservations_manage`, pas d'`agenda_manage` : déplacer une
+ * réservation, c'est la même autorité que la valider. Un compte qui peut poser une maintenance
+ * ne peut pas pour autant bouger la voiture que quelqu'un a réservée.
+ */
+export function peutEtreDeplace(
+  ev: Pick<VehicleEventDto, 'type' | 'status'>,
+  permissions: { agenda: boolean; reservations: boolean },
+): boolean {
+  if (ev.status === 'DONE' || ev.status === 'CANCELLED') return false;
+  if (ev.type === 'MISSION') return false;
+  return ev.type === 'RESERVATION' ? permissions.reservations : permissions.agenda;
+}
+
 export function annulationSansObjet(
   ev: { status?: string | null; startAt: string },
   maintenantMs: number = Date.now(),
@@ -91,8 +125,10 @@ export function annulationSansObjet(
             [class.cal-cell--outside]="!c.inMonth"
             [class.cal-cell--today]="c.isToday"
             [class.cal-cell--has]="c.count > 0"
+            [class.cal-cell--cible]="cibleIso() === c.iso && enDeplacement()"
+            [attr.data-jour]="c.iso"
             [attr.aria-label]="c.aria + (c.count ? ' — ' + c.count + ' événement(s)' : '')"
-            (click)="dayClick.emit(c.iso)">
+            (click)="cliquerJour(c.iso)">
             <span class="cal-cell-day">{{ c.day }}</span>
             @if (c.active > 0 || c.forecast > 0) {
               <span class="cal-badges">
@@ -106,8 +142,13 @@ export function annulationSansObjet(
             }
             <span class="cal-cell-pills">
               @for (p of c.pills; track p.id) {
-                <span class="cal-pill" [class.cal-pill--muted]="p.muted"
-                      [style.--pill]="p.color" [title]="p.label">
+                <span class="cal-pill"
+                      [class.cal-pill--muted]="p.muted"
+                      [class.cal-pill--saisissable]="p.deplacable"
+                      [class.cal-pill--prise]="enDeplacement() === p.id"
+                      [style.--pill]="p.color"
+                      [title]="p.deplacable ? p.label + ' — glissez-la sur un autre jour pour la déplacer' : p.label"
+                      (pointerdown)="debuterSaisie($event, p, c.iso)">
                   <span class="cal-pill-text">{{ p.label }}</span>
                 </span>
               }
@@ -144,9 +185,39 @@ export function annulationSansObjet(
           </button>
         }
       </div>
+
+      <!-- Ce qu'on tient. Sans cette étiquette, un glissement au doigt est aveugle : le pouce
+           cache la pilule d'origine et rien ne dit ce qu'on est en train de poser. -->
+      @if (etiquette(); as e) {
+        <div class="cal-fantome" aria-hidden="true"
+             [style.left.px]="e.x" [style.top.px]="e.y">{{ e.texte }}</div>
+      }
     </div>
   `,
   styles: [`
+    /* ── Glisser-déposer ──────────────────────────────────────────────────────────────
+       « touch-action: none » UNIQUEMENT sur les pilules saisissables : posé sur la cellule,
+       il tuerait le défilement du mois au doigt. Posé ici, il n'empêche que le défilement
+       qui démarrerait sur une pilule — et celui-là, on le veut pour l'appui long. */
+    .cal-pill--saisissable { cursor: grab; touch-action: none; }
+    .cal-pill--saisissable:active { cursor: grabbing; }
+    .cal-pill--prise { opacity: .35; outline: 2px dashed var(--tracky-light); outline-offset: 1px; }
+    /* Le jour visé. Un liseré franc, pas un simple survol : on doit savoir où ça va tomber. */
+    .cal-cell--cible {
+      border-color: var(--tracky-light) !important;
+      box-shadow: inset 0 0 0 2px var(--tracky-light);
+      background: color-mix(in srgb, var(--tracky-light) 10%, transparent);
+    }
+    .cal-fantome {
+      position: fixed; z-index: 60; pointer-events: none;
+      transform: translate(10px, -50%);
+      max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+      padding: 5px 10px; border-radius: 8px;
+      background: var(--bg-secondary); border: 1px solid var(--tracky-light);
+      color: var(--fg-primary); font-size: 12px; font-weight: 700;
+      box-shadow: 0 6px 18px rgb(0 0 0 / .28);
+    }
+
     :host { display: block; }
     .cal {
       background: var(--bg-secondary);
@@ -346,7 +417,165 @@ export class AgendaCalendarComponent {
   /** Émis avec l'ISO (YYYY-MM-DD) du jour cliqué. */
   readonly dayClick = output<string>();
 
+  /**
+   * ── DÉPLACER UN ÉVÉNEMENT EN LE FAISANT GLISSER ────────────────────────────────────────
+   *
+   * Le calendrier ne connaît pas les permissions : on les lui DONNE, plutôt que de lui faire
+   * injecter un service. Il décide alors seul, par type, ce qui est saisissable — une règle,
+   * un endroit.
+   */
+  readonly peutGererAgenda = input(false);
+  readonly peutGererReservations = input(false);
+
+  /** Émis quand une pilule est lâchée sur un AUTRE jour. Le parent décide et appelle le serveur. */
+  readonly evenementDeplace = output<{ id: string; versIso: string }>();
+
   protected readonly weekdayLabels = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'];
+
+  // ── Glisser-déposer ────────────────────────────────────────────────────────────────────
+  //
+  // POURQUOI DES « POINTER EVENTS » ET PAS LE GLISSER-DÉPOSER NATIF : `draggable="true"` et
+  // `dragstart` n'existent pas au doigt. Un agenda qu'on ne peut réorganiser qu'à la souris
+  // rate la moitié des gens qui s'en servent — le standard traverse son dépôt avec un
+  // téléphone. Les pointer events couvrent souris, doigt et stylet d'un seul code.
+  //
+  // ⚠️ AU DOIGT, ON EXIGE UN APPUI LONG. Sans lui, le premier glissement vertical empoignerait
+  // une pilule au lieu de faire défiler le mois : le calendrier deviendrait impraticable.
+
+  /** Appui maintenu avant d'armer la saisie au doigt. En dessous, le geste reste un défilement. */
+  private static readonly APPUI_LONG_MS = 320;
+  /** Déplacement à la souris avant d'armer : en dessous, c'est un clic, pas un glissement. */
+  private static readonly SEUIL_SOURIS_PX = 5;
+
+  private saisie: {
+    id: string;
+    depuisIso: string;
+    pointerId: number;
+    x0: number;
+    y0: number;
+    minuteur: ReturnType<typeof setTimeout> | null;
+    element: Element;
+  } | null = null;
+
+  /** Identifiant de la pilule réellement en cours de déplacement (null = aucune). */
+  protected readonly enDeplacement = signal<string | null>(null);
+  /** Jour actuellement survolé par le doigt/curseur. */
+  protected readonly cibleIso = signal<string | null>(null);
+  /** Libellé flottant qui suit le pointeur — c'est lui qui rend le geste lisible. */
+  protected readonly etiquette = signal<{ texte: string; x: number; y: number } | null>(null);
+  /** Un glissement vient-il d'avoir lieu ? Sert à ne PAS ouvrir le panneau du jour au relâchement. */
+  private glissementConsomme = false;
+
+  /**
+   * Ce qu'on peut déplacer, et sous quelle permission.
+   *
+   * Clôturé (DONE) ou annulé : non. Une mission : jamais (voir `CalendarPill.deplacable`).
+   * Une réservation relève de `reservations_manage` — la même autorité que la valider ; tout le
+   * reste (maintenance, incident) relève d'`agenda_manage`.
+   */
+  private estDeplacable(ev: VehicleEventDto): boolean {
+    return peutEtreDeplace(ev, {
+      agenda: this.peutGererAgenda(),
+      reservations: this.peutGererReservations(),
+    });
+  }
+
+  protected debuterSaisie(evt: PointerEvent, p: CalendarPill, iso: string): void {
+    if (!p.deplacable || evt.button !== 0) return;
+    // On ne coupe PAS la propagation ici : tant que la saisie n'est pas armée, le clic et le
+    // défilement doivent continuer de fonctionner normalement.
+    const element = evt.currentTarget as Element;
+    const armer = () => {
+      if (!this.saisie || this.saisie.id !== p.id) return;
+      this.saisie.minuteur = null;
+      this.enDeplacement.set(p.id);
+      this.cibleIso.set(iso);
+      this.etiquette.set({ texte: p.label, x: this.saisie.x0, y: this.saisie.y0 });
+      try { element.setPointerCapture(evt.pointerId); } catch { /* capture refusée : on suit quand même */ }
+    };
+    this.saisie = {
+      id: p.id, depuisIso: iso, pointerId: evt.pointerId,
+      x0: evt.clientX, y0: evt.clientY, element,
+      // Souris et stylet : on arme au premier déplacement franc. Doigt : appui long.
+      minuteur: evt.pointerType === 'touch'
+        ? setTimeout(armer, AgendaCalendarComponent.APPUI_LONG_MS)
+        : null,
+    };
+    this.armerAuSeuil = evt.pointerType !== 'touch' ? armer : null;
+  }
+
+  /** Armement différé de la souris : appelé au premier déplacement dépassant le seuil. */
+  private armerAuSeuil: (() => void) | null = null;
+
+  @HostListener('document:pointermove', ['$event'])
+  protected suivrePointeur(evt: PointerEvent): void {
+    const s = this.saisie;
+    if (!s || evt.pointerId !== s.pointerId) return;
+
+    if (!this.enDeplacement()) {
+      const d = Math.hypot(evt.clientX - s.x0, evt.clientY - s.y0);
+      // Le doigt qui bouge AVANT la fin de l'appui long fait défiler : on abandonne la saisie.
+      if (s.minuteur && d > 10) { this.annulerSaisie(); return; }
+      if (this.armerAuSeuil && d > AgendaCalendarComponent.SEUIL_SOURIS_PX) {
+        this.armerAuSeuil();
+        this.armerAuSeuil = null;
+      }
+      if (!this.enDeplacement()) return;
+    }
+
+    evt.preventDefault();
+    this.etiquette.set({ texte: this.etiquette()?.texte ?? '', x: evt.clientX, y: evt.clientY });
+    // `elementFromPoint` reste juste même sous capture de pointeur : c'est la pile visuelle,
+    // pas la cible d'événement, qu'on interroge.
+    const sous = document.elementFromPoint(evt.clientX, evt.clientY);
+    const cellule = sous?.closest('[data-jour]') as HTMLElement | null;
+    this.cibleIso.set(cellule?.dataset['jour'] ?? null);
+  }
+
+  @HostListener('document:pointerup', ['$event'])
+  @HostListener('document:pointercancel', ['$event'])
+  protected relacherPointeur(evt: PointerEvent): void {
+    const s = this.saisie;
+    if (!s || evt.pointerId !== s.pointerId) return;
+    const cible = this.cibleIso();
+    const aBouge = this.enDeplacement() !== null;
+    const id = s.id;
+    const depuis = s.depuisIso;
+    this.annulerSaisie();
+    if (!aBouge) return;
+    // Un glissement a eu lieu : on empêche le clic qui suit d'ouvrir le panneau du jour.
+    this.glissementConsomme = true;
+    if (evt.type === 'pointercancel' || !cible || cible === depuis) return;
+    this.evenementDeplace.emit({ id, versIso: cible });
+  }
+
+  /** Échap pendant un glissement : on repose la pilule là où elle était. */
+  @HostListener('document:keydown.escape')
+  protected annulerAuClavier(): void {
+    if (this.enDeplacement()) { this.glissementConsomme = true; this.annulerSaisie(); }
+  }
+
+  private annulerSaisie(): void {
+    const s = this.saisie;
+    if (s?.minuteur) clearTimeout(s.minuteur);
+    if (s) { try { s.element.releasePointerCapture(s.pointerId); } catch { /* déjà relâchée */ } }
+    this.saisie = null;
+    this.armerAuSeuil = null;
+    this.enDeplacement.set(null);
+    this.cibleIso.set(null);
+    this.etiquette.set(null);
+  }
+
+  /**
+   * Le clic sur un jour — sauf s'il clôt un glissement.
+   *
+   * Sans ce garde, poser une pilule ouvrirait le panneau du jour par-dessus le résultat : on
+   * verrait le déplacement disparaître sous une feuille qu'on n'a pas demandée.
+   */
+  protected cliquerJour(iso: string): void {
+    if (this.glissementConsomme) { this.glissementConsomme = false; return; }
+    this.dayClick.emit(iso);
+  }
 
   /** Regroupe les événements par jour (clé ISO locale de leur startAt). */
   private readonly eventsByDay = computed(() => {
@@ -390,6 +619,7 @@ export class AgendaCalendarComponent {
         color: eventColor(ev),
         label: ev.title || ev.vehiclePlate || '—',
         muted: ev.status === 'DONE' || ev.status === 'CANCELLED',
+        deplacable: this.estDeplacable(ev),
       }));
       return {
         iso,
