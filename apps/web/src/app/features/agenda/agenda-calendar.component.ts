@@ -166,9 +166,20 @@ export function annulationSansObjet(
             </span>
             <!-- Mobile compact : pastilles colorées (les pilules texte sont masquées en CSS) -->
             @if (c.count > 0 || c.proposals > 0) {
+              <!--
+                ⚠️ MOBILE : C'EST ICI QUE LE GLISSER-DÉPOSER VIT. Les pilules texte sont masquées
+                en dessous de 640 px (la règle « cal-cell-pills : display none ») : le geste posé sur
+                elles ne marchait donc PAS au doigt, alors que c'est justement l'appareil qu'on
+                visait. Relevé en recette le 2026-09-24, après l'avoir annoncé comme acquis.
+                La pastille reçoit le même geste, avec une zone de touche élargie (voir le CSS).
+              -->
               <span class="cal-dots" aria-hidden="true">
                 @for (p of c.pills; track p.id) {
-                  <span class="cal-dot" [style.background]="p.color"></span>
+                  <span class="cal-dot"
+                        [class.cal-dot--saisissable]="p.deplacable"
+                        [class.cal-dot--prise]="enDeplacement() === p.id"
+                        [style.background]="p.color"
+                        (pointerdown)="debuterSaisie($event, p, c.iso)"></span>
                 }
                 @if (c.overflow > 0) { <span class="cal-dot cal-dot--more"></span> }
                 <!-- Point CREUX = proposition. Le plein dit « réservé », le creux « prévu ». -->
@@ -200,6 +211,14 @@ export function annulationSansObjet(
        il tuerait le défilement du mois au doigt. Posé ici, il n'empêche que le défilement
        qui démarrerait sur une pilule — et celui-là, on le veut pour l'appui long. */
     .cal-pill--saisissable { cursor: grab; touch-action: none; }
+    /*
+      La pastille mobile porte le MÊME geste que la pilule, avec une zone de touche de 16 px
+      de plus tout autour — invisible, obtenue par un pseudo-élément plutôt qu'en grossissant
+      la pastille : un point de 6 px se vise au pixel près à la souris, jamais au pouce.
+    */
+    .cal-dot--saisissable { position: relative; touch-action: none; cursor: grab; }
+    .cal-dot--saisissable::after { content: ''; position: absolute; inset: -8px; }
+    .cal-dot--prise { outline: 2px solid var(--tracky-light); outline-offset: 2px; opacity: .5; }
     .cal-pill--saisissable:active { cursor: grabbing; }
     .cal-pill--prise { opacity: .35; outline: 2px dashed var(--tracky-light); outline-offset: 1px; }
     /* Le jour visé. Un liseré franc, pas un simple survol : on doit savoir où ça va tomber. */
