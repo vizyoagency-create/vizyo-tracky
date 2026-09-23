@@ -1275,6 +1275,11 @@ export class AgendaComponent implements OnInit {
   // ─── État ───────────────────────────────────────────────────────────────────
   protected readonly vehicles = signal<VehicleDetailDto[]>([]);
   protected readonly events = signal<VehicleEventDto[]>([]);
+  /**
+   * Échéances du panneau « à venir & en retard » : fenêtre FIXE autour d'aujourd'hui, jamais le
+   * mois affiché. Séparé d'`events()` exprès — voir `loadSummary`.
+   */
+  private readonly echeances = signal<VehicleEventDto[]>([]);
   protected readonly summary = signal<AgendaSummaryDto | null>(null);
   protected readonly loading = signal(true);
 
@@ -1723,10 +1728,25 @@ export class AgendaComponent implements OnInit {
     return this.dayLabelFmt.format(new Date(y, m - 1, d));
   });
 
-  /** Liste « à venir & en retard » : PLANNED/OPEN/IN_PROGRESS, triés par échéance. */
+  /**
+   * Liste « à venir & en retard » : PLANNED/OPEN/IN_PROGRESS, triés par échéance.
+   *
+   * Se sert dans `echeances()` — la fenêtre fixe autour d'aujourd'hui — et NON dans les
+   * événements du mois affiché : feuilleter octobre ne doit pas changer ce qui est « à venir ».
+   * Mêmes filtres de périmètre et de type que le calendrier, pour que les deux parlent du même
+   * parc.
+   */
   protected readonly upcomingEvents = computed(() => {
-    return this.filteredEvents()
-      .filter((ev) => ev.status === 'PLANNED' || ev.status === 'OPEN' || ev.status === 'IN_PROGRESS')
+    const type = this.selectedType();
+    const vid = this.selectedVehicleId();
+    const gids = this.groupVehicleIdSet();
+    return this.echeances()
+      .filter((ev) => {
+        if (vid && ev.vehicleId !== vid) return false;
+        if (gids && !gids.has(ev.vehicleId)) return false;
+        if (type && ev.type !== type) return false;
+        return ev.status === 'PLANNED' || ev.status === 'OPEN' || ev.status === 'IN_PROGRESS';
+      })
       .sort((a, b) => new Date(a.startAt).getTime() - new Date(b.startAt).getTime())
       .slice(0, 25);
   });
@@ -1774,10 +1794,25 @@ export class AgendaComponent implements OnInit {
     }
   }
 
+  /**
+   * Les TROIS COMPTEURS **et** la liste « à venir & en retard » — chargés ensemble, parce qu'ils
+   * décrivent le même horizon.
+   *
+   * ⚠️ Ils ne le décrivaient PAS. Les compteurs viennent de `GET /agenda/summary`, dont la fenêtre
+   * est « en retard » + « 30 prochains jours ». La liste, elle, se servait dans `events()`, qui ne
+   * contient QUE le mois affiché. D'où un écran qui se contredit : « 1 À VENIR (30J) » au-dessus
+   * d'une liste vide quand l'échéance tombe le mois prochain — et une liste qui changeait de sens
+   * en feuilletant les mois, alors qu'« à venir » ne dépend pas du mois qu'on regarde.
+   *
+   * Deux appels plutôt qu'une fenêtre élargie : élargir `loadEvents` aurait fait grossir la
+   * requête du calendrier à chaque mois feuilleté (l'union « mois affiché ∪ 30 jours » s'étire
+   * sans borne dès qu'on s'éloigne de la date du jour).
+   */
   private async loadSummary(): Promise<void> {
     // Même garde que `loadEvents` : `GET /agenda/summary` exige `agenda_view`.
     if (!this.canSeeAgenda()) {
       this.summary.set(null);
+      this.echeances.set([]);
       return;
     }
     try {
@@ -1785,6 +1820,23 @@ export class AgendaComponent implements OnInit {
     } catch (err) {
       swallow('agenda:loadSummary', err);
       this.summary.set(null);
+    }
+    try {
+      const now = Date.now();
+      this.echeances.set(
+        await firstValueFrom(
+          this.api.listEvents({
+            // 90 j en arrière : « en retard » n'a pas de borne basse côté serveur, mais une
+            // échéance oubliée depuis plus d'un trimestre ne se règle pas depuis cette liste.
+            from: new Date(now - 90 * 24 * 3600 * 1000).toISOString(),
+            to: new Date(now + 30 * 24 * 3600 * 1000).toISOString(),
+            fleetId: this.currentFleetId(),
+          }),
+        ),
+      );
+    } catch (err) {
+      swallow('agenda:loadEcheances', err);
+      this.echeances.set([]);
     }
   }
 
