@@ -115,26 +115,27 @@ import { ReservationBookingApiService } from '../../core/services/reservation-bo
             <label class="pr-f">
               <span>Votre besoin, en une phrase</span>
               <textarea class="pr-in" rows="2" [value]="freeText()" (input)="freeText.set($any($event.target).value)"
+                        (blur)="analyserTexteSaisi()"
                         placeholder="Ex. 11 places pour Carcassonne demain de 9 h à 17 h"></textarea>
             </label>
 
             <div class="pr-grid">
               <label class="pr-f">
-                <span><lucide-icon [img]="UsersIcon" [size]="12" /> Places @if (estDicte('seats')) { <em class="pr-dit">dicté</em> }</span>
+                <span><lucide-icon [img]="UsersIcon" [size]="12" /> Places @if (estDicte('seats')) { <em class="pr-dit">déduit</em> }</span>
                 <input type="number" min="1" class="pr-in" [value]="seats()" (input)="seats.set($any($event.target).value)" placeholder="ex. 11">
               </label>
               <label class="pr-f">
-                <span><lucide-icon [img]="MapPinIcon" [size]="12" /> Destination @if (estDicte('destination')) { <em class="pr-dit">dicté</em> }</span>
+                <span><lucide-icon [img]="MapPinIcon" [size]="12" /> Destination @if (estDicte('destination')) { <em class="pr-dit">déduit</em> }</span>
                 <input type="text" class="pr-in" [value]="destination()" (input)="destination.set($any($event.target).value)" placeholder="ex. Carcassonne">
               </label>
             </div>
             <div class="pr-grid">
               <label class="pr-f">
-                <span>Début @if (estDicte('startAt')) { <em class="pr-dit">dicté</em> }</span>
+                <span>Début @if (estDicte('startAt')) { <em class="pr-dit">déduit</em> }</span>
                 <input type="datetime-local" class="pr-in" [value]="startAt()" (input)="startAt.set($any($event.target).value)">
               </label>
               <label class="pr-f">
-                <span>Fin @if (estDicte('endAt')) { <em class="pr-dit">dicté</em> }</span>
+                <span>Fin @if (estDicte('endAt')) { <em class="pr-dit">déduit</em> }</span>
                 <input type="datetime-local" class="pr-in" [value]="endAt()" (input)="endAt.set($any($event.target).value)">
               </label>
             </div>
@@ -508,6 +509,9 @@ export class PublicReservationComponent implements OnInit, OnDestroy {
    */
   private async parseVoice(text: string): Promise<void> {
     if (!text) return;
+    // Mémorisé ICI, donc pour la dictée comme pour le clavier : après une dictée, entrer dans le
+    // champ puis en ressortir sans rien changer ne doit pas relancer une analyse.
+    this.dernierTexteAnalyse = text;
     this.parsing.set(true);
     this.parseEchoue.set(false);
     try {
@@ -535,6 +539,35 @@ export class PublicReservationComponent implements OnInit, OnDestroy {
   protected ecrireALaPlace(): void {
     this.stopVoice();
     this.etape.set('revue');
+  }
+
+  /** Dernier texte confié à l'IA — pour ne pas repayer deux fois la même phrase. */
+  private dernierTexteAnalyse = '';
+
+  /**
+   * LE TEXTE TAPÉ EST LU PAR L'IA, LUI AUSSI.
+   *
+   * Relevé le 2026-09-23 : l'analyse n'était branchée que sur `rec.onend`, la fin d'une DICTÉE.
+   * Un conducteur qui clique « Écrire à la place » — ou dont le micro est refusé, ou dont le
+   * navigateur ne sait pas l'écouter — tapait sa phrase et ne voyait rien se remplir : places,
+   * destination et créneau restaient à saisir un par un. Or c'est exactement le geste qu'on
+   * voulait épargner, et le repli clavier n'est pas un cas rare — un dépôt est bruyant.
+   *
+   * Déclenché à la SORTIE du champ, pas à la frappe : une phrase ne se lit qu'une fois finie,
+   * et facturer un appel par caractère n'aurait aucun sens.
+   *
+   * ⚠️ On ne relit pas deux fois la même phrase (`dernierTexteAnalyse`) : revenir dans le champ
+   * et en ressortir sans rien changer ne coûte rien.
+   */
+  protected analyserTexteSaisi(): void {
+    const texte = this.freeText().trim();
+    if (!texte || texte === this.dernierTexteAnalyse || this.parsing()) return;
+    // Taper sa phrase puis appuyer droit sur « Envoyer » fait sortir du champ : sans ce garde, on
+    // paierait une analyse dont plus personne ne verrait le résultat (l'écran de confirmation, lui,
+    // passe devant — il est testé avant les étapes dans le gabarit).
+    if (this.done()) return;
+    void this.parseVoice(texte); // c'est `parseVoice` qui mémorise la phrase, pour les deux chemins
+
   }
 
   protected revenirALaDictee(): void {

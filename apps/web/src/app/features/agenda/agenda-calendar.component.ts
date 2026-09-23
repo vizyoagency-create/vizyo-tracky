@@ -40,6 +40,30 @@ const MAX_PILLS = 3;
 const weekdayFmt = new Intl.DateTimeFormat('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
 
 /**
+ * UNE ANNULATION DONT LE CRÉNEAU N'A PAS ENCORE COMMENCÉ NE S'AFFICHE PAS.
+ *
+ * Elle n'aura pas lieu : il n'y a rien à planifier autour, et la montrer barrée encombre le mois
+ * sans rien apprendre. Le PASSÉ garde sa trace barrée — là, l'annulation explique un trou dans
+ * l'activité, c'est un fait d'histoire.
+ *
+ * Sans cette borne, la reprise en masse (feuille « Réorganiser ») laissait autant de lignes barrées
+ * qu'elle annulait de réservations : 116 d'un coup chez cdef31 le 2026-09-23, étalées sur les deux
+ * semaines à venir. L'outil censé désencombrer l'agenda le rendait moins lisible qu'avant.
+ *
+ * ⚠️ On borne sur le DÉBUT, pas sur la fin : une réservation annulée qui a déjà commencé a bien
+ * occupé son véhicule un moment, et ce trou-là mérite d'être visible.
+ */
+export function annulationSansObjet(
+  ev: { status?: string | null; startAt: string },
+  maintenantMs: number = Date.now(),
+): boolean {
+  if (ev.status !== 'CANCELLED') return false;
+  const debut = new Date(ev.startAt).getTime();
+  if (Number.isNaN(debut)) return false;
+  return debut > maintenantMs;
+}
+
+/**
  * Sprint 7 — Grille calendrier mensuelle (from scratch, Date natif). 7 colonnes
  * (Lun→Dim) × 6 lignes. Chaque cellule : numéro du jour + jusqu'à 3 pilules
  * colorées par type d'événement + "+N" en débordement. Jour courant surligné,
@@ -327,9 +351,11 @@ export class AgendaCalendarComponent {
   /** Regroupe les événements par jour (clé ISO locale de leur startAt). */
   private readonly eventsByDay = computed(() => {
     const map = new Map<string, VehicleEventDto[]>();
+    const maintenant = Date.now();
     for (const ev of this.events()) {
       const d = new Date(ev.startAt);
       if (Number.isNaN(d.getTime())) continue;
+      if (annulationSansObjet(ev, maintenant)) continue;
       const key = localIso(d);
       const list = map.get(key);
       if (list) list.push(ev);

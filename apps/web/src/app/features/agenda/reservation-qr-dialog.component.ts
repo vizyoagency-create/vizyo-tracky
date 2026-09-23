@@ -10,6 +10,20 @@ import { ToastService } from '../../shared/ui/toast/toast.service';
 import { buildQrCardHtml, buildTrackyQrSvg, QR_CARD_CSS } from '../../shared/utils/tracky-qr.util';
 
 /**
+ * Le domaine LISIBLE de la carte, tiré du lien lui-même.
+ *
+ * Repli sur le domaine courant plutôt que sur une constante : une carte imprimée doit pouvoir être
+ * retapée à la main, et une adresse fausse au pied d'un QR est pire que pas d'adresse du tout.
+ */
+export function domaineDe(url: string, courant?: string): string {
+  try {
+    return new URL(url).host;
+  } catch {
+    return courant ?? (typeof location !== 'undefined' ? location.host : '');
+  }
+}
+
+/**
  * P0-1 (2026-09-23) — LE QR DU LIEN PUBLIC DE RÉSERVATION, propre à chaque société.
  *
  * ┌─ POURQUOI CE DIALOGUE EXISTE ─────────────────────────────────────────────┐
@@ -160,6 +174,16 @@ export class ReservationQrDialogComponent implements OnInit {
     this.cardHtmlRaw = buildQrCardHtml({
       plate: this.fleetName() ?? lien.fleetName ?? 'Votre société',
       qrSvg,
+      /**
+       * ⚠️ LE DOMAINE IMPRIMÉ EST CELUI DU LIEN, jamais un défaut.
+       *
+       * Sans ça, la carte affichait `tracky.vizyoagency.com` — le défaut de `buildQrCardHtml`,
+       * hérité de la carte de déverrouillage — alors que l'application est servie sur
+       * `app-tracky.vizyoagency.com`. Le QR, lui, encode bien `publicUrl` : le scan marchait.
+       * Mais un conducteur qui ne peut pas scanner et retape ce qu'il LIT tombait sur un 404,
+       * et la carte est faite pour être imprimée et affichée au dépôt.
+       */
+      domain: domaineDe(lien.publicUrl),
       textes: {
         eyebrow: 'Réservation de véhicule',
         titre: 'Scannez pour demander un véhicule',

@@ -39,7 +39,7 @@ import { FleetFilterService } from '../../core/services/fleet-filter.service';
 import { VehiclesApiService, type VehicleDetailDto } from '../../core/services/vehicles.service';
 import { ToastService } from '../../shared/ui/toast/toast.service';
 import { GroupBadgeComponent } from '../../shared/ui/group-badge/group-badge.component';
-import { AgendaCalendarComponent } from './agenda-calendar.component';
+import { AgendaCalendarComponent, annulationSansObjet } from './agenda-calendar.component';
 import { ReservationSheetComponent } from './sheets/reservation-sheet.component';
 import { OptimizationSheetComponent } from './sheets/optimization-sheet.component';
 import { AgendaAgentSettingsSheetComponent } from './sheets/agenda-agent-settings-sheet.component';
@@ -1609,6 +1609,9 @@ export class AgendaComponent implements OnInit {
       .filter((ev) => {
         const st = new Date(ev.startAt).getTime();
         if (Number.isNaN(st)) return false;
+        // Même règle que la grille du mois, et le MÊME prédicat : le panneau du jour et la grille
+        // ne doivent pas pouvoir diverger. Voir `annulationSansObjet`.
+        if (annulationSansObjet(ev)) return false;
         const effEnd = this.eventSpanEndMs(ev, st);
         // Chevauche le jour ; un événement immobilisant actif (ex. incident ouvert sans fin)
         // apparaît chaque jour où il rend le véhicule indisponible — cohérent avec la Disponibilité.
