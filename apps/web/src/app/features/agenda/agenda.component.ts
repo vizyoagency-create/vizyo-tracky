@@ -616,7 +616,15 @@ interface GroupOption {
               <label for="ag-f-veh">Véhicule</label>
               <select id="ag-f-veh" class="ag-input" [(ngModel)]="form.vehicleId" (ngModelChange)="onCreateVehicleChange($event)">
                 <option value="" disabled>Sélectionner…</option>
-                @for (v of vehicles(); track v.id) {
+                <!--
+                  ⚠️ On itère « scopedVehicles », et NON « vehicles ». La liste brute contient le parc de
+                  TOUTES les sociétés : un super-admin dont le bandeau est réglé sur « Client
+                  test » se voyait proposer les plaques du cdef31 et de mh cars, et pouvait poser
+                  une maintenance sur le véhicule d'un autre client sans que rien ne l'avertisse.
+                  Relevé en recette le 2026-09-24. Toute la page obéit au filtre société ; ce
+                  sélecteur était le seul à l'ignorer.
+                -->
+                @for (v of scopedVehicles(); track v.id) {
                   <option [value]="v.id">{{ v.plate }}@if (v.brand) { — {{ v.brand }} {{ v.model }} }</option>
                 }
               </select>
