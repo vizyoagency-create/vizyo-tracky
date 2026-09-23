@@ -171,6 +171,45 @@
       <div class="tile" [class.muted-tile]="summary().iaFacturee === 0"><span class="n">{{ summary().iaFacturee }}</span><span class="l">IA facturée</span></div>
     </div>
 
+    <!-- ── CE QUI RESTE À RATTRAPER ──
+         Ajouté le 24/09. Cette page disait ce qui TOURNE, jamais ce qui RESTE : un arriéré de
+         9 898 tracés ouvert depuis avril y était totalement invisible, et il a fallu que le
+         propriétaire demande « montre-moi la page » pour apprendre qu'elle n'existait pas.
+         Le chiffre qui tranche est le RYTHME — sans lui, lent et bloqué se ressemblent. -->
+    @if (rattrapages().length > 0) {
+      <section class="chrono">
+        <h2 class="group-title">Ce qui reste à rattraper</h2>
+        <p class="chrono-sub">
+          Du travail historique résorbé en fond, <strong>après</strong> le travail courant —
+          les trajets neufs ne sont jamais retardés.
+        </p>
+        @for (r of rattrapages(); track r.id) {
+          <div class="rat">
+            <div class="rat-head">
+              <span class="rat-label">{{ r.label }}</span>
+              <span class="rat-reste">{{ r.restant | number:'1.0-0' }}</span>
+            </div>
+            <p class="rat-exp">{{ r.explication }}</p>
+            <div class="rat-meta">
+              @if (r.plusAncien) {
+                <span class="rat-chip">le plus ancien : {{ r.plusAncien | date:'dd/MM/yyyy' }}</span>
+              }
+              @if (r.parJour !== null) {
+                <span class="rat-chip" [class.rat-chip--stagne]="r.parJour === 0">
+                  {{ r.parJour | number:'1.0-0' }} rattrapé(s) sur 24 h
+                </span>
+                @if (r.parJour > 0) {
+                  <span class="rat-chip rat-chip--eta">≈ {{ joursRestants(r) }} j à ce rythme</span>
+                } @else {
+                  <span class="rat-chip rat-chip--stagne">à l'arrêt — rien rattrapé depuis 24 h</span>
+                }
+              }
+            </div>
+          </div>
+        }
+      </section>
+    }
+
     <!-- ── CHRONOLOGIE ──
          Le regroupement par categorie dit ce qui EXISTE. Il ne dit pas ce qui ARRIVE.
          Avec 41 traitements repartis en 7 familles, reconstituer l'ordre de passage a l'oeil

@@ -266,3 +266,25 @@
   display: flex; align-items: flex-start; gap: 6px;
   margin: 8px 2px 0; font-size: 11px; color: var(--fg-tertiary); line-height: 1.45;
 }
+
+/* ── Ce qui reste à rattraper (24/09) ──────────────────────────────────────────────────────
+   Un arriéré se lit en trois temps : combien, depuis quand, à quel rythme. Le rythme porte
+   la couleur, parce que c'est lui qui distingue « ça avance » de « c'est bloqué ». */
+.rat {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-subtle);
+  border-radius: 12px;
+  padding: 12px 14px;
+}
+.rat + .rat { margin-top: 8px; }
+.rat-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.rat-label { font-size: 13.5px; font-weight: 700; color: var(--fg-primary); }
+.rat-reste { font-family: var(--font-display); font-size: 20px; font-weight: 700; color: var(--fg-primary); }
+.rat-exp { margin: 6px 0 0; font-size: 12px; line-height: 1.55; color: var(--fg-tertiary); }
+.rat-meta { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.rat-chip {
+  font-size: 11px; padding: 3px 8px; border-radius: 999px;
+  background: var(--bg-secondary); color: var(--fg-secondary); border: 1px solid var(--border-subtle);
+}
+.rat-chip--eta { color: var(--texte-succes); border-color: color-mix(in srgb, var(--tracky-light) 40%, transparent); }
+.rat-chip--stagne { color: var(--texte-alerte); border-color: color-mix(in srgb, var(--danger) 40%, transparent); }

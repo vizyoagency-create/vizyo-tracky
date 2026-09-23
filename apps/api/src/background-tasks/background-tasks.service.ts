@@ -3,6 +3,7 @@ import { SchedulerRegistry } from '@nestjs/schedule';
 import type {
   BackgroundTaskDto,
   BackgroundTasksResponse,
+  RattrapageDto,
   PauseAgentsDto,
   BgTaskCategory,
   BgTaskCoutIa,
@@ -884,7 +885,72 @@ export class BackgroundTasksService {
       serverTimezone: SERVER_TZ,
       health: this.buildHealth(),
       pauseAgents,
+      rattrapages: await this.rattrapages(),
     };
+  }
+
+  /**
+   * ── CE QUI RESTE À RATTRAPER ────────────────────────────────────────────────────────────
+   *
+   * ⚠️ AUCUN ÉCRAN NE LE DISAIT. Le 2026-09-23, des passages d'automatisation ont tenu 50 min
+   * d'affilée ; en cherchant pourquoi, on a découvert 9 995 tracés jamais recalés — un arriéré
+   * ouvert depuis le 15 avril, que le produit résorbe quinze lignes par passage, et dont
+   * personne ne pouvait voir ni le volume, ni l'ancienneté, ni le rythme. Le propriétaire a dû
+   * demander « montre-moi la page » pour apprendre qu'elle n'existait pas.
+   *
+   * Un rattrapage qui dure cinq mois en silence est indistinguable d'un rattrapage bloqué. Ces
+   * trois chiffres — RESTE, DEPUIS QUAND, et ce que les 24 derniers passages ont réellement
+   * avalé — suffisent à trancher : s'il avance, on attend ; s'il stagne, on sait qu'il faut
+   * regarder. Le RYTHME est le seul qui réponde vraiment, et c'est celui qu'on oublie d'afficher.
+   *
+   * Best-effort : la supervision ne doit jamais faire tomber la page qu'elle supervise.
+   */
+  private async rattrapages(): Promise<RattrapageDto[]> {
+    const out: RattrapageDto[] = [];
+    try {
+      const [restant, plusAncien] = await Promise.all([
+        this.prisma.trip.count({
+          where: { polylineMatched: null, polyline: { not: null }, endedAt: { not: null } },
+        }),
+        this.prisma.trip.aggregate({
+          _min: { endedAt: true },
+          where: { polylineMatched: null, polyline: { not: null }, endedAt: { not: null } },
+        }),
+      ]);
+      const parJour = await this.prisma.trip.count({
+        where: { polylineMatchedAt: { gte: new Date(Date.now() - 24 * 3600 * 1000) } },
+      });
+      out.push({
+        id: 'recalage-traces',
+        label: 'Tracés à recaler sur les routes',
+        explication:
+          "Les trajets d'avant la pose du recalage n'ont jamais été alignés sur le réseau routier. " +
+          "Le produit en reprend quelques-uns à chaque passage horaire, après les trajets neufs — " +
+          'ceux-ci ne sont jamais retardés.',
+        restant,
+        plusAncien: plusAncien._min.endedAt?.toISOString() ?? null,
+        parJour,
+      });
+    } catch (e) {
+      this.logger.warn(`Rattrapage des tracés illisible : ${(e as Error)?.message ?? e}`);
+    }
+
+    try {
+      const restant = await this.prisma.tripAnalysis.count({ where: { limitsCoverage: null } });
+      out.push({
+        id: 'couverture-limites',
+        label: 'Analyses sans couverture des limites de vitesse',
+        explication:
+          "Analyses antérieures au 4 septembre : on ne sait pas quelle part du trajet avait une " +
+          'limite connue. Reprises par lots à chaque passage, sans jamais passer devant les trajets neufs.',
+        restant,
+        plusAncien: null,
+        parJour: null,
+      });
+    } catch (e) {
+      this.logger.warn(`Rattrapage des limites illisible : ${(e as Error)?.message ?? e}`);
+    }
+    return out;
   }
 
   /**

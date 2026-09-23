@@ -9,7 +9,7 @@ import {
   AlarmClock, AlertTriangle, ArrowLeft, CheckCircle2, ChevronRight, LucideAngularModule,
   MonitorSmartphone, PauseCircle, Play, RefreshCw, ShieldAlert, Timer,
 } from 'lucide-angular';
-import type { BackgroundTaskDto, BgTaskCategory, BgTaskEtatLocal, PauseAgentsDto } from '@vizyo/tracky-shared';
+import type { BackgroundTaskDto, BgTaskCategory, BgTaskEtatLocal, PauseAgentsDto, RattrapageDto } from '@vizyo/tracky-shared';
 import { firstValueFrom } from 'rxjs';
 import { BackgroundTasksApiService } from './background-tasks.service';
 
@@ -49,6 +49,8 @@ export class BackgroundTasksComponent implements OnInit, OnDestroy {
   protected readonly error = signal<string | null>(null);
   /** T34 — la pause qui retient les agents du poste, ou null. */
   protected readonly pauseAgents = signal<PauseAgentsDto | null>(null);
+  /** Ce qui reste à rattraper en fond — vide si rien en retard ou lecture indisponible. */
+  protected readonly rattrapages = signal<RattrapageDto[]>([]);
   protected readonly reprise = signal(false);
   protected readonly repriseErreur = signal<string | null>(null);
   protected readonly nowMs = signal(Date.now());
@@ -62,6 +64,19 @@ export class BackgroundTasksComponent implements OnInit, OnDestroy {
   };
 
   /** Tâches groupées par catégorie, dans l'ordre voulu. */
+  /**
+   * Combien de jours au rythme observé.
+   *
+   * C'est LA question qu'on se pose devant un arriéré, et celle qu'un compteur brut laisse
+   * sans réponse : « 9 898 restants » ne dit pas s'il faut attendre une semaine ou un an.
+   * Arrondi au jour supérieur, et jamais affiché quand le rythme est nul — diviser par zéro
+   * donnerait l'infini, ce qui se lit comme une panne alors que c'en est peut-être une.
+   */
+  protected joursRestants(r: RattrapageDto): number {
+    if (!r.parJour || r.parJour <= 0) return 0;
+    return Math.ceil(r.restant / r.parJour);
+  }
+
   protected readonly groups = computed(() => {
     const byCat = new Map<BgTaskCategory, BackgroundTaskDto[]>();
     for (const t of this.tasks()) {
@@ -239,6 +254,7 @@ export class BackgroundTasksComponent implements OnInit, OnDestroy {
       this.tasks.set(res.tasks);
       this.health.set(res.health);
       this.pauseAgents.set(res.pauseAgents ?? null);
+      this.rattrapages.set(res.rattrapages ?? []);
       this.serverTz.set(res.serverTimezone);
       this.skew.set(new Date(res.serverNow).getTime() - Date.now());
       this.nowMs.set(Date.now());

@@ -197,6 +197,25 @@ export interface PauseAgentsDto {
   notifieeA: string | null;
 }
 
+/**
+ * Un chantier de rattrapage : du travail HISTORIQUE que le produit résorbe en fond.
+ *
+ * ⚠️ `parJour` est le chiffre qui compte, et celui qu'on oublie d'afficher. « 9 898 restants »
+ * ne dit pas si ça avance ; « 9 898 restants, 97 rattrapés hier » dit qu'il en reste pour cent
+ * jours. Sans lui, un rattrapage lent et un rattrapage bloqué se ressemblent exactement.
+ */
+export interface RattrapageDto {
+  id: string;
+  label: string;
+  /** Pourquoi cet arriéré existe, et pourquoi il ne retarde pas le travail courant. */
+  explication: string;
+  restant: number;
+  /** ISO du plus ancien élément en attente — `null` si la notion n'a pas de sens ici. */
+  plusAncien: string | null;
+  /** Rattrapés sur les 24 dernières heures — `null` si la donnée n'est pas mesurable. */
+  parJour: number | null;
+}
+
 export interface BackgroundTasksResponse {
   tasks: BackgroundTaskDto[];
   /** ISO — horloge serveur, pour aligner les compte-à-rebours côté client. */
@@ -206,4 +225,6 @@ export interface BackgroundTasksResponse {
   health: BackgroundTasksHealth;
   /** T34 — la pause qui retient les agents du poste en ce moment, ou null. */
   pauseAgents: PauseAgentsDto | null;
+  /** Ce qui reste à rattraper en fond. Vide = rien en retard, ou lecture indisponible. */
+  rattrapages: RattrapageDto[];
 }
