@@ -1511,6 +1511,21 @@ else
   printf '     pour %s processus nomme(s) « docker ». Un compte QUI VARIE = trafic d API normal,\n' "$NB_DOCK"
   echo  "     pas un client installe. C est un compte STABLE et NON NUL qui doit inquieter."
 fi
+# ⚠️ AJOUTE LE 2026-09-24 (VPS-M118) : ce matin, « 🟠 6 connexions ETABLIES … pour 0 processus
+# nomme docker » — et AUCUN moyen de dire qui. Le candidat (VizyoTracky-LimitesVitesse, 04:30
+# Paris, `ssh … docker exec -i tracky-postgres psql`) est reste une concomitance (VPS-M01). C est
+# la lecon du 23/09 (M113-M115) : un nombre sans nom. `ss -xp` porte deja la reponse : la ligne
+# SERVEUR donne l inode du pair ($8), la ligne CLIENT porte cet inode ($6) et le processus.
+# COUT : 1 `ss` de plus (~40 ms), 0 docker. Bance le 24/09 avec un `docker events` borne.
+if [ "$SOCK_MAX" -gt 0 ]; then
+  echo "     ── qui tient ces connexions (pair de chaque socket serveur, dernier sondage) ──"
+  ss -xp 2>/dev/null | awk '
+    $2=="ESTAB" && $5=="/run/docker.sock" {srv[$8]=1; next}
+    $2=="ESTAB" {u=$0; sub(/.*users:\(\(/,"",u); sub(/\)\).*/,"",u); cli[$6]=u}
+    END {for (p in srv) {c=(p in cli)?cli[p]:"pair NON RESOLU (autre espace de noms, ou deja parti)"; n[c]++}
+         for (c in n) printf "       %2d  %s\n", n[c], c}' | sort -rn | head -10
+  echo "     (processus client = auteur ; pour une commande venue par SSH, remonter son parent : ps -o ppid)"
+fi
 echo  "  ── conteneurs qui MONTENT la socket (clients permanents par construction) ──"
 if [ -n "${INSPECT_JSON:-}" ] && have jq; then
   # ⚠️ Derive de INSPECT_JSON, deja capture par la carte des domaines : ZERO appel docker de plus
@@ -1700,6 +1715,24 @@ done
 # PRECEDENT — posee ici dans `imagesProdListe` (meme mecanique que conteneursListe, VPS-M92).
 # COUT : docker images deja lu ($IMGS) + 1 docker image inspect par service. Premiere pose :
 # comparaison NON FAITE.
+# VPS-M116 : le repere `avant-AAAAMMJJ-HHMM-<sha>` designe le code qui tournait ; son image doit
+# etre NEE pendant le deploiement de ce <sha> (journal T33 : fin = at, debut = at - dureeS, marge
+# 120 s). Imprime la preuve si oui, rien sinon. COUT : 1 docker image inspect + 1 grep du journal.
+verifie_chaine_repli() {
+  local tag="$1" sha cree l at dur t_fin t_deb t_img
+  sha=${tag##*-}; [ -n "$sha" ] && [ -s "$JDEP" ] || return 0
+  cree=$(timeout 15 docker image inspect --format '{{.Created}}' "$tag" 2>/dev/null | cut -c1-19)
+  l=$(grep "\"sha\":\"$sha" "$JDEP" 2>/dev/null | tail -1)
+  at=$(printf '%s' "$l" | sed -n 's/.*"at":"\([^"]*\)".*/\1/p')
+  dur=$(printf '%s' "$l" | sed -n 's/.*"dureeS":\([0-9]*\).*/\1/p')
+  [ -n "$cree" ] && [ -n "$at" ] && [ -n "$dur" ] || return 0
+  t_fin=$(date -u -d "$at" +%s 2>/dev/null); t_img=$(date -u -d "$cree" +%s 2>/dev/null)
+  [ -n "$t_fin" ] && [ -n "$t_img" ] || return 0
+  t_deb=$(( t_fin - dur - 120 ))
+  if [ "$t_img" -ge "$t_deb" ] && [ "$t_img" -le "$t_fin" ]; then
+    printf 'image nee %s UTC PENDANT le deploiement de %s (fin %s, %ss) — l image en service avant le dernier deploiement' "${cree#*T}" "$sha" "$at" "$dur"
+  fi
+}
 IMG_PROD_NOW=""
 for c in tracky-api tracky-web; do
   _run=$(timeout 15 docker inspect --format '{{.Image}}' "$c" 2>/dev/null); IMG_PROD_NOW="$IMG_PROD_NOW${IMG_PROD_NOW:+,}$c=${_run:7:12}"
@@ -1723,6 +1756,16 @@ if [ -r "$MANIF" ] && command -v jq >/dev/null 2>&1; then
         printf '  %-11s (pas de deploiement depuis le %s : le repli %s = %s n a rien a prouver)\n' "$c" "$REF_DATE" "$_avtag" "$_avid"
       elif [ "$_avid" = "$_prev" ]; then
         printf '  %-11s ✅ repli REEL : %s = %s = l image du conteneur au passage du %s\n' "$c" "$_avtag" "$_avid" "$REF_DATE"
+      elif _vch=$(verifie_chaine_repli "$_avtag"); [ -n "$_vch" ]; then
+        # ⚠️ AJOUTE LE 2026-09-24 (VPS-M116) : le 23/09 a porte 7 deploiements. Le repere le plus
+        # recent pointait EXACTEMENT l image du conteneur avant le dernier (build de 40103d61), mais
+        # la reference d ici etait l image d HIER a 02 h 30 — tournee hors des 3 reperes que garde
+        # deploy.sh (REPLIS_A_GARDER=3) par conception. Le bloc criait « 🔴 le repli MENT » a tort.
+        # Au-dela d UN deploiement, la bonne reference est le deploiement que le NOM du repere
+        # designe (avant-…-<sha>) : son image doit etre nee PENDANT ce deploiement (journal T33).
+        printf '  %-11s ✅ repli REEL (chaine) : %s = %s = %s\n' "$c" "$_avtag" "$_avid" "$_vch"
+        printf '              (l image du passage du %s, %s, n est plus reperee : %s deploiement(s) en 24 h,\n' "$REF_DATE" "$_prev" "${NDEP24:-?}"
+        printf '               deploy.sh n en garde que 3 — voulu, VPS-M116. Le repli va 3 deploiements en arriere, pas a hier.)\n'
       else
         printf '  %-11s 🔴 le repli MENT : %s = %s, mais le conteneur tournait sur %s le %s (image PRE-construite ou etiquette effacee — VPS-044)\n' "$c" "$_avtag" "$_avid" "$_prev" "$REF_DATE"
       fi
@@ -4937,7 +4980,17 @@ fi
 # hors-site manquee le meme matin (le poste dort = un seul planificateur pour deux devoirs).
 # COUT : une soustraction. La valeur attendue est ecrite ici, pas derivee : si l heure planifiee
 # change cote poste, changer cette ligne — sinon elle criera a tort, ce qui vaut mieux que se taire.
-_att_h=2; _att_m=22
+# ⚠️ CORRIGE LE 2026-09-24 (angle mort n° 4 du 23/09, VPS-M117) : la tache du poste est planifiee
+# en heure de PARIS (cron « 20 4 * * * » + gigue <= 514 s, soit ~04:22 Paris). Ecrite « 2:22 UTC »,
+# la valeur n etait juste qu en heure d ete : au 25/10 (heure d hiver) l audit partira a 03:22 UTC
+# et ce bloc aurait crie « +60 min » chaque jour. On derive donc l heure UTC attendue de 04:22 Paris
+# pour la DATE du depart. Repli sur 02:22 UTC si la zone Europe/Paris est absente (dit en clair).
+_att_ep=$(TZ=Europe/Paris date -d "$(TZ=Europe/Paris date -d "@$T_DEBUT" +%F) 04:22" +%s 2>/dev/null)
+if [ -n "$_att_ep" ]; then
+  _att_h=$((10#$(date -u -d "@$_att_ep" +%H))); _att_m=$((10#$(date -u -d "@$_att_ep" +%M)))
+else
+  _att_h=2; _att_m=22; echo "  ⚠️ zone Europe/Paris introuvable : heure attendue figee a 02:22 UTC (fausse en heure d hiver)"
+fi
 _ecart_min=$(( ( (10#$(date -u -d "@$T_DEBUT" +%H) * 60 + 10#$(date -u -d "@$T_DEBUT" +%M)) - (_att_h * 60 + _att_m) ) ))
 if [ "$_ecart_min" -gt 20 ] || [ "$_ecart_min" -lt -20 ]; then
   printf '  🟠 HEURE DE DEPART : %s UTC, soit %+d min sur l heure planifiee (%02d:%02d). Le poste a dormi,\n' "$(date -u -d "@$T_DEBUT" +%H:%M)" "$_ecart_min" "$_att_h" "$_att_m"

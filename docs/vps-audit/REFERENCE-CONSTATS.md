@@ -632,6 +632,14 @@ cache jetable et une base de données.
 ## VPS-010 — Noyau non redémarré, 59 paquets en retard
 
 - **Domaine** : sécurité · **Gravité** : 2 · **Statut** : `APPLIQUE` — **V4 FAITE le 2026-09-20 16 h 17 UTC** : noyau **6.8.0-139** actif, `reboot-required` disparu, 38/38 revenus seuls en 60 s ; volet paquets désaggravé le 2026-08-12
+- 🟠 **Vu : 2026-09-24 — UN NOUVEAU NOYAU EST INSTALLÉ, PAS ACTIF : `reboot-required` EST REVENU.** À 02 h 30 (collecte),
+  le levier 7 disait *« ✅ noyau actif 6.8.0-139-generic à jour »*. `apt-daily-upgrade` a installé à **06 h 09 UTC**
+  `linux-image-6.8.0-142-generic` (+ modules, en-têtes, `linux-virtual`, `linux-image-virtual` — `history.log`), et à
+  **07 h 37** `/var/run/reboot-required` existe (`.pkgs` : `linux-image-6.8.0-142-generic`, `linux-base`) ; `uname -r` =
+  **6.8.0-139**. C'est le cycle normal d'un canal qui fonctionne (VPS-M74, même passage : 7 → 0) : il rouvre **le geste** de
+  V4, pas le défaut d'origine (59 paquets, noyau de juillet), qui reste `APPLIQUE`. → **V39** : redémarrer dans une fenêtre
+  hors 05 h 30–09 h 00 Paris et hors HH:42–46 (même mode opératoire que V4 : 2 min 40, 38/38 en 60 s, `restart: unless-stopped`
+  sur 39 / 39). ⚠️ Le levier 7 le criera **au passage de demain**, pas avant : la collecte de 02 h 30 précédait l'installation.
 - ✅ **Vu : 2026-09-21 — 10 H APRÈS LE REBOOT, TOUT TIENT.** Noyau **6.8.0-139-generic** (levier 7 : *« à jour »*),
   `reboot-required` **non**, **0** service sur bibliothèque remplacée, uptime 10 h 03 ; 38 / 38 `running`, **0 en boucle**
   (3 compteurs `redem` > 0 : `maalem-dev-admin` 1, `capcom6-worker` 4, `capcom6-server` 4 — tous *« dernier démarrage
@@ -5271,6 +5279,15 @@ confondre les deux ferait accuser le mauvais coupable.
 
 - **Domaine** : sauvegardes · **Gravité** : **2** (3 → 2 le 2026-09-16) · **Statut** : `A_TRAITER` — **volet SYMPTÔME refermé
   le 2026-09-03, volet CAUSE intact — AGGRAVÉ le 2026-09-15 par VPS-043, et MESURÉ COMME PANNE COMMUNE le 2026-09-16**
+- 🟢 **Vu : 2026-09-24 — DEUX COPIES DE SUITE À 2 PAIRES — ET L'UNE DES DEUX ÉTAIT UNE PAIRE DE QUINZE JOURS (VPS-049).**
+  `copie.log` : **23/09 06 h 30** → `20260922` + `20260923` copiées et vérifiées (SHA-256), *la prédiction « pairesCopiees = 2 »
+  du 23/09 est tenue* ; **24/09 06 h 30** → `20260909` (!) + `20260924`. Côté VPS (02 h 31) : *« ✅ aucune paire produite
+  depuis la dernière copie réussie »*. Poste **sur secteur** (`PowerOnline=True`) ; journal `System` des 7 dernières heures :
+  **aucun** `Kernel-Power 42` / `107` — pas de veille ; `Vizyo-Reveil-Audits` 04 h 15 **résultat 0** (2ᵉ sonnerie sur un
+  poste déjà éveillé : le réveil reste non prouvé). Audit parti **02 h 29 UTC (+7 min)**. ⚠️ La session de l'agent a été
+  **suspendue ~5 h** entre la fin de sa collecte (02 h 32) et ses lectures de marge (07 h 36) **sans veille du poste** : c'est
+  l'agent qui a attendu, pas la machine — les chiffres de marge (sécurité, noyau) datent donc de 07 h 3x, et le disent.
+  `powercfg /a` non relu ce passage.
 - 🟢 **Vu : 2026-09-23 — À L'HEURE, SUR SECTEUR, ET LA TÂCHE DE RÉVEIL A SONNÉ POUR LA PREMIÈRE FOIS — SUR UN POSTE QUI NE
   DORMAIT PAS.** `BatteryStatus` : `PowerOnline=True`, `Discharging=False`. `Vizyo-Reveil-Audits` : **`LastRunTime` 23/09
   04 h 15 min 01, `LastTaskResult 0`** (hier 267011) — mais le journal `System` ne porte **aucun** `Power-Troubleshooter 1` ni
@@ -6268,7 +6285,19 @@ confondre les deux ferait accuser le mauvais coupable.
 
 ## VPS-044 — Le repère de repli du chantier a été effacé par le ménage 6 h 25 après le déploiement, et les étiquettes qui restent pointent des images qui n'ont jamais tourné
 
-- **Domaine** : docker · **Gravité** : 3 · **Statut** : `CORRECTIF_PROPOSE` (✅ **V32 (a) FAITE le 2026-09-20 13 h 12 et PROUVÉE le 21/09** : `until=72h`, l'étiquette du 19/09 a survécu au ménage ; ✅ **(b) CODÉE ET TESTÉE le 2026-09-20 ~14 h 30** : `deploy.sh` étiquette l'image du **conteneur en service**, 131 contrôles verts — **EN LIGNE sur le VPS depuis le 20/09 14 h 18 UTC** (pull du propriétaire : `/opt/vizyo-tracky` à `fcb1303a`, md5 de `deploy.sh` identique — vérifié le 21/09 03 h 05, ce référentiel disait à tort « au prochain `git pull` »)) ; `APPLIQUE` à la première ligne « repère posé : … ← l'image du conteneur » suivie d'un « ✅ repli RÉEL » du collecteur
+- **Domaine** : docker · **Gravité** : 3 · **Statut** : `APPLIQUE` (**2026-09-24 : (b) PROUVÉE par 7 déploiements, voir « Vu 2026-09-24 »** ; historique : ✅ **V32 (a) FAITE le 2026-09-20 13 h 12 et PROUVÉE le 21/09** : `until=72h`, l'étiquette du 19/09 a survécu au ménage ; ✅ **(b) CODÉE ET TESTÉE le 2026-09-20 ~14 h 30** : `deploy.sh` étiquette l'image du **conteneur en service**, 131 contrôles verts — **EN LIGNE sur le VPS depuis le 20/09 14 h 18 UTC** (pull du propriétaire : `/opt/vizyo-tracky` à `fcb1303a`, md5 de `deploy.sh` identique — vérifié le 21/09 03 h 05, ce référentiel disait à tort « au prochain `git pull` »)) ; `APPLIQUE` à la première ligne « repère posé : … ← l'image du conteneur » suivie d'un « ✅ repli RÉEL » du collecteur
+- ✅ **Vu : 2026-09-24 — V32 (b) PROUVÉE PAR SEPT DÉPLOIEMENTS : CHAQUE REPÈRE POINTE L'IMAGE QUI TOURNAIT.** Le 23/09 porte
+  **7 déploiements** (09 h 40, 12 h 38, 15 h 36, puis **23 h 04, 23 h 24, 23 h 35, 23 h 40 UTC**), tous par `deploy.sh`,
+  `sante=healthy`, `demo=saine`. Il reste **3 repères par service** (`REPLIS_A_GARDER=3`), et chacun est **né pendant le
+  déploiement du sha qu'il nomme** : `avant-…-2318-2239076e` = image du 23 h 02 min 06 (déploiement `2239076e` fini à 23 h 04 min 18,
+  464 s) ; `avant-…-2329-ccfef141` = 23 h 23 min 43 (fin 23 h 24 min 45) ; `avant-…-2335-40103d61` = 23 h 34 min 09 (fin
+  23 h 35 min 10) — idem côté `tracky-web` (23:00:58, 23:22:49, 23:33:19). **C'est exactement la définition de (b)** : le
+  repère porte l'image **en service** avant le déploiement suivant. Le collecteur a pourtant écrit *« 🔴 le repli MENT »* : il
+  comparait le repère le plus récent à l'image d'**hier 02 h 30** (`6b15f68b1061`), sortie de la fenêtre des 3 repères par
+  conception — **faux positif, corrigé (VPS-M116)**. ⚠️ **Ce que la mesure apprend** : après une soirée à 4 déploiements, le
+  repli remonte **3 déploiements en arrière, pas à « la version stable d'hier »** — `6b15f68` n'existe plus du tout. Voulu
+  (borne le disque : 37 images, +9), mais à savoir avant de compter sur `--repli` un lendemain de rafale.
+  → **statut `APPLIQUE`** : (a) et (b) sont prouvées.
 - ✅ **Vu : 2026-09-23 — LES REPÈRES SONT PARTIS À ~103 H, COMME PRÉVU — ET LA PRÉDICTION ÉTAIT FAUSSE D'UNE IMAGE.** Le
   collecteur : *« tracky-api 🟠 AUCUNE étiquette avant-* »* **et** la même ligne pour `tracky-web` ; 31 → **28** images
   (`alpine` + deux repères), là où hier prédisait 29 (31 − 2) : le repère `tracky-web` n'était pas compté. Voulu (V32 a :
@@ -6602,6 +6631,10 @@ confondre les deux ferait accuser le mauvais coupable.
   | garde-fous | `memlimit=0` · **aucune sonde** · `crond` 0/0 · aucun timer | §4, §7 |
   | copies hors VPS | poste : `Downloads\cdef31-vizyoagency.zip` (**13 h 34 UTC**), `cdef31-videos.zip` (14 h 55), `Kit-ateliers-CDEF31.zip` (09 h 43) ; **aucun dépôt git** (ni `/opt`, ni `D:\www`) | `ls` (poste) |
   | retouches APRÈS le dernier zip | `index.html`, `tuto-agenda/index.html`, `ateliers/index.html`, `tracky.svg`, `vizyo-agency-blanc.png` à **17 h 59 UTC**, `README.md` 18 h 01 | `find -newermt` |
+- 🟠 **Vu : 2026-09-24 — J+1, RIEN N'A BOUGÉ.** Aucun dossier `cdef31*` sous `D:\www\vizyo-agency\` (`ls`), `cdef31-site`
+  toujours `memlimit=0`, sans sonde, `crond` 0/0 ; périmètre *« IDENTIQUE au manifeste du 2026-09-23 »* — c'est précisément
+  l'angle mort n° 9 du 23/09 : dès aujourd'hui, **plus aucune ligne du collecteur** ne dit qu'il n'a ni copie versionnée ni
+  limite. Il ne reste visible que par cette fiche.
 - **QUOI — la cause** : le site est posé **et retouché sur le serveur** — le compose le prévoit (*« Mise à jour de la page :
   remplacer public/index.html »*). Le mode opératoire est propre (projet isolé, réseau `external`, Traefik à chaud, retrait
   écrit), mais il fait du VPS le **dépôt de référence** d'un livrable client, et `/opt` n'est couvert par aucune sauvegarde de
@@ -6622,7 +6655,89 @@ confondre les deux ferait accuser le mauvais coupable.
 ---
 
 
+## VPS-049 — La copie hors-site recopie chaque matin une paire de quinze jours, parce que ses deux rétentions ne comptent pas la même chose
+
+- **Domaine** : sauvegardes · **Gravité** : 4 · **Statut** : `A_TRAITER`
+- **Vu** : 2026-09-24 (1ᵉʳ passage ; le motif est lisible dans `copie.log` dès le 21/09) · **Mesure** :
+
+  | Grandeur | Valeur | Source |
+  |---|---|---|
+  | rétention **VPS** | **16 paires** disponibles (*« 16 paire(s) disponible(s) sur le VPS »*, chaque passage) | `copie.log` |
+  | rétention **poste** | `RetentionJours = 14`, purge par **`LastWriteTime`** (date de copie, pas date de la sauvegarde) | `copie-hors-site.ps1` l. 38, 163–167 |
+  | critère de copie | **toute** paire absente localement (l. 127–129) | idem |
+  | 21/09 06 h 30 | copie de **`20260906`** + `20260921` ; rotation *« 3 fichier(s) de plus de 14 jours supprimé(s) »* | `copie.log` |
+  | 24/09 06 h 30 | copie de **`20260909`** + `20260924` ; rotation *« 3 fichier(s) »* ; la paire `20260909` porte désormais la date **24/09 06 h 30** | `copie.log`, `ls` de `D:\sauvegardes\vizyo-verify` |
+  | coût | ~5,5 Mo et ~3 s par recopie | tailles des fichiers `verify-files_*` |
+- **QUOI — la cause** : le VPS garde **16 paires** (un compte), le poste garde **14 jours** mesurés sur la **date de copie**.
+  La paire de J-15 existe donc sur le VPS mais plus sur le poste → elle est **recopiée**, reçoit une date neuve, et survit
+  **14 jours de plus** localement. La rétention locale n'est plus « 14 jours de sauvegardes » mais un mélange, et la ligne
+  *« OK — 2 paire(s) copiée(s) et vérifiée(s) »* compte comme fraîche une paire de quinze jours.
+- **`pourquoiInvisible`** : tout est vert — SHA-256 conforme, résultat 0, *« OK »*. Le collecteur côté VPS ne voit que
+  « aucune paire produite depuis la dernière copie réussie », ce qui est vrai. Seul un œil sur les **noms** des paires copiées
+  voit qu'une d'elles date de deux semaines.
+- **QUOI FAIRE** (dépôt `vizyo-verify`, `deploy/local/copie-hors-site.ps1`, poste — hors périmètre de l'agent) : purger par la
+  **date du nom** (`verify_AAAAMMJJ-…`) au lieu de `LastWriteTime`, **et** ne copier que les paires dont la date du nom est
+  dans la fenêtre de rétention. **Gain** : le va-et-vient disparaît, le compteur « copiées » redevient honnête, la rétention
+  locale redevient « 14 jours ». **Risque** : nul (le VPS garde 16 paires). **Durée** : 5 lignes.
+- **`aNePasFaire`** : ❌ ne pas « régler » en allongeant la rétention locale à 16 jours : les deux mesures resteraient
+  différentes (compte contre âge), le décalage reviendrait au premier jour sans sauvegarde. ❌ Ne pas raccourcir celle du VPS.
+- **Seuil de réescalade** : gravité 3 si la purge par `LastWriteTime` supprime un jour une paire **récente** (horloge du poste
+  fausse, copie restaurée d'une archive) — la rétention par date de fichier le permet.
+
+---
+
+
 ## Constats de méthode (sur l'audit lui-même)
+
+### VPS-M118 — Six connexions établies sur la socket Docker sans processus nommé « docker », et le bloc ne pouvait pas dire à qui elles étaient
+
+- **Domaine** : méthode · **Gravité** : 4 · **Statut** : `APPLIQUE` (2026-09-24 — le pair de chaque connexion est nommé, bancé)
+- **Vu** : 2026-09-24 · **Mesure** : §4, 02 h 31 : *« 🟠 6 connexion(s) ETABLIE(S) sur /run/docker.sock aux 3 sondages, pour 0
+  processus nommé(s) « docker » … candidat au blocage (VPS-016) »* — les jours précédents : 0. À 07 h 4x : 0. Seul candidat
+  connu à cette minute : `VizyoTracky-LimitesVitesse` (04 h 30 Paris = 02 h 30 UTC), dont le script passe par
+  `ssh … docker exec -i tracky-postgres psql` (`outils/agent-limites-vitesse.cjs` l. 98–100) et qui a fini à **02 h 30 min 34**
+  (son journal) — une concomitance, pas une identification (VPS-M01).
+- **QUOI** : le bloc comptait les connexions côté **serveur** (`$5 == /run/docker.sock`) et s'arrêtait là. C'est la leçon du
+  23/09 (M113–M115) une quatrième fois : **un nombre juste sans son nom**.
+- **Correctif** : `ss -xp` porte déjà la réponse — la ligne serveur donne l'inode du **pair** (`$8`), la ligne client porte cet
+  inode (`$6`) et le **processus** (`users:((…))`). Nouveau sous-bloc *« qui tient ces connexions »*, imprimé seulement si le
+  compte est non nul. **Coût** : 1 `ss` (~40 ms), 0 docker. **Banc** 24/09 ~07 h 45 : un `timeout 6 docker events` lancé en
+  témoin est rendu `1 "docker",pid=534215` ; `bash -n` OK.
+- **Portée écrite** : un client dans un **autre espace de noms** (conteneur qui monte la socket, `foodsqan-traefik`) peut sortir
+  *« pair NON RÉSOLU »* — c'est dit tel quel, jamais converti en « personne ».
+
+### VPS-M117 — L'heure attendue du départ était écrite en UTC alors que la tâche du poste suit l'heure de Paris : au 25/10, le bloc aurait crié « +60 min » chaque jour
+
+- **Domaine** : méthode · **Gravité** : 4 · **Statut** : `APPLIQUE` (2026-09-24 — dérivée de 04 h 22 Paris, bancée été / hiver)
+- **Vu** : 2026-09-24 (angle mort n° 4 du 23/09, **1ᵉʳ report, échéance datée**) · **Mesure** : `_att_h=2; _att_m=22` en dur ;
+  la tâche `audit-vps-tracky` est planifiée `20 4 * * *` **en heure locale** + gigue ≤ 514 s (`list_scheduled_tasks`).
+- **Correctif** : l'heure UTC attendue est dérivée de **04 h 22 Paris** pour la **date** du départ
+  (`TZ=Europe/Paris date -d "<jour> 04:22"`) ; repli sur 02 h 22 UTC, **dit en clair**, si la zone est absente. **Banc** sur la
+  machine : 24/09 départ 02 h 29 → attendu 02 h 22, **+7** ; 26/10 départ 03 h 29 → attendu **03 h 22**, **+7** (l'ancienne
+  version aurait écrit +67).
+- **Reste ouvert** : les heures UTC des 5 agents `VizyoTracky-*` et de la copie dans `ordonnancement` glisseront aussi d'une
+  heure le 25/10 — elles sont écrites, pas dérivées ; à réécrire ce jour-là (rappel dans le post-scriptum du rapport).
+
+### VPS-M116 — « 🔴 le repli MENT » après sept déploiements : le bloc comparait le dernier repère à l'image d'hier, que la rotation des repères avait écartée par conception
+
+- **Domaine** : méthode · **Gravité** : 3 · **Statut** : `APPLIQUE` (2026-09-24 — la chaîne est vérifiée par le journal T33, bancé)
+- **Vu** : 2026-09-24 · **Mesure** : §4 : *« tracky-api 🔴 le repli MENT : tracky-api:avant-20260923-2335-40103d61 = fd40d5972728,
+  mais le conteneur tournait sur 6b15f68b1061 le 2026-09-23 »* (et la même ligne pour `tracky-web`). Vérifié en marge sous
+  `timeout 15` : le repère est né à **23 h 34 min 09**, pendant le déploiement `40103d61` (fin 23 h 35 min 10, 314 s) — c'est
+  l'image **en service** avant `908d20a0`. `6b15f68` n'existe plus : `deploy.sh` ne garde que `REPLIS_A_GARDER=3` repères, et
+  il y a eu **7** déploiements.
+- **QUOI** : la référence (l'image du conteneur **au passage précédent**, `imagesProdListe`) n'est la bonne qu'avec **un**
+  déploiement entre deux passages. Au-delà, le bon témoin est le déploiement **que le nom du repère désigne**
+  (`avant-AAAAMMJJ-HHMM-<sha>`).
+- **Conséquence si non corrigé** : un 🔴 sur V32 (b) **le jour même où elle est prouvée** — et une incitation à « réparer »
+  `deploy.sh` qui fonctionne.
+- **Correctif** : fonction `verifie_chaine_repli` — lit la ligne T33 du `<sha>` du repère, et exige que l'image soit **née entre
+  `at - dureeS - 120 s` et `at`**. Si oui : *« ✅ repli RÉEL (chaîne) … l'image du passage du <date> n'est plus repérée : N
+  déploiements en 24 h, deploy.sh n'en garde que 3 — voulu »*. Sinon le 🔴 reste. **Coût** : 1 `docker image inspect` borné +
+  1 `grep`. **Banc** : les 3 repères `tracky-api` et le repère `tracky-web` → prouvés ; `tracky-api:latest` (témoin négatif) →
+  vide, donc 🔴 conservé.
+- **`aNePasFaire`** : ❌ ne pas remonter `REPLIS_A_GARDER` pour « faire taire » le bloc : 3 × 1,84 Go est déjà le poste qui
+  a fait passer les images de 28 à 37.
 
 ### VPS-M115 — Le catalogue `ordonnancement` ignorait cinq agents du poste qui ouvrent des sessions SSH sur le VPS, et l'un d'eux a parlé pendant la collecte
 
