@@ -1,7 +1,7 @@
 {
   "_comment": "Ce que le POSTE DE COMMANDE montre en plus des tâches. Les tâches, elles, viennent de docs/centre-alerte/app/taches.json et ne se recopient JAMAIS ici — voir generer.mjs. Ce fichier ne porte que ce qu'aucune tâche ne décrit : les mesures de tête, les mécaniques qui tournent seules, les décisions posées au propriétaire, et ce qui est prouvé.",
   "version": 1,
-  "releve": "23 septembre 2026, 03h14 Paris",
+  "releve": "24 septembre 2026, 03h14 Paris",
   "machines": [
     {
       "nom": "Rattrapage du recalage des tracés",
@@ -20,23 +20,23 @@
       "pied2": "s’éteint seule"
     },
     {
-      "nom": "Coupe-circuit automatique — 8 nuits sur le chantier : nuit 22→23, ton téléphone s’est tu 2 h 09 pendant la plage CDEF31, les coupes ont été retenues puis toutes faites à son retour, jusqu’à 62 min en retard",
-      "texte": "Nuit du 22 au 23 : les 4 coupes MH Cars de 20:00 sont parties avant la chute du téléphone (3 acquittées par TCP ; FV-941-LZ, boîtier déconnecté 2 min, coupé par SMS, SMS remis mais jamais confirmé — le véhicule n’a pas bougé de la nuit, et rien ne l’a écrit). Ton téléphone a cessé de pinguer à 20:23 et n’est revenu que vers 22:33 : l’interlock a retenu les coupes CDEF31 de 22:00 comme il le doit (aucune coupe sans secours SMS possible), en écrivant 21 alertes critiques en 31 min (T79). À son retour, les 24 coupes CDEF31 sont toutes parties et ont été acquittées — mais de 34 à 62 min en retard, et 18 d’entre elles 20 à 29 min APRÈS le retour du téléphone, parce que chaque coupe retenue attendait l’échéance de son palier de réessai (T82, nouveau). La preuve SMS de 21:30 n’est partie qu’au retour (+63 min). Le 22 au matin, les 26 reprises (4 MH Cars à 05:00, 22 CDEF31 à 07:00) ont toutes été acquittées par TCP en 0,6 à 5,4 s, sans un SMS. Quatre véhicules rallumés à la main le soir (HM-733-GA : 7 nuits sur 8). La sentinelle e-mail a enfin dit que cdef31 ne reçoit pas son rapport hebdomadaire (T80 — à corriger avant dimanche 28/09). Les agents du poste sont toujours en pause : 147 h sans récit (T75).",
+      "nom": "Coupe-circuit automatique — 9 nuits sur le chantier : nuit 23→24, tout à l’heure, rien au centre d’alerte",
+      "texte": "Nuit du 23 au 24 : les 4 coupes MH Cars de 20:00 et les 24 coupes CDEF31 de 22:00 sont parties à l’heure (22:00:01 → 22:06:20), 27 acquittées par TCP en moins de 6 s ; la 28ᵉ (HM-733-GA) a bien coupé le moteur, mais sa confirmation est arrivée 86 s après l’ordre et n’a pas été reprise : la commande reste « non confirmée », sans une ligne (T71). Le 23 au matin, les 30 reprises (4 MH Cars à 05:00, 26 CDEF31 à 07:00) ont toutes été acquittées par TCP en 0,5 à 6,2 s, sans un SMS. Preuve SMS 3 sur 3, téléphone présent toute la journée, aucun refus de l’interlock : la première lecture entièrement verte depuis le 18/09. Le poste a été ré-authentifié mercredi : la pause s’est levée à 10:17 et récits et courrier sont repartis (T75 fait) — la nouvelle sentinelle de la file t’a quand même réveillé 93 min après pour une file qui se vidait (T83, nouveau). Côté cdef31, deux courriels de plus ont rebondi : le rapport hebdomadaire renvoyé à la main, et l’avis de demande de réservation vers astreinte@ (T80, avant dimanche 28/09). HM-733-GA rallumé à la main pour la 8ᵉ nuit sur 9.",
       "fait": null,
       "total": null,
-      "pied": "36 plannings actifs sur 38 (31 CDEF31 + 5 MH Cars) — 8 nuits : 6 probantes, 1 retenue par l’interlock (15/09), 1 retardée par le téléphone (22/09)",
-      "pied2": "le téléphone d’abord (T55 : 4 silences en 8 jours, le premier pendant une plage) ; claude auth login (T75) ; l’adresse de cdef31 avant le 28/09 (T80) ; T79 + T82 + T76 ensemble ; décider l’élargissement (T38)"
+      "pied": "36 plannings actifs sur 38 (31 CDEF31 + 5 MH Cars) — 9 nuits : 7 probantes, 1 retenue par l’interlock (15/09), 1 retardée par le téléphone (22/09)",
+      "pied2": "les adresses de cdef31 avant le 28/09 (T80) ; le téléphone (T55 : 4 silences en 8 jours) ; T79 + T82 + T76 ensemble ; T83 (petit) ; décider l’élargissement (T38)"
     }
   ],
   "chiffres": [
     {
-      "v": "38",
-      "t": "défauts nés au centre d’alerte sur 24 h (sur 49 lignes — 35 CRITICAL, presque toutes nées des 2 h 09 sans téléphone : 21 refus d’interlock, 9 de la sentinelle ; plus 4 agents du poste en pause et la première alerte « e-mail bloqué » ; 121 CRITICAL actives)",
-      "alerte": true
+      "v": "6",
+      "t": "défauts nés au centre d’alerte sur 24 h (sur 14 lignes — aucune du coupe-circuit ; 2 CRITICAL de la nouvelle sentinelle de file, 1 « e-mail bloqué » ; 118 CRITICAL actives, −3)",
+      "alerte": false
     },
     {
-      "v": "502/503",
-      "t": "trajets des 19, 20 et 21/09 recalés dans les 2 h suivant leur création — trois journées figées ; le seul trajet du 19 sans recalage est définitif (T28) ; le 22/09 est à 225/225, fenêtre encore ouverte"
+      "v": "527/527",
+      "t": "trajets des 20, 21 et 22/09 recalés dans les 2 h suivant leur création — trois journées figées (T28) ; le 23/09 est à 213/213, fenêtre encore ouverte"
     },
     {
       "v": "auto",
