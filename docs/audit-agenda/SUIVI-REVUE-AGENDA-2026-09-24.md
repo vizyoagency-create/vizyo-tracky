@@ -4,6 +4,9 @@
 **Point de départ :** [`AUDIT-CRITIQUE-AGENDA-2026-09-22.md`](./AUDIT-CRITIQUE-AGENDA-2026-09-22.md)
 (audit daté — il reste le compte rendu de ce qui était vrai le 22/09 ; ce document-ci dit ce qui a
 changé depuis).
+**Version visuelle**, tenue à jour du même contenu :
+<https://claude.ai/artifact/3pEq4crDmu3G1SrQ5eihuM> (tableau de bord — les trois gestes y sont
+cochés, les sept défauts de recette détaillés).
 
 ---
 
