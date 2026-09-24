@@ -6,6 +6,14 @@
 Inventaire descriptif complémentaire : [`INVENTAIRE-FONCTIONNALITES-AGENDA-2026-09-22.md`](./INVENTAIRE-FONCTIONNALITES-AGENDA-2026-09-22.md).
 Version visuelle (tableau de bord, cases à cocher) : <https://claude.ai/artifact/3pEq4crDmu3G1SrQ5eihuM>
 
+> ## ⚠️ CE DOCUMENT DÉCRIT LE 22/09, PAS L'ÉTAT ACTUEL
+> **Les trois P0 sont levés depuis le 23/09.** Ce rapport reste la trace de ce qui était vrai ce
+> jour-là — il n'est pas mis à jour, exprès : un audit qu'on réécrit ne prouve plus rien.
+>
+> **Pour l'état courant, lire [`SUIVI-REVUE-AGENDA-2026-09-24.md`](./SUIVI-REVUE-AGENDA-2026-09-24.md)**,
+> qui dit ce qui a été corrigé, ce qui reste, et les **sept défauts supplémentaires** que la recette
+> à l'écran a trouvés — aucun n'étant visible dans le code.
+
 ---
 
 ## Verdict
