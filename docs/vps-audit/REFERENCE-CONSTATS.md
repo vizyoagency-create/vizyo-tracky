@@ -632,6 +632,10 @@ cache jetable et une base de données.
 ## VPS-010 — Noyau non redémarré, 59 paquets en retard
 
 - **Domaine** : sécurité · **Gravité** : 2 · **Statut** : `APPLIQUE` — **V4 FAITE le 2026-09-20 16 h 17 UTC** : noyau **6.8.0-139** actif, `reboot-required` disparu, 38/38 revenus seuls en 60 s ; volet paquets désaggravé le 2026-08-12
+- 🟠 **Vu : 2026-09-25 — LE LEVIER 7 LE DIT SEUL, COMME ANNONCÉ : « noyau actif 6.8.0-139 → viser 6.8.0-142 : REDÉMARRAGE requis ».**
+  `uname -r` 6.8.0-139, uptime 106 h, `reboot-required` présent (`linux-image-6.8.0-142-generic`, `linux-base`), 2 services sur une
+  bibliothèque remplacée ; `dockerd` 1 126 Mo. Canal de sécurité : cache 01 h 43 → **4** correctifs découverts (78 en retard, 2ᵉ source
+  74 dont 4), installateur prévu **06 h 41 UTC** — pas un retard (VPS-M74). **V39** reste ouverte, gravité 3.
 - 🟠 **Vu : 2026-09-24 — UN NOUVEAU NOYAU EST INSTALLÉ, PAS ACTIF : `reboot-required` EST REVENU.** À 02 h 30 (collecte),
   le levier 7 disait *« ✅ noyau actif 6.8.0-139-generic à jour »*. `apt-daily-upgrade` a installé à **06 h 09 UTC**
   `linux-image-6.8.0-142-generic` (+ modules, en-têtes, `linux-virtual`, `linux-image-virtual` — `history.log`), et à
@@ -1651,6 +1655,10 @@ déploiement. C'est la différence entre fermer un incident et fermer sa cause.
 ## VPS-016 — `dockerd` tourne en boucle et brûle un cœur depuis 24 heures
 
 - **Domaine** : docker · **Gravité** : **2** · **Statut** : `SURVEILLANCE` (depuis le 2026-09-21 — 2ᵉ passage de suite avec `pgrep -x docker` vide **et** `dockerd` < 10 % ; **V33 ✅ FAIT**, **V34 posée** : garde-fou `docker-orphelins.timer` + règle dans `CLAUDE.md`, preuve attendue = 7 jours sans client > 15 min, jour **1 / 7**) *(nº 6 et nº 7 clos le 2026-09-20 ~05 h 25 · 5ᵉ close le 2026-09-15 17 h 20, V28 · 4ᵉ close le 2026-08-20 05 h 08 min 14 · ⚠️ sa première remédiation avait échoué, VPS-M51)*
+- ✅ **Vu : 2026-09-25 — JOUR 5 / 7 (V34).** `pgrep -a -x docker` vide (collecte et marge), `dockerd` **1,0 %**, cumul **2,0 h / 106,2 h
+  = 1,9 %**, `docker-orphelins` 02 h 30 min 47 `vus=0 tues=0`, 0 « TUÉ » sur 24 h. 2 connexions `docker.sock` à 02 h 31 (3 sondages),
+  « 1 pair NON RÉSOLU » : c'est le 1ᵉʳ rendement de VPS-M118 — et son défaut, **VPS-M119** (le pair hors espace de noms n'était
+  jamais cherché). À 03 h 0x, 0 connexion.
 - ✅ **Vu : 2026-09-23 — JOUR 3 / 7 : 0 « TUÉ », 0 CLIENT, `dockerd` 1,0 %, CUMUL 0,7 H / 58,2 H = 1,2 %.** Témoin
   `docker-orphelins` 02 h 28 min 00, `vus=0 tues=0` ; 0 connexion établie sur `/run/docker.sock` (3 sondages) ;
   `pgrep -a -x docker` vide avant la marge. Les commandes `docker` de la marge (`inspect`, `stats`, `images`) étaient toutes
@@ -5143,7 +5151,15 @@ confondre les deux ferait accuser le mauvais coupable.
 ## VPS-036 — Un tiers exécute `kill -KILL` en root sur la production, par un canal qui ne passe ni par SSH ni par le pare-feu
 
 - **Domaine** : sécurité · **Gravité** : 2 · **Statut** : `A_TRAITER` *(était `SURVEILLANCE` —
-  monté le 2026-09-02)* · **3ᵉ occurrence le 2026-09-21 16 h 49 min 23 UTC** (le même tueur qu'au 28/08)
+  monté le 2026-09-02)* · **4ᵉ occurrence le 2026-09-24 07 h 39 min 32 UTC** (le même tueur qu'au 28/08 et au 21/09)
+- 🟠 **Vu : 2026-09-25 — QUATRIÈME OCCURRENCE : LE MÊME SCRIPT `kill`, À L'OCTET PRÈS, LE 24/09 À 07 h 39 min 32 UTC.**
+  `journalctl -u qemu-guest-agent` : `guest-ping` puis `guest-exec` 07 h 39 min 32 (`/bin/sh -c echo c25hcD0k…`), `guest-exec-status`
+  pid 536702 ; le collecteur n'imprime **qu'un** blob décodé pour les deux commandes « inattendues » (21/09 16 h 49 et 24/09 07 h 39) :
+  charge identique (1 420 caractères, `kill -TERM` / `kill -KILL` sur les clients `docker logs|stats` et les pagers de plus de 6 h).
+  À cette heure, **0 client docker** sur la machine (V34, jour 4) : il n'avait rien à tuer. ⚠️ Concomitance, pas identification
+  (VPS-M01) : la sonde horaire `ps --sort=-%cpu` était passée à 07 h 35 min 56, et l'agent d'audit faisait sa marge B en SSH de
+  07 h 35 à 07 h 50. Écritures connues de ce canal : 28/08 (kill), 01/09 (mask), 21/09 (kill), **24/09 (kill)**. Seuil inchangé :
+  la cible reste l'hygiène de l'hôte → gravité 2 ; c'est V15 (*« ce canal est-il voulu ? »*) qui ferme la fiche.
 - 🟠 **Vu : 2026-09-22 — TROISIÈME OCCURRENCE : LE MÊME SCRIPT `kill` QU'AU 28/08, À L'OCTET PRÈS (1 420 CARACTÈRES), LE
   LENDEMAIN DU TICKET HOSTINGER — ET IL N'AVAIT RIEN À TUER.** `journalctl -u qemu-guest-agent` : `guest-ping` 16 h 49 min 22,
   `guest-exec` 16 h 49 min 23 (`/bin/sh -c echo c25hcD0k… | base64 -d | sh`), `guest-exec-status` pid 2465566. Décodé par le
@@ -6389,6 +6405,10 @@ confondre les deux ferait accuser le mauvais coupable.
 ## VPS-045 — L'hôte retient 80 à 90 % du CPU de la machine, et il ne l'a pas rendu quand la cause interne a disparu
 
 - **Domaine** : charge · **Gravité** : **2** (1 → 2 le 2026-09-20 13 h 36 : limitation levée) · **Statut** : `SURVEILLANCE` — **V35 FAITE** : (1) ticket → **limitation CONFIRMÉE et LEVÉE par Hostinger à 13 h 36 UTC**, (2) 14 conteneurs arrêtés 12 h 48 puis **rallumés 13 h 38** ; **V4 FAITE** ; jour **1 / 7** de steal < 10 % (21/09)
+- ✅ **Vu : 2026-09-25 — JOUR 5 / 7.** `sar -u -f sa24` **avec en-tête** : steal **3,36 %** moyen, max **6,54 %** (03 h 10), idle
+  **85,33 %** ; 25/09 partiel (15 relevés) : 2,88 % moyen, max 5,77 %. ⚠️ **La marge a failli republier VPS-M114** : un `awk '$8'` sans
+  relire l'en-tête a rendu *« max steal 88,58 % »* — c'était l'**idle** (colonne 8). Relu avec l'en-tête avant d'écrire une ligne. Et
+  *« steal au départ 28 % »* (2 s à 02 h 30 min 05) n'est pas un régime : 2,72 % sur les 10 min qui l'encadrent → **VPS-M120**.
 - ✅ **Vu : 2026-09-23 — JOUR 3 / 7, ET UNE CORRECTION DE SÉRIE (VPS-M114).** `sar -u` lu **avec l'en-tête** : 22/09 steal
   **3,39 %** moyen, **max 7,95 %** (17 h 20), idle **86,07 %** ; 21/09 steal **2,76 %** moyen — **et non 0,24 %** comme écrit
   hier (c'était l'`iowait`). Verdict inchangé : 3 % n'est pas 80–90 %, le seuil du compteur (10 %) n'est pas approché.
@@ -6536,6 +6556,10 @@ confondre les deux ferait accuser le mauvais coupable.
 ## VPS-047 — Une session SSH par seconde pendant deux heures depuis le poste, 50 min après que l'hébergeur a levé sa limitation « en avertissant qu'elle peut revenir »
 
 - **Domaine** : ordonnancement / charge · **Gravité** : 2 · **Statut** : `CORRECTIF_PROPOSE` — **V37 (1) identifiée et (2) POSÉE le 2026-09-21 05 h 05 Paris** (section « 🛑 Une boucle du poste qui parle au VPS = UNE session, et un `sleep` qui dort » dans `CLAUDE.md`, après la règle V34 ; mémoire des agents `claude_monitor_tool_sleep_path.md`) ; (3) seuil au collecteur posé (VPS-M110) ; `SURVEILLANCE` après 7 jours sans heure > 600 sessions, `APPLIQUE` quand le premier `Monitor` suivant a été relu avec `/usr/bin/sleep`
+- ✅ **Vu : 2026-09-25 — JOUR 4 / 7 : LA VEILLE A PORTÉ 727 SESSIONS, POINTE 12 H = 114.** Ventilée — **par le collecteur**
+  désormais (angle mort n° 3, bancé) : 649 root depuis le poste, **73 root depuis `37.167.51.206`** (le poste en mobile, même clé
+  `vizyo-vps-hostinger`, 18 h 00–18 h 30 UTC = la fenêtre des coupes CDEF31 ; famille `37.167.x` déjà vue du 03 au 15/09), 5 dépôts
+  Conductor / Dispocar / coffre. Aucun `Monitor` relu.
 - ✅ **Vu : 2026-09-23 — JOUR 2 / 7 : LA VEILLE A PORTÉ 229 SESSIONS, POINTE 15 H = 56, ET LE BLOC M112 L'A DIT SEUL.**
   *« ✅ la VEILLE (2026-09-22) : 229 sessions, heure de pointe 15h=56 — sous le seuil V37 (600/h) »*. Ventilé à la main par
   heure × clé (`auth.log`) : 13 h–15 h (42 / 11 / 56) = la pose de `cdef31-site` (VPS-048) ; le fond = **~3 sessions par
@@ -6620,6 +6644,8 @@ confondre les deux ferait accuser le mauvais coupable.
 ## VPS-048 — Un site client est entré en production sans annonce, et sa dernière version n'existe que sur le VPS
 
 - **Domaine** : périmètre / sauvegardes · **Gravité** : 3 · **Statut** : `A_TRAITER`
+- 🟠 **Vu : 2026-09-25 — J+2, RIEN N'A BOUGÉ.** Aucun dossier `cdef31*` sous `D:\www\vizyo-agency\` ; `cdef31-site` `memlimit=0`, sans
+  sonde ; `/opt/cdef31-vizyoagency` 20 Mo.
 - **Vu** : 2026-09-23 (1ᵉʳ passage ; le conteneur date du **22/09 13 h 53 min 44 UTC**) · **Mesure** :
 
   | Grandeur | Valeur | Source |
@@ -6689,6 +6715,56 @@ confondre les deux ferait accuser le mauvais coupable.
 
 ## Constats de méthode (sur l'audit lui-même)
 
+### VPS-M121 — Un boîtier DÉCLARÉ la veille et encore muet était rangé avec le matériel « probablement DÉPOSÉ » (> 7 j)
+
+- **Domaine** : méthode · **Gravité** : 4 · **Statut** : `APPLIQUE` (2026-09-25 — 8ᵉ champ « jamais émis », bancé sur la base réelle)
+- **Vu** : 2026-09-25 · **Mesure** : §5, `tracky_prod` : *« 📋 REGISTRE trackers : 11 silencieux sur 45 »*, bandes **0/0/0/11**, cumul
+  « > 7 j » **10 → 11** — alors que la veille portait **0/0/0/10** sur 44 : aucune bande 3–7 j ne pouvait vieillir jusque-là. Lecture
+  seule sous `timeout 20` : le 45ᵉ boîtier (…6672, `403C`) a été **créé le 24/09 à 21 h 14 UTC**, lié à un véhicule, `lastSeenAt`
+  **NULL**.
+- **QUOI** : la requête du registre écrivait `<= now() - 168 h OR IS NULL` : un boîtier qui n'a **jamais** émis tombait dans la bande
+  du matériel déposé. Une installation neuve lue comme un dépôt — la famille de VPS-M78, à l'autre bout de la vie d'un boîtier. Le
+  cumul « > 7 j », *« qui ne peut que monter par vieillissement »* (VPS-M90), montait ici par une **déclaration**.
+- **Correctif** : 8ᵉ champ `count(*) FILTER (WHERE … IS NULL)`, retiré de la bande « > 7 j » et des cumuls, imprimé à part (*« jamais
+  émis : N ← DÉCLARÉ mais encore muet »*) ; le garde de lecture passe de 7 à 8 champs. **Coût** : 0 requête, même parcours de 45
+  lignes. **Banc** (base réelle) : `trackers|11|45|0|0|0|10|1` → bandes 0/0/0/10, jamais émis 1, cumul > 7 j **10** — la série
+  `registreSilencieuxPlus3j` reste continue (aucun NULL avant le 24/09).
+- **`aNePasFaire`** : ❌ ne pas lire le 11 du total comme « un boîtier de plus en panne ». ❌ Ne pas l'exclure du total : un boîtier
+  déclaré qui ne parle pas au bout de 7 jours **est** un sujet (installation ratée) — c'est alors qu'il faudra le dire.
+
+### VPS-M120 — « Steal au départ : 28 % » sur une machine à charge 0,12 : un échantillon de 2 s décidait seul du mode de collecte
+
+- **Domaine** : méthode · **Gravité** : 4 · **Statut** : `APPLIQUE` (2026-09-25 — second échantillon au-delà du seuil, le plus bas décide)
+- **Vu** : 2026-09-25 · **Mesure** : bloc BUDGET : *« steal au départ : 28 % (mode complet …) »* ; les jours précédents 0 / 2 / 2 / 0 ;
+  `sar -u -f sa25` avec en-tête : **2,72 %** sur 02 h 20–02 h 30, **3,16 %** sur 02 h 10–02 h 20 ; discriminant de la collecte : **5,8 %**
+  sur 184 s. Les 2 s mesurées (02 h 30 min 05) sont la seconde où `sysstat`, `docker-orphelins` et la démo partent ensemble.
+- **QUOI** : VPS-M107 a posé *« au-delà de 50 % de steal, mode ALLÉGÉ ; au-delà de 80 %, MINIMAL »* sur **un** échantillon de 2 s. À 28 % il
+  n'a rien décidé ; à 50 %, un blip aurait sauté `/opt`, la relecture des archives et le balayage par contenu — et la sortie l'aurait
+  justifié par une limitation d'hôte qui n'existait pas. Une limitation (VPS-045) dure des **heures** ; un blip, une seconde.
+- **Correctif** : au-delà du seuil **seulement**, un 2ᵉ échantillon de 2 s, et c'est le **plus bas** qui décide ; les deux sont imprimés
+  (`STEAL_T0_BRUT`). Sous le seuil mais ≥ 15 %, une ligne dit que 2 s ne sont pas un régime et renvoie à `sar`. **Coût** : 0 s les jours
+  normaux, +2 s les jours de seuil. **Banc** (logique, valeurs injectées) : 62 puis 4 → 4, mode complet ; 88 puis 85 → 85, minimal ;
+  28 → 28, pas de 2ᵉ échantillon. `bash -n` OK.
+- **`aNePasFaire`** : ❌ ne pas remplacer l'échantillon par une lecture de `sar` : le dernier relevé peut dater de 9 min, et le mode
+  doit être décidé sur l'état **présent** (le 20/09, la limitation est tombée par paliers à :10).
+
+### VPS-M119 — Le sous-bloc qui devait NOMMER les clients de `docker.sock` a rendu « 1 pair NON RÉSOLU » pour deux connexions
+
+- **Domaine** : méthode · **Gravité** : 4 · **Statut** : `APPLIQUE` (2026-09-25 — recherche du pair dans `/proc/*/fd`, bancée)
+- **Vu** : 2026-09-25 (1ʳᵉ sortie réelle de VPS-M118) · **Mesure** : §4 : *« 🟠 2 connexion(s) ÉTABLIE(S) … aux 3 sondages »* puis, dessous,
+  *« 1 pair NON RÉSOLU (autre espace de noms, ou déjà parti) »* — un pair pour deux connexions, et aucun nom. En marge à 03 h 0x : 0.
+- **QUOI** : deux défauts. (1) Le sous-bloc relance `ss` **après** les 3 sondages et ne disait pas combien il en voyait : le compte d'en
+  tête et la ventilation ne portent pas sur le même instant. (2) `ss` ne liste que les sockets de **son** espace de noms réseau : un
+  client dans un conteneur — `foodsqan-traefik` monte la socket — reste « non résolu » **pour toujours**. VPS-M118 l'avait écrit en
+  portée ; il fallait le résoudre, pas seulement le dire. *La 1ʳᵉ sortie réelle d'un témoin est son vrai banc (VPS-M116, hier).*
+- **Correctif** : le sous-bloc imprime son propre compte ; pour chaque pair non résolu, **un** `find /proc -maxdepth 3 … -lname 'socket:*'`
+  (en `$LOW`) retrouve l'inode dans `/proc/<pid>/fd` de n'importe quel espace de noms, puis nomme le processus (`comm`), le **conteneur**
+  (`cgroup` → `docker-<id>` → nom via `INSPECT_JSON`, 0 docker) ou le parent d'un processus de l'hôte ; un inode introuvable est dit
+  *« DÉJÀ PARTI »*. **Coût** : 175–360 ms, seulement s'il reste un pair non résolu. **Banc** (VPS, lignes `ss` injectées) : inode 35466506 →
+  *« pid 3208 « traefik » — CONTENEUR foodsqan-traefik »* ; inode 123 → *« DÉJÀ PARTI »* ; 214 ms, 863 sockets parcourues.
+- **Hypothèse à confirmer demain** (pas une identification, VPS-M01) : les connexions de 02 h 31 les 24 et 25/09 tombent pendant
+  `VizyoTracky-LimitesVitesse` (VPS-M115, V40).
+
 ### VPS-M118 — Six connexions établies sur la socket Docker sans processus nommé « docker », et le bloc ne pouvait pas dire à qui elles étaient
 
 - **Domaine** : méthode · **Gravité** : 4 · **Statut** : `APPLIQUE` (2026-09-24 — le pair de chaque connexion est nommé, bancé)
@@ -6742,6 +6818,12 @@ confondre les deux ferait accuser le mauvais coupable.
 ### VPS-M115 — Le catalogue `ordonnancement` ignorait cinq agents du poste qui ouvrent des sessions SSH sur le VPS, et l'un d'eux a parlé pendant la collecte
 
 - **Domaine** : méthode · **Gravité** : 4 · **Statut** : `APPLIQUE` (2026-09-23 — 5 entrées ajoutées au manifeste, mesurées)
+- 🟠 **Vu : 2026-09-25 — DEUXIÈME MATIN DE SUITE : `VizyoTracky-LimitesVitesse` A TOURNÉ PENDANT TOUTE LA COLLECTE.** Son journal :
+  02 h 30 min 14 → 02 h 32 min 06 UTC (3 lots d'écriture du cache, 107 cellules) ; collecte 02 h 30 min 05 → 02 h 33 min 09 ; bloc « pendant
+  MA collecte » : **7 sessions étrangères**. Le 24/09 : fin 02 h 30 min 34, 6 connexions `docker.sock`. **Ce n'est pas un hasard de
+  gigue** : l'audit part à 04 h 20 Paris + ≤ 514 s et dure ~3 min, LimitesVitesse part à **04 h 30 Paris** — le recouvrement est
+  structurel. 🆕 **V40** : la décaler à 04 h 40 (10 s, poste). ⚠️ Ses déclencheurs portent `+02:00` (fuseau fixe) : au 25/10 elle
+  partira à 02 h 30 UTC et l'audit à 03 h 20 UTC — la collision disparaîtra d'elle-même, pas d'ici là.
 - **Vu** : 2026-09-23 · **Mesure** : le bloc « pendant MA collecte » a écrit *« 🟠 UNE AUTRE SESSION que celle qui exécute ce
   script »* — 2 sessions depuis le poste, **02 h 30 min 02 (3 s)** et **02 h 30 min 05 (10 s)**. Le Planificateur du poste
   nomme la cause : `VizyoTracky-LimitesVitesse` lancée à **04 h 30 min 01 Paris**, en cours (`267009`). Elle fait partie de

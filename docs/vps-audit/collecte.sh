@@ -261,6 +261,23 @@ MODE_ALLEGE=0; MODE_MINIMAL="${MODE_MINIMAL:-0}"; STEAL_T0_PCT=0
 _s0=$(head -1 /proc/stat); sleep 2; _s1=$(head -1 /proc/stat)
 STEAL_T0_PCT=$(awk -v a="$_s0" -v b="$_s1" 'BEGIN{split(a,x," ");split(b,y," ");t=0;for(i=2;i<=9;i++)t+=y[i]-x[i]; if(t>0) printf "%d", 100*(y[9]-x[9])/t; else print 0}')
 case "${STEAL_T0_PCT:-0}" in ''|*[!0-9]*) STEAL_T0_PCT=0 ;; esac
+# ⚠️ AJOUTE LE 2026-09-25 (VPS-M120) : ce matin, « steal au depart : 28 % » sur une machine a
+# charge 0,12 — alors que `sar` donne 2,72 % sur les 10 min qui l encadrent et 5,8 % sur toute la
+# collecte. 2 s a 02:30:05, c est la seconde ou sysstat, docker-orphelins et la demo partent
+# ensemble : un ECHANTILLON, pas un regime. A 28 % il n a rien decide ; a 50 % il aurait saute
+# /opt, la relecture des archives et le balayage — sur un blip. Une limitation d hote dure des
+# HEURES (VPS-045) : elle se retrouve dans un 2e echantillon, un blip non. Donc, au-dela du
+# seuil SEULEMENT, un 2e echantillon de 2 s, et c est le PLUS BAS des deux qui decide.
+# COUT : 0 s les jours normaux, +2 s les jours ou le seuil est franchi. Bance le 25/09 (valeurs
+# injectees : 62 puis 4 → 4, mode complet ; 88 puis 85 → 85, mode minimal).
+STEAL_T0_BRUT="$STEAL_T0_PCT"
+if [ "$STEAL_T0_PCT" -ge 50 ]; then
+  _s0=$(head -1 /proc/stat); sleep 2; _s1=$(head -1 /proc/stat)
+  _st2=$(awk -v a="$_s0" -v b="$_s1" 'BEGIN{split(a,x," ");split(b,y," ");t=0;for(i=2;i<=9;i++)t+=y[i]-x[i]; if(t>0) printf "%d", 100*(y[9]-x[9])/t; else print 0}')
+  case "${_st2:-0}" in ''|*[!0-9]*) _st2=0 ;; esac
+  STEAL_T0_BRUT="$STEAL_T0_PCT puis $_st2"
+  [ "$_st2" -lt "$STEAL_T0_PCT" ] && STEAL_T0_PCT=$_st2
+fi
 if [ "$STEAL_T0_PCT" -ge 50 ]; then MODE_ALLEGE=1; fi
 # ⚠️⚠️ 2e JET, 2026-09-20 (VPS-M107, 1er jet mesure INSUFFISANT le jour meme) : en mode allege, la passe 2
 # a encore fait monter la charge de 8,9 a 68 — les gzip n etaient qu une part, le reste est la MASSE
@@ -1519,11 +1536,50 @@ fi
 # COUT : 1 `ss` de plus (~40 ms), 0 docker. Bance le 24/09 avec un `docker events` borne.
 if [ "$SOCK_MAX" -gt 0 ]; then
   echo "     ── qui tient ces connexions (pair de chaque socket serveur, dernier sondage) ──"
-  ss -xp 2>/dev/null | awk '
+  # ⚠️ AJOUTE LE 2026-09-25 (VPS-M119) : 1re sortie reelle du sous-bloc M118 = « 2 connexions »
+  # en tete, puis « 1 pair NON RESOLU » dessous — un seul pair pour deux connexions, et aucun nom.
+  # Deux defauts : (1) ce sondage-ci n est pas celui du compte (quelques ms plus tard) et ne
+  # disait pas combien il en voyait ; (2) `ss` ne liste que les sockets de SON espace de noms
+  # reseau : un client dans un conteneur (foodsqan-traefik monte la socket) reste « non resolu »
+  # pour toujours. Or l inode du pair se retrouve dans /proc/<pid>/fd de n importe quel espace
+  # de noms. COUT MESURE le 25/09 : UN `find` sur /proc/*/fd, 175-360 ms, en $LOW, et SEULEMENT
+  # s il reste un pair non resolu. Banc : l inode 35466506 → /proc/3208/fd/10, comm=traefik,
+  # cgroup docker-ae54b0ff….scope.
+  _SSX=$(ss -xp 2>/dev/null)
+  printf '     (ce sondage-ci : %s connexion(s) — il peut differer du compte ci-dessus, pris 0-1 s plus tot)\n' \
+    "$(printf '%s\n' "$_SSX" | awk '$2=="ESTAB" && $5=="/run/docker.sock"' | wc -l)"
+  printf '%s\n' "$_SSX" | awk '
     $2=="ESTAB" && $5=="/run/docker.sock" {srv[$8]=1; next}
     $2=="ESTAB" {u=$0; sub(/.*users:\(\(/,"",u); sub(/\)\).*/,"",u); cli[$6]=u}
-    END {for (p in srv) {c=(p in cli)?cli[p]:"pair NON RESOLU (autre espace de noms, ou deja parti)"; n[c]++}
+    END {for (p in srv) {c=(p in cli)?cli[p]:"pair NON RESOLU par ss (autre espace de noms, ou deja parti)"; n[c]++}
          for (c in n) printf "       %2d  %s\n", n[c], c}' | sort -rn | head -10
+  _NR=$(printf '%s\n' "$_SSX" | awk '
+    $2=="ESTAB" && $5=="/run/docker.sock" {srv[$8]=1; next}
+    $2=="ESTAB" {cli[$6]=1}
+    END {for (p in srv) if (!(p in cli) && p ~ /^[0-9]+$/) print p}' | head -10)
+  if [ -n "$_NR" ]; then
+    echo "     ── pairs NON RESOLUS par ss, cherches dans /proc/*/fd (tous espaces de noms, VPS-M119) ──"
+    _FDS=$($LOW find /proc -maxdepth 3 -path '/proc/[0-9]*/fd/*' -lname 'socket:*' -printf '%p %l\n' 2>/dev/null)
+    for _ino in $_NR; do
+      _pid=$(printf '%s\n' "$_FDS" | awk -v k="socket:[$_ino]" '$2==k {split($1,a,"/"); print a[3]; exit}')
+      if [ -z "$_pid" ]; then
+        printf '       inode %s : introuvable dans /proc — le client est DEJA PARTI (connexion breve)\n' "$_ino"
+        continue
+      fi
+      _comm=$(cat "/proc/$_pid/comm" 2>/dev/null)
+      _cid=$(grep -o 'docker-[0-9a-f]\{64\}' "/proc/$_pid/cgroup" 2>/dev/null | head -1 | cut -c8-)
+      _cnom=''
+      if [ -n "$_cid" ] && [ -n "${INSPECT_JSON:-}" ] && have jq; then
+        _cnom=$(printf '%s' "$INSPECT_JSON" | jq -r --arg id "$_cid" '.[] | select(.Id==$id) | .Name[1:]' 2>/dev/null)
+      fi
+      if [ -n "$_cid" ]; then
+        printf '       inode %s : pid %s « %s » — CONTENEUR %s\n' "$_ino" "$_pid" "$_comm" "${_cnom:-${_cid:0:12} (nom non resolu)}"
+      else
+        printf '       inode %s : pid %s « %s » — processus de l HOTE (parent : %s)\n' "$_ino" "$_pid" "$_comm" \
+          "$(ps -o ppid=,comm= -p "$_pid" 2>/dev/null | awk '{$1=$1; print}')"
+      fi
+    done
+  fi
   echo "     (processus client = auteur ; pour une commande venue par SSH, remonter son parent : ps -o ppid)"
 fi
 echo  "  ── conteneurs qui MONTENT la socket (clients permanents par construction) ──"
@@ -2242,7 +2298,8 @@ for pg in $(db_conteneurs "$MOTEURS_PG"); do
                                          AND \"$RC\" >  now() - interval '72 hours'),
                       count(*) FILTER (WHERE \"$RC\" <= now() - interval '72 hours'
                                          AND \"$RC\" >  now() - interval '168 hours'),
-                      count(*) FILTER (WHERE \"$RC\" <= now() - interval '168 hours' OR \"$RC\" IS NULL)
+                      count(*) FILTER (WHERE \"$RC\" <= now() - interval '168 hours'),
+                      count(*) FILTER (WHERE \"$RC\" IS NULL)
                  FROM \"$RT\";" 2>/dev/null)
             [ -n "$REGSIL" ] && REGSIL="$RT|$REGSIL"
           fi
@@ -2331,7 +2388,7 @@ for pg in $(db_conteneurs "$MOTEURS_PG"); do
                   printf "         ✅ FRAICHEUR : aucun emetteur muet depuis plus de 6 h. Cest un etat COURANT,\n            pas une fenetre — la comparaison ci-dessus, elle, retarde jusqua 24 h.\n";
                 printf "         ⚠️ PLANCHER : ne compte que les emetteurs encore PRESENTS dans la fenetre de\n            retention (%.2f j). Un boitier muet depuis plus longtemps a disparu de la table\n            et nest PAS compte ici — mesure NON FAITE sur lui, pas « il va bien ».\n", wj;
                 # ── VPS-M76 : la source SANS fenetre, qui seule permet de lire la SERIE ──
-                if (regsil != "" && split(regsil, rr, "|") == 7) {
+                if (regsil != "" && split(regsil, rr, "|") == 8) {
                   printf "         📋 REGISTRE %s (AUCUNE retention) : %d silencieux sur %d enregistres.\n", rr[1], rr[2]+0, rr[3]+0;
                   # ── VPS-M78 : le TOTAL melange un incident, du materiel depose et des
                   # vehicules GARES. Seule la duree du silence les separe — donc on la publie.
@@ -2342,6 +2399,15 @@ for pg in $(db_conteneurs "$MOTEURS_PG"); do
                   printf "              3-7 j  : %-3d  ← au-dela de 3 j, un arret nest plus un usage normal.\n", rr[6]+0;
                   printf "              > 7 j  : %-3d  ← materiel probablement DEPOSE : a sortir du parc, sinon\n", rr[7]+0;
                   printf "                             il gonfle le total a chaque passage, pour toujours.\n";
+                  # ── AJOUTE LE 2026-09-25 (VPS-M121) : « JAMAIS EMIS » N EST PAS « > 7 j » ──
+                  # Le 25/09, le registre passe de 10/44 a 11/45 et « > 7 j » de 10 a 11 — sans
+                  # qu aucune bande 3-7 j ait pu vieillir jusque-la (0/0/0/10 la veille). Le 45e
+                  # boitier a ete DECLARE le 24/09 21:14 UTC, lie a un vehicule, et n a encore
+                  # rien emis : lastSeenAt NULL. La requete le rangeait avec le materiel DEPOSE.
+                  # Une installation neuve lue comme un depot : la famille de VPS-M78, a l autre
+                  # bout de la vie d un boitier. Un 8e champ sur le meme parcours, 0 requete.
+                  if (rr[8]+0 > 0)
+                    printf "              jamais emis : %-3d  ← DECLARE mais encore muet (installation en cours ?) — ni panne,\n                             ni depot ; dans le total, HORS des bandes et des cumuls.\n", rr[8]+0;
                   # ── AJOUTE LE 2026-09-08 (VPS-M90) : UNE BANDE SE VIDE TOUTE SEULE ──
                   # VPS-M78 avait remplace « comparer les totaux » par « comparer les BANDES ».
                   # Ce remede porte son propre defaut, et il est SYMETRIQUE du precedent : une
@@ -2385,7 +2451,7 @@ for pg in $(db_conteneurs "$MOTEURS_PG"); do
                   # PAS retomber sur « aucun registre » — ce sont deux etats differents, et
                   # confondre « pas trouve » avec « trouve mais illisible » est exactement le
                   # silence qui se lit comme une absence.
-                  printf "         🔴 REGISTRE TROUVE mais sa ventilation est ILLISIBLE (%d champs au lieu de 7) :\n            mesure NON FAITE ce passage, ce nest PAS « aucun boitier muet » (VPS-M02).\n", split(regsil, rr2, "|");
+                  printf "         🔴 REGISTRE TROUVE mais sa ventilation est ILLISIBLE (%d champs au lieu de 8) :\n            mesure NON FAITE ce passage, ce nest PAS « aucun boitier muet » (VPS-M02).\n", split(regsil, rr2, "|");
                 } else {
                   printf "         ⚠️ AUCUN REGISTRE trouve dans cette base (table petite portant « %s » et un\n            horodatage de derniere vue). Le compte ci-dessus reste donc un PLANCHER QUI\n            DECROIT avec la duree de la panne : NE PAS comparer sa valeur a celle dun autre\n            passage (VPS-M76).\n", em;
                 }
@@ -2830,6 +2896,28 @@ if [ -n "$SRC" ]; then
     printf '    🔴 la VEILLE (%s) : %s sessions, heure de pointe %s — AU-DESSUS du seuil V37 (600/h) : une boucle du poste a tourne sans dormir\n' "$VEILLE" "$V_N" "$V_H"
   else
     printf '    ✅ la VEILLE (%s) : %s sessions, heure de pointe %s — sous le seuil V37 (600/h)\n' "$VEILLE" "$V_N" "${V_H:-aucune}"
+  fi
+  # ⚠️ AJOUTE LE 2026-09-25 (angle mort n° 3 du 24/09, 4e report — VPS-032) : la ligne ci-dessus
+  # dit COMBIEN et QUAND, pas QUI. Les 23 et 24/09, la ventilation par compte × IP × cle de la
+  # veille a ete refaite A LA MAIN, dans la marge, pour dire « plateau de travail, root depuis le
+  # poste ». Tout est deja dans `$V_L` : zero commande de plus, les memes grep que le jour de pic.
+  # Et l heure de pointe NOMMEE : on dit quelle cle la porte, c est ce qui distingue un agent du
+  # poste d un depot Conductor/Dispocar (VPS-042) sans ouvrir auth.log.
+  if [ "${V_N:-0}" -gt 0 ] && [ "$VEILLE" != "$PIC_J" ]; then
+    echo "      qui, la veille (compte depuis IP · cle) :"
+    printf '%s\n' "$V_L" | grep -oE 'for [a-z_][a-z0-9_-]* from [0-9a-f.:]+' | awk '{print $2" depuis "$4}' \
+      | sort | uniq -c | sort -rn | head -5 | awk '{printf "        %6d  %s %s %s\n", $1, $2, $3, $4}'
+    printf '%s\n' "$V_L" | grep -oE 'SHA256:[A-Za-z0-9+/]+' | sort | uniq -c | sort -rn | head -5 \
+      | while read -r n fp; do
+          nom=$(printf '%s\n' "${TOUTES_DECL:-}" | awk -v f="$fp" '$2==f {print $3; exit}')
+          printf '        %6d  cle %s\n' "$n" "${nom:-$fp (NON DECLAREE)}"
+        done
+    V_HP=${V_H%%h=*}
+    if [ -n "$V_HP" ]; then
+      printf '      l heure de pointe (%sh) : ' "$V_HP"
+      printf '%s\n' "$V_L" | awk -v h="$V_HP" 'substr($0,12,2)==h' | grep -oE 'for [a-z_][a-z0-9_-]* from [0-9a-f.:]+' \
+        | awk '{print $2"@"$4}' | sort | uniq -c | sort -rn | awk '{printf "%s%s x%s", (NR>1?", ":""), $2, $1} END{print ""}'
+    fi
   fi
   # La fenetre de MA collecte, bornee par T_DEBUT : qui d autre parlait a la machine pendant
   # que je la mesurais ? Le denominateur est explicite, et ma propre session est RETIREE — mais
@@ -4971,6 +5059,13 @@ elif [ "$MODE_ALLEGE" = "1" ]; then
   echo "     parcours de /opt et balayage par contenu NON FAITS. Les cles qui en dependent sont NON MESUREES."
 else
   echo "  steal au depart : ${STEAL_T0_PCT} % (mode complet ; le mode allege s enclenche a 50 %, VPS-M107)"
+fi
+# VPS-M120 : l echantillon de depart est de 2 s — le dire, et dire s il a ete confirme.
+if [ "$STEAL_T0_BRUT" != "$STEAL_T0_PCT" ]; then
+  echo "     echantillons de 2 s : ${STEAL_T0_BRUT} % — le PLUS BAS decide (VPS-M120 : un blip ne se confirme pas)"
+elif [ "${STEAL_T0_PCT:-0}" -ge 15 ]; then
+  echo "     ⚠️ 2 s d echantillon, pas un regime : ${STEAL_T0_PCT} % ici ne se lit qu a cote du %steal de sar (section 9)"
+  echo "        et du discriminant ci-dessous (VPS-M120 — 28 % le 25/09 pour 2,72 % sur les 10 min qui l encadrent)."
 fi
 # ⚠️ AJOUTE LE 2026-09-16 (VPS-M73) : le passage est planifie a 02:22 UTC cote poste. Ce matin il a
 # demarre a 04:36 — le poste dormait (sorti de veille 02:20:46Z, rendormi dans la seconde, reveille
