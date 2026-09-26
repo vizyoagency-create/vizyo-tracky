@@ -87,6 +87,17 @@ ressemble à une machine en détresse. Mais l'écriture disque du même jour pas
 contre 20 les jours calmes : c'est un build Docker, pas une dérive. Sans l'historique, ce pic
 serait devenu un constat de gravité 1 — faux.
 
+> 🔴 **En marge, `sar` se lit PAR LE NOM DE LA COLONNE, jamais par sa position (VPS-M124, 2026-09-26).**
+> Trois fois (22/09, 25/09, 26/09), un `awk '$8'` a rendu la colonne `%idle` sous le nom de steal
+> (« 88 % ») ; la position dépend de la locale (heure en 1 ou 2 champs) et de la version. La seule
+> forme admise :
+>
+> ```bash
+> LC_ALL=C sadf -d /var/log/sysstat/saJJ -- -u | awk -F';' 'NR==1{for(i=1;i<=NF;i++) if($i=="%steal") c=i; next} c && $c+0>m{m=$c+0;t=$3} END{print "max %steal",m,"a",t}'
+> ```
+>
+> Si `c` reste vide, la colonne n'existe pas : le script n'imprime rien plutôt qu'un faux chiffre.
+
 **Règle** : pour tout chiffre inquiétant relevé à l'instant T, chercher d'abord s'il est
 habituel. `sysstat` garde 7 jours ; au-delà, la comparaison se fait entre rapports (les
 `chiffres` du manifeste, cf. §6).

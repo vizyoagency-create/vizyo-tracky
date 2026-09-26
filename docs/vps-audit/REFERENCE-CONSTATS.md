@@ -5151,7 +5151,22 @@ confondre les deux ferait accuser le mauvais coupable.
 ## VPS-036 — Un tiers exécute `kill -KILL` en root sur la production, par un canal qui ne passe ni par SSH ni par le pare-feu
 
 - **Domaine** : sécurité · **Gravité** : 2 · **Statut** : `A_TRAITER` *(était `SURVEILLANCE` —
-  monté le 2026-09-02)* · **4ᵉ occurrence le 2026-09-24 07 h 39 min 32 UTC** (le même tueur qu'au 28/08 et au 21/09)
+  monté le 2026-09-02)* · **4ᵉ occurrence le 2026-09-24 07 h 39 min 32 UTC** (le même tueur qu'au 28/08 et au 21/09) · **5ᵉ écriture le
+  2026-09-25 08 h 55 min 51 UTC** (deux fichiers d'extension systemd, `RandomizedDelaySec=3h`)
+- 🟠 **Vu : 2026-09-26 — CINQUIÈME ÉCRITURE, ET CELLE-CI RÉÉCRIT L'HEURE DE DEUX TÂCHES : DEUX FICHIERS D'EXTENSION SYSTEMD
+  POSÉS PAR `guest-exec` LE 25/09 À 08 h 55 min 51 UTC.** Le bloc hyperviseur comptait 4 « inattendues » au lieu de 2 et tronquait les
+  deux nouvelles ; `journalctl -u qemu-guest-agent` (marge) : `cat /etc/os-release` (08:55:50), puis `sh -c DRY_RUN="0"; DELAY="3h";
+  TIMERS="dpkg-db-backup logrotate apt-show-versions"; …` — pour chaque minuterie chargée, planifiée à `*-*-* 00:00:00` et sans délai
+  aléatoire : `mkdir -p /etc/systemd/system/$t.timer.d` et écriture de `10-hostinger-randomize.conf` (*« # Spread daily jobs across VMs
+  sharing a host (added 2026-09-25) [Timer] RandomizedDelaySec=3h »*). Sur le disque : `logrotate.timer.d/` et `dpkg-db-backup.timer.d/`
+  datés **25/09 08:55** (`find -newermt`) ; `apt-show-versions` absent, sauté. **Effet mesuré** : `dpkg-db-backup` fin 26/09 **00:47:23**,
+  `logrotate` **01:00:50** — 00:00:15–30 du 23 au 25/09. *L'intention est bénigne et répond à la contention d'hôte (VPS-045) ; la cible
+  reste l'outillage de l'hôte → gravité 2 inchangée, seuil de gravité 1 non approché.* **Ce qui change** : ces deux tâches tirent leur
+  heure entre 00 h 00 et 03 h 00 UTC, donc peuvent tomber dans la collecte (02 h 22–02 h 35) — `ordonnancement` mis à jour. **Et le
+  collecteur ne l'avait PAS vu** : *« ✅ aucun fichier de cron.d ni d unité systemd modifié »* — il ne lisait pas les `*.d/*.conf`
+  (**VPS-M123**, corrigé). Écritures connues : 28/08 kill · 01/09 mask `multipathd` · 21/09 kill · 24/09 kill · **25/09 drop-ins
+  (2ᵉ modification de systemd)**. ❌ **Ne pas retirer ces fichiers** (même raison que `multipathd` : annuler l'effet sans toucher au
+  canal, et remettre deux tâches à minuit sur un hôte que l'hébergeur dit saturé). Ticket **V3** : une ligne de plus.
 - 🟠 **Vu : 2026-09-25 — QUATRIÈME OCCURRENCE : LE MÊME SCRIPT `kill`, À L'OCTET PRÈS, LE 24/09 À 07 h 39 min 32 UTC.**
   `journalctl -u qemu-guest-agent` : `guest-ping` puis `guest-exec` 07 h 39 min 32 (`/bin/sh -c echo c25hcD0k…`), `guest-exec-status`
   pid 536702 ; le collecteur n'imprime **qu'un** blob décodé pour les deux commandes « inattendues » (21/09 16 h 49 et 24/09 07 h 39) :
@@ -5295,6 +5310,10 @@ confondre les deux ferait accuser le mauvais coupable.
 
 - **Domaine** : sauvegardes · **Gravité** : **2** (3 → 2 le 2026-09-16) · **Statut** : `A_TRAITER` — **volet SYMPTÔME refermé
   le 2026-09-03, volet CAUSE intact — AGGRAVÉ le 2026-09-15 par VPS-043, et MESURÉ COMME PANNE COMMUNE le 2026-09-16**
+- 🟠 **Vu : 2026-09-26 — COPIE OK À 04 h 30 min 07 UTC ; 4ᵉ SONNERIE SUR UN POSTE DÉJÀ ÉVEILLÉ ; POSTE SUR BATTERIE.**
+  `Vizyo-Reveil-Audits` 04:15:01 résultat 0 ; dernière sortie de veille 00:25:53 (Kernel-Power 507), aucun 42/107 ensuite ;
+  `Win32_Battery` `BatteryStatus=1` (décharge), 100 %. `powercfg /a` : veille prolongée toujours *« non prise en charge par le type de
+  fichier »*. L'audit, lui, est parti à 04:35 UTC : **la copie ne dépendait pas de lui** (VPS-M122). Réveil **toujours non prouvé**.
 - 🟢 **Vu : 2026-09-24 — DEUX COPIES DE SUITE À 2 PAIRES — ET L'UNE DES DEUX ÉTAIT UNE PAIRE DE QUINZE JOURS (VPS-049).**
   `copie.log` : **23/09 06 h 30** → `20260922` + `20260923` copiées et vérifiées (SHA-256), *la prédiction « pairesCopiees = 2 »
   du 23/09 est tenue* ; **24/09 06 h 30** → `20260909` (!) + `20260924`. Côté VPS (02 h 31) : *« ✅ aucune paire produite
@@ -6556,6 +6575,11 @@ confondre les deux ferait accuser le mauvais coupable.
 ## VPS-047 — Une session SSH par seconde pendant deux heures depuis le poste, 50 min après que l'hébergeur a levé sa limitation « en avertissant qu'elle peut revenir »
 
 - **Domaine** : ordonnancement / charge · **Gravité** : 2 · **Statut** : `CORRECTIF_PROPOSE` — **V37 (1) identifiée et (2) POSÉE le 2026-09-21 05 h 05 Paris** (section « 🛑 Une boucle du poste qui parle au VPS = UNE session, et un `sleep` qui dort » dans `CLAUDE.md`, après la règle V34 ; mémoire des agents `claude_monitor_tool_sleep_path.md`) ; (3) seuil au collecteur posé (VPS-M110) ; `SURVEILLANCE` après 7 jours sans heure > 600 sessions, `APPLIQUE` quand le premier `Monitor` suivant a été relu avec `/usr/bin/sleep`
+- ✅ **Vu : 2026-09-26 — JOUR 5 / 7 : LA VEILLE A PORTÉ 624 SESSIONS, POINTE 18 H = 77.** 474 root depuis le poste (`82.67.153.51`),
+  🆕 **145 root depuis `78.242.44.84`** — clé `vizyo-vps-hostinger` (celle du poste), **17 h 48 → 18 h 59 UTC** (68 + 77, ~2 / min), jamais
+  vue avant dans les rapports ; même motif que `37.167.51.206` le 24/09 (le poste sur un autre réseau, à l'heure des coupes CDEF31).
+  ⚠️ Concomitance, pas identification (VPS-M01) : l'empreinte est déclarée, la cadence est celle d'un agent, pas d'une rafale. 5 dépôts.
+  Aucun `Monitor` relu.
 - ✅ **Vu : 2026-09-25 — JOUR 4 / 7 : LA VEILLE A PORTÉ 727 SESSIONS, POINTE 12 H = 114.** Ventilée — **par le collecteur**
   désormais (angle mort n° 3, bancé) : 649 root depuis le poste, **73 root depuis `37.167.51.206`** (le poste en mobile, même clé
   `vizyo-vps-hostinger`, 18 h 00–18 h 30 UTC = la fenêtre des coupes CDEF31 ; famille `37.167.x` déjà vue du 03 au 15/09), 5 dépôts
@@ -6684,6 +6708,13 @@ confondre les deux ferait accuser le mauvais coupable.
 ## VPS-049 — La copie hors-site recopie chaque matin une paire de quinze jours, parce que ses deux rétentions ne comptent pas la même chose
 
 - **Domaine** : sauvegardes · **Gravité** : 4 · **Statut** : `A_TRAITER`
+- 🟡 **Vu : 2026-09-26 — LA PRÉDICTION DU 25/09 EST DÉMENTIE, ET LA CAUSE ÉTAIT PLUS FINE QUE « 16 PAIRES ».** `copie.log` :
+  25/09 et 26/09, *« 15 paire(s) disponible(s) sur le VPS »*, **1** paire copiée chaque fois, aucune recopie (`20260910` était attendue).
+  La rétention VPS n'est pas un **compte** : c'est `find -mtime +14 -delete` (`backup.sh` l. 204–206) lancé **pendant** la sauvegarde ;
+  `-mtime +14` ne supprime qu'à 15 jours **pleins**. Si la sauvegarde du jour part quelques secondes **plus tôt** que celle de J-15, la
+  paire de J-15 survit (14 j 23 h 59) → 16 paires → recopie (24/09 : `20260909-033156` survit à une sauvegarde partie à 03:30:48). Le
+  VPS porte ce matin 15 paires (`20260912` → `20260926`). **Le défaut reste**, intermittent à la seconde ; le geste ne change pas
+  (purger et copier par la **date du nom**) ; gravité 4.
 - **Vu** : 2026-09-24 (1ᵉʳ passage ; le motif est lisible dans `copie.log` dès le 21/09) · **Mesure** :
 
   | Grandeur | Valeur | Source |
@@ -6714,6 +6745,47 @@ confondre les deux ferait accuser le mauvais coupable.
 
 
 ## Constats de méthode (sur l'audit lui-même)
+
+### VPS-M124 — `sar` lu par la POSITION de sa colonne : « max steal 88,99 % » pour la troisième fois
+
+- **Domaine** : méthode · **Gravité** : 3 · **Statut** : `APPLIQUE` (2026-09-26 — PROCÉDURE § 2 : lecture par nom de colonne, bancée)
+- **Vu** : 2026-09-26 (3ᵉ occurrence : 22/09 VPS-M114, 25/09 rapport § 3, 26/09) · **Mesure** : en marge, `LC_ALL=C sar -u -f sa25 | awk '… $8 …'`
+  → *« max steal 88.99 a 22:30:00 »* ; l'en-tête imprimé au-dessus montrait `%steal` en 7ᵉ champ, `%idle` en 8ᵉ. Vrai chiffre : **10,93 %** à
+  11 h 30 min 03 (`$7`, puis `sadf -d` par nom : colonne 9, même valeur).
+- **QUOI** : la position d'une colonne de `sar` dépend de la locale (heure en 1 ou 2 champs : `AM/PM`) et de la sortie (`sar` ≠ `sadf`).
+  La règle écrite après VPS-M114 (*« lire avec l'en-tête »*) protège **si on la relit** ; trois fois, elle a été rattrapée de justesse.
+  *Une règle dans la mémoire ne suffit pas : il faut que la commande porte le nom de la colonne.*
+- **Correctif** : PROCÉDURE § 2 — en marge, `sar` se lit par `sadf -d … -- -u` et un `awk` qui **cherche** `%steal` dans la 1ʳᵉ ligne ;
+  colonne absente → rien imprimé plutôt qu'un faux chiffre. Le collecteur, lui, lisait déjà par nom : aucune modification.
+- **`aNePasFaire`** : ❌ ne pas « corriger » en remplaçant `$8` par `$7` dans ses notes : c'est le même piège, décalé d'un cran.
+
+### VPS-M123 — Le contrôle de fraîcheur du catalogue ne lisait pas les fichiers d'extension systemd, et a dit « rien de modifié » le lendemain d'une réécriture d'horaires
+
+- **Domaine** : méthode · **Gravité** : 3 · **Statut** : `APPLIQUE` (2026-09-26 — glob élargi à `/etc/systemd/system/*.d/*.conf`, bancé)
+- **Vu** : 2026-09-26 · **Mesure** : §7 *« ✅ aucun fichier de cron.d ni d unité systemd modifié dans les 2 derniers jours »* ; `find
+  /etc/systemd/system -path '*.d/*' -newermt 2026-09-24` (marge) → `logrotate.timer.d/10-hostinger-randomize.conf` et
+  `dpkg-db-backup.timer.d/10-hostinger-randomize.conf`, **25/09 08:55** (posés par l'hyperviseur, VPS-036).
+- **QUOI** : le bloc parcourait `/etc/cron.d/*`, `*.timer` et `*.service`. Un fichier d'extension (**drop-in**) change l'horaire, la
+  commande ou les limites d'une unité **sans toucher l'unité** — c'est même la manière recommandée de le faire. Le bloc écrit pour voir
+  « ce qui a changé depuis hier » était aveugle à la forme de changement la plus courante.
+- **`pourquoiInvisible`** : aucun drop-in n'avait été posé depuis la création du bloc (20/08) ; la branche n'avait jamais eu de cas.
+- **Correctif** : `/etc/systemd/system/*.d/*.conf` ajouté au glob (4 fichiers aujourd'hui, 0 commande de plus). **Banc** (VPS) : les
+  deux fichiers ressortent *« 🆕 2026-09-25 08:55 (0 j) »*. `bash -n` OK.
+- **Portée** : `/run/systemd/system` (réécrit à chaque démarrage par netplan) n'est **pas** lu, volontairement : il crierait chaque jour.
+
+### VPS-M122 — « La copie hors-site a probablement été manquée AUSSI » : une déduction vieille de dix jours, fausse le jour où deux planificateurs ont divergé
+
+- **Domaine** : méthode · **Gravité** : 3 · **Statut** : `APPLIQUE` (2026-09-26 — le collecteur lit `DERNIERE-COPIE-LOCALE.json`, bancé)
+- **Vu** : 2026-09-26 · **Mesure** : départ **04:35 UTC** (+133 min) ; bloc BUDGET : *« la copie hors-site (04:30 UTC, meme poste) a probablement
+  ete manquee AUSSI »* — alors que **la même sortie**, section 11, disait *« vizyo-verify OK 0 h a jour »* et que le témoin portait
+  `2026-09-26T04:30:07Z`, `OK`. Poste éveillé depuis 00:25, tâches Windows à l'heure (VPS-M73).
+- **QUOI** : la phrase venait du 16/09, où **un seul** sommeil du poste expliquait les deux retards. Mais l'audit est une tâche de
+  **Claude Code** et la copie une tâche du **Planificateur Windows** : deux planificateurs, qui peuvent diverger. Une déduction juste
+  le jour de son écriture est devenue une affirmation sans mesure — et elle contredisait une autre section de la même sortie.
+- **Correctif** : après 04:30 UTC, lire `/var/backups/*/DERNIERE-COPIE-LOCALE.json` (`horodatage`, `statut`) ; moins de 6 h → imprimer
+  l'heure et le statut (*« autre planificateur … ne la concerne pas »*) ; sinon, le dire et renvoyer à la section 11. **Coût** : 2 `sed`
+  sur un fichier de 1 Ko. **Banc** (VPS) : `2026-09-26T04:30:07Z`, `OK`, 04:30.
+- **`aNePasFaire`** : ❌ ne pas retirer la ligne de retard : le décalage des fenêtres « 24 h » reste vrai et doit se lire.
 
 ### VPS-M121 — Un boîtier DÉCLARÉ la veille et encore muet était rangé avec le matériel « probablement DÉPOSÉ » (> 7 j)
 
@@ -8589,6 +8661,9 @@ la sortie elle-même, pour qu'on ne la redécouvre pas.
 ### VPS-M74 — Un compte d'en-attente valide, publié sans sa position dans le cycle qui le vide
 
 - **Domaine** : méthode · **Gravité** : 2 · **Statut** : `APPLIQUE` (2026-09-02 ; **test « 3 → 0 » passé le 2026-09-17**)
+- ✅ **Vu : 2026-09-26 — LE TEST DU 25/09 EST PASSÉ : 4 → 0 APRÈS INSTALLATION.** `history.log` : `unattended-upgrade`
+  25/09 06:03:39 (curl, libcurl3t64-gnutls, libcurl4t64) et 06:03:53 (libexpat1) = les 4 annoncés ; cache du 26/09 01:35 : **1**,
+  découvert après. Le bloc a dit *« PAS (ENCORE) UN RETARD »* — juste.
 - ✅ **Vu : 2026-09-23 — LE SENS INVERSE EST PASSÉ AUSSI : 7 → 1 APRÈS INSTALLATION.** Le bloc disait le 22/09 *« si au
   passage suivant l installation a eu lieu ET que le compte n a pas baissé, alors la panne est établie »* : l'installation a eu
   lieu (06 h 53 min 02), le compte a baissé de 7 à 1, et `history.log` nomme les 7. Position dans le cycle ce matin : cache
@@ -8676,6 +8751,11 @@ lecture — et c'est exactement ce que VPS-M31 punit.
 ### VPS-M73 — Cinq passages manqués, et une conséquence que le raisonnement écrit n'avait pas prévue
 
 - **Domaine** : méthode · **Gravité** : 3 · **Statut** : `A_TRAITER`
+- 🟠 **Vu : 2026-09-26 — 7ᵉ RETARD, +133 MIN (04 h 35 min 03 UTC), ET POUR LA PREMIÈRE FOIS LE POSTE NE DORMAIT PAS.** Sortie de
+  veille à 00 h 25 min 53 (Kernel-Power 507), rien ensuite ; les tâches du **Planificateur Windows** de la même nuit ont toutes tourné à
+  l'heure (`LimitesVitesse` 04:30:01, `QualiteGPS` 05:00:01, `Verify-Copie-HorsSite` 06:30:01 Paris…). Seule la tâche planifiée
+  **de Claude Code** était en retard : cause non mesurable d'ici (application, quota, file). Conséquence corrigée : le collecteur
+  en déduisait la copie manquée (**VPS-M122**). Angle mort n° 6 du rapport : relever `StartTime` de l'application au prochain retard.
 - 🔴 **Vu : 2026-09-22 — 6ᵉ RETARD, +137 MIN (04 h 39 min 32 UTC), 3ᵉ POUR LA MÊME CAUSE : LE POSTE DORMAIT — ET CETTE FOIS
   LA CAUSE EST MESURÉE À LA MINUTE, PAS SUPPOSÉE.** Journal Windows : veille (batterie critique) **03 h 44 min 14 Paris**,
   réveil **06 h 37 min 07** par le branchement du câble (1 %). La tâche de réveil de V6 (04 h 15) **n'a pas sonné** — elle

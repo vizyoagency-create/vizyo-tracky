@@ -3378,7 +3378,12 @@ for f in /etc/cron.d/*; do [ -f "$f" ] && { echo "  $f :"; grep -vE "^#|^$" "$f"
 # ne laisse toujours aucune trace ici. C'est une reduction de l'angle mort, pas sa fermeture.
 sub "Fraicheur du catalogue : qu est-ce qui a CHANGE depuis le passage precedent ?"
 _recent=0
-for f in /etc/cron.d/* /etc/systemd/system/*.timer /etc/systemd/system/*.service; do
+# ⚠️ ELARGI LE 2026-09-26 (VPS-M123) : les fichiers d EXTENSION (drop-ins `*.d/*.conf`) n etaient pas
+# lus. Le 25/09 a 08:55 UTC, l hyperviseur a ecrit par guest-exec deux drop-ins
+# (`logrotate.timer.d/10-hostinger-randomize.conf`, idem `dpkg-db-backup`, RandomizedDelaySec=3h) :
+# les deux minuteries sont passees de 00:00 a 00:47 / 01:00, et ce bloc a dit « ✅ aucun fichier
+# modifie ». Un drop-in change l horaire SANS toucher l unite : c est le cas qu il faut voir.
+for f in /etc/cron.d/* /etc/systemd/system/*.timer /etc/systemd/system/*.service /etc/systemd/system/*.d/*.conf; do
   [ -f "$f" ] || continue
   _m=$(stat -c %Y "$f" 2>/dev/null); case "${_m:-}" in ''|*[!0-9]*) continue ;; esac
   _j=$(( ( $(date +%s) - _m ) / 86400 ))
@@ -5095,8 +5100,21 @@ if [ "$_ecart_min" -gt 20 ] || [ "$_ecart_min" -lt -20 ]; then
   # retard ne prouve la copie manquee que si l heure de la copie est DEJA passee ; avant, il dit
   # seulement que la copie dependra du poste RESTE eveille (WakeToRun=false, VPS-037).
   _dep_min=$(( 10#$(date -u -d "@$T_DEBUT" +%H) * 60 + 10#$(date -u -d "@$T_DEBUT" +%M) ))
+  # ⚠️ CORRIGE LE 2026-09-26 (VPS-M122) : « a probablement ete manquee AUSSI » etait encore FAUX —
+  # depart 04:35, copie OK a 04:30:01 (tache Windows a l heure, poste EVEILLE depuis 00:25). L audit
+  # est une tache Claude Code, la copie une tache du Planificateur Windows : deux planificateurs, et
+  # le retard de l un ne dit RIEN de l autre. On ne devine plus : on LIT le temoin que la copie ecrit.
   if [ "$_dep_min" -ge $(( 4 * 60 + 30 )) ]; then
-    printf '     d autant, et la copie hors-site (04:30 UTC, meme poste) a probablement ete manquee AUSSI.\n'
+    _cp_f=$(ls -1 /var/backups/*/DERNIERE-COPIE-LOCALE.json 2>/dev/null | head -1)
+    _cp_h=$(sed -n 's/.*"horodatage"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$_cp_f" 2>/dev/null | head -1)
+    _cp_s=$(sed -n 's/.*"statut"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$_cp_f" 2>/dev/null | head -1)
+    _cp_ep=$(date -d "$_cp_h" +%s 2>/dev/null)
+    if [ -n "$_cp_ep" ] && [ $(( $(date +%s) - _cp_ep )) -lt 21600 ]; then
+      printf '     d autant. La copie hors-site, elle, a tourne (%s UTC, statut %s) : autre planificateur\n' "$(date -u -d "@$_cp_ep" +%H:%M)" "${_cp_s:-?}"
+      printf '     (Windows), le retard de l audit ne la concerne pas (VPS-M122).\n'
+    else
+      printf '     d autant, et la copie hors-site n a PAS de trace de moins de 6 h (%s) : a relire section 11.\n' "${_cp_h:-temoin absent}"
+    fi
   else
     printf '     d autant. La copie hors-site (04:30 UTC, meme poste) n est PAS encore due : elle aura lieu\n'
     printf '     seulement si le poste reste eveille jusque-la (WakeToRun=false, VPS-037) — a relire demain.\n'
