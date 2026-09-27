@@ -27,6 +27,7 @@ import { AiStatusService } from '../../../core/services/ai-status.service';
 import { AiJobService } from '../../../core/services/ai-job.service';
 import { AuthService } from '../../../core/services/auth.service';
 import { FleetCacheService } from '../../../core/services/fleet-cache.service';
+import { FleetFilterService } from '../../../core/services/fleet-filter.service';
 import { PermissionsService } from '../../../core/services/permissions.service';
 import { ToastService } from '../../../shared/ui/toast/toast.service';
 import { BottomSheetComponent } from '../../../shared/ui/bottom-sheet/bottom-sheet.component';
@@ -71,14 +72,17 @@ const METIERS: FleetMetier[] = ['CHILDREN_TRANSPORT', 'PARCELS', 'RENTAL', 'GENE
             <div class="op-alert op-alert--info"><lucide-icon [img]="InfoIcon" [size]="13"></lucide-icon> Assistance IA désactivée pour cette flotte. Les opportunités de mutualisation ci-dessous restent disponibles ; l'analyse IA des capacités est masquée.</div>
           }
 
-          <!-- Flotte (super-admin) -->
-          @if (isSuperAdmin() && fleetOptions().length > 0) {
-            <label class="op-f"><span>Flotte</span>
-              <select class="op-in" [value]="selectedFleetId() ?? ''" (change)="onFleetChange($any($event.target).value)">
-                <option value="" disabled>Choisir…</option>
-                @for (f of fleetOptions(); track f.id) { <option [value]="f.id">{{ f.name }}</option> }
-              </select>
-            </label>
+          <!-- Société (super-admin) : celle du BANDEAU, jamais un second sélecteur. P1-4 (audit du
+               22/09) : la feuille avait le sien, l'en-tête pouvait dire cdef31 pendant que la feuille
+               changeait le métier de mh cars. Une seule source de vérité, lue ici, réglée là-haut. -->
+          @if (isSuperAdmin()) {
+            <div class="op-f"><span>Société</span>
+              @if (fleetName(); as nom) {
+                <span class="op-fleet" [attr.title]="'Réglée dans le bandeau en haut de page'">{{ nom }}</span>
+              } @else {
+                <span class="op-fleet op-muted">Toutes les sociétés — choisissez-en une dans le bandeau pour analyser un parc.</span>
+              }
+            </div>
           }
 
           <!-- Métier -->
@@ -86,7 +90,7 @@ const METIERS: FleetMetier[] = ['CHILDREN_TRANSPORT', 'PARCELS', 'RENTAL', 'GENE
             <div class="op-metier-l">
               <span class="op-k">Métier de la flotte</span>
               @if (metier()) { <span class="op-metier-v">{{ metierLabel(metier()!) }}</span> }
-              @else { <span class="op-metier-v op-muted">{{ needsFleet() ? 'Sélectionnez une flotte' : '—' }}</span> }
+              @else { <span class="op-metier-v op-muted">{{ needsFleet() ? 'Choisissez une société dans le bandeau' : '—' }}</span> }
             </div>
             @if (canEditMetier() && metier()) {
               <select class="op-in op-in--sm" [value]="metier()!" (change)="onMetierChange($any($event.target).value)">
@@ -107,10 +111,13 @@ const METIERS: FleetMetier[] = ['CHILDREN_TRANSPORT', 'PARCELS', 'RENTAL', 'GENE
               </button>
             </div>
             <p class="op-sec-sub">L'IA déduit places &amp; places-enfant par modèle (Jumpy/Expert : 9 ou 2). Vérifiez puis appliquez.</p>
-            @if (needsFleet()) { <div class="op-alert op-alert--warn"><lucide-icon [img]="InfoIcon" [size]="13"></lucide-icon> Sélectionnez une flotte pour analyser son parc.</div> }
+            @if (needsFleet()) { <div class="op-alert op-alert--warn"><lucide-icon [img]="InfoIcon" [size]="13"></lucide-icon> Choisissez une société dans le bandeau pour analyser son parc.</div> }
             @if (capError()) { <div class="op-alert op-alert--err"><lucide-icon [img]="AlertIcon" [size]="13"></lucide-icon> {{ capError() }}</div> }
             @if (capLoading()) { <div class="op-skel"></div><div class="op-skel"></div> }
             @else if (capResult(); as r) {
+              @if (capConserveLe(); as le) {
+                <div class="op-alert op-alert--info"><lucide-icon [img]="InfoIcon" [size]="13"></lucide-icon> Résultat conservé de l'analyse du {{ conserveDepuis(le) }} — rien n'a été repayé. Relancez « Analyser » pour une lecture fraîche du parc.</div>
+              }
               @if (r.proposals.length === 0) { <p class="op-muted op-pad">Aucune proposition (parc vide).</p> }
               @else {
                 @if (canApply()) {
@@ -189,6 +196,8 @@ const METIERS: FleetMetier[] = ['CHILDREN_TRANSPORT', 'PARCELS', 'RENTAL', 'GENE
     .op-muted { color: var(--fg-secondary); }
     .op-pad { padding: 10px 2px; font-size: 12.5px; }
     .op-f { display: flex; flex-direction: column; gap: 4px; font-size: 11.5px; color: var(--fg-tertiary); }
+    /* P1-4 : la société vient du bandeau ; on l'AFFICHE, on ne la choisit plus ici. */
+    .op-fleet { font-size: 14px; font-weight: 700; color: var(--fg-primary); }
     .op-f > span { font-weight: 600; text-transform: uppercase; letter-spacing: .03em; }
     .op-in { width: 100%; padding: 9px 11px; border-radius: 10px; background: var(--bg-secondary); border: 1px solid var(--border-subtle); color: var(--fg-primary); font-size: 16px; }
     .op-in--sm { width: auto; font-size: 14px; padding: 7px 10px; }
@@ -263,6 +272,7 @@ export class OptimizationSheetComponent {
   private readonly agendaApi = inject(AgendaApiService);
   private readonly auth = inject(AuthService);
   private readonly fleetCache = inject(FleetCacheService);
+  private readonly fleetFilter = inject(FleetFilterService);
   private readonly perms = inject(PermissionsService);
   private readonly toast = inject(ToastService);
   private readonly aiJob = inject(AiJobService);
@@ -286,7 +296,15 @@ export class OptimizationSheetComponent {
   protected readonly CheckIcon = Check;
   protected readonly metiers = METIERS;
 
-  protected readonly selectedFleetId = signal<string | null>(null);
+  /**
+   * P1-4 — la société de la feuille EST celle du bandeau (`FleetFilterService`), jamais un signal
+   * local : l'ancien sélecteur propre à la feuille laissait l'en-tête dire cdef31 pendant que la
+   * feuille lisait — et changeait le métier de — mh cars. Pour un non-super-admin, `null` : le
+   * serveur borne à sa société.
+   */
+  protected readonly selectedFleetId = computed(() => (this.isSuperAdmin() ? this.fleetFilter.selectedFleetId() : null));
+  /** Nom de la société du bandeau, pour l'afficher là où était le sélecteur. */
+  protected readonly fleetName = computed(() => this.fleetCache.getName(this.selectedFleetId()));
   protected readonly metier = signal<FleetMetier | null>(null);
   protected readonly isSuperAdmin = computed(() => this.auth.user()?.role === 'SUPER_ADMIN');
   /** IA active pour la flotte : masque les sections IA (hero, capacités, « comment ça marche »). */
@@ -300,7 +318,6 @@ export class OptimizationSheetComponent {
     const r = this.auth.user()?.role;
     return r === 'SUPER_ADMIN' || r === 'FLEET_ADMIN';
   });
-  protected readonly fleetOptions = computed(() => [...this.fleetCache.fleets().entries()].map(([id, name]) => ({ id, name })));
   protected readonly needsFleet = computed(() => this.isSuperAdmin() && !this.selectedFleetId());
   protected readonly canApply = computed(() => this.perms.can('vehicles_edit'));
 
@@ -318,35 +335,96 @@ export class OptimizationSheetComponent {
   protected readonly util = signal<FleetOptimizationDto | null>(null);
   protected readonly underutilized = computed(() => (this.util()?.vehicles ?? []).filter((v) => v.underutilized).slice(0, 12));
 
-  private loadedOnce = false;
+  /** Date (ISO) du résultat de capacité affiché quand il vient de la mémoire du navigateur. */
+  protected readonly capConserveLe = signal<string | null>(null);
 
   constructor() {
     this.aiStatus.ensureLoaded();
+    /**
+     * À CHAQUE ouverture, et à chaque changement de société pendant qu'elle est ouverte :
+     * métier et mutualisations sont relus (deux GET légers). L'ancien garde `loadedOnce` ne
+     * chargeait qu'à la première ouverture — la feuille rouvrait sur le métier d'une autre
+     * société, ou sur des chiffres d'il y a une heure (P1-4).
+     *
+     * Le résultat de capacité affiché vient, dans l'ordre : de la pastille (« Voir » après une
+     * analyse en arrière-plan), sinon de la mémoire du navigateur pour CETTE société (P1-5),
+     * sinon rien — jamais un résultat périmé d'une autre société.
+     */
     effect(() => {
       if (!this.open()) return;
+      this.selectedFleetId(); // dépendance : la société du bandeau — changer de société recharge
       void this.fleetCache.loadIfNeeded();
-      // À l'ouverture : soit on ré-affiche un résultat de capacité pré-chargé (analyse async via la
-      // pastille), soit on repart propre (pas de résultat périmé affiché).
-      this.capResult.set(this.presetCapacity() ?? null);
       this.selected.set(new Set());
-      if (!this.loadedOnce) {
-        this.loadedOnce = true;
-        if (!this.isSuperAdmin()) void this.loadMetier();
-        void this.loadUtil();
+      const preset = this.presetCapacity();
+      if (preset) {
+        this.capResult.set(preset);
+        this.capConserveLe.set(null);
+      } else {
+        this.restaurerCapacite();
       }
+      if (!this.needsFleet()) void this.loadMetier();
+      else this.metier.set(null);
+      void this.loadUtil();
     });
   }
 
   protected metierLabel(m: FleetMetier): string { return FLEET_METIER_LABELS[m]; }
   protected valOf(n: number | null): string { return n === null || n === undefined ? '—' : String(n); }
   protected confClass(v: number): string { return v >= 0.7 ? 'op-chip--hi' : v >= 0.4 ? 'op-chip--mid' : 'op-chip--lo'; }
+  /** « 27/09 à 21:14 » — date locale d'un résultat conservé ; une date illisible ne casse pas la feuille. */
+  protected conserveDepuis(iso: string): string {
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return 'date inconnue';
+    return d.toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }).replace(' ', ' à ');
+  }
 
-  protected onFleetChange(id: string): void {
-    this.selectedFleetId.set(id || null);
+  // ─── P1-5 — un résultat de capacité payé ne se perd plus au rechargement ──────────────────
+  //
+  // `AiJobService` vit en mémoire du navigateur : un F5 pendant ou après l'analyse effaçait le
+  // résultat, et l'analyse suivante était REPAYÉE. Le serveur ne le garde nulle part (c'est une
+  // suggestion, pas un enregistrement) — on le garde donc ici, par société, le temps qu'il soit
+  // appliqué ou remplacé. Mémoire du navigateur = confort, jamais une source de vérité : chaque
+  // accès est protégé, et sans elle la feuille marche comme avant.
+
+  /**
+   * La clé porte la société RÉELLE : celle du bandeau pour un super-admin, celle du compte pour
+   * les autres. Sans cela, deux comptes de sociétés différentes sur le même navigateur liraient
+   * le résultat l'un de l'autre — des plaques et des modèles qui ne sont pas les leurs.
+   */
+  private cleCapacite(): string {
+    const fleetId = this.selectedFleetId() ?? this.auth.user()?.fleetId ?? null;
+    return `tracky.capacite.${fleetId ?? 'sans-societe'}`;
+  }
+
+  private memoriserCapacite(r: AiCapacityResultDto): void {
+    try {
+      localStorage.setItem(this.cleCapacite(), JSON.stringify({ le: new Date().toISOString(), r }));
+    } catch (e) {
+      swallow('optimization-sheet:memoriserCapacite', e);
+    }
+  }
+
+  private oublierCapacite(): void {
+    try {
+      localStorage.removeItem(this.cleCapacite());
+    } catch (e) {
+      swallow('optimization-sheet:oublierCapacite', e);
+    }
+  }
+
+  private restaurerCapacite(): void {
     this.capResult.set(null);
-    this.selected.set(new Set());
-    void this.loadMetier();
-    void this.loadUtil();
+    this.capConserveLe.set(null);
+    try {
+      const brut = localStorage.getItem(this.cleCapacite());
+      if (!brut) return;
+      const { le, r } = JSON.parse(brut) as { le?: unknown; r?: AiCapacityResultDto };
+      if (!r || !Array.isArray(r.proposals)) return;
+      this.capResult.set(r);
+      this.capConserveLe.set(typeof le === 'string' ? le : null);
+    } catch (e) {
+      swallow('optimization-sheet:restaurerCapacite', e);
+    }
   }
 
   private async loadMetier(): Promise<void> {
@@ -392,14 +470,20 @@ export class OptimizationSheetComponent {
    * CETTE feuille avec les capacités à valider pré-chargées. Fini le spinner bloquant sans retour.
    */
   protected runCapacity(): void {
-    if (this.needsFleet()) { this.capError.set('Sélectionnez une flotte pour analyser son parc.'); return; }
+    if (this.needsFleet()) { this.capError.set('Choisissez une société dans le bandeau pour analyser son parc.'); return; }
     // Anti-double-lancement (feuille encore montée ~220 ms après fermeture) : évite 2 analyses.
     if (this.aiJob.hasRunningOf('optimization')) { this.closed.emit(); return; }
+    const fleetId = this.selectedFleetId();
     this.aiJob.run({
       kind: 'optimization',
       title: 'Analyse des capacités',
       hint: 'L\'IA déduit les places et sièges-enfant par modèle de véhicule à partir du parc. Ça prend quelques secondes…',
-      task: firstValueFrom(this.ai.capacitySuggest({ fleetId: this.selectedFleetId() ?? undefined })),
+      // P1-5 : le résultat est mémorisé DÈS qu'il arrive, avant même que la pastille l'annonce —
+      // un rechargement entre les deux ne coûte plus une seconde analyse.
+      task: firstValueFrom(this.ai.capacitySuggest({ fleetId: fleetId ?? undefined })).then((r) => {
+        this.memoriserCapacite(r);
+        return r;
+      }),
       summarize: (r) =>
         r.proposals.length
           ? `${r.proposals.length} véhicule(s) dont la capacité peut être complétée (places / sièges-enfant).`
@@ -433,6 +517,10 @@ export class OptimizationSheetComponent {
       const res = await firstValueFrom(this.ai.capacityApply({ items }));
       this.toast.success('Capacité appliquée', `${res.updated} véhicule(s) mis à jour.`);
       this.selected.set(new Set());
+      // P1-5 : appliqué = consommé. Ce qui reste en mémoire décrirait des véhicules déjà à jour.
+      this.oublierCapacite();
+      this.capResult.set(null);
+      this.capConserveLe.set(null);
       this.applied.emit();
     } catch (e) {
       swallow('optimization-sheet:Set', e);
