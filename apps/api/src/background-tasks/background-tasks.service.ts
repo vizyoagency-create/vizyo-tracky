@@ -235,7 +235,7 @@ const CATALOG: CatalogEntry[] = [
     kind: 'cron', scheduleHuman: 'chaque nuit à l\'heure réglée (par flotte) — verdict de l\'IA au passage suivant du courrier (06:30 / 14:30)', criticality: 'moyenne', antiOverlap: true,
     configurable: true, settingsRoute: '/agenda', ai: 'agenda',
     note: "Se règle dans l'Agenda (par flotte), pas ici. DÉCISION (propriétaire, 2026-09-05) : le jugement de l'agent passe par la file du poste (design/C3) ; la détection reste au serveur, seuls assistance et optimiseur restent sur l'API. Jusqu'au 05/09, chaque passage — nocturne ou au clic — appelait l'API (12 appels en 30 j pour une seule société, et un passage tombé sur un compte fournisseur à sec) ; il enfile désormais un travail « jugement-agenda » que le courrier du poste rédige sur l'abonnement, et le cron horaire range le verdict.",
-    purpose: 'Détecte les trajets récurrents et propose (ou crée) des réservations, chaque nuit, par flotte. Le « pourquoi » vulgarisé et le tri de l\'IA arrivent après coup, par le courrier du poste : 0 crédit d\'API.',
+    purpose: 'Détecte les trajets récurrents et propose des réservations, chaque nuit, par flotte. Le « pourquoi » vulgarisé et le tri de l\'IA arrivent après coup, par le courrier du poste : 0 crédit d\'API. Chaque heure, en tête : expire les propositions dont le créneau est passé, et efface celles closes depuis plus d\'un trimestre (P2-5).',
     // 'absorbe' et non le 'facture' déduit de `ai` : ce cron n'appelle plus aucun modèle (design/C3
     // point 7). Le jugement est rédigé sur le poste, ses jetons réels sont comptés à 0 $ en usage.
     coutIa: 'absorbe',

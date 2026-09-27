@@ -53,6 +53,8 @@ function makePrisma(settings: unknown, existingProposal: unknown = null) {
       findMany: jest.fn().mockResolvedValue([]),
       create: jest.fn().mockImplementation(async () => ({ id: `p${++seq}` })),
       updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+      // P2-5 — la purge des propositions closes : `findMany` (lot borné) puis `deleteMany`.
+      deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
     },
     vehicle: { findMany: jest.fn().mockResolvedValue([]) },
     fleet: { findUnique: jest.fn().mockResolvedValue({ metier: 'CHILDREN_TRANSPORT', name: 'CDEF' }) },
@@ -679,6 +681,58 @@ describe('AgendaAgentRunnerService (P3.3 — agent nocturne)', () => {
 
       expect(rows[0]).toEqual(expect.objectContaining({ aiVerdictAt: null, aiKeep: null }));
       expect(rows[1]).toEqual(expect.objectContaining({ aiVerdictAt: '2026-09-05T05:00:00.000Z', aiKeep: true }));
+    });
+  });
+
+  /**
+   * (f bis) P2-5 — RÉTENTION des propositions closes. Le 22/09 : 2 049 `expired` + 172
+   * `dismissed` jamais purgées, ~30 lignes par nuit et par société. La purge efface ce que plus
+   * personne ne lira, et RIEN de ce qui pointe une réservation créée.
+   */
+  describe('(f bis) purge des propositions closes depuis plus d’un trimestre', () => {
+    const now = new Date('2026-09-28T02:00:00Z');
+
+    it('ne vise que expired / dismissed dont le créneau a plus de 90 jours, par lot borné', async () => {
+      const { svc, prisma } = monter();
+      proposalsOf(prisma).findMany.mockResolvedValue([{ id: 'p-old-1' }, { id: 'p-old-2' }]);
+      proposalsOf(prisma).deleteMany.mockResolvedValue({ count: 2 });
+
+      const n = await svc.purgerPropositions(now);
+
+      expect(n).toBe(2);
+      const [args] = proposalsOf(prisma).findMany.mock.calls[0];
+      expect(args.where).toEqual({ status: { in: ['expired', 'dismissed'] }, endAt: { lt: expect.any(Date) } });
+      // 90 jours exactement avant `now` : une proposition de 89 jours reste.
+      expect(args.where.endAt.lt.toISOString()).toBe('2026-06-30T02:00:00.000Z');
+      expect(args.take).toBeGreaterThan(0);
+      expect(args.select).toEqual({ id: true });
+      // La suppression cible les identifiants lus, jamais un `where` ouvert.
+      expect(proposalsOf(prisma).deleteMany).toHaveBeenCalledWith({ where: { id: { in: ['p-old-1', 'p-old-2'] } } });
+    });
+
+    it('rien à purger : aucun deleteMany — on ne verrouille pas une table pour rien', async () => {
+      const { svc, prisma } = monter();
+      proposalsOf(prisma).findMany.mockResolvedValue([]);
+      await expect(svc.purgerPropositions(now)).resolves.toBe(0);
+      expect(proposalsOf(prisma).deleteMany).not.toHaveBeenCalled();
+    });
+
+    it('⚠️ pending, applied et auto_applied ne sont JAMAIS dans le filtre', async () => {
+      const { svc, prisma } = monter();
+      await svc.purgerPropositions(now);
+      const statuts: string[] = proposalsOf(prisma).findMany.mock.calls[0][0].where.status.in;
+      for (const vivant of ['pending', 'applied', 'auto_applied']) expect(statuts).not.toContain(vivant);
+    });
+
+    it('le cron horaire la lance après l’expiration, et une purge qui plante n’arrête ni la consommation ni les flottes', async () => {
+      const { svc, prisma, travauxIa, errors } = monter();
+      proposalsOf(prisma).findMany.mockRejectedValue(new Error('verrou'));
+
+      await svc.runScheduled();
+
+      expect(errors.record).toHaveBeenCalledWith(expect.any(Error), 'AGENDA_AGENT', expect.objectContaining({ phase: 'purgerPropositions' }));
+      expect(travauxIa.faits).toHaveBeenCalled();
+      expect(prisma.agendaAgentSettings.findMany).toHaveBeenCalledTimes(1);
     });
   });
 

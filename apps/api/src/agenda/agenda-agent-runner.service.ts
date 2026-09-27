@@ -38,6 +38,10 @@ const LEAD_MS = 60 * 60 * 1000;
 const MAX_DAY_STEPS = 60;
 /** Historique conservé par société (l'agent tourne chaque nuit → ~3 mois de recul). */
 const KEEP_RUNS_PER_FLEET = 100;
+/** P2-5 — une proposition `expired` / `dismissed` dont le créneau a plus d'un trimestre s'efface. */
+const RETENTION_PROPOSITIONS_CLOSES_MS = 90 * DAY_MS;
+/** P2-5 — par passage horaire : le reliquat s'écoule en plusieurs passages, jamais en un verrou. */
+const PURGE_LOT_MAX = 5_000;
 /** Anti-storm : au plus une (re)analyse ÉVÉNEMENTIELLE par flotte toutes les 5 min. */
 const EVENT_THROTTLE_MS = 5 * 60 * 1000;
 /** Type du travail de la file du poste qui porte le jugement de l'IA (design/C3 point 7). */
@@ -392,6 +396,16 @@ export class AgendaAgentRunnerService {
       this.logger.error(`expirerPropositions : ${(e as Error)?.message ?? e}`);
       void this.errorLogger
         ?.record(e as Error, 'AGENDA_AGENT', { phase: 'expirerPropositions' })
+        .catch(() => {});
+    }
+    // P2-5 — même isolement : une purge qui échoue ne retient ni la consommation ni les flottes.
+    try {
+      const n = await this.purgerPropositions();
+      if (n > 0) this.logger.log(`${n} proposition(s) close(s) depuis plus d'un trimestre effacée(s)`);
+    } catch (e) {
+      this.logger.error(`purgerPropositions : ${(e as Error)?.message ?? e}`);
+      void this.errorLogger
+        ?.record(e as Error, 'AGENDA_AGENT', { phase: 'purgerPropositions' })
         .catch(() => {});
     }
     try {
@@ -759,6 +773,37 @@ export class AgendaAgentRunnerService {
     const { count } = await this.prisma.agendaAgentProposal.updateMany({
       where: { status: 'pending', endAt: { lt: now } },
       data: { status: 'expired' },
+    });
+    return count;
+  }
+
+  /**
+   * RÉTENTION (P2-5, audit du 22/09) : les propositions que plus personne ne lira.
+   *
+   * Le 22/09, cdef31 portait **2 049 `expired` et 172 `dismissed` jamais purgées** — ~30 lignes
+   * par nuit et par société, sans conséquence fonctionnelle mais sans fin. Une `expired` est une
+   * suggestion dont le créneau est passé sans qu'on l'ait prise : au bout d'un trimestre, elle
+   * n'explique plus rien. Une `dismissed` porte la raison de l'IA ou d'un humain ; la même
+   * fenêtre suffit à en tirer ce qu'on veut en tirer.
+   *
+   * Ne sont JAMAIS purgées : `pending` (vivante), `applied` / `auto_applied` (elles pointent une
+   * réservation créée : c'est de l'historique d'exploitation, et la mesure du 23/09 — 57 % de
+   * bons créneaux sur 321 — n'a été possible que parce qu'elles étaient là).
+   *
+   * Borné par lot, comme la rétention des notifications : un `DELETE` massif verrouillerait la
+   * table sur un VPS à 2 vCPU. Le cron repasse chaque heure, le reliquat s'écoule en quelques
+   * passages. Rend le nombre de lignes effacées.
+   */
+  async purgerPropositions(now: Date = new Date()): Promise<number> {
+    const limite = new Date(now.getTime() - RETENTION_PROPOSITIONS_CLOSES_MS);
+    const condamnees = await this.prisma.agendaAgentProposal.findMany({
+      where: { status: { in: ['expired', 'dismissed'] }, endAt: { lt: limite } },
+      select: { id: true },
+      take: PURGE_LOT_MAX,
+    });
+    if (condamnees.length === 0) return 0;
+    const { count } = await this.prisma.agendaAgentProposal.deleteMany({
+      where: { id: { in: condamnees.map((c) => c.id) } },
     });
     return count;
   }
