@@ -133,6 +133,29 @@ export function eventUrgency(ev: Pick<VehicleEventDto, 'status' | 'startAt'>, no
   return 'normal';
 }
 
+/**
+ * « À venir & en retard » — la règle UNIQUE qui décide si un évènement appartient à cette liste.
+ *
+ * Elle est le miroir exact des deux compteurs de l'en-tête (`GET /agenda/summary`) :
+ *  - « En retard » = PLANNED ou OPEN dont l'échéance est passée ;
+ *  - « À venir »   = PLANNED dont l'échéance est encore devant.
+ *
+ * Audit du 24/09 (« compteur ≠ liste ») : le compteur ne comptait que les PLANNED, la liste
+ * affichait aussi OPEN et IN_PROGRESS — on lisait « 1 en retard » au-dessus de trois lignes
+ * rouges. Un IN_PROGRESS n'est ni à venir ni en retard : il est EN COURS, et c'est le panneau du
+ * jour (et le compteur « Incidents ouverts ») qui le portent. Un OPEN à échéance future serait
+ * une anomalie de saisie ; il ne compte nulle part, donc il ne s'affiche pas ici non plus.
+ *
+ * Tout changement ici doit se refléter dans `vehicle-events.service.ts` (`summary`), et
+ * inversement : deux règles qui divergent redonnent exactement le défaut d'origine.
+ */
+export function estUneEcheance(ev: Pick<VehicleEventDto, 'status' | 'startAt'>, now = Date.now()): boolean {
+  if (ev.status === 'PLANNED') return true;
+  if (ev.status !== 'OPEN') return false;
+  const due = new Date(ev.startAt).getTime();
+  return !Number.isNaN(due) && due < now;
+}
+
 /** Couleur associée à une urgence (listes à venir / en retard) — mêmes règles que eventColor. */
 export function urgencyColor(urgency: EventUrgency): string {
   switch (urgency) {

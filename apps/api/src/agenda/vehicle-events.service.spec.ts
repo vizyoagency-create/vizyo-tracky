@@ -121,3 +121,96 @@ describe('VehicleEventsService — scoping tenant (Sprint 7, anti-IDOR)', () => 
     expect(where.vehicleId).toEqual({ in: ['v1', 'v2'] });
   });
 });
+
+/**
+ * ── P2-1 (audit du 22/09) — UNE MISSION NE SE TOUCHE PAS DEPUIS L'AGENDA ──────────────────
+ *
+ * L'évènement `MISSION` est l'ombre d'une mission, créée avec elle dans une transaction et
+ * retrouvée par `metadata.missionId`. Le serveur refusait déjà la RÉSERVATION par cette voie mais
+ * laissait passer la mission : « Terminé » ou « Supprimer » depuis le panneau du jour libérait le
+ * véhicule pendant une mission qui existait toujours. Dormant chez cdef31 (0 mission), actif chez
+ * mh cars (7).
+ */
+describe('VehicleEventsService — la garde MISSION (P2-1)', () => {
+  function prismaAvec(type: string) {
+    const prisma = makePrisma();
+    const p = prisma as { vehicleEvent: { findFirst: jest.Mock; update: jest.Mock; delete: jest.Mock } };
+    p.vehicleEvent.findFirst.mockResolvedValue({ id: 'e1', vehicleId: 'v1', type });
+    p.vehicleEvent.update.mockResolvedValue({
+      id: 'e1', fleetId: 'f1', vehicleId: 'v1', vehicle: { plate: 'AA-1' }, type, status: 'DONE',
+      severity: null, title: 'x', description: null, startAt: new Date(), endAt: null, allDay: true,
+      blocksVehicle: false, odometerKm: null, planId: null, linkedEventId: null, resolvedAt: new Date(),
+      metadata: null, source: 'MANUAL', createdAt: new Date(), updatedAt: new Date(),
+    });
+    p.vehicleEvent.delete.mockResolvedValue({});
+    return { prisma, p };
+  }
+  const admin = () => makeUser({ role: UserRole.FLEET_ADMIN });
+
+  it('update : « Terminé » sur une MISSION est refusé, et le message dit où aller', async () => {
+    const { prisma, p } = prismaAvec('MISSION');
+    const svc = new VehicleEventsService(prisma, access('ALL'));
+    await expect(svc.update(admin(), 'e1', { status: 'DONE' })).rejects.toMatchObject({
+      constructor: BadRequestException,
+      message: expect.stringContaining('onglet Missions'),
+    });
+    expect(p.vehicleEvent.update).not.toHaveBeenCalled();
+  });
+
+  it('remove : supprimer une MISSION est refusé — la mission survivrait sans son ombre', async () => {
+    const { prisma, p } = prismaAvec('MISSION');
+    const svc = new VehicleEventsService(prisma, access('ALL'));
+    await expect(svc.remove(admin(), 'e1')).rejects.toBeInstanceOf(BadRequestException);
+    expect(p.vehicleEvent.delete).not.toHaveBeenCalled();
+  });
+
+  it('…mais une MAINTENANCE se termine et se supprime toujours par cette voie', async () => {
+    const { prisma, p } = prismaAvec('MAINTENANCE');
+    const svc = new VehicleEventsService(prisma, access('ALL'));
+    await expect(svc.update(admin(), 'e1', { status: 'DONE' })).resolves.toMatchObject({ status: 'DONE' });
+    await expect(svc.remove(admin(), 'e1')).resolves.toEqual({ ok: true });
+    expect(p.vehicleEvent.update).toHaveBeenCalledTimes(1);
+    expect(p.vehicleEvent.delete).toHaveBeenCalledTimes(1);
+  });
+});
+
+/**
+ * ── LES COMPTEURS (audit du 24/09 « compteur ≠ liste », et P2-4) ─────────────────────────
+ *
+ * `overdue` ne comptait que les PLANNED alors que le contrat du DTO disait « PLANNED/OPEN » et
+ * que la liste affichait les OPEN. Et filtrer par groupe ou véhicule ne changeait pas les
+ * compteurs : l'écran suggérait un périmètre qu'il n'appliquait pas.
+ */
+describe('VehicleEventsService — summary : statuts et périmètre', () => {
+  const countOf = (prisma: unknown) => (prisma as { vehicleEvent: { count: jest.Mock } }).vehicleEvent.count;
+
+  it('« En retard » compte PLANNED et OPEN dont l’échéance est passée — comme la liste', async () => {
+    const prisma = makePrisma();
+    const svc = new VehicleEventsService(prisma, access('ALL'));
+    await svc.summary(makeUser());
+    const enRetard = countOf(prisma).mock.calls[0][0].where;
+    expect(enRetard.status).toEqual({ in: ['PLANNED', 'OPEN'] });
+    expect(enRetard.startAt).toEqual({ lt: expect.any(Date) });
+  });
+
+  it('un véhicule filtré borne les trois compteurs à ce véhicule', async () => {
+    const prisma = makePrisma();
+    const svc = new VehicleEventsService(prisma, access('ALL'));
+    await svc.summary(makeUser(), { vehicleId: 'v7' });
+    for (const appel of countOf(prisma).mock.calls) {
+      expect(appel[0].where.vehicleId).toEqual({ in: ['v7'] });
+    }
+  });
+
+  it('un groupe filtré se résout en ses véhicules ; un groupe VIDE rend trois zéros sans interroger', async () => {
+    const prisma = makePrisma({ vehicleGroupAssignment: { findMany: jest.fn().mockResolvedValue([{ vehicleId: 'v1' }, { vehicleId: 'v2' }]) } });
+    const svc = new VehicleEventsService(prisma, access('ALL'));
+    await svc.summary(makeUser(), { groupId: 'g1' });
+    expect(countOf(prisma).mock.calls[0][0].where.vehicleId).toEqual({ in: ['v1', 'v2'] });
+
+    const vide = makePrisma();
+    const svcVide = new VehicleEventsService(vide, access('ALL'));
+    await expect(svcVide.summary(makeUser(), { groupId: 'g-vide' })).resolves.toEqual({ overdue: 0, upcoming: 0, openIncidents: 0 });
+    expect(countOf(vide)).not.toHaveBeenCalled();
+  });
+});

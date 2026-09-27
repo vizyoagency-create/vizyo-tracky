@@ -8,7 +8,6 @@ import type {
   RequestReservationDto,
   ConfirmReservationDto,
   UpdateReservationDto,
-  SuggestReservationResultDto,
   CreateVehicleEventDto,
   MaintenancePlanDto,
   OdometerEstimateDto,
@@ -57,10 +56,15 @@ export class AgendaApiService {
     return this.http.get<VehicleEventDto[]>('/api/agenda/events', { params });
   }
 
-  /** GET /api/agenda/summary — compteurs (en retard / à venir / incidents ouverts). */
-  summary(fleetId?: string): Observable<AgendaSummaryDto> {
+  /**
+   * GET /api/agenda/summary — compteurs (en retard / à venir / incidents ouverts).
+   * Même périmètre que la liste (P2-4) : société, et groupe OU véhicule si l'écran en filtre un.
+   */
+  summary(scope: { fleetId?: string; vehicleId?: string; groupId?: string } = {}): Observable<AgendaSummaryDto> {
     const params: Record<string, string> = {};
-    if (fleetId) params['fleetId'] = fleetId;
+    if (scope.fleetId) params['fleetId'] = scope.fleetId;
+    if (scope.vehicleId) params['vehicleId'] = scope.vehicleId;
+    if (scope.groupId) params['groupId'] = scope.groupId;
     return this.http.get<AgendaSummaryDto>('/api/agenda/summary', { params });
   }
 
@@ -172,20 +176,10 @@ export class AgendaApiService {
     return this.http.get<VehicleEventDto[]>('/api/reservations', { params });
   }
 
-  /** GET /api/reservations/suggest — véhicules libres + conformes aux critères. */
-  suggestReservation(query: {
-    startAt: string;
-    endAt: string;
-    minSeats?: number;
-    minChildSeats?: number;
-    features?: string[];
-  }): Observable<SuggestReservationResultDto> {
-    const params: Record<string, string> = { startAt: query.startAt, endAt: query.endAt };
-    if (query.minSeats) params['minSeats'] = String(query.minSeats);
-    if (query.minChildSeats) params['minChildSeats'] = String(query.minChildSeats);
-    if (query.features?.length) params['features'] = query.features.join(',');
-    return this.http.get<SuggestReservationResultDto>('/api/reservations/suggest', { params });
-  }
+  // P2-6 (audit du 22/09) — `suggestReservation` (GET /api/reservations/suggest) a été retiré :
+  // aucun appelant côté front depuis que la suggestion IA de placement a pris sa place. Le cœur
+  // (`ReservationsService.suggest`) vit toujours côté API : l'optimiseur de placement et le lien
+  // public s'en servent. Seule la route morte et son client sont partis.
 
   /** POST /api/reservations/request — déposer une demande (REQUESTED). */
   requestReservation(dto: RequestReservationDto): Observable<VehicleEventDto> {

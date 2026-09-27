@@ -54,6 +54,7 @@ import { AiStatusService } from '../../core/services/ai-status.service';
 import { VehicleLinkDirective } from '../../shared/directives/vehicle-link.directive';
 import {
   addMonths,
+  estUneEcheance,
   eventColor,
   eventStatusLabel,
   eventTypeLabel,
@@ -542,7 +543,12 @@ interface GroupOption {
                   </p>
                   @if (ev.description) { <p class="ag-day-card-desc">{{ ev.description }}</p> }
                   @if (reservationReason(ev)) { <p class="ag-day-card-desc">{{ reservationReason(ev) }}</p> }
-                  @if (canManage() && ev.type !== 'RESERVATION') {
+                  <!-- P2-1 : une MISSION n'a pas de boutons ici. Son ombre d'agenda se met à jour
+                       depuis l'onglet Missions ; « Terminé » ou « Supprimer » depuis cette carte
+                       libérait le véhicule pendant une mission qui existait toujours. -->
+                  @if (ev.type === 'MISSION') {
+                    <p class="ag-day-card-desc">Se pilote depuis l'onglet Missions.</p>
+                  } @else if (canManage() && ev.type !== 'RESERVATION') {
                     <div class="ag-day-card-actions">
                       @if (ev.status !== 'IN_PROGRESS' && ev.status !== 'DONE' && ev.status !== 'CANCELLED') {
                         <button type="button" (click)="setStatus(ev, 'IN_PROGRESS')" [disabled]="busyId() === ev.id"
@@ -1762,23 +1768,28 @@ export class AgendaComponent implements OnInit {
   });
 
   /**
-   * Liste « à venir & en retard » : PLANNED/OPEN/IN_PROGRESS, triés par échéance.
+   * Liste « à venir & en retard », triée par échéance.
    *
    * Se sert dans `echeances()` — la fenêtre fixe autour d'aujourd'hui — et NON dans les
    * événements du mois affiché : feuilleter octobre ne doit pas changer ce qui est « à venir ».
    * Mêmes filtres de périmètre et de type que le calendrier, pour que les deux parlent du même
    * parc.
+   *
+   * La règle d'appartenance est `estUneEcheance` — la MÊME que celle des compteurs « En retard »
+   * et « À venir » du serveur. Avant (24/09), la liste prenait aussi les IN_PROGRESS que le
+   * compteur ne comptait pas : « 1 en retard » au-dessus de trois lignes rouges.
    */
   protected readonly upcomingEvents = computed(() => {
     const type = this.selectedType();
     const vid = this.selectedVehicleId();
     const gids = this.groupVehicleIdSet();
+    const now = Date.now();
     return this.echeances()
       .filter((ev) => {
         if (vid && ev.vehicleId !== vid) return false;
         if (gids && !gids.has(ev.vehicleId)) return false;
         if (type && ev.type !== type) return false;
-        return ev.status === 'PLANNED' || ev.status === 'OPEN' || ev.status === 'IN_PROGRESS';
+        return estUneEcheance(ev, now);
       })
       .sort((a, b) => new Date(a.startAt).getTime() - new Date(b.startAt).getTime())
       .slice(0, 25);
@@ -1849,7 +1860,17 @@ export class AgendaComponent implements OnInit {
       return;
     }
     try {
-      this.summary.set(await firstValueFrom(this.api.summary(this.currentFleetId())));
+      // P2-4 : les compteurs suivent le périmètre filtré (groupe OU véhicule), comme la liste.
+      // Le véhicule prime : un véhicule choisi est déjà dans le groupe choisi, ou l'a réinitialisé.
+      this.summary.set(
+        await firstValueFrom(
+          this.api.summary({
+            fleetId: this.currentFleetId(),
+            vehicleId: this.selectedVehicleId() || undefined,
+            groupId: this.selectedVehicleId() ? undefined : this.selectedGroupId() || undefined,
+          }),
+        ),
+      );
     } catch (err) {
       swallow('agenda:loadSummary', err);
       this.summary.set(null);
@@ -1970,11 +1991,15 @@ export class AgendaComponent implements OnInit {
     if (vid && id && !this.vehicles().some((v) => v.id === vid && v.group?.id === id)) {
       this.selectedVehicleId.set('');
     }
+    // P2-4 : la grille se filtre côté client, mais les compteurs viennent du serveur — ils
+    // doivent suivre le même périmètre, sinon l'écran affiche un cadre qu'il n'applique pas.
+    void this.loadSummary();
   }
 
   protected selectVehicle(id: string): void {
     this.selectedVehicleId.set(id);
     this.vehicleDdOpen.set(false);
+    void this.loadSummary(); // P2-4, même raison que `selectGroup`
   }
 
   protected selectType(type: '' | VehicleEventType): void {
@@ -2322,8 +2347,6 @@ export class AgendaComponent implements OnInit {
         this.optPreset.set((job.payload as AiCapacityResultDto) ?? null);
         this.optSheetOpen.set(true);
         break;
-      case 'report':
-        break; // (rapport : à brancher quand la génération passera en async)
     }
   }
 

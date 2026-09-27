@@ -35,12 +35,6 @@ const ALL_ROLES = [
 ];
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-function parseIntOr(raw: string | undefined): number | undefined {
-  if (raw === undefined || raw === '') return undefined;
-  const n = parseInt(raw, 10);
-  return Number.isFinite(n) ? n : undefined;
-}
-
 /**
  * Sprint 8 (Palier B) — Réservations. Demande (reservations_request) → validation
  * (reservations_manage) ; lecture + auto-complétion (reservations_view). Scoping tenant
@@ -51,31 +45,11 @@ function parseIntOr(raw: string | undefined): number | undefined {
 export class ReservationsController {
   constructor(private readonly reservations: ReservationsService) {}
 
-  /** Auto-complétion : véhicules libres + conformes aux critères sur le créneau. */
-  @Get('suggest')
-  @Roles(...ALL_ROLES)
-  @RequirePermissions('reservations_view')
-  suggest(
-    @Req() req: AuthenticatedRequest,
-    @Query('startAt') startAt: string,
-    @Query('endAt') endAt: string,
-    @Query('minSeats') minSeats?: string,
-    @Query('minChildSeats') minChildSeats?: string,
-    @Query('features') features?: string,
-  ) {
-    if (!startAt || !endAt) throw new BadRequestException('startAt et endAt (ISO) requis.');
-    return this.reservations.suggest(req.user, {
-      startAt,
-      endAt,
-      criteria: {
-        minSeats: parseIntOr(minSeats),
-        minChildSeats: parseIntOr(minChildSeats),
-        requiredFeatures: features
-          ? features.split(',').map((s) => s.trim()).filter(Boolean)
-          : undefined,
-      },
-    });
-  }
+  // P2-6 (audit du 22/09) — la route `GET /reservations/suggest` a été retirée : aucun appelant
+  // depuis que la suggestion IA de placement (`/ai/placement/suggest`) a pris sa place côté front.
+  // `ReservationsService.suggest()` reste : l'optimiseur de placement et le service lui-même s'en
+  // servent. Une route exposée sans consommateur est de la surface d'attaque gardée par une
+  // permission — pas une fonctionnalité.
 
   /** Liste des réservations (scopée). Filtre `status=REQUESTED` = file de validation. */
   @Get()

@@ -1,8 +1,14 @@
 import { Injectable, computed, signal } from '@angular/core';
 import { apiErrorMessage } from '../error/api-error';
 
-/** Type d'opération IA suivie en arrière-plan (pour l'icône / le libellé de la pastille). */
-export type AiJobKind = 'agent-run' | 'optimization' | 'capacity' | 'report';
+/**
+ * Type d'opération IA suivie en arrière-plan (pour l'icône / le libellé de la pastille).
+ *
+ * ⚠️ Pas de `report` : aucun code n'en produisait, et l'agenda portait un `case 'report': break`
+ * « à brancher quand la génération passera en async » (P2-7, audit du 22/09). Un type que rien
+ * n'émet est une promesse écrite dans une union — on l'ajoutera avec son producteur, pas avant.
+ */
+export type AiJobKind = 'agent-run' | 'optimization' | 'capacity';
 export type AiJobStatus = 'running' | 'done' | 'error';
 
 /** Un travail IA lancé « en arrière-plan » : on ferme la modal et on suit son avancement via une pastille. */

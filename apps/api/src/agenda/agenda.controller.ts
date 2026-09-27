@@ -84,11 +84,17 @@ export class AgendaController {
     });
   }
 
+  /** Les trois compteurs, sur le MÊME périmètre que la liste (P2-4 : groupe / véhicule). */
   @Get('summary')
   @Roles(...ALL_ROLES)
   @RequirePermissions('agenda_view')
-  summary(@Req() req: AuthenticatedRequest, @Query('fleetId') fleetId?: string) {
-    return this.events.summary(req.user, fleetId);
+  summary(
+    @Req() req: AuthenticatedRequest,
+    @Query('fleetId') fleetId?: string,
+    @Query('vehicleId') vehicleId?: string,
+    @Query('groupId') groupId?: string,
+  ) {
+    return this.events.summary(req.user, { fleetId, vehicleId, groupId });
   }
 
   @Get('vehicles/:vehicleId/odometer')

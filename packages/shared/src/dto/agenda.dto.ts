@@ -198,12 +198,20 @@ export interface ReorganisationResultDto {
   plafonne: boolean;
 }
 
+/**
+ * Les trois compteurs de l'en-tête de l'agenda.
+ *
+ * ⚠️ Contrat PARTAGÉ avec la liste « À venir & en retard » (`estUneEcheance`, agenda.utils.ts) :
+ * ce que `overdue` + `upcoming` comptent est exactement ce que la liste affiche, sur le même
+ * périmètre (société, groupe ou véhicule). Le 24/09, le serveur ne comptait que les PLANNED
+ * alors que ce commentaire disait déjà « PLANNED/OPEN » — le contrat était juste, le code non.
+ */
 export interface AgendaSummaryDto {
-  /** PLANNED/OPEN dont l'échéance est passée (en retard). */
+  /** PLANNED ou OPEN dont l'échéance (`startAt`) est passée. */
   overdue: number;
-  /** PLANNED dans les 30 prochains jours. */
+  /** PLANNED dont l'échéance tombe dans les 30 prochains jours. */
   upcoming: number;
-  /** Incidents OPEN/IN_PROGRESS. */
+  /** Incidents OPEN/IN_PROGRESS — les « en cours » vivent ici, pas dans `overdue`. */
   openIncidents: number;
 }
 

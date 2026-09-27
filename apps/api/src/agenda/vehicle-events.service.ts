@@ -1,4 +1,4 @@
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Prisma, UserRole, VehicleEventStatus, VehicleEventType } from '@prisma/client';
 import type {
@@ -16,6 +16,19 @@ import { VehicleAccessService } from '../vehicle-access/vehicle-access.service';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
+/**
+ * P2-3 (audit du 22/09) — plafond de la liste d'évènements d'une fenêtre.
+ *
+ * L'ancien `take: 1000` était MUET : trié par date croissante, au-delà de mille lignes **la fin
+ * du mois disparaissait** sans qu'aucune trace ne le dise — ni au client, ni au journal. cdef31
+ * est à ~300 évènements sur une grille de six semaines ; un parc de trente véhicules à deux
+ * réservations par jour en produirait 2 500 sur la même fenêtre, et l'écran aurait tronqué en
+ * silence. Le plafond est relevé à une marge confortable pour tout parc connu, et **quand il
+ * mord, il le dit** dans le journal avec la société et la fenêtre — le contrat de réponse (un
+ * tableau) n'est pas changé, mais l'oubli cesse d'être invisible.
+ */
+export const MAX_EVENEMENTS_PAR_FENETRE = 3000;
+
 type EventRow = Prisma.VehicleEventGetPayload<{ include: { vehicle: { select: { plate: true } } } }>;
 
 /**
@@ -25,6 +38,8 @@ type EventRow = Prisma.VehicleEventGetPayload<{ include: { vehicle: { select: { 
  */
 @Injectable()
 export class VehicleEventsService {
+  private readonly logger = new Logger(VehicleEventsService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly vehicleAccess: VehicleAccessService,
@@ -122,20 +137,54 @@ export class VehicleEventsService {
       where,
       include: { vehicle: { select: { plate: true } } },
       orderBy: { startAt: 'asc' },
-      take: 1000,
+      take: MAX_EVENEMENTS_PAR_FENETRE,
     });
+    if (rows.length === MAX_EVENEMENTS_PAR_FENETRE) {
+      // Tronqué : la fin de la fenêtre n'est pas rendue. Dit, pas avalé (P2-3).
+      this.logger.warn(
+        `Liste d'évènements tronquée à ${MAX_EVENEMENTS_PAR_FENETRE} lignes — société ${String(where.fleetId ?? 'toutes')}, ` +
+          `fenêtre ${q.from.toISOString()} → ${q.to.toISOString()} : les évènements les plus tardifs manquent.`,
+      );
+    }
     return rows.map((r) => this.toDto(r));
   }
 
-  async summary(user: AuthUser, fleetId?: string): Promise<AgendaSummaryDto> {
-    const where = await this.scopedWhere(user, undefined, fleetId);
+  /**
+   * Les trois compteurs de l'en-tête.
+   *
+   * ── Périmètre (P2-4, audit du 22/09) ────────────────────────────────────────────────────
+   * Filtrer par groupe ou véhicule ne changeait pas « En retard / À venir / Incidents
+   * ouverts » : l'écran suggérait un périmètre qu'il n'appliquait pas. Les compteurs prennent
+   * désormais le MÊME périmètre que la liste (`vehicleId` / `groupId`, résolus comme dans
+   * `list()`). Le filtre de TYPE, lui, reste volontairement hors des compteurs : chacun est
+   * typé par nature (« Incidents ouverts » sous un filtre « Maintenance » afficherait 0 — et ce
+   * zéro serait faux).
+   *
+   * ── Statuts (audit du 24/09, « compteur ≠ liste ») ───────────────────────────────────────
+   * `overdue` comptait les seuls `PLANNED` alors que le contrat du DTO dit « PLANNED/OPEN dont
+   * l'échéance est passée » et que la liste « À venir & en retard » affichait aussi les OPEN.
+   * Le compteur suit maintenant son contrat ; la liste, côté web, applique la MÊME règle
+   * (`estUneEcheance`, `agenda.utils.ts`) — un compteur et la liste sous lui doivent parler
+   * du même ensemble, sinon le lecteur ne sait plus lequel croire.
+   */
+  async summary(
+    user: AuthUser,
+    q: { fleetId?: string; vehicleId?: string; groupId?: string } = {},
+  ): Promise<AgendaSummaryDto> {
+    let requested: string[] | undefined;
+    if (q.vehicleId) requested = [q.vehicleId];
+    else if (q.groupId) {
+      requested = await this.groupVehicleIds(user, q.groupId);
+      if (requested.length === 0) return { overdue: 0, upcoming: 0, openIncidents: 0 }; // groupe vide
+    }
+    const where = await this.scopedWhere(user, requested, q.fleetId);
     const now = new Date();
     const in30 = new Date(now.getTime() + 30 * DAY_MS);
     const [overdue, upcoming, openIncidents] = await Promise.all([
       this.prisma.vehicleEvent.count({
         where: {
           ...where,
-          status: VehicleEventStatus.PLANNED,
+          status: { in: [VehicleEventStatus.PLANNED, VehicleEventStatus.OPEN] },
           startAt: { lt: now },
         },
       }),
@@ -220,6 +269,7 @@ export class VehicleEventsService {
     if (existing.type === VehicleEventType.RESERVATION) {
       throw new BadRequestException('Les réservations se gèrent depuis l\'espace Réservations.');
     }
+    this.refuserSiMission(existing.type);
     const data: Prisma.VehicleEventUpdateInput = {};
     if (dto.status !== undefined) {
       data.status = dto.status;
@@ -257,8 +307,29 @@ export class VehicleEventsService {
     if (existing.type === VehicleEventType.RESERVATION) {
       throw new BadRequestException('Les réservations se gèrent depuis l\'espace Réservations.');
     }
+    this.refuserSiMission(existing.type);
     await this.prisma.vehicleEvent.delete({ where: { id } });
     return { ok: true };
+  }
+
+  /**
+   * P2-1 (audit du 22/09) — un évènement `MISSION` n'est pas un évènement comme les autres :
+   * c'est L'OMBRE d'une mission, créée avec elle dans la même transaction (`missions.service.ts`)
+   * et retrouvée par `metadata.missionId` à chaque changement d'état. Le serveur refusait déjà
+   * l'édition d'une RÉSERVATION par cette voie, mais laissait passer la mission : « Terminé » ou
+   * « Supprimer » depuis le panneau du jour **libérait le véhicule pendant une mission qui
+   * existait toujours** — exactement la désynchronisation que la transaction de création empêche.
+   *
+   * Même famille de garde que la réservation, même symétrie : la mission se pilote depuis l'onglet
+   * Missions (démarrer, terminer, annuler), et c'est ELLE qui met son ombre à jour. Le message
+   * dit où aller, parce qu'un refus qui ne dit pas le bon geste en provoque un autre.
+   */
+  private refuserSiMission(type: VehicleEventType): void {
+    if (type === VehicleEventType.MISSION) {
+      throw new BadRequestException(
+        "Une mission se pilote depuis l'onglet Missions de l'agenda : c'est elle qui met à jour cet évènement.",
+      );
+    }
   }
 
   async estimateOdometer(user: AuthUser, vehicleId: string): Promise<OdometerEstimateDto> {
