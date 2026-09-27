@@ -18,13 +18,20 @@ Mais la leçon du 22/09 se répète, en plus fort : **quatre défauts supplémen
 SERVANT de l'écran, aucun en le lisant.** Deux campagnes d'audit statique sur ce module ne les
 avaient pas vus — dont le plus dangereux de toute la revue (voir R-4).
 
-| Mesure (prod, 24/09) | 22/09 | 24/09 |
-|---|---|---|
-| Comptes cdef31 qui ne verront rien dans l'agenda | **5 sur 6** | **0** |
-| Travaux d'agent local bloqués | **7** | **0** (file vide) |
-| Réservations **fermes** à venir posées par la machine | **119** | **0** |
-| Courriels d'exploitation (14 j) | **81** | **0 depuis la coupure** |
-| Destinataires de l'avis « demande à valider » chez cdef31 | *tous les valideurs* | **`standard@` seul** |
+| Mesure (prod) | 22/09 | 24/09 | **27/09** |
+|---|---|---|---|
+| Comptes cdef31 qui ne verront rien dans l'agenda | **5 sur 6** | **0** | **0** |
+| Travaux d'agent local bloqués | **7** | **0** (file vide) | **0** (file vide) |
+| Réservations **fermes** à venir posées par la machine | **119** | **0** | **0** — 3 nuits de plus |
+| Courriels d'exploitation (14 j) | **81** | **0 depuis la coupure** | **0** |
+| Destinataires de l'avis « demande à valider » chez cdef31 | *tous les valideurs* | `standard@` seul | **`standard@` + `j.hendriks@`** |
+| Objets de recette laissés en production | — | **12** | **0** |
+| Lignes `CRITICAL` ouvertes nées de ce chantier | — | **8** | **0** |
+
+> 🗓️ **Ce document a été relu en production le 27/09, la veille de la mise en service.** Deux de ses
+> affirmations étaient devenues fausses et sont barrées ci-dessous. Le détail — dont un courriel de
+> recette parti chez le vrai client, et l'inventaire complet des envois — est dans la section
+> [2026-09-27](#2026-09-27--la-veille-de-la-mise-en-service).
 
 ---
 
@@ -227,11 +234,11 @@ prouvé **par mutation**.
 | | Sujet | Pourquoi ce n'est pas bloquant |
 |---|---|---|
 | ⚠️ | **Le tactile réel n'a pas pu être éprouvé** | La fenêtre Chrome refuse tout redimensionnement. C'est la seule case qu'on ne peut pas cocher depuis ici — et c'est le terrain où R-3 s'est produit. **À faire sur un vrai téléphone.** |
-| ⚠️ | Joignabilité des 3 managers cdef31 | Décision prise de ne rien leur envoyer. `standard@`, lui, est confirmé joignable. |
-| 🟡 | Rattrapage des tracés | **9 871 restants, 364/jour, ≈ 27 jours.** Voir ci-dessous. |
+| ⚠️ | Joignabilité des 3 managers cdef31 | ~~Décision prise de ne rien leur envoyer.~~ **Tranché malgré nous le 24/09** — voir la section du 27/09 : `r.garrigue@` et `t.boulay@` sont **joignables**, `astreinte@` est une **boîte morte**. |
+| 🟡 | Rattrapage des tracés | ~~9 871 restants, 364/jour, ≈ 27 jours.~~ **8 798 au 27/09, 367/jour mesurés, ≈ 24 jours.** Voir ci-dessous. |
 | 🟡 | Compteur « EN RETARD » ≠ liste | Le compteur ne compte que les `PLANNED`, la liste inclut `OPEN`/`IN_PROGRESS`. Visible, pas grave. |
 | 🟡 | P1-4, P1-5, P2-1 de l'audit du 22/09 | Inchangés. |
-| 🧹 | 11 objets de recette sur « Client test » | Marqués `seed-agenda-2026-09-23`, à supprimer. |
+| 🧹 | 11 objets de recette sur « Client test » | ~~Marqués `seed-agenda-2026-09-23`, à supprimer.~~ **Supprimés le 27/09**, avec un 12ᵉ resté chez cdef31. |
 
 ### Le rattrapage des tracés — pourquoi on ne l'accélère pas
 
@@ -258,9 +265,118 @@ en comparant deux comptages à 24 h d'écart **soustrait silencieusement les nou
 
 ---
 
+---
+
+## 2026-09-27 — la veille de la mise en service
+
+> Relecture complète de la production, trois jours après. **`origin/main` n'a pas bougé** depuis le
+> 24/09 : aucun code d'agenda n'a été touché. Ce qui suit est mesuré, pas déduit — et **deux
+> affirmations de ce document étaient devenues fausses**.
+
+### 🔴 Un courriel de recette est parti chez le vrai client — et ce n'était pas le 21
+
+L'évènement créé le **24/09 à 00:53:48** est `cdef31` / « Demande publique », métadonnée
+`freeText: "J'ai besoin d'une voiture pour demain"` : **la demande de recette a été déposée par le
+lien public du vrai client**, pas par celui de « Client test ». Elle a expédié
+`reservation_request_pending` à **5 adresses de cdef31** — `j.hendriks@`, `r.garrigue@`,
+`t.boulay@`, `standard@` remis, `astreinte@` **rebondi**. La séparation avis/droit a été déployée
+**trois minutes plus tard**, à 00:56.
+
+🔑 **La règle qui manquait, et qui manque encore dans le code : toute recette du lien public se fait
+sur « Client test ».** Il n'existe **aucun garde-fou** — pas de liste blanche, pas de mode test, pas
+de redirection dans `email.service.ts` : un envoi part vers la vraie boîte du vrai client, toujours.
+C'est la cause racine, et elle n'est pas corrigée.
+
+⚠️ **Effet secondaire : l'erreur a répondu à la question que ce document laissait ouverte.**
+`r.garrigue@` et `t.boulay@` sont `DELIVERED`, donc **joignables**. `astreinte@cdef31.org` a
+**rebondi dur** : c'est une **boîte morte**, comme `admin@` l'était. Il faut la vraie adresse auprès
+du client — sans elle, ce compte ne peut recevoir ni avis ni réinitialisation de mot de passe.
+
+### Les destinataires de l'avis : `standard@` **et** `j.hendriks@`
+
+Décision du propriétaire le 27/09, qui remplace le « `standard@` seul » du 24/09.
+
+| Compte | Rôle | Peut valider | Reçoit l'avis |
+|---|---|---|---|
+| `standard@` | FLEET_MANAGER | ✅ | ✅ |
+| `j.hendriks@` | FLEET_ADMIN | ✅ | ✅ |
+| `astreinte@` · `r.garrigue@` · `t.boulay@` | FLEET_MANAGER | ✅ | ❌ |
+| `emu@` | NIGHT_WATCHMAN | ❌ (explicite, D5) | ❌ |
+
+### 🔑 L'adresse du rapport hebdomadaire n'est écrite nulle part — et la bascule l'a réparée
+
+`fleets.weeklyReportEmail` est **vide pour toutes les sociétés** et
+`fleet_report_schedules.recipients` est **`{}`** partout. `report-schedule.service.ts:308` retombe
+donc sur `adminEmails()` — **les FLEET_ADMIN actifs de la société**. C'est pour cela que le rapport
+partait vers `admin@cdef31.org` : c'était l'adresse du fleet-admin.
+
+**La bascule du 23/09 a donc corrigé TRK-094 sans qu'on le sache** : le seul FLEET_ADMIN de cdef31
+est désormais `j.hendriks@`, adresse prouvée `DELIVERED`. ⚠️ Le centre d'alerte prédisait encore un
+rebond le 28/09 — **cette prédiction était périmée**, elle avait été écrite sans savoir que le
+propriétaire du compte avait changé d'adresse. *Une prédiction datée doit être relue quand son
+support a bougé.*
+
+Conséquence à connaître : l'adresse restant **dérivée**, l'ajout d'un second fleet-admin chez cdef31
+le mettrait **silencieusement** en destinataire du rapport. Décision du propriétaire : on laisse
+dérivé, c'est le bon comportement.
+
+### L'inventaire des envois qui peuvent atteindre un client
+
+| Modèle | Déclencheur | Va vers | État au 27/09 |
+|---|---|---|---|
+| `weekly_report` | cron, **lundi 08:00 Paris** | dérivé : FLEET_ADMIN actifs | cdef31 → `j.hendriks@` · mh cars → `mhcars31@` · **Client test, A2R, Ahmed : coupés** |
+| `reservation_request_pending` | demande par le lien public | `standard@` + `j.hendriks@` | ✅ |
+| `reservation_requested` / `_confirmed` | dépôt / validation | le demandeur | ✅ |
+| `device_verification` · `password_reset` | geste de l'utilisateur | lui-même | ✅ |
+| `critical_error_alert` · `error_rate_alert` · `agents_pause` | exploitation | `contact@vizyoagency.com`, débrayable | ✅ 0 depuis la coupure |
+| rappels d'entretien | cron 07:00 | fleet-admins | ✅ **inerte** : cdef31 a 0 plan |
+| `alert` · `lead*` · `quote*` · `invitation` · `installation_*` | flux dédiés | — | dormants ou hors cdef31 |
+
+### Le ménage du 27/09 — vérifié après écriture
+
+| | Avant | Après |
+|---|---|---|
+| Objets de recette sur Client test | 11 | **0** |
+| La demande de recette restée sur cdef31 | 1 | **0** |
+| Courriels bloqués en `QUEUED` | 1 | **0** |
+| `agents-locaux` CRITICAL ouvertes | 2 | **0** |
+| `email-bloque` CRITICAL ouvertes | 6 | **0** |
+| `autonomy` en base pour cdef31 | `auto_high_confidence` | **`suggest`** |
+
+Deux précisions : **aucune table ne référence `vehicle_events`**, la suppression ne cascadait donc
+sur rien ; et **cdef31 est la seule société à avoir une ligne `agenda_agent_settings`**, le piège du
+rebranchement n'existe nulle part ailleurs. Les **77 réservations annulées** du 23/09 sont
+conservées : ce n'est pas de la recette mais la trace de D2, et elles sont invisibles au calendrier
+(R-5).
+
+### 🔴 Deux défauts de plus, dans du code écrit pendant cette revue
+
+**T83 — la sentinelle de file ne referme pas ses propres lignes.** Deux `agents-locaux` `CRITICAL`
+du 23/09 11:50 étaient **encore ouvertes** au 27/09 alors que la file est vide depuis. Elle crie
+quand la file se bouche et se tait quand elle se vide, sans jamais dire que c'est réglé. Closes à la
+main ; le correctif reste à écrire, sinon ça reviendra à la prochaine pause.
+
+**L'écran d'arriéré surestime le rythme — l'erreur que ce document dénonçait, recommise dedans.**
+`background-tasks.service.ts` calcule `parJour` avec `polylineMatchedAt >= now() - 24h`, **sans
+écarter les trajets recalés à leur création**. Mesuré sur 7 jours : **463/jour affichés contre
+367/jour de vrai rattrapage** (+26 %), soit ~19 jours annoncés au lieu de **~24 jours réels**.
+🔑 *Écrire la leçon ne suffit pas : il faut la relire en codant l'écran qui la mesure.*
+
+### Ce qui reste avant demain
+
+| | Sujet | Qui |
+|---|---|---|
+| ⚠️ | **Le tactile réel** n'a toujours pas été éprouvé sur un téléphone | à faire sur un vrai appareil |
+| ⚠️ | La vraie adresse de `astreinte@cdef31.org` | à demander au client |
+| 🟡 | T83 et le `parJour` de l'écran d'arriéré | **après** la mise en service — on ne déploie pas la veille |
+| 🟡 | P1-4, P1-5, P2-1, compteur « en retard » | inchangés |
+
+---
+
 ## Ce qu'il ne faut pas défaire
 
-- **L'agent ne réserve plus fermement.** Le réglage `autonomy` reste en base et ne suffit plus :
+- **L'agent ne réserve plus fermement.** Le réglage `autonomy` est passé à `suggest` en base le
+  27/09 pour que les deux disent la même chose, mais ce n'est pas lui qui décide :
   c'est `AUTONOMIE_FERME_AUTORISEE` qui décide, à un seul endroit. Mesure qui l'a tranché : sur 321
   réservations automatiques passées, **le véhicule avait réellement roulé sur le créneau 57 fois sur
   100, et pas du tout ce jour-là 23 fois sur 100** ; l'heure dérape de 47 min en médiane.
