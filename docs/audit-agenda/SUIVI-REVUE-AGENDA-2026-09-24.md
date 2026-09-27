@@ -370,6 +370,23 @@ main ; le correctif reste à écrire, sinon ça reviendra à la prochaine pause.
 | ⚠️ | La vraie adresse de `astreinte@cdef31.org` | à demander au client |
 | ✅ | P1-4, P1-5, P2-1, P2-3 → P2-7, compteur « en retard » ≠ liste | **corrigés, testés et poussés le 27/09 au soir** (`7e104eef`, `b7bf1b74`, `e030e80c`) — voir ci-dessous. **Pas déployés** : décision du moment de mise en production laissée au propriétaire, la veille du go-live. |
 
+### 28/09 01:00 — la preview sur la démo, avant de mettre en ligne
+
+Décision du propriétaire : **déployer lundi vers 10 h, mais tester avant sur de vraies données.**
+La démo (`demo-tracky.vizyoagency.com`) est faite pour ça : la vraie flotte pseudonymisée
+(« Transports Méridien », 37 véhicules, 16 884 trajets), isolée de tout véhicule et de toute clé
+SMS/push. Les images de `main` (`cd472914`) ont été construites sur le VPS **sans recréer la
+production** (même image `11ad5120fb74` avant et après, vérifié), la démo seule recréée, saine en
+20 s, les marqueurs du nouveau code présents dans ses deux conteneurs. Plan de recette, une case
+par geste : [`RECETTE-PREVIEW-DEMO-2026-09-28.md`](./RECETTE-PREVIEW-DEMO-2026-09-28.md).
+
+⚠️ **L'agenda de la démo part vide, par construction** : `vehicle_events`, propositions, réglages
+d'agent et liens publics sont exclus de l'import (ce sont les tables qui portent noms, téléphones
+et textes libres). On y crée ses objets, et on fait tourner l'agent sur les vrais trajets.
+
+⚠️ Les six lignes d'erreur au démarrage de la démo sont **structurelles** (webhooks fermés faute de
+secret, SMS en `noop`, kill-switch des coupes) — celles que son compose annonce. Rien du nouveau code.
+
 ### 27/09 au soir — les six derniers points de l'audit, corrigés
 
 Tous mesurés avant d'être touchés ; aucune migration dans le lot ; `ng build` passé (seul lui voit
