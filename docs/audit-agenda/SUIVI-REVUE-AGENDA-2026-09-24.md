@@ -368,8 +368,39 @@ main ; le correctif reste à écrire, sinon ça reviendra à la prochaine pause.
 |---|---|---|
 | ⚠️ | **Le tactile réel** n'a toujours pas été éprouvé sur un téléphone | à faire sur un vrai appareil |
 | ⚠️ | La vraie adresse de `astreinte@cdef31.org` | à demander au client |
-| 🟡 | T83 et le `parJour` de l'écran d'arriéré | **après** la mise en service — on ne déploie pas la veille |
-| 🟡 | P1-4, P1-5, P2-1, compteur « en retard » | inchangés |
+| 🟡 | P1-4, P1-5, P2-1, compteur « en retard » | inchangés — **pas oubliés**, ils restent dans le tableau « Ce qui reste » plus haut |
+
+### Le ménage et les correctifs du 27/09 au soir
+
+**Corrigés, testés, poussés (`2f35014e`) — mais PAS déployés**, décision assumée : on ne recrée pas
+la production la veille d'une mise en service pour de l'observabilité. À déployer après lundi.
+
+- **T83** — une file redevenue saine archive maintenant sa ligne, par type, et oublie son
+  refroidissement (sinon une rechute dans les 23 h resterait muette, et la fermeture n'aurait servi
+  qu'à masquer la panne). Et l'âge part du plus tard de la création du travail **et** de la fin de la
+  dernière pause : une file ne reproche que les heures où quelque chose pouvait la consommer.
+  La fermeture, elle, n'est **pas** muette sous pause — une file vidée a cessé d'être bouchée.
+- **`parJour`** — l'écran exclut désormais les tracés recalés à leur création. 13 tests ajoutés.
+- ⚠️ **Un mensonge du harnais trouvé en écrivant ces tests** : le double de
+  `pauseAgentsLocaux.findFirst` rendait la première ligne quoi qu'il arrive, donc une pause **déjà
+  levée** passait encore pour active et la sentinelle se taisait à tort. Le test était juste, le mock
+  avait tort.
+
+**Ménage de la production, vérifié après écriture** : 11 objets de recette sur « Client test », ma
+demande de recette restée sur cdef31, et les **77 réservations annulées à venir** supprimées ; le
+courriel bloqué en `QUEUED` clos ; les **8 `CRITICAL`** de ce chantier refermées ; `autonomy` aligné
+sur `suggest`. Le filet `_sauvegarde_resa_auto_cdef31_20260923` garde ses **116 lignes**, et les
+**43 annulations passées** restent barrées là où elles expliquent un trou d'activité.
+🔑 **Aucune table ne référence `vehicle_events`** : les suppressions ne cascadaient sur rien.
+
+**`astreinte@cdef31.org`, ce qu'il était possible de faire** : `reservationNoticeEnabled` est le
+**seul** interrupteur e-mail par compte du modèle `User`, et il est coupé. L'adresse n'apparaît dans
+**aucun** réglage (ni `weeklyReportEmail`, ni `recipients`). Restent deux émetteurs **sans
+interrupteur par compte** — `depot-incident.service.ts` et `mission-requests.service.ts`, qui visent
+tous les `FLEET_ADMIN` + `FLEET_MANAGER` — mais ils sont **inertes chez cdef31** : 0 compte dépôt,
+0 mission, 0 demande de mission. ⚠️ Les deux chemins restants (`password_reset`,
+`device_verification`) sont déclenchés par l'utilisateur : **ce compte ne peut donc pas franchir une
+vérification d'appareil**, et c'est ça le vrai problème, pas la notification.
 
 ---
 
