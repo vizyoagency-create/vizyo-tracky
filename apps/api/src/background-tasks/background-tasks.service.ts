@@ -19,6 +19,15 @@ const PARIS = 'Europe/Paris';
 const DAY_MS = 86_400_000;
 
 /**
+ * Écart minimal entre la fin d'un trajet et son recalage pour que celui-ci compte comme du
+ * RATTRAPAGE et non comme le flux courant. Un trajet neuf est aligné dans la minute qui suit sa
+ * clôture ; l'arriéré, lui, date de semaines. Une heure est une frontière volontairement large :
+ * un retard de file sur un trajet neuf ne doit pas le faire passer pour de l'arriéré résorbé.
+ * Voir {@link BackgroundTasksService.rythmeDeRattrapageTraces}.
+ */
+export const RECALAGE_DIFFERE = '1 hour';
+
+/**
  * Entrée du CATALOGUE STATIQUE des traitements de fond.
  *
  * Pourquoi statique : `SchedulerRegistry` ne connaît que des noms auto-générés (aucun @Cron
@@ -917,9 +926,7 @@ export class BackgroundTasksService {
           where: { polylineMatched: null, polyline: { not: null }, endedAt: { not: null } },
         }),
       ]);
-      const parJour = await this.prisma.trip.count({
-        where: { polylineMatchedAt: { gte: new Date(Date.now() - 24 * 3600 * 1000) } },
-      });
+      const parJour = await this.rythmeDeRattrapageTraces();
       out.push({
         id: 'recalage-traces',
         label: 'Tracés à recaler sur les routes',
@@ -951,6 +958,40 @@ export class BackgroundTasksService {
       this.logger.warn(`Rattrapage des limites illisible : ${(e as Error)?.message ?? e}`);
     }
     return out;
+  }
+
+  /**
+   * ── LE RYTHME DE RATTRAPAGE, ET LE PIÈGE QUI L'AVAIT FAUSSÉ ─────────────────────────────
+   *
+   * 🔴 Compter « tous les tracés recalés dans les 24 h » MESURE LE FLUX COURANT, pas le
+   * rattrapage. Chaque trajet neuf est recalé à sa création : il entre donc dans le total sans
+   * jamais avoir fait reculer l'arriéré d'une unité. Mesuré le 2026-09-27 en production :
+   * **463/jour comptés, 367/jour de vrai rattrapage** (+26 %), soit une échéance annoncée à
+   * ~19 jours pour ~24 jours réels — un écran de supervision qui rassure à tort.
+   *
+   * L'ironie, et la leçon : ce même écran avait été écrit POUR corriger l'erreur inverse
+   * (« un compteur n'est pas un débit », deux stocks soustraits à 24 h d'écart), et il a
+   * reproduit la faute d'un cran plus loin. **Écrire la leçon ne suffit pas : il faut la relire
+   * en codant l'écran qui la mesure.**
+   *
+   * On ne retient donc que les tracés recalés BIEN APRÈS la fin de leur trajet. Un trajet neuf
+   * est aligné dans la minute ; l'arriéré, lui, a des semaines ou des mois — {@link RECALAGE_DIFFERE}
+   * est une frontière large exprès, pour qu'un retard de file ne fasse pas passer un trajet neuf
+   * pour du rattrapage.
+   *
+   * ⚠️ Fenêtre de 24 h CONSERVÉE, et ce n'est pas un oubli : une moyenne sur sept jours serait
+   * plus stable mais masquerait un arrêt de deux jours — or « distinguer ce qui avance de ce qui
+   * stagne » est la raison d'être de ce chiffre.
+   */
+  private async rythmeDeRattrapageTraces(): Promise<number> {
+    const lignes = await this.prisma.$queryRaw<{ n: bigint }[]>`
+      SELECT count(*)::bigint AS n
+      FROM trips
+      WHERE "polylineMatchedAt" >= now() - interval '24 hours'
+        AND "endedAt" IS NOT NULL
+        AND "polylineMatchedAt" - "endedAt" > ${RECALAGE_DIFFERE}::interval
+    `;
+    return Number(lignes[0]?.n ?? 0);
   }
 
   /**

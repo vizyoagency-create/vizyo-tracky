@@ -79,6 +79,8 @@ function construire(opts: {
   pauses?: Array<Record<string, unknown>>;
   /** D7 — file des agents du poste, telle que `groupBy` la rend (type, plus ancien, compte). */
   file?: Array<{ type: string; _min: { creeA: Date | null }; _count: { _all: number } }>;
+  /** T83 — lignes `motif: 'file'` encore OUVERTES au centre d'alerte, que la fermeture doit trier. */
+  lignesFileOuvertes?: Array<{ id: string; context: Record<string, unknown> }>;
   /** T34 — historique des passages des agents CLI (findMany), pour la règle des cinq heures. */
   historique?: Array<Passage & { agent: string }>;
   /** T34 — `false` = aucun EmailService injecté ; défaut : un double qui accepte tout. */
@@ -99,7 +101,19 @@ function construire(opts: {
           (!args.where?.finiA?.gte || p.finiA.getTime() >= args.where.finiA.gte.getTime()))),
     },
     pauseAgentsLocaux: {
-      findFirst: jest.fn(async () => opts.pauses?.[0] ?? null),
+      /**
+       * Mock FIDÈLE au `where` réel : `active()` et `ouverte()` ne demandent que les lignes
+       * `leveeA: null`. Le double rendait la première ligne quoi qu'il arrive — donc une pause
+       * DÉJÀ LEVÉE passait encore pour active, et la sentinelle se taisait à tort. Trouvé le
+       * 27/09 en écrivant les tests de T83 : le test était juste, le harnais mentait.
+       */
+      findFirst: jest.fn(async (args?: { where?: { leveeA?: unknown } }) => {
+        const lignes = opts.pauses ?? [];
+        if (args?.where && 'leveeA' in args.where && args.where.leveeA === null) {
+          return lignes.find((p) => p['leveeA'] == null) ?? null;
+        }
+        return lignes[0] ?? null;
+      }),
       /**
        * Mock FIDÈLE au `where` réel de `aNotifier()` : jamais notifiée, OU sans échéance et
        * notifiée avant la borne de rappel. Un mock qui rendrait tout ferait passer des tests
@@ -126,6 +140,14 @@ function construire(opts: {
       updateMany: jest.fn().mockResolvedValue({ count: opts.archivees ?? 0 }),
       // TRK-069 — une cause commune déjà ouverte au centre d'alerte ; `null` = aucune.
       findFirst: jest.fn().mockResolvedValue(null),
+      // T83 — les lignes de file encore ouvertes. Le double honore le filtre `context.motif`
+      // que le service emploie : rendre tout ferait passer un test sur une requête qui, en
+      // base, ne ramènerait pas ces lignes-là.
+      findMany: jest.fn(async (args: { where?: { context?: { path?: string[]; equals?: unknown } } }) => {
+        const chemin = args.where?.context?.path?.[0];
+        if (chemin !== 'motif' || args.where?.context?.equals !== 'file') return [];
+        return opts.lignesFileOuvertes ?? [];
+      }),
     },
     user: { findMany: jest.fn().mockResolvedValue([{ id: 'sa-1' }, { id: 'sa-2' }]) },
   };
@@ -888,6 +910,150 @@ describe('Sentinelle des agents du poste — la file des travaux (D7)', () => {
       .filter((c) => (c[2] as { motif?: string })?.motif === 'file')
       .map((c) => (c[2] as { type?: string }).type);
     expect(types.sort()).toEqual(['jugement-agenda', 'rapport-activite']);
+  });
+
+  /**
+   * ── T83 (2026-09-27) — UNE FILE QUI S'ÉCOULE DOIT REFERMER SA LIGNE ───────────────────────
+   *
+   * Mesuré en production : deux `CRITICAL` du 23/09 11:50 encore OUVERTES le 27/09, sur une file
+   * vide depuis quatre jours. La sentinelle criait le bouchon et ne disait jamais la reprise.
+   */
+  describe('T83 — la fermeture, et l’âge qui ne compte pas la pause', () => {
+    /** La ligne ouverte telle qu'elle existait en production. */
+    const ouverte = (type: string, id = `ligne-${type}`) => ({ id, context: { motif: 'file', type } });
+
+    it('⚠️ la file de ce type est VIDE : la ligne est archivée, avec un motif lisible', async () => {
+      const { svc, prisma, refroidissement } = construire({
+        now,
+        file: [], // plus rien en attente
+        lignesFileOuvertes: [ouverte('jugement-agenda')],
+      });
+      await svc.verifier(now);
+
+      const appel = prisma.errorLog.updateMany.mock.calls.find(
+        (c: [{ where: { id?: { in?: string[] } } }]) => c[0].where.id?.in?.includes('ligne-jugement-agenda'),
+      );
+      expect(appel).toBeDefined();
+      expect(appel![0].data.resolvedAt).toBeInstanceOf(Date);
+      expect(String(appel![0].data.resolvedNote)).toMatch(/File « jugement-agenda » écoulée/);
+      // …et le refroidissement est oublié : un bouchon qui revient dans les 23 h doit crier.
+      expect(refroidissement.oublier).toHaveBeenCalledWith('file-travaux-ia:jugement-agenda');
+    });
+
+    it('la file est repassée SOUS le seuil (4 h) : la ligne est archivée aussi', async () => {
+      const { svc, prisma } = construire({
+        now,
+        file: [file('jugement-agenda', 4)],
+        lignesFileOuvertes: [ouverte('jugement-agenda')],
+      });
+      await svc.verifier(now);
+      expect(
+        prisma.errorLog.updateMany.mock.calls.some(
+          (c: [{ where: { id?: { in?: string[] } } }]) => c[0].where.id?.in?.includes('ligne-jugement-agenda'),
+        ),
+      ).toBe(true);
+    });
+
+    it('⚠️ la file est TOUJOURS bouchée : on ne referme rien — sinon la fermeture masque la panne', async () => {
+      const { svc, prisma, refroidissement } = construire({
+        now,
+        file: [file('jugement-agenda', 40, 3)],
+        lignesFileOuvertes: [ouverte('jugement-agenda')],
+      });
+      await svc.verifier(now);
+      expect(
+        prisma.errorLog.updateMany.mock.calls.some(
+          (c: [{ where: { id?: { in?: string[] } } }]) => c[0].where.id?.in?.includes('ligne-jugement-agenda'),
+        ),
+      ).toBe(false);
+      expect(refroidissement.oublier).not.toHaveBeenCalledWith('file-travaux-ia:jugement-agenda');
+    });
+
+    it('un type écoulé et un type encore bouché : seule la ligne du premier est archivée', async () => {
+      const { svc, prisma } = construire({
+        now,
+        file: [file('jugement-agenda', 40)], // bouché ; « rapport-activite » a disparu de la file
+        lignesFileOuvertes: [ouverte('jugement-agenda'), ouverte('rapport-activite')],
+      });
+      await svc.verifier(now);
+      const fermes = prisma.errorLog.updateMany.mock.calls
+        .flatMap((c: [{ where: { id?: { in?: string[] } } }]) => c[0].where.id?.in ?? []);
+      expect(fermes).toEqual(['ligne-rapport-activite']);
+    });
+
+    /**
+     * ⚠️ LA FERMETURE N'EST PAS MUETTE SOUS PAUSE. L'émission l'est — la file grossit alors par
+     * construction — mais une file qui s'est vidée pendant la pause a bel et bien cessé d'être
+     * bouchée : laisser la ligne ouverte serait mentir dans l'autre sens.
+     */
+    it('sous pause, une file vidée referme quand même sa ligne', async () => {
+      const { svc, prisma } = construire({
+        now,
+        pauses: [{
+          id: 'p-9', poseeA: new Date(now - 2 * H), cause: 'echecs-consecutifs', motif: 'CLI',
+          poseePar: 'sentinelle', jusqua: null, leveeA: null, leveePar: null, notifieeA: new Date(now - H),
+        }],
+        file: [],
+        lignesFileOuvertes: [ouverte('jugement-agenda')],
+      });
+      await svc.verifier(now);
+      expect(
+        prisma.errorLog.updateMany.mock.calls.some(
+          (c: [{ where: { id?: { in?: string[] } } }]) => c[0].where.id?.in?.includes('ligne-jugement-agenda'),
+        ),
+      ).toBe(true);
+    });
+
+    /**
+     * L'épisode exact du 23/09 : travail né le 17/09, pause levée à 08:17, sentinelle à 09:50.
+     * L'ancien code criait « bouchée depuis 6 jours » 93 minutes après la remise en route.
+     */
+    it('⚠️ pause levée il y a 90 min, travail vieux de 6 jours : SILENCE — le consommateur n’a pas encore eu son créneau', async () => {
+      const { svc, errorLogger } = construire({
+        now,
+        pauses: [{
+          id: 'p-1', poseeA: new Date(now - 6 * 24 * H), cause: 'echecs-consecutifs', motif: 'CLI',
+          poseePar: 'sentinelle', jusqua: null, leveeA: new Date(now - 1.5 * H), leveePar: 'moi', notifieeA: null,
+        }],
+        file: [file('jugement-agenda', 6 * 24, 8)],
+      });
+      await svc.verifier(now);
+      expect(
+        errorLogger.record.mock.calls.filter((c) => (c[2] as { motif?: string })?.motif === 'file'),
+      ).toHaveLength(0);
+    });
+
+    it('…mais 13 h après la levée, la file n’a toujours pas bougé : elle reparle', async () => {
+      const { svc, errorLogger } = construire({
+        now,
+        pauses: [{
+          id: 'p-1', poseeA: new Date(now - 6 * 24 * H), cause: 'echecs-consecutifs', motif: 'CLI',
+          poseePar: 'sentinelle', jusqua: null, leveeA: new Date(now - 13 * H), leveePar: 'moi', notifieeA: null,
+        }],
+        file: [file('jugement-agenda', 6 * 24, 8)],
+      });
+      await svc.verifier(now);
+      expect(
+        errorLogger.record.mock.calls.filter((c) => (c[2] as { motif?: string })?.motif === 'file'),
+      ).toHaveLength(1);
+    });
+
+    /** Une pause dont l'échéance est À VENIR ne termine rien : elle retient encore. */
+    it('une pause encore active par son échéance ne fait pas repartir le compte à rebours', async () => {
+      const { svc, errorLogger } = construire({
+        now,
+        pauses: [{
+          id: 'p-2', poseeA: new Date(now - 3 * H), cause: 'plafond-hebdo', motif: 'plafond',
+          poseePar: 'sentinelle', jusqua: new Date(now + 24 * H), leveeA: null, leveePar: null, notifieeA: new Date(now - H),
+        }],
+        file: [file('jugement-agenda', 40)],
+      });
+      await svc.verifier(now);
+      // Muette parce que la pause est ACTIVE — et non parce que l'âge aurait été remis à zéro.
+      expect(
+        errorLogger.record.mock.calls.filter((c) => (c[2] as { motif?: string })?.motif === 'file'),
+      ).toHaveLength(0);
+    });
   });
 });
 

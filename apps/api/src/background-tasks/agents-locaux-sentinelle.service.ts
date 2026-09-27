@@ -344,10 +344,23 @@ export class AgentsLocauxSentinelleService {
    * ⚠️ MUETTE PENDANT UNE PAUSE CONNUE. Si les agents sont en pause, la file grossit par
    * construction — et la pause a déjà son propre canal, avec son rappel toutes les 12 h. Crier
    * les deux, c'est apprendre à ignorer les deux.
+   *
+   * ── T83 (2026-09-27) — LES DEUX DÉFAUTS QUE LA PRODUCTION A MONTRÉS ─────────────────────
+   *
+   * 🔴 **Elle ne refermait pas ses propres lignes.** Deux `CRITICAL` du 23/09 11:50 étaient
+   * encore OUVERTES le 27/09 sur une file vide depuis quatre jours. Cette sentinelle criait
+   * quand la file se bouchait, se taisait quand elle se vidait, et ne disait jamais que c'était
+   * réglé — un centre d'alerte dont les lignes ne se ferment pas apprend à se faire ignorer,
+   * exactement comme le bruit qu'on cherche à éviter ailleurs. Voir {@link refermerLignesFile}.
+   *
+   * 🔴 **Elle comptait l'attente subie PENDANT la pause.** Le 23/09, la pause a été levée à
+   * 08:17 et elle a crié à 11:50 sur un travail né le 17/09 — 93 minutes après qu'un humain
+   * venait de tout remettre en route, et alors que le consommateur (le courrier du poste, 06:30
+   * et 14:30) n'avait pas encore eu son créneau. L'âge se compte donc depuis **le plus tard de**
+   * la création du travail **et** de la fin de la dernière pause : une file ne reproche au
+   * produit que les heures où quelque chose pouvait la consommer.
    */
   private async surveillerFileTravaux(nowMs: number): Promise<void> {
-    if (await this.pauses?.active(nowMs)) return;
-
     const plusVieux = await this.prisma.travailIaLocal.groupBy({
       by: ['type'],
       where: { statut: 'a-faire' },
@@ -355,11 +368,21 @@ export class AgentsLocauxSentinelleService {
       _count: { _all: true },
     });
 
+    // Une pause ACTIVE mute l'émission, elle n'empêche pas de refermer : on calcule donc l'état
+    // réel dans tous les cas, et on ne se taît que sur la prise de parole.
+    const sousPause = Boolean(await this.pauses?.active(nowMs));
+    const finPause = (await this.pauses?.finDeLaDernierePause(nowMs)) ?? null;
+    const enSouffrance = new Set<string>();
+
     for (const ligne of plusVieux) {
       const creeA = ligne._min.creeA;
       if (!creeA) continue;
-      const ageMs = nowMs - creeA.getTime();
+      // Le compte à rebours part du moment où la file POUVAIT s'écouler, jamais avant.
+      const depuis = Math.max(creeA.getTime(), finPause?.getTime() ?? 0);
+      const ageMs = nowMs - depuis;
       if (ageMs < AGE_FILE_WARN_MS) continue;
+      enSouffrance.add(ligne.type);
+      if (sousPause) continue;
 
       const critique = ageMs >= AGE_FILE_CRITIQUE_MS;
       const heures = Math.round(ageMs / 3_600_000);
@@ -381,6 +404,56 @@ export class AgentsLocauxSentinelleService {
       // Le palier CRITIQUE réveille ; le palier d'avertissement s'écrit et attend le matin.
       if (critique) await this.prevenir(`file:${ligne.type}`, message);
       this.logger.warn(message);
+    }
+
+    await this.refermerLignesFile(enSouffrance, nowMs);
+  }
+
+  /**
+   * T83 — la contrepartie qui manquait : une file redevenue saine REFERME sa ligne.
+   *
+   * On archive (jamais n'effacer — règle du centre d'alerte depuis TRK-035) toute ligne ouverte
+   * de motif `file` dont le TYPE n'est plus en souffrance : soit la file de ce type est vide,
+   * soit son plus vieux travail est repassé sous le seuil d'avertissement.
+   *
+   * ⚠️ Filtre par CHEMIN JSON (`context.motif` puis `context.type`) et non par texte : les
+   * messages de cette sentinelle se ressemblent d'un motif à l'autre, et un filtre textuel
+   * archiverait les lignes de passages manqués — celles qui n'ont rien à voir avec la file.
+   *
+   * Le refroidissement du type est OUBLIÉ dans le même geste : sans cela, un bouchon qui
+   * reviendrait dans les 23 heures resterait muet, et la fermeture de la ligne aurait servi à
+   * masquer la rechute plutôt qu'à la signaler.
+   */
+  private async refermerLignesFile(enSouffrance: Set<string>, nowMs: number): Promise<void> {
+    const ouvertes = await this.prisma.errorLog.findMany({
+      where: {
+        source: SOURCE_AGENTS_LOCAUX,
+        resolvedAt: null,
+        context: { path: ['motif'], equals: 'file' },
+      },
+      select: { id: true, context: true },
+    });
+
+    const parType = new Map<string, string[]>();
+    for (const ligne of ouvertes) {
+      const type = (ligne.context as { type?: unknown } | null)?.type;
+      if (typeof type !== 'string' || enSouffrance.has(type)) continue;
+      const deja = parType.get(type);
+      if (deja) deja.push(ligne.id);
+      else parType.set(type, [ligne.id]);
+    }
+    if (parType.size === 0) return;
+
+    for (const [type, ids] of parType) {
+      await this.prisma.errorLog.updateMany({
+        where: { id: { in: ids } },
+        data: {
+          resolvedAt: new Date(nowMs),
+          resolvedNote: `File « ${type} » écoulée : plus aucun travail en attente au-delà du seuil (résolution automatique).`,
+        },
+      });
+      await this.refroidissement.oublier(`${CLES_REFROIDISSEMENT.FILE_TRAVAUX_IA}:${type}`);
+      this.logger.log(`File « ${type} » écoulée : ${ids.length} ligne(s) du centre d'alerte archivée(s).`);
     }
   }
 

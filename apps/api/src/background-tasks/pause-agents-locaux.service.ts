@@ -96,6 +96,37 @@ export class PauseAgentsLocauxService {
   }
 
   /**
+   * Fin de la pause la plus récemment TERMINÉE, ou `null` s'il n'y en a jamais eu.
+   *
+   * ⚠️ POURQUOI CE N'EST PAS SIMPLEMENT `leveeA`. Une pause se termine de deux façons — on la
+   * lève (`leveeA`), ou son échéance passe (`jusqua`) — et `leverPerimees` peut fermer la seconde
+   * bien après son expiration réelle. La FIN est donc la plus TARDIVE des deux dates connues, et
+   * seulement si elle est déjà passée : une échéance future ne termine rien.
+   *
+   * Sert à la sentinelle de file (T83) : l'attente d'un travail ne s'impute au produit qu'à
+   * partir du moment où quelque chose pouvait le consommer. Pendant une pause, la file grossit
+   * par construction — compter ces heures-là faisait crier la sentinelle 93 minutes après qu'un
+   * humain venait de tout remettre en route.
+   *
+   * Requête bornée : les vingt dernières lignes suffisent, elles sont lues sur l'index `poseeA`.
+   */
+  async finDeLaDernierePause(nowMs = Date.now()): Promise<Date | null> {
+    const lignes = await this.prisma.pauseAgentsLocaux.findMany({
+      orderBy: { poseeA: 'desc' },
+      take: 20,
+      select: { leveeA: true, jusqua: true },
+    });
+    let fin: Date | null = null;
+    for (const l of lignes) {
+      for (const d of [l.leveeA, l.jusqua]) {
+        if (!d || d.getTime() > nowMs) continue; // une échéance à venir ne termine rien
+        if (!fin || d.getTime() > fin.getTime()) fin = d;
+      }
+    }
+    return fin;
+  }
+
+  /**
    * Pose une pause — sauf si une pause ACTIVE retient déjà les agents : on ne l'empile pas, on
    * rend `null`. Une cause hors de la liste est refusée : c'est elle que le poste, l'écran et le
    * courriel lisent, un libellé libre n'y aurait pas de sens.
