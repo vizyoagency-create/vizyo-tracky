@@ -2567,6 +2567,43 @@ for pg in $(db_conteneurs "$MOTEURS_PG"); do
             printf "              DOIVENT saccorder sur une fenetre de 24 h, qui tient dans les deux.\n";
           }
         }' "$EMCMP"
+      # ⚠️⚠️ AJOUTE LE 2026-09-27 (VPS-M126) — LE 🔴 « UN ETAGE PERD DES EMETTEURS » NE NOMMAIT
+      # PERSONNE, ET LE SEUL CAS OBSERVE ETAIT UN BOITIER VIVANT SANS FIX GPS.
+      # Ce matin-la, apres 13 jours a 34 / 34 / 34, le bloc ci-dessus a publie 33 / 34 / 33 en 🔴.
+      # L emetteur manquant, trouve EN MARGE par une requete, etait HM-769-GA : des trames dans
+      # `wire_logs` jusqu a la seconde de la collecte, et plus AUCUNE position depuis 33 h — un
+      # boitier sans fix GPS, deja suivi par le centre d alerte (T74). Le 🔴 est juste (l ecart est
+      # reel) ; ce qui manquait, c est le NOM, sans lequel le lecteur doit refaire l enquete a la
+      # main chaque matin ou l ecart persiste.
+      # ⚠️ On NOMME, on ne TRANCHE PAS : « trames sans position » se lit pareil pour un boitier sans
+      # fix et pour un etage qui perdrait ce boitier-la. L AGE de la derniere position est ce qui
+      # oriente — et le centre d alerte, qui lit le contenu des trames, est celui qui tranche.
+      # ⚠️ COUT : UNE requete, et SEULEMENT quand `wire_logs` compte plus d emetteurs que
+      # `positions` sur 24 h. Les jours d accord (13 sur 14 a ce jour), zero.
+      WL_N=$(awk -F'|' '$1=="wire_logs"{print $2+0}' "$EMCMP")
+      PO_N=$(awk -F'|' '$1=="positions"{print $2+0}' "$EMCMP")
+      if [ -n "$WL_N" ] && [ -n "$PO_N" ] && [ "$WL_N" -gt "$PO_N" ]; then
+        echo "     ── les emetteurs de wire_logs ABSENTS de positions sur 24 h, NOMMES (VPS-M126) ──"
+        MANQ=$(docker exec "$pg" psql -U "$U" -d "$D" -t -A -F'|' -c \
+          "WITH w AS (SELECT DISTINCT imei FROM wire_logs WHERE \"createdAt\" > now()-interval '24 hours'),
+                p AS (SELECT DISTINCT \"trackerId\" FROM positions WHERE timestamp > now()-interval '24 hours')
+           SELECT w.imei, coalesce(v.plate,'(sans vehicule)'),
+                  coalesce(to_char((SELECT max(x.timestamp) FROM positions x WHERE x.\"trackerId\"=t.id),'YYYY-MM-DD HH24:MI'),'JAMAIS'),
+                  coalesce(round(extract(epoch FROM now()-(SELECT max(x.timestamp) FROM positions x WHERE x.\"trackerId\"=t.id))/3600)::text,'-'),
+                  coalesce(to_char((SELECT max(y.\"createdAt\") FROM wire_logs y WHERE y.imei=w.imei),'MM-DD HH24:MI'),'?')
+           FROM w LEFT JOIN trackers t ON t.imei=w.imei LEFT JOIN vehicles v ON v.id=t.\"vehicleId\"
+           WHERE t.id IS NULL OR t.id NOT IN (SELECT \"trackerId\" FROM p)
+           ORDER BY 1 LIMIT 10;" 2>/dev/null)
+        if [ -z "$MANQ" ]; then
+          echo "        (requete sans reponse — mesure NON FAITE, PAS « personne ne manque » : VPS-M02)"
+        else
+          printf '%s\n' "$MANQ" | awk -F'|' '{printf "        imei %s  %-16s derniere POSITION %s (%s h)  |  derniere TRAME %s\n", $1, $2, $3, $4, $5}'
+          echo "        ⚠️ Des trames qui ARRIVENT sans position qui s ecrit : c est la signature d un boitier"
+          echo "           VIVANT SANS FIX GPS (vehicule en sous-sol, antenne) — OU d un etage qui perd CE"
+          echo "           boitier. Ce bloc ne tranche pas : le centre d alerte lit le contenu des trames."
+          echo "           Un ecart porte par un seul boitier nomme n est pas une chaine qui fuit."
+        fi
+      fi
     fi
     rm -f "$EMCMP"
   fi
@@ -3704,6 +3741,39 @@ if journalctl -t qemu-ga --no-pager -n1 >/dev/null 2>&1; then
       printf '     🟠 %s commande(s) INATTENDUE(S) — les 12 dernieres :\n' "$QGA_NB_INAT"
       printf '%s\n' "$QGA_INAT" | tail -12 \
         | sed -E 's/^([0-9-]{10})T([0-9:]{8}).*guest-exec called: /       \1 \2  /' | cut -c1-165
+      # ⚠️⚠️ AJOUTE LE 2026-09-27 (VPS-M125, angle mort n° 2 du 26/09) — UNE COMMANDE EN CLAIR
+      # TRONQUEE A 165 CARACTERES CACHAIT SES ECRITURES AUSSI BIEN QU UN BLOB BASE64.
+      # Le 2026-09-25, l hyperviseur a envoye un `sh -c DRY_RUN="0"; DELAY="3h"; TIMERS=…` qui
+      # posait deux fichiers d extension systemd. Ce bloc en a publie les 165 premiers caracteres :
+      # les variables, pas un seul des `mkdir`, `>` ni `daemon-reload`. Il a fallu `journalctl` en
+      # marge pour savoir que la commande ECRIVAIT. Le decodeur de VPS-M72 ne s appliquait qu au
+      # base64 ; une ligne en clair assez longue est le meme defaut sous une autre forme.
+      # On releve donc les verbes d ecriture sur la commande ENTIERE (deja en memoire, 0 commande).
+      # 🔑 ATTRAPE AU BANC : la commande du 25/09 est MULTI-LIGNE, et `journalctl -o short-iso`
+      # en imprime la suite sur des lignes INDENTEES que `grep 'guest-exec called'` ne voit
+      # jamais — la 1re ligne ne faisait que 165 caracteres, tout le script etait dessous. Les
+      # lignes de continuation sont donc RECOLLEES a leur entree avant le releve.
+      # ⚠️ Meme discipline que VPS-M72 : un releve vide se lit « aucun verbe RELEVE », jamais
+      # « lecture seule ».
+      QGA_LONG=$(printf '%s\n' "$QGA" \
+        | awk '/^[[:space:]]/{b=b" "$0; next} {if(b!="")print b; b=$0} END{if(b!="")print b}' \
+        | grep -F 'guest-exec called' \
+        | grep -vE 'hstgr-[0-9]+\.[A-Za-z0-9_.-]+\.py|ps -eo vsz|/proc/meminfo|systemctl enable fstrim\.timer|provisioning_mode|fstrim (-v --minimum|--listed-in)' \
+        | grep -vE '[A-Za-z0-9+/]{40,}={0,2}' | awk 'length($0)>200')
+      if [ -n "$QGA_LONG" ]; then
+        printf '     ── %s commande(s) en CLAIR tronquee(s) ci-dessus : verbes releves sur la ligne ENTIERE (VPS-M125) ──\n' \
+          "$(printf '%s\n' "$QGA_LONG" | grep -c '^..*$')"
+        printf '%s\n' "$QGA_LONG" | tail -6 | while IFS= read -r l; do
+          H=$(printf '%s' "$l" | sed -E 's/^([0-9-]{10})T([0-9:]{8}).*/\1 \2/')
+          V=$(printf '%s' "$l" | grep -oE '(mkdir -p|tee -?a? ?|>>? ?"?[$/][^ ;"]*|systemctl (daemon-reload|start|stop|restart|enable|disable|mask|unmask)|rm -[rfRv]+|kill -[A-Za-z0-9]+|pkill|killall|sed -i|chmod|chown|crontab|iptables|ufw |[A-Za-z]+Sec=[^ ;"\\]+|OnCalendar=[^ ;"\\]+|docker (rm|stop|kill|prune))' \
+            | grep -v '/dev/null' | sort -u | head -12 | paste -sd'|')
+          if [ -n "$V" ]; then
+            printf '       %s  (%s car.)  🔴 ECRIT — %s\n' "$H" "${#l}" "$V"
+          else
+            printf '       %s  (%s car.)  aucun verbe d ecriture RELEVE (pas une garantie de lecture seule)\n' "$H" "${#l}"
+          fi
+        done
+      fi
       # ⚠️⚠️ AJOUTE LE 2026-09-01 (VPS-M72) — LA TRONCATURE A 165 CARACTERES REND UNE CHARGE
       # UTILE EN BASE64 STRICTEMENT ILLISIBLE, ET C EST ARRIVE LE 2026-08-28.
       # Ce jour-la, ce bloc a publie « 🟠 1 commande INATTENDUE » suivie de 120 caracteres de
