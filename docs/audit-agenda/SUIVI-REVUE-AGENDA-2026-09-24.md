@@ -233,11 +233,11 @@ prouvé **par mutation**.
 
 | | Sujet | Pourquoi ce n'est pas bloquant |
 |---|---|---|
-| ⚠️ | **Le tactile réel n'a pas pu être éprouvé** | La fenêtre Chrome refuse tout redimensionnement. C'est la seule case qu'on ne peut pas cocher depuis ici — et c'est le terrain où R-3 s'est produit. **À faire sur un vrai téléphone.** |
+| ✅ | ~~**Le tactile réel n'a pas pu être éprouvé**~~ | La fenêtre Chrome refuse tout redimensionnement ; c'était la seule case qu'on ne pouvait pas cocher d'ici — et le terrain où R-3 s'est produit. **Validé par le propriétaire sur un vrai téléphone le 27/09 au soir.** |
 | ⚠️ | Joignabilité des 3 managers cdef31 | ~~Décision prise de ne rien leur envoyer.~~ **Tranché malgré nous le 24/09** — voir la section du 27/09 : `r.garrigue@` et `t.boulay@` sont **joignables**, `astreinte@` est une **boîte morte**. |
 | 🟡 | Rattrapage des tracés | ~~9 871 restants, 364/jour, ≈ 27 jours.~~ **8 798 au 27/09, 367/jour mesurés, ≈ 24 jours.** Voir ci-dessous. |
-| 🟡 | Compteur « EN RETARD » ≠ liste | Le compteur ne compte que les `PLANNED`, la liste inclut `OPEN`/`IN_PROGRESS`. Visible, pas grave. |
-| 🟡 | P1-4, P1-5, P2-1 de l'audit du 22/09 | Inchangés. |
+| ✅ | ~~Compteur « EN RETARD » ≠ liste~~ | Le compteur ne comptait que les `PLANNED`, la liste incluait `OPEN`/`IN_PROGRESS`. **Corrigé le 27/09 au soir** (`e030e80c`) : une seule règle des deux côtés, `estUneEcheance`. Voir la section *27/09 au soir*. |
+| ✅ | ~~P1-4, P1-5, P2-1 de l'audit du 22/09~~ — et P2-3 → P2-7 | **Corrigés le 27/09 au soir** (`7e104eef`, `b7bf1b74`, `e030e80c`), **pas déployés**. Voir la section *27/09 au soir*. |
 | 🧹 | 11 objets de recette sur « Client test » | ~~Marqués `seed-agenda-2026-09-23`, à supprimer.~~ **Supprimés le 27/09**, avec un 12ᵉ resté chez cdef31. |
 
 ### Le rattrapage des tracés — pourquoi on ne l'accélère pas
@@ -366,9 +366,26 @@ main ; le correctif reste à écrire, sinon ça reviendra à la prochaine pause.
 
 | | Sujet | Qui |
 |---|---|---|
-| ⚠️ | **Le tactile réel** n'a toujours pas été éprouvé sur un téléphone | à faire sur un vrai appareil |
+| ✅ | **Le tactile réel** — glisser-déposer au doigt sur un vrai téléphone | **validé par le propriétaire le 27/09 au soir**. La dernière case s'est cochée là où elle devait : sur l'appareil. |
 | ⚠️ | La vraie adresse de `astreinte@cdef31.org` | à demander au client |
-| 🟡 | P1-4, P1-5, P2-1, compteur « en retard » | inchangés — **pas oubliés**, ils restent dans le tableau « Ce qui reste » plus haut |
+| ✅ | P1-4, P1-5, P2-1, P2-3 → P2-7, compteur « en retard » ≠ liste | **corrigés, testés et poussés le 27/09 au soir** (`7e104eef`, `b7bf1b74`, `e030e80c`) — voir ci-dessous. **Pas déployés** : décision du moment de mise en production laissée au propriétaire, la veille du go-live. |
+
+### 27/09 au soir — les six derniers points de l'audit, corrigés
+
+Tous mesurés avant d'être touchés ; aucune migration dans le lot ; `ng build` passé (seul lui voit
+les gabarits Angular). +12 tests.
+
+| | Ce qui était faux | Ce qui est vrai maintenant |
+|---|---|---|
+| **P2-1** | « Terminé » / « Supprimer » sur une MISSION depuis le panneau du jour **libérait le véhicule pendant une mission qui existait toujours** ; le serveur ne refusait que la RÉSERVATION | Refusé côté serveur avec le bon geste dans le message (« se pilote depuis l'onglet Missions »), et le panneau n'offre plus ces boutons sur une mission. Dormant chez cdef31 (0 mission), actif chez mh cars (7). |
+| **compteur ≠ liste** | « En retard » ne comptait que les PLANNED ; la liste affichait aussi OPEN et IN_PROGRESS — « 1 en retard » au-dessus de trois lignes rouges | **Une seule règle**, `estUneEcheance` (`agenda.utils.ts`), appliquée des deux côtés : PLANNED, et OPEN à échéance passée. Un IN_PROGRESS n'est ni à venir ni en retard — il est en cours, et c'est « Incidents ouverts » et le panneau du jour qui le portent. Le contrat du DTO disait déjà « PLANNED/OPEN » : le contrat était juste, le code non. |
+| **P2-4** | Filtrer par groupe ou véhicule ne changeait pas les compteurs | Même périmètre que la liste (`vehicleId` / `groupId` sur `/agenda/summary`). Le filtre de **type** reste hors des compteurs, exprès : chacun est typé par nature. |
+| **P2-3** | `take: 1000`, trié par date : au-delà, **la fin du mois disparaissait en silence** | Plafond à 3 000 (un parc de 30 véhicules à deux réservations par jour en produirait 2 500 sur six semaines), et **quand il mord, le journal le dit** avec la société et la fenêtre. |
+| **P2-5** | 2 049 `expired` + 172 `dismissed` jamais purgées, ~30 lignes par nuit et par société | Purge horaire, bornée par lot, des propositions closes depuis plus d'un trimestre. **Jamais** `pending`, `applied`, `auto_applied` — elles pointent une réservation créée, c'est l'historique qui a permis la mesure du 23/09. Mesuré : au premier passage elle n'efface **rien** (plus ancienne close : 09/07, 81 j). |
+| **P2-6** | `GET /reservations/suggest` et son client web : aucun appelant | Retirés. `ReservationsService.suggest()` reste — l'optimiseur de placement s'en sert. Une route sans consommateur est de la surface d'attaque, pas une fonctionnalité. |
+| **P2-7** | Un type de pastille `report` que rien ne produisait, et un `case 'report': break` « à brancher plus tard » | Retiré de l'union. On l'ajoutera avec son producteur. |
+| **P1-4** | La feuille Optimisation avait **son** sélecteur de société : l'en-tête pouvait dire cdef31 pendant que la feuille changeait le métier de mh cars ; et `loadedOnce` ne chargeait qu'à la première ouverture | Une seule source : la société du **bandeau**, affichée dans la feuille. Chaque ouverture relit métier et mutualisations. |
+| **P1-5** | Un rechargement pendant ou après l'analyse de capacité perdait le résultat → **analyse repayée** | Mémorisé dans le navigateur dès qu'il arrive, par société, restauré avec sa date, oublié une fois appliqué. 🔑 **La clé porte la société réelle** (bandeau pour un super-admin, compte pour les autres) : ma première version utilisait une clé commune à tous les non-super-admins — deux comptes de sociétés différentes sur le même navigateur auraient lu les plaques et modèles l'un de l'autre. Trouvé en relisant avant de committer. |
 
 ### Le ménage et les correctifs du 27/09 au soir
 
