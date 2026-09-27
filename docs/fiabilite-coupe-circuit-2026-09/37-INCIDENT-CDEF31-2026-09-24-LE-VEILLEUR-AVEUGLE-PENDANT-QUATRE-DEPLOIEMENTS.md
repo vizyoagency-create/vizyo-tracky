@@ -184,7 +184,24 @@ sans passer par Tracky, sans trace et sans droit.** À signaler à Joost HENDRIK
 
 ## 7. Correctifs
 
-### ✅ Livrés le 24/09/2026 (branche `feat/agenda-cdef31-mise-en-service`, non déployés)
+### ✅ EN PRODUCTION depuis le 27/09/2026 à 20:16 Paris — `a3a8be21`
+
+> Déployé par `deploy.sh --attendre` (le script a patienté 25 min qu'un passage d'automatisation
+> finisse, puis a recréé). API saine en **15 s**, 0 redémarrage, démo saine, `dureeS` 832 s.
+> Repère de repli : `avant-20260927-1810-908d20a0`.
+>
+> **Déployé APRÈS la coupe MH Cars de 20:00** (4 / 4 acquittées en TCP en 0,2 à 3,0 s), et
+> 25 min avant le passage de 20:45 : aucun événement planifié n'a été touché. C'est la leçon de
+> l'incident appliquée à son propre correctif — on ne recrée pas l'API juste avant une coupe.
+>
+> **Artefacts vérifiés dans les conteneurs**, pas `docker ps` : `etatCoupeParTracker` ×3 et
+> `Throttle` ×1 côté véhicules, `NIGHT_WATCHMAN` ×2 et `accessibleVehicleIds` ×2 côté
+> engine-control, `commande-utilisateur-en-difficulte` ×1 ; côté web, la classe `ec-etat` dans le
+> fichier servi `chunk-6JNH6KI2.js` et l'écran de mise à jour dans le bundle d'amorçage.
+> **0 ligne `error_logs` et 0 journal de niveau erreur** depuis la recréation ; `ScheduleCronService`
+> actif ; CDEF31 **30 horaires armés, 0 override en cours**.
+
+### Ce qui a été livré
 
 | # | Correctif | Où | Preuve |
 |---|---|---|---|
