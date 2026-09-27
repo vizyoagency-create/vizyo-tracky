@@ -117,6 +117,12 @@ export type VehicleWithGroup = Vehicle & {
    * Dérivé au read-time — jamais persisté : à la première position valide, il disparaît.
    */
   presumedParkedZone?: string | null;
+  /**
+   * C1 (incident CDEF31 du 24/09/2026) — état de coupe TRI-ÉTAT du tracker, servi AVEC la liste
+   * pour que /vehicles puisse recaler l'overlay temps réel (`seedCutState`) comme le fait déjà la
+   * page Horaires. `null` quand le véhicule n'a pas de tracker. Même sémantique que le snapshot.
+   */
+  engineCutState?: 'normal' | 'pending' | 'cut' | null;
 };
 
 @Injectable()
@@ -385,6 +391,15 @@ export class VehiclesService {
     // REST_SPEED_KMH (5 km/h) du garde coupe-moteur.
     // TRK-046 — zones parking validées chargées EN LOT (une requête), jamais par véhicule.
     const zonesParVehicule = await this.deadZones.zonesParkingParVehicule(rows.map((v) => v.id));
+    // C1 (incident CDEF31 du 24/09/2026) — l'état de coupe voyage AVEC la liste. Sans lui, la page
+    // /vehicles n'avait aucun moyen de recaler l'overlay `cutActiveTrackerIds` : le veilleur, à qui
+    // GET /engine-control/commands répond 403, dépendait du seul WebSocket. Quatre recréations de
+    // conteneur cette nuit-là ont suffi à lui afficher « Couper » sur un véhicule déjà coupé, et à
+    // ne PAS lui proposer le rallumage du véhicule qu'il devait sortir. Une requête de plus par
+    // chargement de page (index [trackerId, createdAt DESC]), bornée aux trackers de la page.
+    const etatCoupe = await this.etatCoupeParTracker(
+      rows.map((v) => v.tracker?.id).filter(Boolean) as string[],
+    );
     return rows.map((v) => {
       const withGroup = VehiclesService.withGroup(v);
       const moving =
@@ -393,7 +408,8 @@ export class VehiclesService {
         v.tracker as TrackerPourPresomption | null,
         zonesParVehicule.get(v.id) ?? [],
       );
-      return { ...withGroup, moving, presumedParkedZone };
+      const engineCutState = v.tracker ? (etatCoupe.get(v.tracker.id) ?? 'normal') : null;
+      return { ...withGroup, moving, presumedParkedZone, engineCutState };
     }) as VehicleWithGroup[];
   }
 
@@ -1030,6 +1046,64 @@ export class VehiclesService {
    * de paralleliser avec Promise.all. L'index [trackerId, createdAt DESC]
    * ajoute en Sprint 2 fait le job pour la rendre rapide (~5ms a 100 vehicules).
    */
+  /**
+   * Sprint 2 (Obj 3 + revue #2) — etat coupe TRI-ETAT par tracker :
+   *   'cut'     = coupure CONFIRMEE (ACKNOWLEDGED, toutes sources dont DEVICE_OBSERVED
+   *               = coupure SMS/externe detectee par chute d'ignition)
+   *   'pending' = coupure COMMANDEE non encore confirmee (SENT) — ex. vehicule a
+   *               l'arret (non verifiable par ignition) : a verifier, PAS "normal"
+   *   sinon      = normal. Seul un RESTORE ACKNOWLEDGED plus récent nettoie l'état.
+   *               Un RESTORE SENT/queued est une tentative, pas une exécution.
+   *
+   * C1 (incident CDEF31 du 24/09/2026) — extrait de `snapshot()` pour être appelé AUSSI par
+   * `findAll()`. La page /vehicles ne servait pas cet état : le veilleur, privé de l'historique
+   * des commandes (403), n'avait donc AUCUNE source REST pour recaler son bouton — seulement
+   * l'overlay WebSocket, perdu à chaque recréation de conteneur. Une règle aussi subtile ne se
+   * duplique pas : elle se partage, sinon les deux copies divergent au premier correctif.
+   */
+  private async etatCoupeParTracker(trackerIds: string[]): Promise<Map<string, 'cut' | 'pending'>> {
+    const cutStateByTracker = new Map<string, 'cut' | 'pending'>();
+    if (trackerIds.length === 0) return cutStateByTracker;
+
+    const lastCmds = await this.prisma.engineControlCommand.findMany({
+      where: {
+        trackerId: { in: trackerIds },
+        status: { in: [CommandStatus.SENT, CommandStatus.ACKNOWLEDGED] },
+        // Bug « véhicule garé = coupé » : on EXCLUT les commandes DEVICE_OBSERVED.
+        // Elles sont synthétisées à CHAQUE coupure de contact (ignition OFF) pour
+        // tenter de détecter une coupure SMS/externe — mais elles se déclenchent
+        // tout autant sur un simple stationnement (indistinguable d'une coupure).
+        // Résultat : tout véhicule garé apparaissait « coupé » → bouton « Rallumer »
+        // à tort (cf. veilleur). L'état coupé du bouton ne doit refléter QUE les
+        // immobilisations réellement commandées par l'app : MANUAL/SCHEDULER
+        // (dont la coupe veilleur). Les DEVICE_OBSERVED restent en base (audit).
+        source: { not: 'DEVICE_OBSERVED' },
+      },
+      orderBy: { createdAt: 'desc' },
+      distinct: ['trackerId', 'action'],
+      select: { trackerId: true, action: true, status: true, createdAt: true },
+    });
+    const perTracker = new Map<string, {
+      cut?: { status: CommandStatus; createdAt: Date };
+      restore?: { status: CommandStatus; createdAt: Date };
+    }>();
+    for (const cmd of lastCmds) {
+      const e = perTracker.get(cmd.trackerId) ?? {};
+      if (cmd.action === EngineAction.CUT) e.cut = { status: cmd.status, createdAt: cmd.createdAt };
+      else e.restore = { status: cmd.status, createdAt: cmd.createdAt };
+      perTracker.set(cmd.trackerId, e);
+    }
+    for (const [tid, e] of perTracker) {
+      if (!e.cut) continue;
+      if (
+        e.restore?.status === CommandStatus.ACKNOWLEDGED &&
+        e.restore.createdAt > e.cut.createdAt
+      ) continue;
+      cutStateByTracker.set(tid, e.cut.status === CommandStatus.ACKNOWLEDGED ? 'cut' : 'pending');
+    }
+    return cutStateByTracker;
+  }
+
   async snapshot(requestedBy: RequestedBy): Promise<VehicleSnapshotDto[]> {
     // V1.10 (Sprint 2 perf) — cache 15s pour le scope 'ALL'. Le WS broadcast
     // les positions temps reel en parallele, donc 15s de staleness HTTP est
@@ -1096,54 +1170,8 @@ export class VehiclesService {
     // requête de plus par rafraîchissement, jamais une par véhicule).
     const zonesParkingSnapshot = await this.deadZones.zonesParkingParVehicule(vehicles.map((v) => v.id));
 
-    // Sprint 2 (Obj 3 + revue #2) — etat coupe TRI-ETAT par tracker :
-    //   'cut'     = coupure CONFIRMEE (ACKNOWLEDGED, toutes sources dont DEVICE_OBSERVED
-    //               = coupure SMS/externe detectee par chute d'ignition)
-    //   'pending' = coupure COMMANDEE non encore confirmee (SENT) — ex. vehicule a
-    //               l'arret (non verifiable par ignition) : a verifier, PAS "normal"
-    //   sinon      = normal. Seul un RESTORE ACKNOWLEDGED plus récent nettoie
-    //   l'état. Un RESTORE SENT/queued est une tentative, pas une exécution.
     const trackerIds = vehicles.map((v) => v.tracker?.id).filter(Boolean) as string[];
-    const cutStateByTracker = new Map<string, 'cut' | 'pending'>();
-
-    if (trackerIds.length > 0) {
-      const lastCmds = await this.prisma.engineControlCommand.findMany({
-        where: {
-          trackerId: { in: trackerIds },
-          status: { in: [CommandStatus.SENT, CommandStatus.ACKNOWLEDGED] },
-          // Bug « véhicule garé = coupé » : on EXCLUT les commandes DEVICE_OBSERVED.
-          // Elles sont synthétisées à CHAQUE coupure de contact (ignition OFF) pour
-          // tenter de détecter une coupure SMS/externe — mais elles se déclenchent
-          // tout autant sur un simple stationnement (indistinguable d'une coupure).
-          // Résultat : tout véhicule garé apparaissait « coupé » → bouton « Rallumer »
-          // à tort (cf. veilleur). L'état coupé du bouton ne doit refléter QUE les
-          // immobilisations réellement commandées par l'app : MANUAL/SCHEDULER
-          // (dont la coupe veilleur). Les DEVICE_OBSERVED restent en base (audit).
-          source: { not: 'DEVICE_OBSERVED' },
-        },
-        orderBy: { createdAt: 'desc' },
-        distinct: ['trackerId', 'action'],
-        select: { trackerId: true, action: true, status: true, createdAt: true },
-      });
-      const perTracker = new Map<string, {
-        cut?: { status: CommandStatus; createdAt: Date };
-        restore?: { status: CommandStatus; createdAt: Date };
-      }>();
-      for (const cmd of lastCmds) {
-        const e = perTracker.get(cmd.trackerId) ?? {};
-        if (cmd.action === EngineAction.CUT) e.cut = { status: cmd.status, createdAt: cmd.createdAt };
-        else e.restore = { status: cmd.status, createdAt: cmd.createdAt };
-        perTracker.set(cmd.trackerId, e);
-      }
-      for (const [tid, e] of perTracker) {
-        if (!e.cut) continue;
-        if (
-          e.restore?.status === CommandStatus.ACKNOWLEDGED &&
-          e.restore.createdAt > e.cut.createdAt
-        ) continue;
-        cutStateByTracker.set(tid, e.cut.status === CommandStatus.ACKNOWLEDGED ? 'cut' : 'pending');
-      }
-    }
+    const cutStateByTracker = await this.etatCoupeParTracker(trackerIds);
 
     const result: VehicleSnapshotDto[] = vehicles.map((v) => {
       const t = v.tracker;

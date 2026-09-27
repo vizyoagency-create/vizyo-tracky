@@ -3009,6 +3009,171 @@ describe('EngineControlService', () => {
    * ── T62 (14/09) — une SIM injoignable par SMS met le véhicule en « TCP seul » ──────────────
    * Mesuré le 14/09 : HD-584-BF et BP-434-RD refusent tout SMS au départ, boîtiers en ligne.
    */
+  describe('C7 — listCommands ouvert au veilleur : périmètre borné, motif caviardé', () => {
+    // Ouvrir une route à un rôle, c'est déplacer une frontière. Ce que le veilleur doit obtenir :
+    // l'ÉTAT de ses véhicules. Ce qu'il ne doit pas obtenir : le dossier (motif libre de la coupe,
+    // « véhicule volé », « non-paiement ») ni les véhicules hors de son périmètre.
+
+    const ligne = (over: Partial<{ id: string; reason: string | null; trackerId: string }> = {}) => ({
+      id: 'cmd-1', trackerId: TRACKER_ID, action: EngineAction.CUT, status: CommandStatus.ACKNOWLEDGED,
+      reason: 'véhicule volé — plainte n° 2026/1184', source: 'MANUAL', createdAt: new Date(),
+      ...over,
+    });
+
+    beforeEach(() => {
+      prisma.engineControlCommand.findMany.mockResolvedValue([ligne()]);
+    });
+
+    it('🔴 le VEILLEUR reçoit l’état, mais le motif est CAVIARDÉ', async () => {
+      const res = await service.listCommands(nightWatchman);
+      expect(res).toHaveLength(1);
+      expect(res[0].status).toBe(CommandStatus.ACKNOWLEDGED);
+      expect(res[0].action).toBe(EngineAction.CUT);
+      // « véhicule volé — plainte n° … » n'a rien à faire sur l'écran d'un opérateur de nuit.
+      expect(res[0].reason).toBeNull();
+    });
+
+    it('un FLEET_ADMIN garde le motif : c’est son dossier', async () => {
+      const res = await service.listCommands(fleetAdmin);
+      expect(res[0].reason).toContain('véhicule volé');
+    });
+
+    it('🔴 un sous-utilisateur RESTREINT est borné à ses véhicules, même en forgeant trackerId', async () => {
+      await service.listCommands(
+        { ...nightWatchman, accessibleVehicleIds: ['v1', 'v2'] },
+        { trackerId: 'tracker-d-une-autre-equipe' },
+      );
+      const [{ where }] = prisma.engineControlCommand.findMany.mock.calls[0];
+      expect(where.tracker).toMatchObject({ vehicleId: { in: ['v1', 'v2'] } });
+      // …et le filtre de flotte n'a PAS été écrasé par celui du périmètre.
+      expect(where.tracker).toMatchObject({ vehicle: { fleetId: FLEET_ID } });
+      expect(where.trackerId).toBe('tracker-d-une-autre-equipe');
+    });
+
+    it('« ALL » n’ajoute aucune borne par véhicule (la flotte reste la sienne)', async () => {
+      await service.listCommands({ ...fleetAdmin, accessibleVehicleIds: 'ALL' });
+      const [{ where }] = prisma.engineControlCommand.findMany.mock.calls[0];
+      expect(where.tracker).toEqual({ vehicle: { fleetId: FLEET_ID } });
+    });
+  });
+
+  describe('acharnement sur le coupe-circuit — incident CDEF31 du 24/09/2026', () => {
+    // La nuit du 23 au 24/09, les 15 commandes ont TOUTES réussi : acquittées en TCP en 0,3 à
+    // 5,8 s, zéro erreur, zéro ligne au centre d'alerte. Toutes les alertes existantes
+    // surveillent l'échec — aucune ne pouvait voir celle-là. Ce qui était anormal, c'était la
+    // SÉRIE : huit commandes en six minutes sur GS-187-NY par le même compte.
+    //
+    // Ces tests fixent le seul signal qui était lisible côté serveur cette nuit-là.
+
+    /** Un geste manuel qui ATTEINT la création (le dispatch échoue ensuite : sans importance ici). */
+    const geste = (action: EngineAction, acteur = nightWatchman) =>
+      service.requestCommand(TRACKER_ID, action, null, acteur, 'MANUAL').catch(() => undefined);
+
+    const poussees = () =>
+      events.emit.mock.calls.filter(
+        ([nom, ev]) => nom === 'coupe-circuit.push' && ev?.kind === 'commande-utilisateur-en-difficulte',
+      );
+    const lignes = () =>
+      errorLogger.record.mock.calls.filter(([, source]) => source === 'engine-control-acharnement');
+
+    beforeEach(() => {
+      prisma.tracker.findFirst.mockResolvedValue(trackerWithVehicle);
+      // Véhicule à l'arrêt, position fraîche : les CUT du veilleur passent ses garde-fous et
+      // atteignent la création. Sans cela ils seraient REJECTED_SPEED et ne compteraient pas —
+      // or c'est justement l'ALTERNANCE coupe/rallumage qui est le signal.
+      //
+      // La règle veilleur lit `position` DEUX fois : la dernière position, puis « une trame EN
+      // MOUVEMENT dans la fenêtre » (`speedKmh > 5`). La doublure distingue les deux par le
+      // `where` — rendre deux fois la même position ferait croire à un véhicule qui vient de
+      // rouler, et le test prouverait le contraire de ce qu'il croit prouver.
+      prisma.position.findFirst.mockImplementation((args?: { where?: { speedKmh?: { gt?: number } } }) =>
+        Promise.resolve(args?.where?.speedKmh?.gt !== undefined ? null : recentPosition(0)),
+      );
+    });
+    afterEach(() => jest.restoreAllMocks());
+
+    it('🔴 LE TEST DE RÉGRESSION — la nuit du 24/09 rejouée : la 4ᵉ commande en 6 min alerte', async () => {
+      const t0 = 1_800_000_000_000;
+      const now = jest.spyOn(Date, 'now').mockReturnValue(t0);
+
+      // La séquence réelle de GS-187-NY, aux minutes mesurées (01:45:20 → 01:48:40).
+      now.mockReturnValue(t0);                 await geste(EngineAction.RESTORE);
+      expect(poussees()).toHaveLength(0);
+      now.mockReturnValue(t0 + 131_000);       await geste(EngineAction.CUT);
+      expect(poussees()).toHaveLength(0);
+      now.mockReturnValue(t0 + 141_000);       await geste(EngineAction.RESTORE);
+      expect(poussees()).toHaveLength(0);
+      now.mockReturnValue(t0 + 200_000);       await geste(EngineAction.CUT);
+
+      // 4 commandes en 3 min 20 sur le même véhicule, par le même compte.
+      expect(poussees()).toHaveLength(1);
+      const [, ev] = poussees()[0];
+      expect(ev.title).toContain('s’acharne');
+      expect(ev.body).toContain('3 changements de sens');
+      expect(ev.subjectKey).toContain(TRACKER_ID);
+
+      // …et une ligne CRITICAL au centre d'alerte, avec de quoi enquêter.
+      expect(lignes()).toHaveLength(1);
+      const [message, , contexte, niveau] = lignes()[0];
+      expect(niveau).toBe('CRITICAL');
+      expect(contexte).toMatchObject({ commandes: 4, alternances: 3, trackerId: TRACKER_ID, fenetreMin: 10 });
+      expect(String(message)).toContain('Acharnement');
+      expect(String(message)).toContain('vérifier ce que son écran affiche');
+    });
+
+    it('un usage NORMAL ne déclenche rien : couper puis rallumer une fois', async () => {
+      const t0 = 1_800_000_000_000;
+      const now = jest.spyOn(Date, 'now').mockReturnValue(t0);
+      await geste(EngineAction.CUT);
+      now.mockReturnValue(t0 + 5 * 60_000);
+      await geste(EngineAction.RESTORE);
+      expect(poussees()).toHaveLength(0);
+      expect(lignes()).toHaveLength(0);
+    });
+
+    it('trois gestes ESPACÉS ne déclenchent rien : la fenêtre glisse (11 min entre chaque)', async () => {
+      const t0 = 1_800_000_000_000;
+      const now = jest.spyOn(Date, 'now').mockReturnValue(t0);
+      for (let i = 0; i < 6; i++) {
+        now.mockReturnValue(t0 + i * 11 * 60_000);
+        await geste(i % 2 === 0 ? EngineAction.CUT : EngineAction.RESTORE);
+      }
+      expect(poussees()).toHaveLength(0);
+    });
+
+    it('le PLANNING qui coupe 30 véhicules n’est pas de l’acharnement (source SCHEDULER ignorée)', async () => {
+      const t0 = 1_800_000_000_000;
+      jest.spyOn(Date, 'now').mockReturnValue(t0);
+      for (let i = 0; i < 8; i++) {
+        await service.requestCommand(TRACKER_ID, EngineAction.CUT, null, superAdmin, 'SCHEDULER').catch(() => undefined);
+      }
+      expect(poussees()).toHaveLength(0);
+    });
+
+    it('une seule alerte par demi-heure, même si l’utilisateur continue', async () => {
+      const t0 = 1_800_000_000_000;
+      const now = jest.spyOn(Date, 'now').mockReturnValue(t0);
+      for (let i = 0; i < 4; i++) { now.mockReturnValue(t0 + i * 1_000); await geste(EngineAction.RESTORE); }
+      expect(poussees()).toHaveLength(1);
+      // Il continue dans la minute : on ne réveille pas le propriétaire une deuxième fois.
+      for (let i = 4; i < 10; i++) { now.mockReturnValue(t0 + i * 1_000); await geste(EngineAction.RESTORE); }
+      expect(poussees()).toHaveLength(1);
+      // Une demi-heure plus tard, l'épisode dure encore : on le redit.
+      for (let i = 0; i < 4; i++) { now.mockReturnValue(t0 + 31 * 60_000 + i * 1_000); await geste(EngineAction.RESTORE); }
+      expect(poussees()).toHaveLength(2);
+    });
+
+    it('une alerte qui échoue ne casse JAMAIS la commande qu’elle observe', async () => {
+      const t0 = 1_800_000_000_000;
+      const now = jest.spyOn(Date, 'now').mockReturnValue(t0);
+      errorLogger.record.mockRejectedValue(new Error('centre d’alerte injoignable'));
+      events.emit.mockImplementation(() => { throw new Error('bus en panne'); });
+      for (let i = 0; i < 4; i++) { now.mockReturnValue(t0 + i * 1_000); await geste(EngineAction.RESTORE); }
+      // 4 commandes créées malgré les deux pannes : le geste de l'opérateur passe avant l'alerte.
+      expect(prisma.engineControlCommand.create).toHaveBeenCalledTimes(4);
+    });
+  });
+
   describe('T62 — SIM injoignable par SMS = TCP seul', () => {
     const SIM = '+345901030621099';
     const trackerTcpSeul = { ...trackerWithVehicle, simPhoneNumber: SIM, lastSeenAt: new Date() };

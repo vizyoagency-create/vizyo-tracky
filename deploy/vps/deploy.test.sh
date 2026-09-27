@@ -76,6 +76,12 @@ CODE_UP_DEMO=0
 noter() { echo "$1" >> "$TRACE"; }
 trace() { paste -sd'|' "$TRACE"; }
 
+# `timeout N …` doit pouvoir atteindre les doublures. Le VRAI binaire `timeout` ne le peut pas :
+# il exécute un programme, jamais une fonction shell (« timeout … command docker » rend 127).
+# Sans ce passe-plat, toute lecture BORNÉE du script — et la règle V34 en impose une devant
+# chaque appel `docker` sur le VPS — échapperait au harnais et parlerait au vrai Docker.
+timeout() { shift; "$@"; }
+
 docker() {
   case "$*" in
     "exec tracky-postgres psql"*)
@@ -444,6 +450,63 @@ contient "…le message dit --force et la fenêtre" "fenêtre du matin" "$sortie
 reinitialiser; FAUSSE_HEURE_PARIS=0700; REPLI="avant-20260913-1130-a8f9575e"
 code=$( (main) >/dev/null 2>&1; echo $? )
 attend "07:00 + --repli : JAMAIS retenu — un repli rétablit le service (code 0)" 0 "$code"
+
+echo "deploy.sh — l'AVERTISSEMENT de nuit (22:00 → 07:00) — incident CDEF31 du 24/09/2026"
+#
+# Un refus avait été écrit d'abord, puis écarté (décision du propriétaire, 24/09) : neuf heures
+# d'interdiction par jour coûtaient plus que l'incident. Le déploiement PASSE donc toujours ; ce
+# qui change, c'est qu'on SAIT qui on dérange, et que l'application le dit à celui qu'on dérange
+# (écran « Mise à jour en cours », côté navigateur).
+#
+# Ces cas fixent les deux propriétés qui comptent : ça n'exit JAMAIS, et ça parle quand il y a
+# quelqu'un à prévenir — jamais sinon, sous peine d'un avertissement qu'on finit par ne plus lire.
+#
+# Ordre des lectures psql dans `main` (avertir_nuit lit AVANT garde) :
+#   [0] coupes au départ · [1] passage au départ · [2] coupes avant recréation · [3] passage avant recréation
+# Hors fenêtre, avertir_nuit ne lit RIEN : les index se décalent.
+
+reinitialiser; FAUSSE_HEURE_PARIS=0130; REPONSES_PSQL=("24" "" "24" "")
+sortie="$( (main) 2>&1 )"; code=$?
+attend "🔴 01:30 avec 24 véhicules coupés : le déploiement PASSE (plus de refus)" 0 "$code"
+contient "…mais il dit combien de véhicules sont coupés" "24 véhicule(s) sont COUPÉS" "$sortie"
+contient "…et annonce ce que l'opérateur va voir" "Mise à jour en cours" "$sortie"
+contient "…et donne le numéro d'urgence" "06 56 69 16 15" "$sortie"
+contient "…et il a bien recréé la pile" "|up|" "$(trace)"
+
+reinitialiser; FAUSSE_HEURE_PARIS=0130; REPONSES_PSQL=("0" "" "0" "")
+sortie="$( (main) 2>&1 )"; code=$?
+attend "01:30 mais AUCUN véhicule coupé : on déploie" 0 "$code"
+absent "…et on ne dit RIEN : personne à prévenir, pas d'avertissement à user" "véhicule(s) sont COUPÉS" "$sortie"
+
+reinitialiser; FAUSSE_HEURE_PARIS=1200; REPONSES_PSQL=("30")
+sortie="$( (avertir_nuit depart) 2>&1 )"; code=$?
+attend "12:00 avec 30 véhicules coupés : hors fenêtre → rien" 0 "$code"
+attend "…et la base n'est même pas lue" "" "$(trace)"
+
+reinitialiser; FAUSSE_HEURE_PARIS=2200; REPONSES_PSQL=("3")
+sortie="$( (avertir_nuit depart) 2>&1 )"; code=$?
+contient "22:00 : la fenêtre commence (inclus) → on avertit" "3 véhicule(s) sont COUPÉS" "$sortie"
+
+reinitialiser; FAUSSE_HEURE_PARIS=2159; REPONSES_PSQL=("3")
+sortie="$( (avertir_nuit depart) 2>&1 )"; code=$?
+absent "21:59 : avant la fenêtre → rien" "COUPÉS" "$sortie"
+
+reinitialiser; FAUSSE_HEURE_PARIS=0659; REPONSES_PSQL=("3")
+sortie="$( (avertir_nuit depart) 2>&1 )"; code=$?
+contient "06:59 : encore dans la fenêtre (elle enjambe minuit) → on avertit" "3 véhicule(s) sont COUPÉS" "$sortie"
+
+reinitialiser; FAUSSE_HEURE_PARIS=0700; REPONSES_PSQL=("9")
+sortie="$( (avertir_nuit depart) 2>&1 )"; code=$?
+absent "07:00 : la fenêtre est finie (exclu) → rien" "COUPÉS" "$sortie"
+
+reinitialiser; FAUSSE_HEURE_PARIS=0130; REPONSES_PSQL=("ERREUR: base injoignable")
+sortie="$( (avertir_nuit depart) 2>&1 )"; code=$?
+attend "🔑 lecture IMPOSSIBLE : on ne raconte rien plutôt qu'un chiffre faux" 0 "$code"
+absent "…aucun nombre inventé" "COUPÉS" "$sortie"
+
+reinitialiser; FAUSSE_HEURE_PARIS=0130; REPLI="avant-20260913-1130-a8f9575e"
+sortie="$( (avertir_nuit depart) 2>&1 )"; code=$?
+absent "un --repli ne déclenche rien : il RÉTABLIT le service, il ne l'interrompt pas" "COUPÉS" "$sortie"
 
 echo "deploy.sh — la démo suit la production (VPS-046, 2026-09-20)"
 

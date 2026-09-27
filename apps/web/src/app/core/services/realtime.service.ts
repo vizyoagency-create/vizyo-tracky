@@ -320,6 +320,18 @@ export class RealtimeService {
     this.startIncidentWatch();
 
     this.socket.on('connect', () => {
+      // C2 (incident CDEF31 du 24/09/2026) — capturé AVANT la mise à jour : `everConnected` déjà
+      // vrai = ceci est une RE-connexion, pas la première.
+      //
+      // `connect()` hydrate (ligne ~310), mais une reconnexion socket.io ne repasse JAMAIS par
+      // `connect()` : seul ce gestionnaire s'exécute, et il ne faisait que recharger les alertes.
+      // Tout `CUT`/`RESTORE` survenu pendant la coupure était donc perdu POUR TOUJOURS côté
+      // affichage — l'overlay ne se réparait qu'au prochain rechargement complet de la page.
+      //
+      // Mesuré la nuit du 23 au 24/09 : quatre recréations de conteneur entre 00h56 et 01h40 ont
+      // laissé le veilleur de CDEF31 avec un état de bouton faux pendant plus d'une heure. C'est
+      // le défaut central de l'incident : le reste n'en est que la conséquence.
+      const reconnexion = this.everConnected;
       this.connected.set(true);
       this.everConnected = true;
       this.serverKickReconnects = 0; // reconnexion réussie → on ré-autorise le self-heal
@@ -331,6 +343,10 @@ export class RealtimeService {
       this.connectErrorRefreshFailures = 0;
       this.clearIncidentWatch();
       this.loadInitialAlerts();
+      // C2 — re-hydrater après une reconnexion : le snapshot REST est la seule source qui rattrape
+      // les événements manqués pendant la coupure (positions ET état coupe tri-état). Silencieux :
+      // un échec laisse simplement le live repeupler, comme avant ce correctif.
+      if (reconnexion) this.hydrate().catch(() => { /* silent: le live repeuplera */ });
     });
 
     this.socket.on('disconnect', (reason: string) => {

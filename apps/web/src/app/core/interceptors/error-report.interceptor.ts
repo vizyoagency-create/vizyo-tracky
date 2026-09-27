@@ -1,6 +1,8 @@
 import { HttpErrorResponse, HttpInterceptorFn, HttpResponse } from '@angular/common/http';
+import { inject } from '@angular/core';
 import { catchError, tap, throwError } from 'rxjs';
 import { activityContext } from '../services/activity-context';
+import { MiseAJourEnCoursService } from '../services/mise-a-jour-en-cours.service';
 
 /**
  * Interceptor de remontée d'erreurs HTTP au CENTRE D'ALERTE.
@@ -32,19 +34,38 @@ function endOutage(): void {
   outageReported = false;
 }
 
-export const errorReportInterceptor: HttpInterceptorFn = (req, next) =>
-  next(req).pipe(
+export const errorReportInterceptor: HttpInterceptorFn = (req, next) => {
+  // Incident CDEF31 du 24/09/2026 — le même signal sert deux usages qu'il ne faut pas confondre :
+  // ce fichier SIGNALE au centre d'alerte (pour nous, après 45 s), le service ci-dessous PRÉVIENT
+  // l'opérateur (pour lui, après 6 s) et recharge la page au retour de l'API. Deux délais, deux
+  // publics : un exploitant n'a pas à attendre trois quarts de minute pour apprendre que l'écran
+  // qu'il a sous les yeux ne vaut plus rien.
+  const miseAJour = inject(MiseAJourEnCoursService);
+  return next(req).pipe(
     tap((event) => {
-      if (event instanceof HttpResponse) endOutage();
+      if (event instanceof HttpResponse) {
+        endOutage();
+        miseAJour.signalerReponseDeLApi();
+      }
     }),
     catchError((err: unknown) => {
       if (err instanceof HttpErrorResponse && !EXCLUDED.some((p) => req.url.includes(p))) {
         if (REPORTABLE.has(err.status)) maybeReportOutage(req.method, req.url, err.status);
         else endOutage(); // 4xx / 5xx applicatif = l'API a RÉPONDU → elle est joignable.
+
+        // L'écran, lui, réagit aussi au 503 : une passerelle qui rend « service indisponible »
+        // pendant qu'un conteneur redémarre est exactement le cas à couvrir. Un 4xx/5xx
+        // applicatif prouve au contraire que l'API vit — il clôt l'épisode.
+        if (err.status === 0 || err.status === 502 || err.status === 503 || err.status === 504) {
+          miseAJour.signalerEchecDeTransport(err.status);
+        } else {
+          miseAJour.signalerReponseDeLApi();
+        }
       }
       return throwError(() => err);
     }),
   );
+};
 
 /** Ne signale qu'une injoignabilité DURABLE (> OUTAGE_REPORT_MS) et une seule fois par épisode. */
 function maybeReportOutage(method: string, rawUrl: string, status: number): void {

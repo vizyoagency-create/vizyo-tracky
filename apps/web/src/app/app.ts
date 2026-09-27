@@ -13,15 +13,22 @@ import { ToastContainerComponent } from './shared/ui/toast/toast-container.compo
 import { estPagePublique } from './core/utils/page-publique';
 import { appliquerPlateforme } from './shared/utils/platform';
 import { UpdateRequiredModalComponent } from './shared/ui/update-required-modal/update-required-modal.component';
+import { MiseAJourOverlayComponent } from './shared/ui/mise-a-jour-overlay.component';
 
 @Component({
   selector: 'app-root',
   standalone: true,
-  imports: [RouterOutlet, ToastContainerComponent, UpdateRequiredModalComponent],
+  imports: [RouterOutlet, ToastContainerComponent, UpdateRequiredModalComponent, MiseAJourOverlayComponent],
   template: `
     <router-outlet />
     <app-toast-container />
     <app-update-required-modal />
+    <!--
+      Incident CDEF31 du 24/09/2026 — DERNIER de la liste, donc au-dessus de tout : quand l'API
+      ne repond plus, il n'y a rien d'utile a faire derriere, pas meme lire. Un ecran qui
+      affiche un etat perime est ce qui a trompe l'operatrice cette nuit-la.
+    -->
+    <app-mise-a-jour-overlay />
   `,
 })
 export class App implements OnInit {

@@ -14,6 +14,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
+import { Throttle } from '@nestjs/throttler';
 import type { Response } from 'express';
 import { RequirePermissions } from '../auth/decorators/permissions.decorator';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -59,6 +60,19 @@ export class VehiclesController {
   @Get('snapshot')
   // Sprint 3 — veilleur inclus : résultats scopés par accessibleVehicleIds dans le service.
   @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN, UserRole.FLEET_MANAGER, UserRole.VIEWER, UserRole.NIGHT_WATCHMAN)
+  // C3 (incident CDEF31 du 24/09/2026) — limite RELEVÉE, pas supprimée.
+  //
+  // Cet endpoint n'est pas une lecture comme une autre : c'est le SEUL chemin par lequel un client
+  // répare un état d'affichage faux (positions + état coupe tri-état). La nuit du 23 au 24/09, la
+  // limite globale (100 req/min) l'a renvoyé **6 fois en 429** au veilleur de CDEF31 — pendant
+  // qu'il cliquait en boucle sur un bouton dont l'état était justement faux. La protection a donc
+  // verrouillé la porte de secours au moment précis où elle servait.
+  //
+  // 300/min laisse largement passer une page qui se recale (un snapshot par reconnexion + le poll
+  // de 15 s) tout en gardant une borne : la réponse est cachée 15 s côté service pour le scope
+  // 'ALL', donc un client qui s'emballe ne martèle pas la base. Supprimer la borne
+  // (`@SkipThrottle`) exposerait une requête à 2 000 véhicules sans aucun plafond.
+  @Throttle({ default: { ttl: 60_000, limit: 300 } })
   async snapshot(@Req() req: AuthenticatedRequest) {
     const items = await this.vehicles.snapshot(await this.buildRequestedBy(req));
     return { items };

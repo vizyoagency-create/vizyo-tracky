@@ -74,6 +74,28 @@
 #      (Europe/Paris), quand les reprises dépendent de l'API — sauf `--force`, et jamais pour
 #      un `--repli`, qui lui rétablit le service.
 #
+# ── 2026-09-24 : INCIDENT CDEF31 — LA NUIT N'ÉTAIT GARDÉE PAR RIEN (C6) ───────────────────
+#
+# Entre 00:56 et 01:40, QUATRE déploiements. Aucune garde ne s'y opposait : le passage
+# d'automatisation dormait, et la fenêtre du matin ne commence qu'à 05:30. Or entre 22:00 et
+# 07:00 les flottes sous planning sont COUPÉES, et le veilleur de nuit n'a que l'application
+# pour sortir un véhicule. Chaque recréation coupe la liaison temps réel dont dépend l'état de
+# ses boutons : il s'est reconnecté cinq fois en dix minutes, a envoyé quinze commandes — toutes
+# acquittées — sans obtenir le véhicule qu'il devait sortir, et a écrit à 3 h 07 que
+# « l'application ne fonctionnait pas ». Aucun voyant n'était rouge, et pour cause : rien
+# n'avait échoué.
+#
+#   4. L'AVERTISSEMENT DE NUIT (`avertir_nuit`) : entre 22:00 et 07:00 (Europe/Paris), le script
+#      DIT combien de véhicules sont coupés et donc combien d'opérateurs vont voir l'écran de
+#      mise à jour — mais il ne REFUSE pas.
+#
+#      Un refus avait été écrit d'abord, puis écarté (décision du propriétaire, 24/09) : interdire
+#      neuf heures de déploiement par jour coûtait plus que l'incident. Le problème est traité là
+#      où il se voit — dans l'application. Quand l'API cesse de répondre, l'écran bascule sur
+#      « Mise à jour en cours » et se recharge seul au retour (`MiseAJourEnCoursService`), au lieu
+#      de rester ouvert en affichant un état périmé. Cette page-là, l'opérateur la comprend ;
+#      l'application qui se dégrade en silence, non.
+#
 # ── 2026-09-20 : DEUX DÉFAUTS TROUVÉS PAR L'AUDIT VPS, LE JOUR OÙ L'HÉBERGEUR A BRIDÉ LA VM ─
 #
 # (a) LE REPÈRE DE REPLI MENTAIT (VPS-044, V32 b). `etiqueter_repli` étiquetait `image:latest` —
@@ -121,6 +143,9 @@ SANTE_PAS_S=5
 # Fenêtre du matin (Europe/Paris, HHMM) : les reprises du coupe-circuit dépendent de l'API.
 MATIN_DEBUT=0530
 MATIN_FIN=0900
+# Fenêtre de NUIT (Europe/Paris, HHMM) — C6, incident CDEF31 du 24/09/2026. Enjambe minuit.
+NUIT_DEBUT=2200
+NUIT_FIN=0700
 # Le repère posé par CE passage — c'est vers lui que le repli automatique revient.
 ETIQUETTE_POSEE=""
 
@@ -192,6 +217,69 @@ fenetre_du_matin() {
   local d="${MATIN_DEBUT#0}"; d="${d#0}"
   local f="${MATIN_FIN#0}"; f="${f#0}"
   [ "${h:-0}" -ge "${d:-0}" ] && [ "${h:-0}" -lt "${f:-0}" ]
+}
+
+# ── LA FENÊTRE DE NUIT — C6, incident CDEF31 du 24 septembre 2026 ─────────────────────────
+#
+# La garde du matin protège les REPRISES automatiques. Rien ne protégeait la nuit — or c'est
+# l'autre moment où l'API est vitale, pour une raison différente : entre 22:00 et 07:00 les
+# flottes sous planning sont COUPÉES, et le veilleur de nuit ne dispose que de l'application
+# pour sortir un véhicule.
+#
+# La nuit du 23 au 24/09, quatre déploiements entre 00:56 et 01:40 ont coupé quatre fois la
+# liaison temps réel pendant qu'un veilleur de CDEF31 tentait de rallumer. Son bouton, privé de
+# cette liaison, lui a montré un état faux ; il s'est reconnecté cinq fois en dix minutes, a
+# envoyé quinze commandes (toutes acquittées) sans obtenir le véhicule qu'il devait sortir, et a
+# écrit à 3 h 07 que « l'application ne fonctionnait pas ». Aucun voyant n'était rouge.
+#
+# La garde est CONDITIONNELLE, et c'est le point : elle ne mord que si des véhicules sont
+# réellement coupés à cet instant. Une nuit sans aucune coupe active n'a pas de veilleur à
+# protéger, et interdire alors le déploiement serait une gêne sans contrepartie — donc une
+# garde qu'on finirait par contourner par réflexe.
+nuit_en_cours() {
+  local h; h="$(heure_paris_hhmm)"; h="${h#0}"; h="${h#0}"
+  local d="${NUIT_DEBUT#0}"; d="${d#0}"
+  local f="${NUIT_FIN#0}"; f="${f#0}"
+  # La fenêtre enjambe minuit : on est dedans si l'on est APRÈS le début OU AVANT la fin.
+  [ "${h:-0}" -ge "${d:-0}" ] || [ "${h:-0}" -lt "${f:-0}" ]
+}
+
+# Combien de véhicules sont COUPÉS à cet instant ? Même sémantique que l'application : la
+# dernière commande non-DEVICE_OBSERVED du boîtier est un CUT ACQUITTÉ.
+#
+# Lecture défensive de bout en bout, comme `passage_en_cours` : base injoignable, table absente,
+# conteneur arrêté — on rend une chaîne vide, et l'appelant laisse passer. Une garde qui bloque
+# parce qu'elle ne sait pas lire serait pire que pas de garde.
+vehicules_coupes() {
+  timeout 20 docker exec tracky-postgres psql -U tracky -d tracky_prod -At -c \
+    "SELECT count(*) FROM (
+       SELECT DISTINCT ON (\"trackerId\") action, status
+       FROM engine_control_commands
+       WHERE source <> 'DEVICE_OBSERVED'
+       ORDER BY \"trackerId\", \"createdAt\" DESC
+     ) d WHERE d.action = 'CUT' AND d.status = 'ACKNOWLEDGED'" 2>/dev/null || true
+}
+
+# Ne REFUSE jamais : il informe. Un déploiement de nuit reste légitime — c'est souvent le meilleur
+# moment. Ce qu'il faut, c'est SAVOIR qui on dérange, et que l'application le dise à celui qu'on
+# dérange. La deuxième moitié se joue dans le navigateur (`MiseAJourEnCoursService`) ; celle-ci
+# laisse une trace dans la sortie du déploiement et dans le journal.
+avertir_nuit() {
+  local moment="$1"
+  [ -n "$REPLI" ] && return 0
+  nuit_en_cours || return 0
+
+  local coupes; coupes="$(vehicules_coupes)"
+  # Pas un nombre (lecture impossible) → on ne sait pas, on ne raconte rien.
+  case "$coupes" in (''|*[!0-9]*) return 0 ;; esac
+  [ "$coupes" -eq 0 ] && return 0
+
+  local h; h="$(heure_paris_hhmm)"
+  dire "🌙 Il est ${h:0:2}:${h:2:2} à Paris et $coupes véhicule(s) sont COUPÉS par le planning ($moment)."
+  dire "   Un veilleur de nuit peut être devant son écran : pendant la recréation, l'application"
+  dire "   affichera « Mise à jour en cours » et se rechargera seule au retour de l'API."
+  dire "   En cas d'urgence véhicule pendant ce temps : WhatsApp 06 56 69 16 15."
+  return 0
 }
 
 garde_matin() {
@@ -544,7 +632,7 @@ main() {
   local t0; t0="$(epoch_s)"
 
   # ── 0. la fenêtre du matin : pas de déploiement quand les reprises dépendent de l'API ──
-  if [ "$MARKETING_SEUL" -eq 0 ]; then garde_matin depart; fi
+  if [ "$MARKETING_SEUL" -eq 0 ]; then garde_matin depart; avertir_nuit depart; fi
   # ── 1. la garde, une première fois : inutile de tirer et de construire pour rien ──
   if [ "$MARKETING_SEUL" -eq 0 ]; then garde depart; fi
 
@@ -589,6 +677,7 @@ main() {
   cd "$RACINE/deploy/vps"
   if [ "$MARKETING_SEUL" -eq 0 ]; then
     garde_matin recreation
+    avertir_nuit recreation
     garde recreation
   fi
 

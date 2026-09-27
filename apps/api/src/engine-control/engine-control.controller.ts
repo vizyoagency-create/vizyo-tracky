@@ -18,6 +18,7 @@ import { PermissionsGuard } from '../auth/guards/permissions.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { PermissionsResolverService } from '../permissions/permissions-resolver.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { VehicleAccessService } from '../vehicle-access/vehicle-access.service';
 import { RequestEngineCommandDto } from './dto/request-engine-command.dto';
 import { EngineControlService } from './engine-control.service';
 
@@ -28,6 +29,11 @@ export class EngineControlController {
     private readonly engineControl: EngineControlService,
     private readonly permissions: PermissionsResolverService,
     private readonly prisma: PrismaService,
+    // C7 (24/09/2026) — le périmètre véhicules de l'appelant. Sans lui, le cloisonnement
+    // par véhicule écrit dans le service serait INERTE : il ne lirait qu'un champ jamais
+    // renseigné. Un garde-fou qu'on n'alimente pas ne garde rien — c'est la forme de défaut
+    // la plus fréquente de ce dépôt.
+    private readonly vehicleAccess: VehicleAccessService,
   ) {}
 
   /**
@@ -79,8 +85,21 @@ export class EngineControlController {
   }
 
   @Get('commands')
-  @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN, UserRole.FLEET_MANAGER)
-  listCommands(
+  /**
+   * C7 (incident CDEF31 du 24/09/2026) — LE VEILLEUR EST ADMIS ICI, ET C'EST LA CAUSE DE FOND.
+   *
+   * Il en était exclu : 232 réponses `403` sur le seul créneau 01h52 → 03h02, une par véhicule et
+   * par rafraîchissement. Conséquence côté client, assumée dans `engine-control-button` : sa liste
+   * `recentCommands` restait TOUJOURS vide, et l'état de son bouton ne pouvait venir que de
+   * l'overlay WebSocket — un canal que chaque recréation de conteneur interrompt. Le rôle qui a le
+   * plus besoin de savoir si un véhicule est coupé était le seul privé de la source de vérité.
+   *
+   * Le cloisonnement ne s'en trouve pas relâché : le service borne à la flotte ET aux véhicules
+   * accessibles, et CAVIARDE le motif libre pour ce rôle (cf. `listCommands`). Il obtient l'état,
+   * pas le dossier.
+   */
+  @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN, UserRole.FLEET_MANAGER, UserRole.NIGHT_WATCHMAN)
+  async listCommands(
     @Req() req: AuthenticatedRequest,
     @Query('trackerId') trackerId?: string,
     @Query('status') status?: CommandStatus,
@@ -91,6 +110,11 @@ export class EngineControlController {
         userId: req.user.id,
         role: req.user.role,
         fleetId: req.user.fleetId,
+        // Cette route prend `trackerId` en paramètre de requête et n'a PAS de garde
+        // `@RequireVehiclePermission` (contrairement à l'envoi de commande, qui en a une) :
+        // le périmètre est donc la seule chose qui empêche un sous-utilisateur restreint de
+        // lire les commandes de toute sa flotte en forgeant l'identifiant.
+        accessibleVehicleIds: await this.vehicleAccess.getAccessibleVehicleIds(req.user),
       },
       {
         trackerId,

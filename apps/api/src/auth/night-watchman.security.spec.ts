@@ -208,11 +208,13 @@ describe('Sprint 3 — Sécurité veilleur de nuit (NIGHT_WATCHMAN)', () => {
   });
 
   describe('E. Reflet des @Roles réellement posés sur les controllers', () => {
-    it('IN-périmètre : NIGHT_WATCHMAN présent UNIQUEMENT sur vehicles lecture + engine POST', () => {
+    it('IN-périmètre : NIGHT_WATCHMAN sur vehicles lecture + engine POST + historique de SES commandes', () => {
       expect(rolesOf(VehiclesController, 'snapshot')).toContain(NW);
       expect(rolesOf(VehiclesController, 'findAll')).toContain(NW);
       expect(rolesOf(VehiclesController, 'findOne')).toContain(NW);
       expect(rolesOf(EngineControlController, 'requestCommand')).toContain(NW);
+      // C7, 24/09/2026 — AJOUT DÉLIBÉRÉ, cf. le cas suivant.
+      expect(rolesOf(EngineControlController, 'listCommands')).toContain(NW);
     });
 
     it('vehicles : écritures + stats NE contiennent PAS le veilleur', () => {
@@ -221,9 +223,30 @@ describe('Sprint 3 — Sécurité veilleur de nuit (NIGHT_WATCHMAN)', () => {
       }
     });
 
-    it('engine-control : GET commands/getCommand NE contiennent PAS le veilleur', () => {
-      expect(rolesOf(EngineControlController, 'listCommands')).not.toContain(NW);
+    /**
+     * ══ C7 — LA FRONTIÈRE A ÉTÉ DÉPLACÉE, VOLONTAIREMENT (24 septembre 2026) ═══════════════
+     *
+     * Ce cas affirmait l'inverse jusqu'à cette date, et il avait raison de le faire : le
+     * veilleur ne doit voir QUE ses véhicules et n'agir QUE sur le moteur. Mais l'exclusion de
+     * `listCommands` avait une conséquence que personne n'avait mesurée — elle le privait de
+     * TOUTE source d'état sur la coupure : 232 réponses `403` sur le seul créneau
+     * 01h52 → 03h02 la nuit du 24/09, et un bouton dont l'état ne pouvait plus venir que du
+     * WebSocket, coupé quatre fois cette nuit-là par des déploiements.
+     *
+     * Le rôle dont le métier est de savoir si un véhicule est immobilisé était le seul à ne
+     * pas pouvoir le savoir. Refuser l'historique ne protégeait rien : il peut déjà COUPER et
+     * RALLUMER ces véhicules (`requestCommand`), donc l'état de coupe ne lui est pas un secret.
+     *
+     * Ce qui reste fermé, et ce que ce cas continue de garder :
+     *   - `getCommand` (une commande par son identifiant, hors de tout périmètre véhicule) ;
+     *   - `listUnconfirmed` (vue d'exploitation transverse à la flotte) ;
+     *   - le MOTIF libre des coupes, caviardé dans le service pour ce rôle — « véhicule volé »,
+     *     « non-paiement » sont du dossier client, pas de l'état d'un véhicule.
+     */
+    it('🔴 C7 — le veilleur est admis sur listCommands, et NULLE PART ailleurs dans engine-control', () => {
+      expect(rolesOf(EngineControlController, 'listCommands')).toContain(NW);
       expect(rolesOf(EngineControlController, 'getCommand')).not.toContain(NW);
+      expect(rolesOf(EngineControlController, 'listUnconfirmed')).not.toContain(NW);
     });
 
     it('controllers sensibles : AUCUN handler ne liste NIGHT_WATCHMAN', () => {

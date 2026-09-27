@@ -1,6 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import { provideHttpClient } from '@angular/common/http';
-import { provideHttpClientTesting } from '@angular/common/http/testing';
+import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { Router } from '@angular/router';
 import type { Socket } from 'socket.io-client';
 import { signal } from '@angular/core';
@@ -300,5 +300,90 @@ describe('Incident du 17/09 — seedCutState réaligne l’overlay coupe sur la 
     // La réponse REST (calculée AVANT l'événement) dit encore « normal » : elle ne doit pas l'écraser.
     service.seedCutState([{ trackerId: 't1', state: 'normal' }, { trackerId: 't2', state: 'normal' }], avant);
     expect([...service.cutActiveTrackerIds()]).toEqual(['t1']);
+  });
+});
+
+/**
+ * ══ C2 — INCIDENT CDEF31 DU 24/09/2026 : UNE RECONNEXION DOIT RE-LIRE LE SNAPSHOT ═════════════
+ *
+ * `connect()` hydrate. Une reconnexion socket.io, elle, ne repasse JAMAIS par `connect()` : seul
+ * le handler `'connect'` s'exécute — et il ne rechargeait que les alertes. Tout `CUT`/`RESTORE`
+ * survenu pendant la coupure était donc perdu POUR TOUJOURS côté affichage.
+ *
+ * Nuit du 23 au 24/09 : quatre recréations de conteneur entre 00h56 et 01h40. Le veilleur de
+ * CDEF31 — à qui `GET /engine-control/commands` répond 403, et dont le bouton n'a donc que cet
+ * overlay comme source de vérité — a vu « Couper » sur un véhicule déjà coupé, et n'a pas eu de
+ * bouton « Rallumer » sur celui qu'il devait sortir. 50 clics, 15 commandes, une heure perdue.
+ *
+ * Le test porte sur le CÂBLAGE, pas sur l'intention : c'est précisément un câblage manquant
+ * (`seedCutState` écrit après l'incident du 17/09, jamais appelé sur /vehicles) qui a coûté
+ * cette nuit-là.
+ */
+describe('C2 — incident CDEF31 : la reconnexion re-hydrate', () => {
+  let service: RealtimeServiceTestable;
+  let httpMock: HttpTestingController;
+
+  beforeEach(() => {
+    TestBed.configureTestingModule({
+      providers: [
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        {
+          provide: AuthService,
+          useValue: {
+            tryRefresh: jasmine.createSpy('tryRefresh').and.resolveTo(null),
+            refreshUnavailable: () => false,
+            logout: () => undefined,
+            isDepot: () => false,
+            token: 'jeton-de-test',
+          },
+        },
+        { provide: Router, useValue: { navigate: jasmine.createSpy('navigate').and.resolveTo(true), url: '/vehicles' } },
+        { provide: FleetFilterService, useValue: { matches: () => true, isActive: signal(false), selectedFleetId: signal(null) } },
+        { provide: NotificationsApiService, useValue: { clearAppBadge: () => undefined, setAppBadge: () => undefined } },
+        { provide: PreferencesService, useValue: { prefs: signal({ notifications: {} }) } },
+        { provide: VisibilityService, useValue: { isVisible: signal(true), isUserActive: signal(true), lastHiddenDurationMs: () => null } },
+        { provide: ToastService, useValue: { error: () => undefined, success: () => undefined, info: () => undefined } },
+        RealtimeServiceTestable,
+      ],
+    });
+    service = TestBed.inject(RealtimeServiceTestable);
+    httpMock = TestBed.inject(HttpTestingController);
+  });
+
+  afterEach(() => service.disconnect());
+
+  /** Compte les lectures de snapshot DEPUIS le dernier appel (`match` retire les requêtes vues). */
+  const lecturesDuSnapshot = (): number =>
+    httpMock.match((r) => r.url.includes('/api/vehicles/snapshot')).length;
+
+  it('🔴 LE TEST DE RÉGRESSION — une RE-connexion relit le snapshot, la première ne le lit qu’une fois', async () => {
+    service.connect('jeton-de-test');
+    expect(lecturesDuSnapshot()).toBe(1); // hydratation initiale, faite par connect() lui-même
+
+    await service.faux.declencher('connect');
+    expect(lecturesDuSnapshot())
+      .withContext('première ouverture du socket : connect() a déjà hydraté, ne pas doubler')
+      .toBe(0);
+
+    await service.faux.declencher('disconnect', 'transport close');
+    await service.faux.declencher('connect');
+    expect(lecturesDuSnapshot())
+      .withContext('RECONNEXION — sous l’ancien code : 0, et l’état coupe restait faux pour toujours')
+      .toBe(1);
+  });
+
+  it('chaque reconnexion suivante re-hydrate aussi (quatre déploiements = quatre rattrapages)', async () => {
+    service.connect('jeton-de-test');
+    lecturesDuSnapshot(); // on purge l'hydratation initiale
+
+    await service.faux.declencher('connect'); // 1re ouverture
+    lecturesDuSnapshot();
+
+    for (const _ of [1, 2, 3, 4]) {
+      await service.faux.declencher('disconnect', 'transport close');
+      await service.faux.declencher('connect');
+      expect(lecturesDuSnapshot()).toBe(1);
+    }
   });
 });

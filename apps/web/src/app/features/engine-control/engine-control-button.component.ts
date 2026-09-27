@@ -32,37 +32,59 @@ const CONFIRM_WINDOW_MS = 90_000;
   imports: [LucideAngularModule, ConfirmModalComponent, FormsModule, RouterLink],
   template: `
     <div class="ec-hote" (click)="$event.stopPropagation()">
-     <div class="inline-flex items-center shrink-0">
-      @if (canCut().allowed || canRestore()) {
-        @if (isCutActive()) {
-          <button
-            (click)="openAction('restore')"
-            [attr.data-track]="trackLabel() ? trackLabel() + ' — rallumer' : null"
-            class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg
-                   bg-tracky/20 text-texte-succes border border-tracky/30
-                   hover:bg-tracky/30 transition-all cursor-pointer whitespace-nowrap"
-          >
-            <lucide-icon [img]="Power" [size]="14"></lucide-icon>
-            <span class="hidden sm:inline">Rallumer le moteur</span>
-            <span class="sm:hidden">Rallumer</span>
-          </button>
-        } @else {
-          <button
-            (click)="canCut().allowed ? openAction('cut') : null"
-            [disabled]="!canCut().allowed"
-            [title]="canCut().reason ?? ''"
-            [attr.data-track]="trackLabel() ? trackLabel() + ' — couper' : null"
-            class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg
-                   transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap"
-            [class]="canCut().allowed
-              ? 'bg-red-600/20 text-red-400 border border-red-600/30 hover:bg-red-600/30'
-              : 'bg-bg-tertiary text-fg-secondary border border-border-subtle'"
-          >
-            <lucide-icon [img]="PowerOff" [size]="14"></lucide-icon>
-            <span class="hidden sm:inline">Couper le moteur</span>
-            <span class="sm:hidden">Couper</span>
-          </button>
-        }
+     <!--
+       C4 — DEUX BOUTONS DISTINCTS, JAMAIS UNE BASCULE (incident CDEF31 du 24/09/2026).
+       Avant : un seul bouton qui changeait de sens AU MÊME PIXEL. Après un rallumage réussi il
+       devenait « Couper » ; le véhicule ne démarrant pas tout seul (il faut encore tourner la
+       clé), le geste naturel était de réappuyer — et l'on recoupait. Trace mesurée sur
+       GS-187-NY : RESTORE, CUT, RESTORE, CUT, RESTORE, RESTORE, CUT, RESTORE en six minutes.
+       Un opérateur ne se trompe pas huit fois : c'est la commande qui était piégée.
+       Désormais « Couper » et « Rallumer » occupent deux places FIXES, et celui qui ne
+       s'applique pas est désactivé AVEC SA RAISON — un clic de trop ne peut plus rien défaire.
+     -->
+     <div class="inline-flex items-center gap-1.5 shrink-0 flex-wrap">
+      @if (canCut().allowed || canRestore() || isCutActive()) {
+        <!--
+          L'ÉTAT, ÉCRIT. Le défaut central de l'incident : l'opératrice ne pouvait pas savoir si
+          le véhicule était coupé — le libellé du bouton était sa seule indication, et il
+          disait l'ACTION, pas l'ÉTAT. Ici l'état est dit, toujours, avant les boutons.
+        -->
+        <span class="ec-etat" [class]="'ec-etat-' + etatMoteur()">
+          <span class="ec-etat-pastille"></span>
+          {{ etatMoteurLibelle() }}
+        </span>
+
+        <button
+          (click)="peutCouperMaintenant() ? openAction('cut') : null"
+          [disabled]="!peutCouperMaintenant()"
+          [title]="motifCoupeIndisponible() ?? 'Immobiliser le véhicule'"
+          [attr.data-track]="trackLabel() ? trackLabel() + ' — couper' : null"
+          class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg
+                 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap"
+          [class]="peutCouperMaintenant()
+            ? 'bg-red-600/20 text-red-400 border border-red-600/30 hover:bg-red-600/30'
+            : 'bg-bg-tertiary text-fg-secondary border border-border-subtle'"
+        >
+          <lucide-icon [img]="PowerOff" [size]="14"></lucide-icon>
+          <span class="hidden sm:inline">Couper le moteur</span>
+          <span class="sm:hidden">Couper</span>
+        </button>
+
+        <button
+          (click)="peutRallumerMaintenant() ? openAction('restore') : null"
+          [disabled]="!peutRallumerMaintenant()"
+          [title]="motifRallumageIndisponible() ?? 'Lever l’immobilisation'"
+          [attr.data-track]="trackLabel() ? trackLabel() + ' — rallumer' : null"
+          class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg
+                 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap"
+          [class]="peutRallumerMaintenant()
+            ? 'bg-tracky/20 text-texte-succes border border-tracky/30 hover:bg-tracky/30'
+            : 'bg-bg-tertiary text-fg-secondary border border-border-subtle'"
+        >
+          <lucide-icon [img]="Power" [size]="14"></lucide-icon>
+          <span class="hidden sm:inline">Rallumer le moteur</span>
+          <span class="sm:hidden">Rallumer</span>
+        </button>
 
         <!-- Boîtier muet : affiché pour la coupe COMME pour le rallumage. Sur les deux
              l'opérateur doit savoir que rien ne reviendra confirmer son geste. Une
@@ -80,7 +102,7 @@ const CONFIRM_WINDOW_MS = 90_000;
         situation ou l'operateur a besoin de savoir POURQUOI — vehicule en mouvement,
         position trop ancienne, regle du veilleur.
       -->
-      @if (!canCut().allowed && !isCutActive() && canCut().reason; as motif) {
+      @if (motifBloquantAffiche(); as motif) {
         <p class="ec-refus">{{ motif }}</p>
       }
 
@@ -256,6 +278,22 @@ const CONFIRM_WINDOW_MS = 90_000;
       color: var(--fg-secondary); text-wrap: pretty;
     }
 
+    /* C4 — l'état du moteur, lisible AVANT les boutons. Jetons uniquement, jamais de palette
+       Tailwind en dur : cette pastille doit rester lisible dans les deux thèmes. */
+    .ec-etat {
+      display: inline-flex; align-items: center; gap: 5px; white-space: nowrap;
+      padding: 3px 8px; border-radius: 8px; font-size: 11px; font-weight: 600;
+      border: 1px solid var(--border-subtle); background: var(--bg-tertiary);
+      color: var(--fg-secondary);
+    }
+    .ec-etat-pastille {
+      width: 6px; height: 6px; border-radius: 9999px; flex: none;
+      background: currentColor;
+    }
+    .ec-etat-coupe { color: var(--texte-danger, #f87171); border-color: color-mix(in srgb, currentColor 35%, transparent); }
+    .ec-etat-attente { color: var(--texte-alerte, #fbbf24); border-color: color-mix(in srgb, currentColor 35%, transparent); }
+    .ec-etat-actif { color: var(--texte-succes); border-color: color-mix(in srgb, currentColor 30%, transparent); }
+
     /* Boitier muet : trois etapes numerotees, pas une phrase. */
     .ec-muet {
       max-width: 340px; padding: 9px 11px; border-radius: 11px;
@@ -369,8 +407,18 @@ export class EngineControlButtonComponent implements OnInit {
 
   readonly isCutActive = computed(() => {
     const cmds = this.recentCommands();
-    // Sprint 3 — VEILLEUR (NIGHT_WATCHMAN) : `GET /engine-control/commands` = 403 → la liste
-    // `recentCommands` reste TOUJOURS vide pour lui. L'état coupé vient alors du suivi temps
+    // Sprint 3, RÉVISÉ le 24/09/2026 (C7) — le VEILLEUR recevait un `403` sur
+    // `GET /engine-control/commands` : sa liste `recentCommands` était TOUJOURS vide, et ce repli
+    // sur l'overlay temps réel était sa SEULE source d'état. Un canal que chaque recréation de
+    // conteneur interrompt — d'où l'incident CDEF31 (quatre déploiements entre 00h56 et 01h40).
+    // Il est désormais admis sur la route (vue restreinte : motif caviardé), donc sa liste est
+    // servie comme aux autres rôles.
+    //
+    // Ce repli RESTE, et doit rester : la liste est également vide quand un boîtier n'a jamais
+    // reçu de commande, quand la lecture échoue, et pendant le tout premier rendu. Le supprimer
+    // sous prétexte que le 403 a disparu rouvrirait le même trou par une autre porte.
+    //
+    // L'état coupé vient alors du suivi temps
     // réel de RealtimeService (`cutActiveTrackerIds`, hydraté au login + MAJ par les events
     // `ENGINE_COMMAND_UPDATED` reçus via `ops:fleet`), même sémantique (CUT ACKNOWLEDGED =
     // coupé, RESTORE = rallumé). Sans ce repli le bouton restait bloqué sur « Couper » → le
@@ -445,7 +493,8 @@ export class EngineControlButtonComponent implements OnInit {
   private readonly lastAppCommand = computed<EngineControlCommandDto | null>(() => {
     const fromList = this.recentCommands().find((c) => c.source !== 'DEVICE_OBSERVED');
     if (fromList) return fromList;
-    // Sprint 3 — veilleur : recentCommands est vide (GET /commands = 403). On reconstruit la
+    // Sprint 3 — repli quand recentCommands est vide (veilleur avant C7, boîtier sans historique,
+    // lecture en échec, premier rendu). On reconstruit la
     // dernière commande app depuis l'event WS ENGINE_COMMAND_UPDATED (reçu via ops:fleet) pour
     // que commandState (pastille « confirmée / non vérifiable / échec ») s'affiche aussi pour
     // lui — sinon le veilleur n'a AUCUN retour d'état après la coupe (cf. revue B5).
@@ -690,6 +739,69 @@ export class EngineControlButtonComponent implements OnInit {
   });
 
   /**
+   * ══ C4 — L'ÉTAT DU MOTEUR, DIT EN TOUTES LETTRES (incident CDEF31 du 24/09/2026) ═══════════
+   *
+   * `isCutActive()` répond oui/non ; il manquait la nuance entre une coupure CONFIRMÉE et une
+   * coupure COMMANDÉE mais pas encore prouvée. Pour l'opérateur de nuit ce n'est pas un détail :
+   * « en attente » veut dire « ne considérez pas ce véhicule comme immobilisé ».
+   *
+   * Lecture alignée sur `isCutActive()` — quand la liste des commandes est servie (tous rôles
+   * sauf le veilleur), une coupe active y est forcément ACQUITTÉE ; sinon l'état vient de
+   * l'overlay temps réel, qui distingue confirmé et en attente.
+   */
+  protected readonly etatMoteur = computed<'coupe' | 'attente' | 'actif'>(() => {
+    if (!this.isCutActive()) return 'actif';
+    if (this.recentCommands().length > 0) return 'coupe';
+    return this.realtime.cutActiveTrackerIds().has(this.trackerId()) ? 'coupe' : 'attente';
+  });
+
+  protected readonly etatMoteurLibelle = computed<string>(() => {
+    switch (this.etatMoteur()) {
+      case 'coupe': return 'Moteur coupé';
+      case 'attente': return 'Coupure non confirmée';
+      default: return 'Moteur actif';
+    }
+  });
+
+  /**
+   * C4 — chaque bouton ne s'active que pour l'action qui a un SENS dans l'état courant. Couper un
+   * véhicule déjà coupé, ou rallumer un véhicule qui tourne, n'a jamais été utile : c'était
+   * seulement le moyen, pour un clic de trop, de défaire le geste précédent.
+   */
+  protected readonly peutCouperMaintenant = computed(
+    () => !this.isCutActive() && this.canCut().allowed,
+  );
+  protected readonly peutRallumerMaintenant = computed(
+    () => this.isCutActive() && this.canRestore(),
+  );
+
+  protected readonly motifCoupeIndisponible = computed<string | null>(() => {
+    if (this.peutCouperMaintenant()) return null;
+    if (this.isCutActive()) return 'Le moteur est déjà coupé.';
+    return this.canCut().reason ?? 'Coupure indisponible.';
+  });
+
+  protected readonly motifRallumageIndisponible = computed<string | null>(() => {
+    if (this.peutRallumerMaintenant()) return null;
+    if (!this.isCutActive()) return 'Le moteur n’est pas coupé.';
+    return 'Vous n’avez pas le droit de rallumer ce véhicule.';
+  });
+
+  /**
+   * C4 — LA RAISON SORT DE L'INFOBULLE, DANS LES DEUX SENS.
+   *
+   * Une infobulle n'existe pas au doigt, et le mobile est l'usage principal. Elle sortait déjà
+   * pour un refus de COUPE ; elle ne sortait pas pour un rallumage impossible — exactement le
+   * cas de la nuit du 24/09, où un véhicule coupé par le planning n'offrait aucun bouton et
+   * aucune explication. L'opératrice a fait défiler la page de 0 à 100 % à la recherche d'une
+   * commande qui n'était nulle part.
+   */
+  protected readonly motifBloquantAffiche = computed<string | null>(() => {
+    if (this.isCutActive()) return this.canRestore() ? null : this.motifRallumageIndisponible();
+    return this.canCut().allowed ? null : this.canCut().reason ?? null;
+  });
+
+  /**
    * Avertissement inséré dans les DEUX confirmations quand le boîtier est muet.
    *
    * C'est le moment décisif : l'opérateur s'apprête à considérer le geste comme fait.
@@ -796,16 +908,41 @@ export class EngineControlButtonComponent implements OnInit {
     this.loadScheduleStatus();
   }
 
+  /**
+   * ══ C5 — LA MODALE S'OUVRE D'ABORD, LE RÉSEAU ENSUITE (incident CDEF31 du 24/09/2026) ══════
+   *
+   * Ce clic ATTENDAIT un aller-retour HTTP avant de rien afficher : `loadScheduleStatus()` lit
+   * `/api/vehicles/:id/schedule`, et la modale n'apparaissait qu'après sa réponse. Quand l'API est
+   * lente — ou en cours de recréation, ce qui était le cas cette nuit-là — le bouton ne fait donc
+   * RIEN de visible. Rien : pas de modale, pas d'indicateur, pas de message.
+   *
+   * C'est la mesure qui l'a montré : 23 clics sur « rallumer » en six secondes à 01h51:08, pour
+   * UNE commande créée. On ne clique pas vingt-trois fois sur un bouton qui répond.
+   *
+   * Désormais l'ouverture est IMMÉDIATE et la lecture du planning se fait derrière : la case
+   * « immobilisation durable » apparaît toute seule quand la réponse arrive. Un geste d'opérateur
+   * ne doit jamais dépendre d'un réseau pour produire un retour visible.
+   */
   protected async openAction(action: 'cut' | 'restore'): Promise<void> {
-    // Rafraîchir l'état schedule avant d'ouvrir le modal (état le plus frais)
-    await this.loadScheduleStatus();
     this.durableImmobilize.set(false);
     this.isOpen.set(action);
+    // Après l'ouverture, et volontairement non bloquant : `scheduleEnabled` est un signal, la
+    // modale se met à jour d'elle-même. Un échec laisse la case masquée — l'état le plus sûr.
+    await this.loadScheduleStatus();
   }
 
   protected async onConfirm(action: 'CUT' | 'RESTORE'): Promise<void> {
     const trackerId = this.trackerId();
-    if (this.commandLocked() || !this.commandLocks.acquire(trackerId)) return;
+    if (this.commandLocked() || !this.commandLocks.acquire(trackerId)) {
+      // C5 — un clic avalé par le verrou se DIT. Le verrou est juste (il empêche deux intentions
+      // concurrentes sur le même boîtier), mais il rendait la main en silence : depuis un autre
+      // onglet ou une autre surface, l'opérateur voyait un bouton normal qui ne faisait rien.
+      this.toast.info(
+        'Commande déjà en cours',
+        `Un envoi est en cours sur ${this.vehiclePlate()} — attendez sa réponse avant d’en lancer un autre.`,
+      );
+      return;
+    }
     this.loading.set(true);
     const reasonText = action === 'CUT' ? this.reason() || undefined : undefined;
     // « Immobilisation durable » (case optionnelle, CUT uniquement) → désactive le planning (sortie

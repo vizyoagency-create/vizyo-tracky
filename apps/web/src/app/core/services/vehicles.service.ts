@@ -76,6 +76,13 @@ export interface VehicleDetailDto {
    * surfaces UI substituent alors l'état `PRESUMED_PARKED` au tri-état calculé.
    */
   presumedParkedZone?: string | null;
+  /**
+   * C1 (incident CDEF31 du 24/09/2026) — état de coupe TRI-ÉTAT servi AVEC la liste, pour que
+   * /vehicles recale l'overlay temps réel (`seedCutState`) exactement comme la page Horaires.
+   * Sans lui, le veilleur — à qui `GET /engine-control/commands` répond 403 — n'avait que le
+   * WebSocket comme source de vérité, perdu à chaque recréation de conteneur.
+   */
+  engineCutState?: 'normal' | 'pending' | 'cut' | null;
 }
 
 @Injectable({ providedIn: 'root' })

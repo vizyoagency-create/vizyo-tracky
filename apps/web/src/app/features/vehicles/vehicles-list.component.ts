@@ -1785,6 +1785,9 @@ export class VehiclesListComponent implements OnInit {
     this.loading.set(true);
     this.chargementEnErreur.set(false);
     try {
+      // C1 — capturé AVANT la lecture : un événement WS arrivé pendant le round-trip garde la
+      // main sur la liste relue (même précaution que la page Horaires).
+      const coupeAvant = this.realtime.cutStateSnapshot();
       const list = await firstValueFrom(this.vehiclesApi.list());
       this.vehicles.set(list);
       this.appliquerVueParDefaut();
@@ -1795,6 +1798,18 @@ export class VehiclesListComponent implements OnInit {
         list
           .filter((v) => v.tracker)
           .map((v) => ({ trackerId: v.tracker!.id, moving: !!v.moving })),
+      );
+      // C1 (incident CDEF31 du 24/09/2026) — l'overlay « coupé » suit AUSSI la source de vérité
+      // relue. Cette page était la seule surface de commande moteur à ne jamais se recaler : le
+      // correctif `seedCutState` né de l'incident du 17/09 n'était câblé que sur Horaires. Pour le
+      // veilleur (403 sur l'historique des commandes) c'était la SEULE réparation possible — et
+      // elle n'existait pas. Résultat mesuré : 50 clics, 15 commandes, et le véhicule à sortir
+      // jamais proposé au rallumage.
+      this.realtime.seedCutState(
+        list
+          .filter((v) => v.tracker)
+          .map((v) => ({ trackerId: v.tracker!.id, state: v.engineCutState })),
+        coupeAvant,
       );
       this.scrollToPendingGroup();
     } catch (err) {

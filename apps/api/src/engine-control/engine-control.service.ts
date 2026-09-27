@@ -198,6 +198,19 @@ interface RequestedBy {
   userId: string;
   role: UserRole;
   fleetId: string | null;
+  /**
+   * C7 (24/09/2026) — périmètre véhicules d'un sous-utilisateur restreint, ou `'ALL'`.
+   *
+   * Absent jusqu'ici de CE type-là (il existait dans celui de `VehiclesService`), parce
+   * qu'aucune route d'engine-control n'en avait besoin : l'envoi de commande est gardé par
+   * `@RequireVehiclePermission`, qui vérifie le véhicule un par un. `listCommands` n'a pas
+   * cette garde — elle prend `trackerId` en paramètre de requête — et l'ouvrir au veilleur
+   * sans borner le périmètre aurait laissé lire toute la flotte en forgeant l'identifiant.
+   *
+   * Optionnel : les appels internes (cron des horaires, worker RESTORE) n'ont pas de
+   * périmètre et ne doivent pas en avoir. `undefined` = aucune restriction supplémentaire.
+   */
+  accessibleVehicleIds?: string[] | 'ALL';
 }
 
 /**
@@ -296,6 +309,31 @@ const ENGINE_RESTORE_SMS_STUCK_MS = 60 * 60_000;
  * pour une cause déjà connue.
  */
 const ENGINE_WITHHELD_PUSH_SPACING_MS = 60 * 60_000;
+
+/**
+ * ══ ACHARNEMENT SUR LE COUPE-CIRCUIT — incident CDEF31 du 24 septembre 2026 ═══════════════════
+ *
+ * Toutes les alertes du coupe-circuit surveillent l'ÉCHEC. La nuit du 23 au 24/09, il n'y en a
+ * pas eu un seul : 15 commandes, 15 acquittements TCP en 0,3 à 5,8 s, zéro erreur applicative,
+ * zéro ligne au centre d'alerte. Et pourtant un veilleur a passé vingt minutes à ne pas réussir
+ * à sortir un véhicule, puis a écrit à 3 h 07 que « l'application ne fonctionnait pas ».
+ *
+ * Ce qui était lisible côté serveur, c'était la SÉRIE. Sur GS-187-NY, par le même compte :
+ * RESTORE 01:45:20 · CUT 01:47:31 · RESTORE 01:47:41 · CUT 01:48:40 · RESTORE 01:49:32 ·
+ * RESTORE 01:49:36 · CUT 01:50:48 · RESTORE 01:51:10 — huit commandes en six minutes. Personne
+ * ne pilote comme ça : c'est quelqu'un qui se bat contre un affichage qui lui ment.
+ *
+ * Le seuil est volontairement bas (4 commandes sur le MÊME véhicule par le MÊME utilisateur en
+ * 10 min) : avec lui, l'alerte serait partie à 01:48:40 — dix-neuf minutes avant qu'elle
+ * n'abandonne, vingt-six avant son courrier. Un usage normal ne l'atteint pas : couper puis
+ * rallumer une fois fait deux commandes.
+ */
+const ACHARNEMENT_FENETRE_MS = Number(process.env['ENGINE_ACHARNEMENT_FENETRE_MS']) || 10 * 60_000;
+const ACHARNEMENT_SEUIL = Number(process.env['ENGINE_ACHARNEMENT_SEUIL']) || 4;
+/** Une alerte par (utilisateur, véhicule) et par demi-heure : prévenir, pas harceler. */
+const ACHARNEMENT_PUSH_SPACING_MS = Number(process.env['ENGINE_ACHARNEMENT_PUSH_SPACING_MS']) || 30 * 60_000;
+/** Borne mémoire de la fenêtre glissante — au-delà, les plus anciennes séries sont oubliées. */
+const ACHARNEMENT_MAX_SERIES = 500;
 /** Lu à chaque appel (pas au chargement) : les tests le règlent sans recharger le module. */
 const manualResponseBudgetMs = (): number =>
   Math.max(1_000, Number(process.env['ENGINE_MANUAL_RESPONSE_BUDGET_MS']) || 20_000);
@@ -352,6 +390,16 @@ export class EngineControlService implements OnModuleDestroy {
     string,
     { lastAt: number; refusals: number; vehicles: Set<string>; lastPushAt?: number }
   >();
+  /**
+   * Incident CDEF31 du 24/09/2026 — fenêtre glissante des commandes MANUELLES, par
+   * (utilisateur, tracker). En mémoire volontairement : c'est un signal d'INSTANT, pas un
+   * historique — la base porte déjà les commandes. Bornée à ACHARNEMENT_MAX_SERIES.
+   */
+  private readonly gestesManuels = new Map<
+    string,
+    { instants: number[]; actions: EngineAction[]; lastPushAt: number }
+  >();
+
   /** T62 — verdict de joignabilité SMS par numéro (60 s) et dernière ligne « TCP seul » par boîtier. */
   private readonly smsReachabilityCache = new Map<string, { expiresAt: number; verdict: SmsReachability }>();
   private readonly tcpOnlyAlertedAt = new Map<string, number>();
@@ -1142,6 +1190,18 @@ export class EngineControlService implements OnModuleDestroy {
           nextAttemptAt: new Date(),
         },
       });
+      // Incident CDEF31 du 24/09/2026 — ICI, et pas dans le `catch` : un rejeu d'idempotence ou
+      // une collision de clé active rend une intention DÉJÀ comptée. Ne compter que les créations
+      // réelles, et seulement les gestes HUMAINS (le planning coupe 30 véhicules à 22:00 : ce
+      // n'est pas de l'acharnement).
+      if (source === 'MANUAL') {
+        this.signalerAcharnement(action, requestedBy, {
+          trackerId,
+          imei: tracker.imei,
+          fleetId: tracker.vehicle?.fleetId ?? null,
+          plate: tracker.vehicle?.plate ?? null,
+        });
+      }
     } catch (err) {
       // La contrainte unique est l'arbitre réel des clics concurrents entre
       // plusieurs instances API. Une collision renvoie l'intention déjà active.
@@ -1750,6 +1810,113 @@ export class EngineControlService implements OnModuleDestroy {
         title: cause === 'kill-switch' ? 'Coupes automatiques retenues (kill-switch)' : 'Coupes automatiques retenues',
         body: `${reason} — ${refusals} refus${vehicles.length > 0 ? ` : ${vehicles.slice(0, 6).join(', ')}${vehicles.length > 6 ? '…' : ''}` : ''}. Rien ne coupe tant que la cause n'est pas levée.`,
       });
+    }
+  }
+
+  /**
+   * Incident CDEF31 du 24/09/2026 — PRÉVENIR quand un utilisateur s'acharne sur un coupe-circuit.
+   *
+   * Appelée à chaque commande MANUELLE réellement créée (pas les rejeux d'idempotence : un retry
+   * HTTP n'est pas une intention de plus). Compte les commandes du même utilisateur sur le même
+   * véhicule dans une fenêtre glissante ; au seuil, écrit une ligne au centre d'alerte ET pousse
+   * aux super-admins.
+   *
+   * Le libellé dit l'HYPOTHÈSE, pas un diagnostic : le serveur voit une série, il ne sait pas
+   * pourquoi. Dire « l'écran lui ment peut-être » oriente vers la bonne vérification ; dire
+   * « défaut d'affichage » affirmerait ce qu'on n'a pas mesuré.
+   *
+   * Ne lève jamais : une alerte qui casse la commande qu'elle observe serait pire que son silence.
+   */
+  private signalerAcharnement(
+    action: EngineAction,
+    requestedBy: RequestedBy,
+    vehicle: { trackerId: string; imei: string; fleetId: string | null; plate: string | null },
+  ): void {
+    try {
+      const now = Date.now();
+      const key = `${requestedBy.userId}|${vehicle.trackerId}`;
+      const serie = this.gestesManuels.get(key) ?? { instants: [], actions: [], lastPushAt: 0 };
+
+      // Fenêtre glissante : on ne garde que ce qui est encore dans les 10 dernières minutes.
+      const debut = now - ACHARNEMENT_FENETRE_MS;
+      const gardes: number[] = [];
+      const actionsGardees: EngineAction[] = [];
+      for (let i = 0; i < serie.instants.length; i++) {
+        const t = serie.instants[i];
+        if (t !== undefined && t >= debut) {
+          gardes.push(t);
+          const a = serie.actions[i];
+          if (a !== undefined) actionsGardees.push(a);
+        }
+      }
+      gardes.push(now);
+      actionsGardees.push(action);
+      serie.instants = gardes;
+      serie.actions = actionsGardees;
+      this.gestesManuels.set(key, serie);
+
+      // Borne mémoire : au-delà du plafond, on oublie la série vue il y a le plus longtemps.
+      if (this.gestesManuels.size > ACHARNEMENT_MAX_SERIES) {
+        let plusVieilleCle: string | null = null;
+        let plusVieilInstant = Number.POSITIVE_INFINITY;
+        for (const [k, s] of this.gestesManuels) {
+          const dernier = s.instants[s.instants.length - 1] ?? 0;
+          if (dernier < plusVieilInstant) { plusVieilInstant = dernier; plusVieilleCle = k; }
+        }
+        if (plusVieilleCle !== null) this.gestesManuels.delete(plusVieilleCle);
+      }
+
+      if (serie.instants.length < ACHARNEMENT_SEUIL) return;
+      if (now - serie.lastPushAt < ACHARNEMENT_PUSH_SPACING_MS) return;
+      serie.lastPushAt = now;
+
+      const nb = serie.instants.length;
+      const premier = serie.instants[0] ?? now;
+      const minutes = Math.max(1, Math.round((now - premier) / 60_000));
+      // Une alternance CUT/RESTORE est le signal le plus net : l'opérateur défait ce qu'il vient
+      // de faire. C'est exactement la trace laissée par un bouton à bascule dont l'état est faux.
+      let alternances = 0;
+      for (let i = 1; i < serie.actions.length; i++) {
+        if (serie.actions[i] !== serie.actions[i - 1]) alternances += 1;
+      }
+      const cible = vehicle.plate ?? vehicle.imei;
+      const detail = alternances >= 2
+        ? `${nb} commandes en ${minutes} min dont ${alternances} changements de sens (coupe ↔ rallumage)`
+        : `${nb} commandes en ${minutes} min`;
+
+      void this.errorLogger.record(
+        `Acharnement sur le coupe-circuit de ${cible} : ${detail}, par le même utilisateur. ` +
+        'Les commandes partent et sont acquittées — vérifier ce que son écran affiche (état du bouton, ' +
+        'liaison temps réel) et si un véhicule est resté immobilisé. Incident CDEF31 du 24/09/2026.',
+        'engine-control-acharnement',
+        {
+          trackerId: vehicle.trackerId,
+          imei: vehicle.imei,
+          fleetId: vehicle.fleetId ?? undefined,
+          plate: vehicle.plate ?? undefined,
+          userId: requestedBy.userId,
+          role: requestedBy.role,
+          commandes: nb,
+          alternances,
+          fenetreMin: Math.round(ACHARNEMENT_FENETRE_MS / 60_000),
+        },
+        'CRITICAL',
+      ).catch(() => undefined);
+
+      this.pousserCoupeCircuit({
+        kind: 'commande-utilisateur-en-difficulte',
+        subjectKey: key,
+        title: `Un utilisateur s’acharne sur le coupe-circuit — ${cible}`,
+        body:
+          `${detail}. Les commandes aboutissent : le problème est probablement ce que son écran lui montre. ` +
+          'À vérifier maintenant — un véhicule est peut-être immobilisé avec quelqu’un devant.',
+        url: '/admin/alerts',
+      });
+    } catch (err) {
+      this.logger.warn(
+        { error: err instanceof Error ? err.message : String(err) },
+        'détection d’acharnement non effectuée',
+      );
     }
   }
 
@@ -2781,14 +2948,38 @@ export class EngineControlService implements OnModuleDestroy {
       where.tracker = { vehicle: { fleetId: scope.fleetId } };
     }
 
+    // C7 (incident CDEF31 du 24/09/2026) — cloisonnement PAR VÉHICULE, pas seulement par flotte.
+    // Ouvrir cette route au veilleur sans cela aurait laissé un sous-utilisateur restreint à
+    // quelques véhicules lire les commandes de toute sa flotte, en forgeant `trackerId`. Le filtre
+    // tenant ci-dessus ne le couvrait pas : il s'arrête à la flotte. Même règle que
+    // `VehiclesService.findAll`.
+    if (requestedBy.accessibleVehicleIds && requestedBy.accessibleVehicleIds !== 'ALL') {
+      where.tracker = {
+        ...(where.tracker as Record<string, unknown> | undefined),
+        vehicleId: { in: requestedBy.accessibleVehicleIds },
+      };
+    }
+
     if (filters?.trackerId) where.trackerId = filters.trackerId;
     if (filters?.status) where.status = filters.status;
 
-    return this.prisma.engineControlCommand.findMany({
+    const commandes = await this.prisma.engineControlCommand.findMany({
       where,
       orderBy: { createdAt: 'desc' },
       take: limit,
     });
+
+    // C7 — LE VEILLEUR OBTIENT L'ÉTAT, PAS LE DOSSIER.
+    //
+    // `reason` est un champ LIBRE, saisi dans la confirmation de coupe : « véhicule volé »,
+    // « non-paiement »… C'est de l'information commerciale et parfois judiciaire sur le client
+    // d'un client. Elle n'est d'aucune utilité à un opérateur de nuit qui veut savoir si un
+    // véhicule est coupé, et le composant ne l'affiche pas. On la retire donc explicitement
+    // plutôt que de la servir « parce qu'elle était dans la ligne ».
+    if (requestedBy.role === UserRole.NIGHT_WATCHMAN) {
+      return commandes.map((c) => ({ ...c, reason: null }));
+    }
+    return commandes;
   }
 
   /**

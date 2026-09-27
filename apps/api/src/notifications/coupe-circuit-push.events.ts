@@ -21,7 +21,17 @@ export type CoupeCircuitPushKind =
   /** Téléphone passerelle hors ligne / relais injoignable. */
   | 'passerelle-sms'
   /** Remise en route non confirmée : un véhicule est peut-être immobilisé. */
-  | 'restore-non-prouvee';
+  | 'restore-non-prouvee'
+  /**
+   * Un UTILISATEUR s'acharne sur le coupe-circuit d'un véhicule — incident CDEF31 du 24/09/2026.
+   *
+   * Cette nuit-là, les 15 commandes ont TOUTES réussi (acquittées TCP en 0,3 à 5,8 s). Aucune
+   * alerte existante ne pouvait donc se déclencher : elles surveillent toutes l'échec. Ce qui
+   * était anormal n'était pas une commande, c'était la SÉRIE — un veilleur qui coupe puis
+   * rallume le même véhicule huit fois en six minutes ne pilote pas, il se bat contre un écran
+   * qui lui ment. Seul ce signal-là était visible côté serveur ; personne ne le regardait.
+   */
+  | 'commande-utilisateur-en-difficulte';
 
 export interface CoupeCircuitPushEvent {
   kind: CoupeCircuitPushKind;
