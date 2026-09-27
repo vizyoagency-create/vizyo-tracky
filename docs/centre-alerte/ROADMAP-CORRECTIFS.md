@@ -63,10 +63,20 @@ d'une section à l'autre sans le dire, ou cocher `[x]` sur la foi d'une fiche pl
 
 ---
 
-## 🗂️ Tableau de bord — 123 tâches, l'avancement d'un coup d'œil
+## 🗂️ Tableau de bord — 124 tâches, l'avancement d'un coup d'œil
 
-**Au 2026-09-25 (03 h 30 UTC) : 68 faites ·
-18 déployées, preuve attendue · 0 commitée · 37 ouvertes** *(123 tâches — dont 3 ouvertes en gravité 1)* — *le compte fait foi dans `app/taches.json`.*
+**Au 2026-09-27 (01 h 30 UTC) : 68 faites ·
+18 déployées, preuve attendue · 0 commitée · 38 ouvertes** *(124 tâches — dont 3 ouvertes en gravité 1)* — *le compte fait foi dans `app/taches.json`.*
+
+> 🟢🔴 **LE FAIT DU 27/09 (centre d'alerte, collecte 01 h 15 UTC, 48 h — PAS D'AUDIT LE 26/09) : DIXIÈME ET ONZIÈME NUITS, LES PLUS
+> PROPRES DEPUIS LA MISE EN SERVICE — ET UN VÉHICULE COUPÉ 23 H SANS UNE LIGNE.** 0 silence du S21, 0 refus d'interlock, 0 ligne watchdog ;
+> **57 coupes planifiées à l'heure** (20:00:01 → 20:06:20 et → 20:06:00 pour CDEF31), **57 reprises émises et acquittées** (FY-038-TS par SMS
+> en 40 s), preuve **6 / 6** ; T65 : 6 OK · 1 non exercé. 🆕 **TRK-098 → T84 (gravité 2)** — **HM-787-GA**, rallumé puis recoupé par le
+> veilleur le 25/09 à 23:38 Paris, porte `overrideUntil = 9999-12-31` (coupe veilleur « sans échéance », voulue au Sprint 3) : **aucune
+> reprise le 26/09 à 07:00** (24 / 25), coupé ~23 h, toute sa plage du samedi, **0 ligne** ; même geste le 26/09 à 22:44 → **pas de reprise
+> ce dimanche non plus**. 🆕 TRK-099 (gravité 4, 1 point) : `io server disconnect` hors déploiement. 📏 T74 : 2ᵉ exercice (7 lignes horaires,
+> HM-769-GA sans fix 33 h). 📏 T80 : `email-bloque` 5ᵉ ligne, **le rapport repart lundi 28/09 06:05**. 📏 T81 : 9 · 5. **La seule chose à faire
+> en premier : prévenir CDEF31 que HM-787-GA ne se rallumera pas seul ce matin — puis les deux adresses cdef31 avant lundi 06:05.**
 
 > 🟢🟠 **LE FAIT VPS DU 25/09 (02 h 30 UTC, À L'HEURE) : LA MACHINE VA BIEN, 5ᵉ JOUR — ET PERSONNE N'Y A TOUCHÉ DEPUIS HIER** (0 déploiement,
 > 0 image, 0 conteneur recréé, périmètre identique). 24/09 complet : idle **85,33 %**, steal **3,36 %** moy (max 6,54 — `sar` **avec** en-tête ;
@@ -1409,6 +1419,7 @@ feront perdre une heure le jour où quelqu'un les suivra.*
 
 | Date | ID | Tâche | État | Commit | La preuve |
 |---|:--:|---|:--:|---|---|
+| **27/09** *(collecte 01 h 15 UTC, centre d'alerte — 48 h, pas d'audit le 26/09)* | 🆕 **T84** · **T74** · **T38** · **T55** · **T80** · **T81** · **T65** | 🆕 TRK-098 (coupe veilleur sans échéance : HM-787-GA sans reprise le 26/09 et le 27/09) · TRK-086 2ᵉ exercice · nuits 10 et 11 probantes (57 / 57 coupes, 57 / 57 reprises émises) · 2 jours sans silence du S21 · `email-bloque` 5ᵉ ligne · 9 · 5 passages > 45 min · T65 6 OK / 1 non exercé | ☐ **T84 OUVERTE** *(gravité 2)* · ☐ T74 / T38 / T55 / T80 / T81 ouvertes · ☑ T65 (déjà FAIT) | *(documentation de ce passage)* | T84 : `engine_control_commands` HM-787-GA 25/09 20:06 `CUT` `SCHEDULER`, 21:38 `RESTORE` + `CUT` `MANUAL` (`users.role = NIGHT_WATCHMAN`), aucune `RESTORE` 26/09 04:59 → 05:10 (différence coupes 25/09 soir / reprises 26/09 matin = {HM-787-GA}) ; `vehicle_schedules.overrideUntil` = `9999-12-31 23:59:59` à 01:15 ; `WATCHMAN_HOLD_UNTIL` `engine-control.service.ts:66` (servi `908d20a0`). T74 : 7 `TRIP_AUTOMATION` 26/09 18:53 → 27/09 00:48, `gps_sans_fix` HM-769-GA 33,1 h. T65 : `sms_logs` 6 preuves `delivered` +8 → +11 s, 0 `sms-gateway-watchdog` / `engine-control-interlock` / `sms-daily-proof` en 48 h, `lastSeen` 80 s puis 50 s. 0 client Docker résiduel. |
 | **26/09** *(collecte 04 h 35 UTC, +133 min, audit VPS)* | **V3** · **V40** · **V39** · **V6** · **V37** · **V34** · **V38** · **V5** | 5e écriture de l hyperviseur (drop-ins RandomizedDelaySec=3h sur logrotate et dpkg-db-backup) · LimitesVitesse non décalée · reboot toujours requis · 4e sonnerie sur poste éveillé, poste sur batterie · V37 jour 5/7 · V34 jour 6/7 · cdef31 non rapatrié (J+3) · 34e dépassement | ☐ · ☐ · ☐ · » · » · » · ☐ · ☐ | *(documentation de ce passage)* | V3 : `journalctl -u qemu-guest-agent` 25/09 08:55:51 (`DRY_RUN=0; DELAY=3h; TIMERS=…`), `/etc/systemd/system/{logrotate,dpkg-db-backup}.timer.d/10-hostinger-randomize.conf` datés 25/09 08:55, runs du 26/09 à 00:47:23 et 01:00:50. V40 : déclencheurs `2026-08-19T04:30:00+02:00`. V39 : levier 7 « 6.8.0-139 → 6.8.0-142 ». Canal de sécurité sain : `history.log` 25/09 06:03 (curl ×3, libexpat1). V6 : `Reveil-Audits` 04:15:01, sortie de veille 00:25:53, `BatteryStatus=1`. V37 : veille 624, pointe 18h=77, 145 depuis 78.242.44.84 (clé du poste). V34 : 0 client, 0 tué. |
 | **25/09** *(collecte 02 h 30 UTC, audit VPS)* | 🆕 **V40** · **V39** · **V6** · **V37** · **V34** · **V38** · **V5** | LimitesVitesse pendant la collecte (2ᵉ matin) · reboot toujours requis · 3ᵉ sonnerie sur poste éveillé · V37 jour 4/7 · V34 jour 5/7 · cdef31 non rapatrié (J+2) · 33ᵉ dépassement | ☐ · ☐ · » · » · » · ☐ · ☐ | *(documentation de ce passage)* | V40 : `agent-limites-vitesse.log` 02:30:14 → 02:32:06 contre collecte 02:30:05 → 02:33:09, bloc « pendant MA collecte » 7 sessions ; déclencheurs `2026-08-19T04:30:00+02:00`. V39 : levier 7 « 6.8.0-139 → 6.8.0-142 ». V6 : `Vizyo-Reveil-Audits` 04:15:01 résultat 0, dernier `Kernel-Power 507` 24/09 23:41, `powercfg /a`. V37 : veille 727, pointe 12h=114. V34 : 0 client, `docker-orphelins` 0 tué. |
 | **24/09** *(collecte 02 h 29 UTC, audit VPS)* | ☑ **V32** · 🆕 **V39** · **V6** · **V37** · **V34** · **V38** · **V5** | V32 (b) prouvée par 7 déploiements · noyau 6.8.0-142 installé, reboot requis · copie hors-site à jour, réveil non prouvé · V37 jour 3/7 · V34 jour 4/7 · cdef31 non rapatrié (J+1) · 32ᵉ dépassement | ☑ · ☐ · » · » · » · ☐ · ☐ | *(documentation de ce passage)* | V32 : `tracky-api:avant-20260923-2318/2329/2335` = images nées à 23:02:06 / 23:23:43 / 23:34:09, pendant les déploiements `2239076e` / `ccfef141` / `40103d61` (fins 23:04:18 / 23:24:45 / 23:35:10, journal T33), `docker image inspect` sous `timeout 15` — web idem. V39 : `history.log` 24/09 06:09, `/var/run/reboot-required`, `uname -r` 6.8.0-139 (07:37). V6 : `copie.log` 23/09 (0922+0923) et 24/09 (0909+0924). |

@@ -1,7 +1,7 @@
 {
   "_comment": "Ce que le POSTE DE COMMANDE montre en plus des tâches. Les tâches, elles, viennent de docs/centre-alerte/app/taches.json et ne se recopient JAMAIS ici — voir generer.mjs. Ce fichier ne porte que ce qu'aucune tâche ne décrit : les mesures de tête, les mécaniques qui tournent seules, les décisions posées au propriétaire, et ce qui est prouvé.",
   "version": 1,
-  "releve": "25 septembre 2026, 03h15 Paris",
+  "releve": "27 septembre 2026, 03h15 Paris",
   "machines": [
     {
       "nom": "Rattrapage du recalage des tracés",
@@ -20,23 +20,23 @@
       "pied2": "s’éteint seule"
     },
     {
-      "nom": "Coupe-circuit automatique — 10 nuits sur le chantier : nuit 24→25, coupes CDEF31 retardées par le téléphone",
-      "texte": "Nuit du 24 au 25 : les 4 coupes MH Cars de 20:00 sont parties à l’heure. Le S21 a décroché à 21:42 (12 min après la preuve de 21:30) et n’est revenu durablement que vers 23:00, avec deux pings isolés entre-temps : l’interlock a retenu les 25 coupes CDEF31 de 22:00 — elles sont toutes parties et acquittées par TCP, mais de 22:22 à 23:28, soit 22 à 88 min en retard. Aucune n’est partie pendant la fenêtre verte de 22:45 (4 min), et les 3 dernières sont parties 28 min après le retour du téléphone : c’est exactement T82, pas encore codé. Le téléphone avait déjà décroché ~15 min à 04:07. 6 silences en 10 jours, 2 pendant la plage de coupe : c’est désormais le premier maillon faible (T55). Le 24 au matin, les 29 reprises (4 MH Cars à 05:00, 25 CDEF31 à 07:00) ont toutes été acquittées, dont une par le secours SMS en 34 s. Preuve SMS 3 sur 3 ; tu as reçu les notifications de chaque cause. HM-733-GA rallumé à la main pour la 9ᵉ nuit sur 10.",
+      "nom": "Coupe-circuit automatique — 12 nuits sur le chantier : nuits 25→26 et 26→27 à l’heure, mais HM-787-GA sans reprise",
+      "texte": "Les deux dernières nuits sont les plus propres depuis la mise en service : le S21 n’a pas décroché une seule fois en 48 h, aucune coupe retenue, 57 coupes parties à l’heure (MH Cars à 20:00, CDEF31 de 22:00 à 22:06) et toutes acquittées, 57 reprises émises et acquittées (une par le secours SMS en 40 s), preuve SMS 6 sur 6. Mais HM-787-GA (CDEF31) est resté coupé environ 23 h, toute sa journée de samedi, sans aucune alerte : le veilleur de nuit l’a rallumé puis recoupé à 23:38 le 25/09, et une coupe du veilleur tient « sans échéance » — le planificateur n’a donc pas émis sa reprise de 07:00. Il a refait le même geste à 22:44 le 26/09 : la reprise de ce dimanche 07:00 ne partira pas non plus (TRK-098, T84). HM-733-GA rallumé à la main pour la 11ᵉ nuit sur 12, GS-187-NY deux soirs de suite.",
       "fait": null,
       "total": null,
-      "pied": "36 plannings actifs sur 38 (31 CDEF31 + 5 MH Cars) — 10 nuits : 7 probantes, 1 retenue par l’interlock (15/09), 2 retardées par le téléphone (22/09, 24/09)",
-      "pied2": "le téléphone (T55 : 6 silences en 10 jours, 2 dans la plage) ; les adresses de cdef31 avant le 28/09 (T80) ; T82 + T79 + T76 ensemble ; T83 (petit) ; décider l’élargissement (T38)"
+      "pied": "36 plannings actifs sur 38 (31 CDEF31 + 5 MH Cars) — 12 nuits : 9 probantes, 1 retenue par l’interlock (15/09), 2 retardées par le téléphone (22/09, 24/09) ; 1 véhicule sans reprise le 26/09 (HM-787-GA, coupe veilleur)",
+      "pied2": "prévenir CDEF31 pour HM-787-GA ce matin (T84) ; les adresses de cdef31 avant lundi 28/09 06:05 (T80) ; le téléphone (T55) ; T82 + T79 + T76 ensemble ; T83 (petit) ; décider l’élargissement (T38)"
     }
   ],
   "chiffres": [
     {
-      "v": "47",
-      "t": "défauts nés au centre d’alerte sur 24 h (sur 55 lignes) — 41 disent une seule chose : le téléphone ne pinguait plus (34 refus d’interlock, 7 alertes passerelle) ; 153 CRITICAL actives, +35 ; aucune signature nouvelle",
+      "v": "1",
+      "t": "véhicule resté coupé toute une journée sans une alerte : HM-787-GA, sans reprise le 26/09 à 07:00 (coupe du veilleur « sans échéance ») — et pas de reprise ce dimanche non plus ; pour le reste, 48 h sans silence du téléphone, 57 coupes et 57 reprises à l’heure, 155 CRITICAL actives (+2), 2 signatures nouvelles",
       "alerte": true
     },
     {
-      "v": "658/658",
-      "t": "trajets des 21, 22 et 23/09 recalés dans les 2 h suivant leur création — trois journées figées (T28) ; le 24/09 est à 217/217, fenêtre encore ouverte"
+      "v": "660/660",
+      "t": "trajets des 23, 24 et 25/09 recalés dans les 2 h suivant leur création — trois journées figées (T28) ; le 26/09 est à 200/200, fenêtre encore ouverte"
     },
     {
       "v": "auto",
