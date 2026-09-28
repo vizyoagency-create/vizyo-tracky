@@ -71,19 +71,18 @@ Créer depuis « Évènement » :
 - [x] onglet **Propositions IA** : la liste ne montre que des départs **à venir** (premier : lundi 08:39, il était 07:26) ;
 - [x] **Réorganiser** → 30 jours → posées par l'agent → **simulation** juste, puis **appliquer** → `POST /reservations/reorganiser` 200 × 2, **les deux annulations ont disparu de la grille** (R-5) — **F18** 🔴 : le lot contenait **ma demande publique validée**, étiquetée « agent » (`source: SYSTEM` des deux côtés). Corrigé : `origineReservation()` — agent / lien public / manuelle ; « posées par l'agent » ne prend plus que l'agent.
 
-## 5. La feuille Optimisation *(P1-4, P1-5)* — **non exerçable sur la démo**
+## 5. La feuille Optimisation *(P1-4, P1-5)* — non exerçable sur la démo, **jouée sur la prod (cdef31, lecture seule) à 10:46**
 
 Le bouton « Optimisation » n'existe que si la fonctionnalité IA « capacité » est ouverte à la
-société (`aiStatus.can('capacity')`) — elle ne l'est pas sur la démo. Tenu par `ng build` (le seul
-à voir les gabarits) et les tests unitaires de la feuille. **À regarder en prod après déploiement,
-société cdef31.**
+société (`aiStatus.can('capacity')`) — elle ne l'est pas sur la démo, elle l'est chez cdef31.
 
-- [ ] en super-admin, bandeau sur Transports Méridien → la feuille affiche **« Société : Transports Méridien »** (plus de sélecteur) ; bandeau sur « Toutes » → message « choisissez une société dans le bandeau », bouton Analyser grisé ;
-- [ ] le **métier** affiché est celui de la société ; le changer → toast, et la valeur **tient** à la réouverture ;
-- [ ] **Analyser** (IA) → pastille en haut ; « Voir » → la feuille rouvre **avec** le résultat ;
-- [ ] **recharger la page (F5)** → rouvrir la feuille → **le résultat est toujours là**, avec « Résultat conservé de l'analyse du … — rien n'a été repayé » ;
-- [ ] **Appliquer** une proposition → le bandeau « conservé » disparaît, la fiche véhicule porte les places ;
-- [ ] `/admin/ai-usage` : **une seule** analyse de capacité facturée, pas deux.
+- [x] bandeau sur cdef31 → la feuille affiche **« Société : CDEF31 »**, métier « Transport d'enfants » (celui de la société) ;
+- [ ] bandeau sur « Toutes » → message « choisissez une société » *(non rejoué)* ;
+- [ ] changer le métier *(non fait : réglage réel du client)* ;
+- [x] **Analyser** → `POST /api/ai/capacity/suggest` 201 en ~40 s, pastille « RÉSULTATS PRÊTS — 26 véhicule(s) dont la capacité peut être complétée » ;
+- [x] **recharger la page (F5)** → rouvrir la feuille → **le résultat est toujours là** : « Résultat conservé de l'analyse du 28/09 à 10:46 — rien n'a été repayé », **aucun nouvel appel réseau** ;
+- [ ] **Appliquer** *(non fait : écrirait les capacités des véhicules du client)* ;
+- [x] `ai_usage_logs` : **une seule** ligne `capacity` (10:46:40, 0,063 $), pas deux.
 
 ## 6. Les missions *(P2-1, P2-2)* — **non exerçable sur la démo** (aucun compte dépôt)
 
@@ -134,7 +133,7 @@ construction.
 - [x] **F11** — « Courroie (recette) » datée du 27/09 jusqu'au 27/09 → « En cours » → **« À clore »** : « TEST-003-XX Courroie — fin prévue le dim. 27 sept., dépassée » → **Non — nouvelle date de fin** 30/09 → `PATCH` 200, toast « Fin repoussée jusqu'au mer. 30 sept. », la ligne sort, la grille s'étale du 27 au 30 ;
 - [x] **F11** — incident « Pneu crevé (recette) » daté du 27/09 sans fin → « en cours depuis le dim. 27 sept., sans date de fin » → **Oui, réglé** → `PATCH` 200, « Incidents ouverts » 1 → 0, la section disparaît ;
 - [x] **F9** — Réserver : 29 puis 30 dans le sélecteur → `POST /reservations/request` 201, pilule sur les deux jours, carte « mar. 29 sept. 10:00 → mer. 30 sept. 11:00 » (la ligne « du … au » en double a été retirée le même matin, `34694997`) ;
-- [~] **F3** — non observable sur Client test (véhicules fictifs : aucune activité, aucun usage prévu) ; tenu par le code (même filtre que le panneau du jour) ;
+- [x] **F3** — non observable sur Client test (véhicules fictifs) ; **vu sur cdef31 à 10:44, en lecture seule** : filtre sur DZ-034-CA (au garage depuis août) → tous les badges ● / ~ disparaissent ; « Tous les véhicules » → ils reviennent sur chaque cellule ;
 - [x] **F13** — lien public → 11 places, Albi, 01/10 09:00 → 12:00, contact = propriétaire → `submit` 201, deux lignes REQUESTED (`bookingRef 29d341ae4b14b4de`), « Demandes » : **une** carte « 2 véhicules — TEST-007-XX TEST-001-XX · un seul demandeur, 2 véhicules pré-retenus », **Refuser les 2** → deux `cancel` 201, file vide ;
 - [x] **F16** — `reservation_refused` **DELIVERED** au propriétaire à 09:37:11 — 🔴 **deux fois** (un courriel par véhicule du groupe). Corrigé et redéployé le même matin (`34694997`) : le notifier n'écrit qu'à la dernière décision du groupe, et la confirmation nomme tous les véhicules retenus ;
 - [x] `/admin/background-tasks` et le journal de l'API : 0 erreur après déploiement ;
