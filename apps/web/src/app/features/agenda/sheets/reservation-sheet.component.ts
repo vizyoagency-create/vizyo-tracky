@@ -268,8 +268,10 @@ function toLocalInput(d: Date): string {
               </div>
             }
 
-            @if (reqError()) { <div class="rs-alert rs-alert--err"><lucide-icon [img]="AlertIcon" [size]="13"></lucide-icon> {{ reqError() }}</div> }
           </div>
+          <!-- L'erreur vit dans le PIED, hors du corps défilant : au fond d'une feuille longue, un refus
+               (« impossible de réserver dans le passé ») restait invisible — recette du 28/09 au soir. -->
+          @if (reqError()) { <div class="rs-alert rs-alert--err rs-alert--foot"><lucide-icon [img]="AlertIcon" [size]="13"></lucide-icon> {{ reqError() }}</div> }
           <div class="rs-foot">
             @if (mode() === 'edit') {
               <button type="button" class="rs-btn rs-btn--no" [disabled]="submitting()" (click)="cancelResa()">Annuler la réservation</button>
@@ -381,6 +383,7 @@ function toLocalInput(d: Date): string {
     .rs-badge { font-size: 11px; font-weight: 800; padding: 0 6px; border-radius: 999px; background: rgba(56,189,248,.18); color: #38BDF8; }
     .rs-body { display: flex; flex-direction: column; gap: 10px; overflow-y: auto; max-height: 58vh; max-height: 58dvh; padding: 2px; }
     .rs-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .rs-alert--foot { margin-top: 8px; }
     .rs-f { display: flex; flex-direction: column; gap: 4px; font-size: 11.5px; color: var(--fg-tertiary); }
     .rs-f > span:first-child, .rs-lbl-row { font-weight: 600; text-transform: uppercase; letter-spacing: .03em; }
     .rs-lbl-row { display: flex; align-items: center; justify-content: space-between; }

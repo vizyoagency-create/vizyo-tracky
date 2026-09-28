@@ -200,6 +200,9 @@ export function grouperParVehicule(items: AgendaAgentProposalDto[]): GroupePropo
             <span class="ia-n" [class.ia-n--ok]="proposals().length === 0">@if (proposals().length === 0) { <lucide-icon [img]="CheckIcon" [size]="13"></lucide-icon> } @else { 2 }</span>
             <h3 class="ia-step-t">Valider les propositions de l'agent</h3>
             @if (proposals().length > 0) { <span class="ia-badge ia-badge--n">{{ proposals().length }}</span> }
+            @if (groupes().length > 1) {
+              <button type="button" class="ia-link ia-link--right" (click)="toutReplierOuDeplier()">{{ toutReplie() ? 'Tout déplier' : 'Tout replier' }}</button>
+            }
           </div>
           <dl class="ia-lit">
             <div><dt>Ce que ça lit</dt><dd>les trajets des dernières semaines, la nuit ({{ heureNuit() }}).</dd></div>
@@ -355,6 +358,7 @@ export function grouperParVehicule(items: AgendaAgentProposalDto[]): GroupePropo
     .ia-btn--primary:hover:not(:disabled) { background: var(--tracky-dark); color: var(--accent-ink); }
     .ia-btn:disabled { opacity: .55; cursor: not-allowed; }
     .ia-link { font-size: 12px; font-weight: 600; color: var(--tracky-light); }
+    .ia-link--right { margin-left: auto; }
     .ia-selbar { display: flex; align-items: center; justify-content: space-between; }
     .ia-selc { font-size: 12px; color: var(--fg-tertiary); }
     .ia-cards { display: grid; grid-template-columns: 1fr; gap: 8px; }
@@ -515,7 +519,18 @@ export class AgendaIaViewComponent {
 
   // ─── Étape 2 ───
   protected readonly groupes = computed(() => grouperParVehicule(this.proposals()));
-  protected readonly replies = signal<Set<string>>(new Set());
+  /**
+   * Véhicules DÉPLIÉS (le premier seulement à l'ouverture) : « on peut rapidement se perdre lorsque
+   * plusieurs positions concernent le même véhicule » — 418 propositions sur 20 véhicules se lisent
+   * comme 20 lignes, et chaque véhicule s'ouvre d'un geste. `replies()` rend l'ensemble des repliés.
+   */
+  private readonly deplies = signal<Set<string> | null>(null);
+  protected readonly replies = computed<Set<string>>(() => {
+    const groupes = this.groupes();
+    const ouverts = this.deplies() ?? new Set(groupes.slice(0, 1).map((g) => g.vehicleId));
+    return new Set(groupes.filter((g) => !ouverts.has(g.vehicleId)).map((g) => g.vehicleId));
+  });
+  protected readonly toutReplie = computed(() => this.groupes().length > 0 && this.replies().size === this.groupes().length);
   protected readonly busy = signal<Set<string>>(new Set());
   protected readonly busyGroupe = signal<string | null>(null);
   protected readonly dernierPassage = signal<AgendaAgentRunDto | null>(null);
@@ -680,9 +695,13 @@ export class AgendaIaViewComponent {
   // ─── Étape 2 : propositions ───
 
   protected basculer(vehicleId: string): void {
-    const next = new Set(this.replies());
-    if (next.has(vehicleId)) next.delete(vehicleId); else next.add(vehicleId);
-    this.replies.set(next);
+    const ouverts = new Set(this.deplies() ?? this.groupes().slice(0, 1).map((g) => g.vehicleId));
+    if (ouverts.has(vehicleId)) ouverts.delete(vehicleId); else ouverts.add(vehicleId);
+    this.deplies.set(ouverts);
+  }
+
+  protected toutReplierOuDeplier(): void {
+    this.deplies.set(this.toutReplie() ? new Set(this.groupes().map((g) => g.vehicleId)) : new Set());
   }
 
   private marquer(id: string, occupe: boolean): void {
