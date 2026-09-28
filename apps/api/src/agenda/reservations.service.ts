@@ -142,6 +142,31 @@ export class ReservationsService {
     return typeof ref === 'string' && ref ? ref : null;
   }
 
+  /**
+   * HORS SERVICE — le garde qui manquait sur le chemin EXPLICITE (2026-09-28, « check de tout »).
+   *
+   * `computeSuggestions` écarte les hors-service du vivier et `isVehicleFree` les refuse à l'agent ;
+   * mais un humain qui CHOISIT le véhicule (feuille de réservation, validation avec réaffectation,
+   * édition) passait à côté des deux : une voiture déclarée accidentée par un super-admin pouvait
+   * être réservée fermement, et le conducteur découvrait l'accident à la remise des clés.
+   * Le motif est DÉCLARÉ (pas déduit) : aucun délai, aucun doute — on refuse, en le nommant.
+   * Jamais en rétroactif : consigner une sortie passée ne promet rien.
+   */
+  private async assertEnService(vehicleId: string): Promise<void> {
+    const v = await this.prisma.vehicle.findUnique({
+      where: { id: vehicleId },
+      select: { outOfServiceReason: true, plate: true },
+    });
+    if (!v?.outOfServiceReason) return;
+    const motif =
+      v.outOfServiceReason === 'ACCIDENT' ? 'accidenté'
+        : v.outOfServiceReason === 'TRACKER_UNPLUGGED' ? 'boîtier débranché'
+          : 'immobilisé durablement';
+    throw new ConflictException(
+      `${v.plate ?? 'Ce véhicule'} est déclaré hors service (${motif}) : il ne peut pas être réservé tant qu'il n'est pas remis en service.`,
+    );
+  }
+
   private async resolveScope(
     user: AuthUser,
     requestedFleetId?: string,
@@ -555,6 +580,9 @@ export class ReservationsService {
     // Rétroactif : le trajet réel (et une immobilisation passée) sont ATTENDUS — ils prouvent que la
     // réservation a eu lieu ; on ne bloque donc pas dessus. Pour une réservation à venir, on refuse.
     if (!retro) {
+      // Déclaré hors service par un super-admin : on ne promet pas une voiture qui n'existe plus.
+      // (La demande OUVERTE passe par le vivier, qui les écarte déjà ; ici c'est le choix explicite.)
+      if (dto.vehicleId) await this.assertEnService(vehicleId);
       if (await this.hasTripOverlap(vehicleId, start, end)) {
         throw new ConflictException('Ce véhicule roule déjà sur ce créneau.');
       }
@@ -643,6 +671,9 @@ export class ReservationsService {
     }
 
     if (!resa.endAt) throw new BadRequestException('Réservation sans créneau de fin.');
+    // Hors service : déclaré depuis le dépôt de la demande, ou véhicule de réaffectation choisi à la
+    // main — dans les deux cas, valider engagerait une voiture qui ne roule pas.
+    await this.assertEnService(vehicleId);
     // Pré-check (409 lisible) ; la contrainte EXCLUDE tranche la course concurrente.
     const conflicts = await this.findOverlaps(vehicleId, resa.startAt, resa.endAt, id);
     if (conflicts.length > 0) {
@@ -809,6 +840,8 @@ export class ReservationsService {
       targetVehicleId = dto.vehicleId!;
       data.vehicleId = targetVehicleId;
       data.fleetId = newFleetId;
+      // Réaffecter vers un véhicule hors service serait le même défaut que le réserver.
+      if (!isRetro) await this.assertEnService(targetVehicleId);
     }
 
     // Réservation bloquante + (créneau OU véhicule change) → re-vérifier les conflits sur la CIBLE.
