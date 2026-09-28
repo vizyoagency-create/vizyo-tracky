@@ -140,7 +140,8 @@ const FENETRES = [
                     <li>
                       <span class="ro-plate">{{ a.plate || '—' }}</span>
                       <span class="ro-when">{{ a.startAt | date:'EEE d MMM · HH:mm' }}</span>
-                      @if (a.source === 'SYSTEM') { <span class="ro-tag">agent</span> }
+                      @if (a.origine === 'agent') { <span class="ro-tag">agent</span> }
+                      @else if (a.origine === 'public') { <span class="ro-tag ro-tag--public">lien public</span> }
                     </li>
                   }
                   @if (r.concernees > r.apercu.length) {
@@ -206,6 +207,9 @@ const FENETRES = [
     .ro-plate { font-weight: 700; color: var(--fg-primary); }
     .ro-when { color: var(--fg-tertiary); text-transform: capitalize; }
     .ro-tag { font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 999px; color: var(--texte-violet); border: 1px dashed color-mix(in srgb, var(--violet) 45%, transparent); }
+    /* Une demande déposée via le lien public n'est pas « de l'agent » : elle ne tombe dans le lot
+       qu'avec « Toutes », et elle se distingue à l'œil (recette du 28/09). */
+    .ro-tag--public { color: var(--fg-secondary); border-style: solid; border-color: var(--border-strong); }
     .ro-reste { color: var(--fg-tertiary); font-style: italic; }
     .ro-refus { display: flex; flex-direction: column; gap: 3px; padding: 10px 11px; border-radius: 10px;
                 background: color-mix(in srgb, var(--danger) 9%, transparent); }

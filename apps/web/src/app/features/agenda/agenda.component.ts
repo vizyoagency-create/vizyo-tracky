@@ -1777,19 +1777,20 @@ export class AgendaComponent implements OnInit {
    *
    * La règle d'appartenance est `estUneEcheance` — la MÊME que celle des compteurs « En retard »
    * et « À venir » du serveur. Avant (24/09), la liste prenait aussi les IN_PROGRESS que le
-   * compteur ne comptait pas : « 1 en retard » au-dessus de trois lignes rouges.
+   * compteur ne comptait pas : « 1 en retard » au-dessus de trois lignes rouges. Depuis le 28/09,
+   * seuls les PLANNED sont des échéances : un incident OUVERT n'est pas « en retard », il est porté
+   * par le compteur « Incidents ouverts », la pilule et le panneau du jour.
    */
   protected readonly upcomingEvents = computed(() => {
     const type = this.selectedType();
     const vid = this.selectedVehicleId();
     const gids = this.groupVehicleIdSet();
-    const now = Date.now();
     return this.echeances()
       .filter((ev) => {
         if (vid && ev.vehicleId !== vid) return false;
         if (gids && !gids.has(ev.vehicleId)) return false;
         if (type && ev.type !== type) return false;
-        return estUneEcheance(ev, now);
+        return estUneEcheance(ev);
       })
       .sort((a, b) => new Date(a.startAt).getTime() - new Date(b.startAt).getTime())
       .slice(0, 25);
@@ -2122,9 +2123,17 @@ export class AgendaComponent implements OnInit {
   }
 
   /** Motif d'une réservation (stocké en metadata) pour l'afficher dans la carte du jour. */
+  /**
+   * Motif d'une réservation — sauf quand il EST le titre. Depuis le 24/09 le motif saisi devient
+   * le titre de la réservation (`reservations.service.ts`), et la carte du jour le montrait donc
+   * deux fois de suite (recette du 28/09 : « Ramassage secteur nord » en titre, puis en ligne de
+   * détail). Un titre explicite différent du motif garde les deux lignes.
+   */
   protected reservationReason(ev: VehicleEventDto): string | null {
     const reason = (ev.metadata as { reason?: unknown } | null)?.reason;
-    return typeof reason === 'string' && reason.trim() ? reason.trim() : null;
+    if (typeof reason !== 'string' || !reason.trim()) return null;
+    const motif = reason.trim();
+    return motif === ev.title.trim() ? null : motif;
   }
 
   /** Met à jour le statut d'un événement (En cours / Terminé) — optimiste. */

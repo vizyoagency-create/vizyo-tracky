@@ -55,6 +55,24 @@ const UNDERUTILIZED_RATIO = 0.12;
 const MAX_REORGANISATION = 500;
 
 /**
+ * D'où vient une réservation — ce que « Réorganiser » entend par « posée par l'agent ».
+ *
+ * ⚠️ `source === 'SYSTEM'` ne suffisait pas : le flux PUBLIC (`systemRequest`) écrit lui aussi
+ * SYSTEM, si bien qu'une demande déposée par un conducteur via le lien public, puis validée par le
+ * standard, passait pour une réservation de l'agent — et « Posées par l'agent → Tout annuler »
+ * l'aurait annulée avec les autres. Mesuré le 28/09 sur la démo : « GD-057-AG · agent » sur une
+ * demande publique. Chez un client où l'agent ne réserve rien (autonomie « suggestions »), les
+ * SYSTEM sont même EXCLUSIVEMENT des demandes publiques et des propositions appliquées à la main.
+ *
+ * La demande publique se reconnaît à `metadata.public` (posé par `reservation-booking.service`).
+ */
+function origineReservation(e: { source: string; metadata?: unknown }): 'agent' | 'public' | 'manuelle' {
+  if (e.source !== 'SYSTEM') return 'manuelle';
+  const meta = e.metadata as { public?: unknown } | null | undefined;
+  return meta?.public === true ? 'public' : 'agent';
+}
+
+/**
  * Sprint 8 (Palier B) — Réservations de véhicules sur le modèle d'événement S7
  * (type=RESERVATION). Flux Demande → validation, scoping tenant STRICT (anti-IDOR,
  * chaîne S5), conflits gérés (pré-check 409 + contrainte EXCLUDE race-proof). La
@@ -847,8 +865,9 @@ export class ReservationsService {
     const candidates = toutes.filter((e) => {
       if (new Date(e.startAt).getTime() < debut.getTime()) return false; // chevauchant mais déjà commencée
       if (e.status === VehicleEventStatus.DONE || e.status === VehicleEventStatus.CANCELLED) return false;
-      if (origine === 'auto') return e.source === 'SYSTEM';
-      if (origine === 'manuelle') return e.source !== 'SYSTEM';
+      // « auto » = l'agent seul ; une demande publique (SYSTEM elle aussi) n'en est pas.
+      if (origine === 'auto') return origineReservation(e) === 'agent';
+      if (origine === 'manuelle') return origineReservation(e) !== 'agent';
       return true;
     });
 
@@ -859,6 +878,7 @@ export class ReservationsService {
       startAt: e.startAt,
       endAt: e.endAt,
       source: e.source,
+      origine: origineReservation(e),
     }));
     const refusees: ReorganisationRefusDto[] = [];
 

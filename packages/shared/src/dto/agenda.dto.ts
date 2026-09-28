@@ -192,8 +192,19 @@ export interface ReorganisationResultDto {
   /** Nombre effectivement repris (0 en simulation). */
   appliquees: number;
   refusees: ReorganisationRefusDto[];
-  /** Échantillon lisible pour l'écran (les premières du lot). */
-  apercu: { plate: string | null; startAt: string; endAt: string | null; source: string }[];
+  /**
+   * Échantillon lisible pour l'écran (les premières du lot). `origine` dit d'où vient chacune :
+   * `agent` (posée par l'agent ou en appliquant une de ses propositions), `public` (demande
+   * déposée via le lien public — `source` vaut aussi SYSTEM, d'où le champ), `manuelle` (saisie
+   * par une personne depuis l'agenda).
+   */
+  apercu: {
+    plate: string | null;
+    startAt: string;
+    endAt: string | null;
+    source: string;
+    origine: 'agent' | 'public' | 'manuelle';
+  }[];
   /** Vrai si le périmètre dépasse le plafond de sûreté et a été tronqué. */
   plafonne: boolean;
 }
@@ -204,14 +215,16 @@ export interface ReorganisationResultDto {
  * ⚠️ Contrat PARTAGÉ avec la liste « À venir & en retard » (`estUneEcheance`, agenda.utils.ts) :
  * ce que `overdue` + `upcoming` comptent est exactement ce que la liste affiche, sur le même
  * périmètre (société, groupe ou véhicule). Le 24/09, le serveur ne comptait que les PLANNED
- * alors que ce commentaire disait déjà « PLANNED/OPEN » — le contrat était juste, le code non.
+ * alors que ce commentaire disait « PLANNED/OPEN ». Le 28/09, la recette sur la démo a tranché
+ * dans l'autre sens : c'était le CONTRAT qui avait tort — un incident déclaré à l'instant (OPEN)
+ * passait « en retard » dans la seconde. Un OPEN est ouvert, il vit dans `openIncidents`.
  */
 export interface AgendaSummaryDto {
-  /** PLANNED ou OPEN dont l'échéance (`startAt`) est passée. */
+  /** PLANNED dont l'échéance (`startAt`) est passée — ce qui devait être fait et ne l'est pas. */
   overdue: number;
   /** PLANNED dont l'échéance tombe dans les 30 prochains jours. */
   upcoming: number;
-  /** Incidents OPEN/IN_PROGRESS — les « en cours » vivent ici, pas dans `overdue`. */
+  /** Incidents OPEN/IN_PROGRESS — les « ouverts » et « en cours » vivent ici, jamais dans `overdue`. */
   openIncidents: number;
 }
 

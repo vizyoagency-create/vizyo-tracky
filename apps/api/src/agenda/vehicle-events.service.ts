@@ -163,9 +163,14 @@ export class VehicleEventsService {
    * ── Statuts (audit du 24/09, « compteur ≠ liste ») ───────────────────────────────────────
    * `overdue` comptait les seuls `PLANNED` alors que le contrat du DTO dit « PLANNED/OPEN dont
    * l'échéance est passée » et que la liste « À venir & en retard » affichait aussi les OPEN.
-   * Le compteur suit maintenant son contrat ; la liste, côté web, applique la MÊME règle
-   * (`estUneEcheance`, `agenda.utils.ts`) — un compteur et la liste sous lui doivent parler
-   * du même ensemble, sinon le lecteur ne sait plus lequel croire.
+   * La liste, côté web, applique la MÊME règle (`estUneEcheance`, `agenda.utils.ts`) — un
+   * compteur et la liste sous lui doivent parler du même ensemble, sinon le lecteur ne sait plus
+   * lequel croire.
+   *
+   * Recette du 28/09 (démo) : compter les OPEN faisait passer un incident déclaré à l'instant
+   * (`reportIncident` : OPEN, `startAt` = maintenant) pour « en retard » dans la seconde. Un OPEN
+   * est OUVERT — il vit dans `openIncidents`, comme un IN_PROGRESS. Seul un PLANNED a une échéance
+   * qu'on peut dépasser : c'est le contrat du DTO, corrigé le même jour.
    */
   async summary(
     user: AuthUser,
@@ -184,7 +189,7 @@ export class VehicleEventsService {
       this.prisma.vehicleEvent.count({
         where: {
           ...where,
-          status: { in: [VehicleEventStatus.PLANNED, VehicleEventStatus.OPEN] },
+          status: VehicleEventStatus.PLANNED,
           startAt: { lt: now },
         },
       }),

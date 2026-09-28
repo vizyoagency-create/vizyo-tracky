@@ -829,6 +829,33 @@ describe('ReservationsService.reorganiser — geste de masse', () => {
     expect(r.concernees).toBe(2);
   });
 
+  /**
+   * Recette du 28/09 (démo) : une demande déposée via le LIEN PUBLIC est écrite `source: SYSTEM`
+   * (`systemRequest`), exactement comme une réservation de l'agent — et « Posées par l'agent →
+   * Tout annuler » l'aurait annulée. Elle se reconnaît à `metadata.public`.
+   */
+  it('⚠️ une demande PUBLIQUE (SYSTEM + metadata.public) n’est PAS « posée par l’agent » : `auto` l’épargne, l’aperçu la nomme', async () => {
+    const { svc } = monter([
+      resa(),
+      resa({ id: 'e2', metadata: { public: true, bookingRef: 'abc123', requester: 'Client test' } }),
+      resa({ id: 'e3', source: 'MANUAL' }),
+    ]);
+    const auto = await svc.reorganiser({ role: 'FLEET_ADMIN', fleetId: 'f1' } as never, {
+      ...fenetre(),
+      action: 'annuler',
+    });
+    expect(auto.concernees).toBe(1);
+    expect(auto.apercu.map((a) => a.origine)).toEqual(['agent']);
+
+    const toutes = await svc.reorganiser({ role: 'FLEET_ADMIN', fleetId: 'f1' } as never, {
+      ...fenetre(),
+      action: 'annuler',
+      origine: 'toutes',
+    });
+    expect(toutes.concernees).toBe(3);
+    expect(toutes.apercu.map((a) => a.origine)).toEqual(['agent', 'public', 'manuelle']);
+  });
+
   it('⚠️ n’emporte JAMAIS une réservation terminée ou déjà annulée', async () => {
     const { svc } = monter([resa({ status: 'DONE' }), resa({ id: 'e2', status: 'CANCELLED' })]);
     const r = await svc.reorganiser({ role: 'FLEET_ADMIN', fleetId: 'f1' } as never, {

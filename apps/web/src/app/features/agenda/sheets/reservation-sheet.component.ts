@@ -676,7 +676,13 @@ export class ReservationSheetComponent {
   private async loadQueue(): Promise<void> {
     this.queueLoading.set(true);
     try {
-      this.pending.set(await firstValueFrom(this.api.listReservations({ status: 'REQUESTED' })));
+      // Le filtre société du bandeau (SUPER_ADMIN) : sans lui, la file mélangeait les demandes de
+      // toutes les sociétés — « Demander » le portait déjà, « À valider » l'avait oublié (28/09).
+      this.pending.set(
+        await firstValueFrom(
+          this.api.listReservations({ status: 'REQUESTED', fleetId: this.fleetFilter.selectedFleetId() ?? undefined }),
+        ),
+      );
     } catch (err) {
       swallow('reservation-sheet:loadQueue', err);
       this.pending.set([]);
