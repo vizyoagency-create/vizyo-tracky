@@ -1,72 +1,98 @@
 import {
   ChangeDetectionStrategy,
   Component,
-  ElementRef,
-  HostListener,
   computed,
   effect,
-  inject,
   input,
   output,
   signal,
   untracked,
-  viewChild,
 } from '@angular/core';
-import { LucideAngularModule, Calendar, ChevronLeft, ChevronRight, Check } from 'lucide-angular';
+import { LucideAngularModule, CalendarDays, Clock } from 'lucide-angular';
 
 /* ── Helpers de date natifs, heure LOCALE (self-contained : un composant partagé
    ne doit pas dépendre d'une feature). ────────────────────────────────────── */
-function startOfMonthOf(d: Date): Date {
-  return new Date(d.getFullYear(), d.getMonth(), 1);
-}
-function addMonths(d: Date, n: number): Date {
-  return new Date(d.getFullYear(), d.getMonth() + n, 1);
-}
-function addDays(d: Date, n: number): Date {
-  return new Date(d.getFullYear(), d.getMonth(), d.getDate() + n);
-}
-function startOfWeekMonday(d: Date): Date {
-  return addDays(d, -((d.getDay() + 6) % 7));
-}
 /** YYYY-MM-DD en heure locale (pas d'UTC → pas de décalage d'un jour). */
 function localIso(d: Date): string {
   const p = (n: number) => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 }
-function isSameDay(a: Date, b: Date): boolean {
-  return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+function dateDe(iso: string): Date {
+  return new Date(`${iso}T00:00:00`);
 }
-/** 42 cellules (6 semaines) à partir du lundi de la 1re semaine du mois. */
-function monthCells(monthFirst: Date): Date[] {
-  const start = startOfWeekMonday(monthFirst);
-  return Array.from({ length: 42 }, (_, i) => addDays(start, i));
+function plusJours(iso: string, n: number): string {
+  const d = dateDe(iso);
+  return localIso(new Date(d.getFullYear(), d.getMonth(), d.getDate() + n));
 }
-
-interface DayCell {
-  iso: string;
-  day: number;
-  inMonth: boolean;
-  isToday: boolean;
-  inRange: boolean;
-  isStart: boolean;
-  isEnd: boolean;
-  disabled: boolean;
+function minutesDe(hhmm: string): number {
+  const [h, m] = hhmm.split(':').map((x) => Number(x));
+  return (Number.isFinite(h) ? h : 0) * 60 + (Number.isFinite(m) ? m : 0);
+}
+function hhmmDe(minutes: number): string {
+  const m = Math.max(0, Math.min(23 * 60 + 59, minutes));
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${p(Math.floor(m / 60))}:${p(m % 60)}`;
 }
 
 /**
- * Sélecteur de plage date + heures, aux couleurs du DS (remplace les deux
- * `datetime-local` natifs, moches et hors-thème). Un seul champ qui pilote
- * **début** et **fin** :
+ * Nombre de jours civils couverts par [debut, fin], bornes comprises (1 = une journée). Une fin
+ * avant le début, ou une borne illisible, compte pour 1 : on ne raconte jamais une durée négative.
+ */
+export function joursCivils(debutIso: string, finIso: string): number {
+  if (!debutIso || !finIso) return 1;
+  const a = dateDe(debutIso).getTime();
+  const b = dateDe(finIso).getTime();
+  if (Number.isNaN(a) || Number.isNaN(b) || b < a) return 1;
+  return Math.round((b - a) / 86_400_000) + 1;
+}
+
+/**
+ * La phrase qui résume un créneau, celle que le gestionnaire lit AVANT d'envoyer :
+ *  - même jour : « lun. 5 oct. · 09:00 → 17:00 (8 h) » ;
+ *  - plusieurs jours : « 3 jours · lun. 5 oct. 09:00 → mer. 7 oct. 17:00 ».
+ * Une durée en heures s'écrit « 1 h 30 » ; sous l'heure, « 45 min ».
+ */
+export function resumeCreneau(
+  debutIso: string,
+  finIso: string,
+  debutHeure: string,
+  finHeure: string,
+): string {
+  if (!debutIso) return 'Choisir un créneau';
+  const fmt = new Intl.DateTimeFormat('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' });
+  const jours = joursCivils(debutIso, finIso || debutIso);
+  if (jours === 1) {
+    const minutes = minutesDe(finHeure) - minutesDe(debutHeure);
+    const duree =
+      minutes <= 0
+        ? ''
+        : minutes < 60
+          ? ` (${minutes} min)`
+          : minutes % 60 === 0
+            ? ` (${minutes / 60} h)`
+            : ` (${Math.floor(minutes / 60)} h ${String(minutes % 60).padStart(2, '0')})`;
+    return `${fmt.format(dateDe(debutIso))} · ${debutHeure} → ${finHeure}${duree}`;
+  }
+  return `${jours} jours · ${fmt.format(dateDe(debutIso))} ${debutHeure} → ${fmt.format(dateDe(finIso))} ${finHeure}`;
+}
+
+/**
+ * Sélecteur de créneau COMPACT (refonte UX du 28/09, points 1 et 10 de la commande).
  *
- *  - 1 clic sur un jour → créneau sur ce jour (début = fin) ; un 2e clic sur un
- *    jour ultérieur étend en plage multi-jours. Un clic sur un jour antérieur
- *    repart de zéro.
- *  - Heures « Début → Fin » réglées juste sous le calendrier.
- *  - Panneau **en ligne** (déplié sous le champ) : jamais rogné par l'overflow
- *    du bottom-sheet, contrairement à un overlay positionné.
+ * Avant : un champ qui dépliait une grille de 42 jours — « lorsqu'on choisit plusieurs jours, cela
+ * ouvre actuellement un grand calendrier ; je veux quelque chose de beaucoup plus compact ». La plage
+ * multi-jours existait (deux clics), personne ne la trouvait (F9).
  *
- * Entrées / sorties au format `datetime-local` (`YYYY-MM-DDTHH:mm`) pour un
- * branchement direct sur les signaux existants du parent.
+ * Maintenant : **Début (date · heure) → Fin (date · heure)** sur deux champs natifs — le navigateur
+ * fournit son propre calendrier, celui que l'utilisateur connaît déjà —, quatre raccourcis pour les
+ * cas courants, et UNE ligne de lecture qui dit la durée, les jours et les heures avant d'envoyer.
+ *
+ * Règle de cohérence : la fin ne passe jamais avant le début. Si le début avance au-delà de la fin,
+ * la fin le suit (même jour) ; si, le même jour, l'heure de fin passe sous l'heure de début, elle
+ * repart une heure après.
+ *
+ * Entrées / sorties au format `datetime-local` (`YYYY-MM-DDTHH:mm`), inchangées : la feuille de
+ * réservation n'a rien eu à recâbler.
  */
 @Component({
   selector: 'app-datetime-range',
@@ -75,191 +101,101 @@ interface DayCell {
   imports: [LucideAngularModule],
   template: `
     <div class="dtr">
-      <button type="button" class="dtr-field" [class.dtr-field--open]="open()" (click)="toggle()">
-        <lucide-icon [img]="CalendarIcon" [size]="15" class="dtr-field-ic"></lucide-icon>
-        <span class="dtr-field-txt" [class.dtr-field-txt--ph]="!startDayIso()">{{ summary() }}</span>
-        <lucide-icon [img]="ChevronRightIcon" [size]="16" class="dtr-caret" [class.dtr-caret--open]="open()"></lucide-icon>
-      </button>
-
-      @if (open()) {
-        <div class="dtr-panel" #panel>
-          <div class="dtr-cal-head">
-            <button type="button" class="dtr-nav" (click)="prevMonth()" aria-label="Mois précédent"><lucide-icon [img]="ChevronLeftIcon" [size]="16"></lucide-icon></button>
-            <span class="dtr-month">{{ monthLabel() }}</span>
-            <button type="button" class="dtr-nav" (click)="nextMonth()" aria-label="Mois suivant"><lucide-icon [img]="ChevronRightIcon" [size]="16"></lucide-icon></button>
-          </div>
-
-          <div class="dtr-wd" aria-hidden="true">
-            @for (w of weekdays; track $index) { <span>{{ w }}</span> }
-          </div>
-
-          <div class="dtr-grid" role="grid">
-            @for (c of cells(); track c.iso) {
-              <button
-                type="button"
-                role="gridcell"
-                class="dtr-day"
-                [class.dtr-day--out]="!c.inMonth"
-                [class.dtr-day--today]="c.isToday"
-                [class.dtr-day--range]="c.inRange"
-                [class.dtr-day--start]="c.isStart"
-                [class.dtr-day--end]="c.isEnd"
-                [class.dtr-day--disabled]="c.disabled"
-                [disabled]="c.disabled"
-                [attr.aria-label]="c.iso"
-                (click)="pickDay(c.iso)">
-                <span>{{ c.day }}</span>
-              </button>
-            }
-          </div>
-
-          <div class="dtr-times">
-            <label class="dtr-time"><span>Début</span><input type="time" [value]="startTime()" (input)="setStartTime($any($event.target).value)"></label>
-            <span class="dtr-arrow" aria-hidden="true">→</span>
-            <label class="dtr-time"><span>Fin</span><input type="time" [value]="endTime()" (input)="setEndTime($any($event.target).value)"></label>
-          </div>
-
-          @if (invalid()) { <p class="dtr-warn">La fin doit être après le début.</p> }
-
-          <div class="dtr-foot">
-            <button type="button" class="dtr-today" (click)="today()">Aujourd'hui</button>
-            <button type="button" class="dtr-done" (click)="open.set(false)"><lucide-icon [img]="CheckIcon" [size]="14"></lucide-icon> Terminé</button>
+      <div class="dtr-row">
+        <div class="dtr-f">
+          <span class="dtr-lbl"><lucide-icon [img]="CalendarIcon" [size]="12"></lucide-icon> Début</span>
+          <div class="dtr-pair">
+            <input type="date" class="dtr-in dtr-in--date" [value]="startDayIso()" [attr.min]="minDay() || null"
+                   aria-label="Date de début" (input)="setStartDay($any($event.target).value)">
+            <input type="time" class="dtr-in dtr-in--time" [value]="startTime()"
+                   aria-label="Heure de début" (input)="setStartTime($any($event.target).value)">
           </div>
         </div>
-      }
+        <span class="dtr-arrow" aria-hidden="true">→</span>
+        <div class="dtr-f">
+          <span class="dtr-lbl"><lucide-icon [img]="ClockIcon" [size]="12"></lucide-icon> Fin</span>
+          <div class="dtr-pair">
+            <input type="date" class="dtr-in dtr-in--date" [value]="endDayIso()" [attr.min]="startDayIso() || minDay() || null"
+                   aria-label="Date de fin" (input)="setEndDay($any($event.target).value)">
+            <input type="time" class="dtr-in dtr-in--time" [value]="endTime()"
+                   aria-label="Heure de fin" (input)="setEndTime($any($event.target).value)">
+          </div>
+        </div>
+      </div>
+
+      <!-- Raccourcis : les cas qui reviennent chaque jour dans une flotte (une demi-journée, une
+           journée, prolonger d'un jour ou d'une semaine). Ils RÈGLENT les champs, ils ne les
+           remplacent pas : on peut toujours corriger à la main. -->
+      <div class="dtr-chips" role="group" aria-label="Raccourcis de créneau">
+        <button type="button" class="dtr-chip" [class.dtr-chip--on]="jours() === 1" (click)="memeJour()">Même jour</button>
+        <button type="button" class="dtr-chip" (click)="prolonger(1)">+1 jour</button>
+        <button type="button" class="dtr-chip" (click)="prolonger(7)">+1 semaine</button>
+        <button type="button" class="dtr-chip" (click)="heures('08:00', '12:00')">Matin</button>
+        <button type="button" class="dtr-chip" (click)="heures('13:00', '17:00')">Après-midi</button>
+        <button type="button" class="dtr-chip" (click)="heures('08:00', '18:00')">Journée</button>
+      </div>
+
+      <p class="dtr-sum" [class.dtr-sum--warn]="invalid()" aria-live="polite">
+        @if (invalid()) { La fin doit être après le début. } @else { {{ summary() }} }
+      </p>
     </div>
   `,
   styles: [`
     :host { display: block; }
-    .dtr { position: relative; }
-
-    /* Champ-déclencheur : ressemble à un input, résume le créneau choisi. */
-    .dtr-field {
-      width: 100%; display: flex; align-items: center; gap: 9px;
-      padding: 10px 11px; border-radius: 10px;
+    .dtr { display: flex; flex-direction: column; gap: 8px; }
+    .dtr-row { display: flex; align-items: flex-end; gap: 8px; }
+    .dtr-f { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+    .dtr-lbl { display: inline-flex; align-items: center; gap: 4px; font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--fg-tertiary); }
+    .dtr-lbl lucide-icon { color: var(--tracky-light); }
+    .dtr-pair { display: grid; grid-template-columns: minmax(0, 1fr) minmax(88px, auto); gap: 6px; }
+    .dtr-in {
+      width: 100%; min-height: 40px; padding: 8px 9px; border-radius: 9px;
       background: var(--bg-secondary); border: 1px solid var(--border-strong);
-      color: var(--fg-primary); font-size: 15px; cursor: pointer; text-align: left;
+      color: var(--fg-primary); font-size: 14px; font-variant-numeric: tabular-nums;
       transition: border-color .15s, box-shadow .15s;
     }
-    .dtr-field:hover { border-color: var(--tracky-light); }
-    .dtr-field--open { border-color: var(--tracky-light); box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-tracky-light) 14%, transparent); }
-    .dtr-field-ic { color: var(--tracky-light); flex-shrink: 0; }
-    .dtr-field-txt { flex: 1; min-width: 0; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .dtr-field-txt--ph { color: var(--fg-tertiary); font-weight: 500; }
-    .dtr-caret { color: var(--fg-tertiary); flex-shrink: 0; transition: transform .2s; }
-    .dtr-caret--open { transform: rotate(90deg); }
-
-    /* Panneau déplié en ligne (pas d'overlay → jamais rogné par le sheet). */
-    .dtr-panel {
-      margin-top: 8px; padding: 12px;
-      max-width: 360px;
-      background: var(--bg-secondary); border: 1px solid var(--border-strong);
-      border-radius: 14px;
-      box-shadow: 0 12px 32px rgba(0,0,0,.18);
-      animation: dtr-in .14s ease;
+    .dtr-in:focus { outline: none; border-color: var(--tracky-light); box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-tracky-light) 14%, transparent); }
+    .dtr-arrow { padding-bottom: 11px; color: var(--fg-tertiary); font-size: 15px; font-weight: 700; flex-shrink: 0; }
+    .dtr-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+    .dtr-chip {
+      padding: 5px 10px; border-radius: 999px; font-size: 11.5px; font-weight: 700;
+      background: var(--bg-tertiary); border: 1px solid var(--border-subtle); color: var(--fg-secondary);
+      cursor: pointer; transition: all .12s;
     }
-    @keyframes dtr-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+    .dtr-chip:hover { color: var(--fg-primary); border-color: var(--border-strong); }
+    .dtr-chip--on { color: var(--texte-succes); border-color: color-mix(in srgb, var(--tracky-light) 45%, transparent); background: color-mix(in srgb, var(--tracky-light) 10%, transparent); }
+    /* La ligne de lecture : en gras, c'est elle qu'on vérifie avant d'envoyer. */
+    .dtr-sum { margin: 0; font-size: 13px; font-weight: 700; color: var(--fg-primary); text-transform: none; letter-spacing: 0; }
+    .dtr-sum--warn { color: var(--texte-alerte); }
 
-    .dtr-cal-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
-    .dtr-month { font-size: 13px; font-weight: 700; color: var(--fg-primary); text-transform: capitalize; }
-    .dtr-nav {
-      width: 30px; height: 30px; border-radius: 8px;
-      display: inline-flex; align-items: center; justify-content: center;
-      color: var(--fg-secondary); transition: background .12s, color .12s;
+    /* Téléphone : Début et Fin l'un sous l'autre, la flèche disparaît. */
+    @media (max-width: 480px) {
+      .dtr-row { flex-direction: column; align-items: stretch; }
+      .dtr-arrow { display: none; }
     }
-    .dtr-nav:hover { background: var(--bg-tertiary); color: var(--fg-primary); }
 
-    .dtr-wd { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; margin-bottom: 4px; }
-    .dtr-wd span { text-align: center; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--fg-tertiary); }
-
-    .dtr-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px 0; }
-    .dtr-day {
-      position: relative; height: 38px; border-radius: 9px;
-      display: inline-flex; align-items: center; justify-content: center;
-      font-size: 13px; font-weight: 600; color: var(--fg-secondary);
-      cursor: pointer; transition: background .12s, color .12s;
-    }
-    .dtr-day:hover { background: var(--bg-tertiary); color: var(--fg-primary); }
-    .dtr-day--out { color: var(--fg-tertiary); opacity: .4; }
-    .dtr-day--disabled, .dtr-day--disabled:hover {
-      color: var(--fg-tertiary); opacity: .3; cursor: not-allowed;
-      background: transparent; text-decoration: line-through;
-    }
-    .dtr-day--today::after {
-      content: ''; position: absolute; bottom: 5px; left: 50%; transform: translateX(-50%);
-      width: 4px; height: 4px; border-radius: 50%; background: var(--tracky-light);
-    }
-    /* Bande de plage (jours entre début et fin). */
-    .dtr-day--range { background: color-mix(in srgb, var(--tracky-light) 15%, transparent); border-radius: 0; color: var(--fg-primary); }
-    /* Bornes de la plage : pastille pleine accent. */
-    .dtr-day--start, .dtr-day--end {
-      background: var(--tracky-light); color: var(--accent-ink); font-weight: 800;
-    }
-    .dtr-day--start { border-radius: 9px 0 0 9px; }
-    .dtr-day--end { border-radius: 0 9px 9px 0; }
-    .dtr-day--start.dtr-day--end { border-radius: 9px; }
-    .dtr-day--start::after, .dtr-day--end::after { display: none; }
-
-    /* Heures début → fin. */
-    .dtr-times { display: flex; align-items: flex-end; gap: 10px; margin-top: 14px; }
-    .dtr-time { flex: 1; display: flex; flex-direction: column; gap: 5px; font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--fg-tertiary); }
-    .dtr-time input {
-      width: 100%; padding: 9px 10px; border-radius: 9px;
-      background: var(--bg-tertiary); border: 1px solid var(--border-strong);
-      color: var(--fg-primary); font-size: 15px; font-variant-numeric: tabular-nums;
-    }
-    .dtr-time input:focus { outline: none; border-color: var(--tracky-light); }
-    .dtr-arrow { padding-bottom: 9px; color: var(--fg-tertiary); font-size: 15px; font-weight: 700; }
-
-    .dtr-warn { margin: 9px 0 0; font-size: 11.5px; font-weight: 600; color: var(--danger); }
-
-    .dtr-foot { display: flex; align-items: center; justify-content: space-between; margin-top: 12px; padding-top: 11px; border-top: 1px solid var(--border-subtle); }
-    .dtr-today { font-size: 12.5px; font-weight: 700; color: var(--tracky-light); padding: 4px 2px; }
-    .dtr-today:hover { text-decoration: underline; }
-    .dtr-done { display: inline-flex; align-items: center; gap: 5px; padding: 8px 15px; border-radius: 9px; background: var(--tracky-light); color: var(--accent-ink); font-size: 12.5px; font-weight: 800; }
-
-    /* Dark : traits renforcés (les bordures à 8 % blanc sont quasi invisibles). */
-    :host-context([data-theme='dark']) .dtr-field,
-    :host-context([data-theme='dark']) .dtr-panel,
-    :host-context([data-theme='dark']) .dtr-time input { border-color: rgba(255,255,255,.15); }
-    :host-context([data-theme='dark']) .dtr-time input { color-scheme: dark; }
-    :host-context([data-theme='dark']) .dtr-foot { border-top-color: rgba(255,255,255,.10); }
+    /* Dark : traits renforcés (les bordures à 8 % blanc sont quasi invisibles) et sélecteurs natifs sombres. */
+    :host-context([data-theme='dark']) .dtr-in { border-color: rgba(255,255,255,.15); color-scheme: dark; }
   `],
 })
 export class DateTimeRangePickerComponent {
-  private readonly host = inject(ElementRef<HTMLElement>);
-  private readonly panel = viewChild<ElementRef<HTMLElement>>('panel');
-
   /** Début / fin au format `YYYY-MM-DDTHH:mm` (datetime-local). */
   readonly start = input<string>('');
   readonly end = input<string>('');
-  /** Jour minimum sélectionnable (`YYYY-MM-DD`) — les jours antérieurs sont grisés et inactifs.
+  /** Jour minimum sélectionnable (`YYYY-MM-DD`) — les jours antérieurs sont refusés par le champ.
    *  Vide = aucune borne (ex. consignation d'une réservation déjà effectuée). */
   readonly minDay = input<string>('');
   readonly startChange = output<string>();
   readonly endChange = output<string>();
 
-  protected readonly CalendarIcon = Calendar;
-  protected readonly ChevronLeftIcon = ChevronLeft;
-  protected readonly ChevronRightIcon = ChevronRight;
-  protected readonly CheckIcon = Check;
-
-  protected readonly weekdays = ['Lu', 'Ma', 'Me', 'Je', 'Ve', 'Sa', 'Di'];
-
-  protected readonly open = signal(false);
-  protected readonly viewMonth = signal<Date>(startOfMonthOf(new Date()));
+  protected readonly CalendarIcon = CalendarDays;
+  protected readonly ClockIcon = Clock;
 
   // État interne en chaînes → égalité par valeur (pas de boucle avec les entrées).
   protected readonly startDayIso = signal(''); // YYYY-MM-DD
   protected readonly endDayIso = signal('');
   protected readonly startTime = signal('09:00'); // HH:mm
   protected readonly endTime = signal('10:00');
-  /** 'idle' = prochain clic pose le début ; 'extending' = prochain clic étend la fin. */
-  private phase: 'idle' | 'extending' = 'idle';
-
-  private readonly dayFmt = new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' });
-  private readonly dayShortFmt = new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'short' });
-  private readonly monthFmt = new Intl.DateTimeFormat('fr-FR', { month: 'long', year: 'numeric' });
 
   constructor() {
     // Synchro ENTRANTE : (ré)initialise l'état depuis les entrées (ex. reset à l'ouverture
@@ -272,60 +208,17 @@ export class DateTimeRangePickerComponent {
         const ep = this.parse(e);
         if (sp) { this.startDayIso.set(sp.day); this.startTime.set(sp.time); }
         if (ep) { this.endDayIso.set(ep.day); this.endTime.set(ep.time); }
-        if (sp) {
-          const m = startOfMonthOf(new Date(`${sp.day}T00:00:00`));
-          if (!this.sameMonth(this.viewMonth(), m)) this.viewMonth.set(m);
-        }
-        // NB : ne PAS toucher `phase` ici — la synchro se déclenche aussi après
-        // notre propre emit (aller-retour par le parent) ; la remettre à 'idle'
-        // casserait la sélection de plage en 2 clics. Reset uniquement à l'ouverture.
       });
-    });
-
-    // À l'ouverture du panneau : le faire défiler dans la vue (le sheet peut scroller).
-    effect(() => {
-      if (!this.open()) return;
-      const el = this.panel()?.nativeElement;
-      if (el) el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
     });
   }
 
-  protected readonly monthLabel = computed(() => this.monthFmt.format(this.viewMonth()));
+  /** Jours civils couverts (1 = même jour). */
+  protected readonly jours = computed(() => joursCivils(this.startDayIso(), this.endDayIso() || this.startDayIso()));
 
-  protected readonly cells = computed<DayCell[]>(() => {
-    const month = this.viewMonth();
-    const monthIdx = month.getMonth();
-    const sIso = this.startDayIso();
-    const eIso = this.endDayIso();
-    const lo = sIso && eIso ? (sIso <= eIso ? sIso : eIso) : '';
-    const hi = sIso && eIso ? (sIso <= eIso ? eIso : sIso) : '';
-    const today = new Date();
-    const min = this.minDay();
-    return monthCells(startOfMonthOf(month)).map((d) => {
-      const iso = localIso(d);
-      return {
-        iso,
-        day: d.getDate(),
-        inMonth: d.getMonth() === monthIdx,
-        isToday: isSameDay(d, today),
-        inRange: !!lo && iso >= lo && iso <= hi,
-        isStart: iso === sIso,
-        isEnd: iso === eIso,
-        disabled: !!min && iso < min,
-      };
-    });
-  });
-
-  /** Résumé affiché dans le champ. */
-  protected readonly summary = computed(() => {
-    const s = this.startDayIso();
-    const e = this.endDayIso();
-    if (!s) return 'Choisir un créneau';
-    const st = this.startTime();
-    const et = this.endTime();
-    if (s === e) return `${this.fmtLong(s)} · ${st} → ${et}`;
-    return `${this.fmtShort(s)} ${st} → ${this.fmtShort(e)} ${et}`;
-  });
+  /** Résumé affiché sous les champs. */
+  protected readonly summary = computed(() =>
+    resumeCreneau(this.startDayIso(), this.endDayIso() || this.startDayIso(), this.startTime(), this.endTime()),
+  );
 
   /** Créneau invalide (fin ≤ début) — avertit sans bloquer (le parent revalide). */
   protected readonly invalid = computed(() => {
@@ -335,51 +228,66 @@ export class DateTimeRangePickerComponent {
     return `${e}T${this.endTime()}` <= `${s}T${this.startTime()}`;
   });
 
-  protected toggle(): void {
-    const willOpen = !this.open();
-    this.open.set(willOpen);
-    if (willOpen) this.phase = 'idle'; // chaque ouverture repart sur un 1er clic « neuf »
-  }
-  protected prevMonth(): void { this.viewMonth.set(addMonths(this.viewMonth(), -1)); }
-  protected nextMonth(): void { this.viewMonth.set(addMonths(this.viewMonth(), 1)); }
-
-  protected pickDay(iso: string): void {
+  protected setStartDay(v: string): void {
+    if (!v) return;
     const min = this.minDay();
-    if (min && iso < min) return; // jour antérieur au minimum : inactif
-    if (this.phase === 'idle') {
-      this.startDayIso.set(iso);
-      this.endDayIso.set(iso);
-      this.phase = 'extending';
-    } else {
-      const s = this.startDayIso();
-      if (iso >= s) {
-        this.endDayIso.set(iso);
-        this.phase = 'idle';
-      } else {
-        this.startDayIso.set(iso);
-        this.endDayIso.set(iso);
-        this.phase = 'extending';
-      }
+    const jour = min && v < min ? min : v;
+    this.startDayIso.set(jour);
+    if (!this.endDayIso() || this.endDayIso() < jour) this.endDayIso.set(jour);
+    this.recalerFin();
+    this.emit();
+  }
+
+  protected setEndDay(v: string): void {
+    if (!v) return;
+    const s = this.startDayIso();
+    this.endDayIso.set(s && v < s ? s : v);
+    this.recalerFin();
+    this.emit();
+  }
+
+  protected setStartTime(v: string): void {
+    this.startTime.set(v || '00:00');
+    this.recalerFin();
+    this.emit();
+  }
+
+  protected setEndTime(v: string): void {
+    this.endTime.set(v || '00:00');
+    this.emit();
+  }
+
+  /** Raccourci « Même jour » : la fin revient sur le jour du début. */
+  protected memeJour(): void {
+    if (!this.startDayIso()) return;
+    this.endDayIso.set(this.startDayIso());
+    this.recalerFin();
+    this.emit();
+  }
+
+  /** Raccourcis « +1 jour » / « +1 semaine » : la fin avance de n jours (depuis la fin courante). */
+  protected prolonger(n: number): void {
+    const s = this.startDayIso();
+    if (!s) return;
+    const base = this.endDayIso() && this.endDayIso() >= s ? this.endDayIso() : s;
+    this.endDayIso.set(plusJours(base, n));
+    this.emit();
+  }
+
+  /** Raccourcis d'heures (matin, après-midi, journée) : ne touchent pas aux jours. */
+  protected heures(debut: string, fin: string): void {
+    this.startTime.set(debut);
+    this.endTime.set(fin);
+    if (!this.endDayIso() && this.startDayIso()) this.endDayIso.set(this.startDayIso());
+    this.emit();
+  }
+
+  /** Même jour et fin ≤ début : la fin repart une heure après le début (bornée à 23:59). */
+  private recalerFin(): void {
+    if (this.startDayIso() !== this.endDayIso()) return;
+    if (minutesDe(this.endTime()) <= minutesDe(this.startTime())) {
+      this.endTime.set(hhmmDe(minutesDe(this.startTime()) + 60));
     }
-    this.emit();
-  }
-
-  protected setStartTime(v: string): void { this.startTime.set(v || '00:00'); this.emit(); }
-  protected setEndTime(v: string): void { this.endTime.set(v || '00:00'); this.emit(); }
-
-  protected today(): void {
-    const iso = localIso(new Date());
-    this.startDayIso.set(iso);
-    this.endDayIso.set(iso);
-    this.phase = 'idle';
-    this.viewMonth.set(startOfMonthOf(new Date()));
-    this.emit();
-  }
-
-  @HostListener('document:click', ['$event'])
-  onDocClick(ev: MouseEvent): void {
-    if (!this.open()) return;
-    if (!this.host.nativeElement.contains(ev.target as Node)) this.open.set(false);
   }
 
   private emit(): void {
@@ -393,9 +301,4 @@ export class DateTimeRangePickerComponent {
     if (!v || v.length < 16) return null;
     return { day: v.slice(0, 10), time: v.slice(11, 16) };
   }
-  private sameMonth(a: Date, b: Date): boolean {
-    return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth();
-  }
-  private fmtLong(iso: string): string { return this.dayFmt.format(new Date(`${iso}T00:00:00`)); }
-  private fmtShort(iso: string): string { return this.dayShortFmt.format(new Date(`${iso}T00:00:00`)); }
 }

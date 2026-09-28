@@ -2544,6 +2544,28 @@ model RefroidissementAlerte {
 
 /// Palier « Coûts IA » — un enregistrement par appel Claude RÉUSSI (les échecs vont dans ErrorLog).
 /// Sert au tableau de bord super-admin : coût par requête / jour / mois / flotte / utilisateur.
+/// Refonte UX de l'agenda (2026-09-28, point 6) — UNE analyse de capacités par jour et par
+/// société, CONSERVÉE. Avant : le résultat vivait dans le navigateur (localStorage, P1-5) et
+/// l'analyse se relançait à volonté « alors que cela ne va rien changer ». Ici : la dernière
+/// analyse d'une société est en base — lisible de tout poste, appliquée véhicule par véhicule —
+/// et le serveur refuse d'en payer une nouvelle avant 24 h (un super-admin peut forcer).
+model AiCapacityAnalysis {
+  id                String    @id @default(uuid()) @db.Uuid
+  fleetId           String    @db.Uuid
+  createdAt         DateTime  @default(now())
+  createdBy         String?   @db.Uuid
+  metier            String
+  /// Les propositions telles que rendues (AiCapacityProposalDto[]).
+  proposals         Json
+  proposalsCount    Int       @default(0)
+  /// Véhicules dont la proposition a été APPLIQUÉE — l'écran les montre comme faits.
+  appliedVehicleIds String[]  @default([])
+  appliedAt         DateTime?
+
+  @@index([fleetId, createdAt])
+  @@map("ai_capacity_analyses")
+}
+
 model AiUsageLog {
   id               String   @id @default(uuid()) @db.Uuid
   createdAt        DateTime @default(now())

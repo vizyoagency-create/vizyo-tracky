@@ -13,6 +13,12 @@ function makePrisma(over: Record<string, unknown> = {}) {
     vehicle: { findMany: jest.fn().mockResolvedValue([]), update: jest.fn().mockResolvedValue({}) },
     vehicleEvent: { findMany: jest.fn().mockResolvedValue([]) },
     installationTask: { findMany: jest.fn().mockResolvedValue([]) },
+    // Analyse conservée (28/09) : aucune par défaut → la garde « une par jour » laisse passer.
+    aiCapacityAnalysis: {
+      findFirst: jest.fn().mockResolvedValue(null),
+      create: jest.fn().mockResolvedValue({ id: 'an1', createdAt: new Date('2026-09-28T12:00:00Z') }),
+      update: jest.fn().mockResolvedValue({}),
+    },
     ...over,
   } as never;
 }
@@ -584,6 +590,101 @@ describe('AiOptimizationService — Sprint 9 (copilote IA)', () => {
     // le coût IA est imputé à la flotte résolue (avant : null pour un super-admin)
     expect((aiUsage as unknown as { record: jest.Mock }).record).toHaveBeenCalledWith(
       expect.objectContaining({ action: 'placement', fleetId: 'f9' }),
+    );
+  });
+});
+
+/**
+ * ── UNE ANALYSE DE CAPACITÉS PAR JOUR ET PAR SOCIÉTÉ, CONSERVÉE (refonte UX du 28/09, point 6) ──
+ * « Les utilisateurs peuvent lancer l'analyse autant de fois qu'ils le souhaitent alors que cela ne
+ * va rien changer. » Le serveur garde le résultat et refuse d'en payer un second avant 24 h.
+ */
+describe('AiOptimizationService — analyse de capacités : une par jour, conservée', () => {
+  const unVehicule = () =>
+    makePrisma({
+      vehicle: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: 'v1', plate: 'AA', type: 'VAN', brand: 'Citroën', model: 'ë-Jumpy', seats: null, features: [] },
+        ]),
+        update: jest.fn().mockResolvedValue({}),
+      },
+    });
+  const propose = () => makeAnthropic({ proposals: [{ vehicleId: 'v1', seats: 9, features: [], confidence: 0.8, reasoning: 'ok' }] });
+
+  it('une analyse réussie est CONSERVÉE, et le résultat porte sa date', async () => {
+    const prisma = unVehicule();
+    const svc = build({ prisma, anthropic: propose() });
+    const res = await svc.suggestCapacity(makeUser(), {});
+    const create = (prisma as unknown as { aiCapacityAnalysis: { create: jest.Mock } }).aiCapacityAnalysis.create;
+    expect(create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ fleetId: 'f1', createdBy: 'u1', metier: 'CHILDREN_TRANSPORT', proposalsCount: 1 }),
+      }),
+    );
+    expect(res.analysisId).toBe('an1');
+    expect(res.analysedAt).toBe('2026-09-28T12:00:00.000Z');
+  });
+
+  it('une seconde analyse dans les 24 h est REFUSÉE (429) sans dépenser un jeton, et le message date la prochaine', async () => {
+    const prisma = unVehicule();
+    (prisma as unknown as { aiCapacityAnalysis: { findFirst: jest.Mock } }).aiCapacityAnalysis.findFirst.mockResolvedValue({
+      createdAt: new Date(Date.now() - 2 * 3_600_000),
+    });
+    const anthropic = propose();
+    const svc = build({ prisma, anthropic });
+    await expect(svc.suggestCapacity(makeUser(), {})).rejects.toMatchObject({ status: 429 });
+    await expect(svc.suggestCapacity(makeUser(), {})).rejects.toThrow(/Une analyse par jour et par société/);
+    expect((anthropic as unknown as { completeJson: jest.Mock }).completeJson).not.toHaveBeenCalled();
+  });
+
+  it('après 24 h, une nouvelle analyse passe', async () => {
+    const prisma = unVehicule();
+    (prisma as unknown as { aiCapacityAnalysis: { findFirst: jest.Mock } }).aiCapacityAnalysis.findFirst.mockResolvedValue({
+      createdAt: new Date(Date.now() - 25 * 3_600_000),
+    });
+    const svc = build({ prisma, anthropic: propose() });
+    const res = await svc.suggestCapacity(makeUser(), {});
+    expect(res.proposals).toHaveLength(1);
+  });
+
+  it('un super-admin peut FORCER (recette) ; un admin de société, non', async () => {
+    const recente = { createdAt: new Date(Date.now() - 3_600_000) };
+    const prisma = unVehicule();
+    (prisma as unknown as { aiCapacityAnalysis: { findFirst: jest.Mock } }).aiCapacityAnalysis.findFirst.mockResolvedValue(recente);
+    const svc = build({ prisma, anthropic: propose() });
+    await expect(svc.suggestCapacity(makeUser({ role: UserRole.SUPER_ADMIN, fleetId: null }), { fleetId: 'f1', force: true })).resolves.toMatchObject({ analysisId: 'an1' });
+    await expect(svc.suggestCapacity(makeUser(), { force: true })).rejects.toMatchObject({ status: 429 });
+  });
+
+  it('latestCapacity : rend la dernière analyse et quand la prochaine est possible', async () => {
+    const prisma = unVehicule();
+    const il_y_a_2h = new Date(Date.now() - 2 * 3_600_000);
+    (prisma as unknown as { aiCapacityAnalysis: { findFirst: jest.Mock } }).aiCapacityAnalysis.findFirst.mockResolvedValue({
+      id: 'an1', fleetId: 'f1', createdAt: il_y_a_2h, metier: 'CHILDREN_TRANSPORT',
+      proposals: [{ vehicleId: 'v1', plate: 'AA', model: null, seats: 9, features: [], confidence: 0.8, reasoning: 'ok' }],
+      appliedVehicleIds: ['v1'],
+    });
+    const svc = build({ prisma });
+    const res = await svc.latestCapacity(makeUser(), undefined);
+    expect(res.canRun).toBe(false);
+    expect(new Date(res.nextAllowedAt!).getTime()).toBe(il_y_a_2h.getTime() + 24 * 3_600_000);
+    expect(res.analysis).toMatchObject({ id: 'an1', appliedVehicleIds: ['v1'] });
+    expect(res.analysis!.proposals).toHaveLength(1);
+  });
+
+  it('latestCapacity : sans analyse, on peut lancer', async () => {
+    const svc = build({ prisma: unVehicule() });
+    await expect(svc.latestCapacity(makeUser(), undefined)).resolves.toMatchObject({ analysis: null, canRun: true, nextAllowedAt: null });
+  });
+
+  it('applyCapacity : note sur l’analyse conservée les véhicules appliqués', async () => {
+    const prisma = unVehicule();
+    const an = (prisma as unknown as { aiCapacityAnalysis: { findFirst: jest.Mock; update: jest.Mock } }).aiCapacityAnalysis;
+    an.findFirst.mockResolvedValue({ id: 'an1', appliedVehicleIds: ['v0'] });
+    const svc = build({ prisma });
+    await svc.applyCapacity(makeUser(), { items: [{ vehicleId: 'v1', seats: 9 }] });
+    expect(an.update).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 'an1' }, data: expect.objectContaining({ appliedVehicleIds: ['v0', 'v1'] }) }),
     );
   });
 });

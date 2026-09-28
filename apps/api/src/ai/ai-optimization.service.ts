@@ -1,12 +1,15 @@
 import {
   BadRequestException,
   ForbiddenException,
+  HttpException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
 import { Prisma, UserRole, VehicleEventStatus, VehicleEventType } from '@prisma/client';
 import type {
+  AiCapacityAnalysisDto,
   AiCapacityApplyDto,
+  AiCapacityLatestDto,
   AiCapacityInputDto,
   AiCapacityProposalDto,
   AiCapacityResultDto,
@@ -21,6 +24,9 @@ import type {
   SetFleetMetierDto,
 } from '@vizyo/tracky-shared';
 import { DORMANT_STOP_COUNTING_MS, isVehicleDormant } from '@vizyo/tracky-shared';
+
+/** Refonte UX du 28/09 (point 6) : une analyse de capacités par société et par fenêtre de 24 h. */
+const CAPACITY_WINDOW_MS = 24 * 60 * 60 * 1000;
 import type { AuthUser } from '../auth/types/auth-user';
 import { ForecastService } from '../agenda/forecast.service';
 import { ReservationsService } from '../agenda/reservations.service';
@@ -161,6 +167,67 @@ export class AiOptimizationService {
 
   // ─── Capacité 1 — enrichissement de capacité ───────────────────────────────
 
+  /**
+   * Refonte UX du 28/09 (point 6) — la dernière analyse conservée d'une société, et si une
+   * nouvelle est possible. C'est ce que l'écran Assistant IA lit à l'ouverture : le résultat
+   * d'hier reste à appliquer, et le bouton dit quand il pourra repayer.
+   */
+  async latestCapacity(user: AuthUser, fleetId?: string): Promise<AiCapacityLatestDto> {
+    const id = this.resolveFleetId(user, fleetId);
+    const last = await this.prisma.aiCapacityAnalysis.findFirst({ where: { fleetId: id }, orderBy: { createdAt: 'desc' } });
+    const next = last ? new Date(last.createdAt.getTime() + CAPACITY_WINDOW_MS) : null;
+    const canRun = !next || next.getTime() <= Date.now();
+    return {
+      analysis: last ? this.toAnalysisDto(last) : null,
+      canRun,
+      nextAllowedAt: canRun ? null : next!.toISOString(),
+      windowHours: CAPACITY_WINDOW_MS / 3_600_000,
+    };
+  }
+
+  private toAnalysisDto(row: {
+    id: string; fleetId: string; createdAt: Date; metier: string; proposals: unknown; appliedVehicleIds: string[];
+  }): AiCapacityAnalysisDto {
+    return {
+      id: row.id,
+      fleetId: row.fleetId,
+      analysedAt: row.createdAt.toISOString(),
+      metier: row.metier as FleetMetier,
+      proposals: Array.isArray(row.proposals) ? (row.proposals as AiCapacityProposalDto[]) : [],
+      appliedVehicleIds: row.appliedVehicleIds ?? [],
+    };
+  }
+
+  /** « 28/09 à 14:02 », heure de Paris — celle que lit le gestionnaire. */
+  private static heureParis(d: Date): string {
+    return d
+      .toLocaleString('fr-FR', { timeZone: 'Europe/Paris', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
+      .replace(' ', ' à ');
+  }
+
+  /**
+   * La garde « une analyse par jour et par société ». Refuse (429) tant que la dernière analyse a
+   * moins de 24 h — sauf `force` par un super-admin (recette, démonstration). Le message dit la
+   * date de la dernière, celle de la prochaine, et que le résultat conservé reste à appliquer.
+   */
+  private async assertCapacityQuota(user: AuthUser, fleetId: string, force: boolean | undefined): Promise<void> {
+    if (force && user.role === UserRole.SUPER_ADMIN) return;
+    const derniere = await this.prisma.aiCapacityAnalysis.findFirst({
+      where: { fleetId },
+      orderBy: { createdAt: 'desc' },
+      select: { createdAt: true },
+    });
+    if (!derniere) return;
+    const prochaine = new Date(derniere.createdAt.getTime() + CAPACITY_WINDOW_MS);
+    if (prochaine.getTime() <= Date.now()) return;
+    throw new HttpException(
+      `Une analyse par jour et par société : la dernière date du ${AiOptimizationService.heureParis(derniere.createdAt)}, ` +
+        `la prochaine sera possible le ${AiOptimizationService.heureParis(prochaine)}. ` +
+        'Son résultat est conservé ci-dessous et reste à appliquer.',
+      429,
+    );
+  }
+
   /** Construit le payload capacité (scopé). Réutilisé par preview + suggest. */
   private async buildCapacityPayload(
     user: AuthUser,
@@ -235,6 +302,8 @@ export class AiOptimizationService {
     if (vehicles.length === 0) return { metier, proposals: [] };
     // Interrupteur maître : IA désactivée pour la flotte → aucune proposition (l'app tourne sans IA).
     if (!(await this.aiAvail.isEnabledForFleet(fleetId, 'capacity'))) return { metier, proposals: [] };
+    // Une par jour et par société — vérifié AVANT de payer l'appel.
+    await this.assertCapacityQuota(user, fleetId, dto?.force);
 
     let ai: CapacityAiOutput;
     try {
@@ -274,7 +343,18 @@ export class AiOptimizationService {
           reasoning: typeof p.reasoning === 'string' ? p.reasoning.slice(0, 400) : '',
         };
       });
-    return { metier, proposals };
+    // Conservée : c'est elle que l'écran relit demain, d'un autre poste, ou après un rechargement.
+    const analyse = await this.prisma.aiCapacityAnalysis.create({
+      data: {
+        fleetId,
+        createdBy: user.id,
+        metier,
+        proposals: proposals as unknown as Prisma.InputJsonValue,
+        proposalsCount: proposals.length,
+      },
+      select: { id: true, createdAt: true },
+    });
+    return { metier, proposals, analysisId: analyse.id, analysedAt: analyse.createdAt.toISOString() };
   }
 
   /** Application HUMAINE des propositions acceptées → écrit les véhicules (scopé). */
@@ -283,9 +363,10 @@ export class AiOptimizationService {
     if (items.length === 0) throw new BadRequestException('Aucune capacité à appliquer.');
     if (items.length > 500) throw new BadRequestException('Trop de véhicules en une fois (max 500).');
     let updated = 0;
+    const appliquesParFlotte = new Map<string, string[]>();
     for (const it of items) {
       if (!it?.vehicleId) continue;
-      await this.events.assertVehicleAccess(user, it.vehicleId); // 403/404 si hors périmètre
+      const fleetId = await this.events.assertVehicleAccess(user, it.vehicleId); // 403/404 si hors périmètre
       const data: Prisma.VehicleUpdateInput = {};
       if (it.seats !== undefined) data.seats = cleanInt(it.seats);
       // Plus de `childSeats` (2026-09-28) : les sièges auto sont un stock de la société.
@@ -293,6 +374,20 @@ export class AiOptimizationService {
       if (Object.keys(data).length === 0) continue;
       await this.prisma.vehicle.update({ where: { id: it.vehicleId }, data });
       updated++;
+      appliquesParFlotte.set(fleetId, [...(appliquesParFlotte.get(fleetId) ?? []), it.vehicleId]);
+    }
+    // L'analyse conservée note ce qui est fait : l'écran ne repropose pas une fiche déjà écrite.
+    for (const [fleetId, ids] of appliquesParFlotte) {
+      const derniere = await this.prisma.aiCapacityAnalysis.findFirst({
+        where: { fleetId },
+        orderBy: { createdAt: 'desc' },
+        select: { id: true, appliedVehicleIds: true },
+      });
+      if (!derniere) continue;
+      await this.prisma.aiCapacityAnalysis.update({
+        where: { id: derniere.id },
+        data: { appliedVehicleIds: [...new Set([...(derniere.appliedVehicleIds ?? []), ...ids])], appliedAt: new Date() },
+      });
     }
     return { updated };
   }

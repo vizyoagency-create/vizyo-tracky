@@ -24,6 +24,10 @@ function makePrisma(over: Record<string, unknown> = {}) {
         .mockResolvedValue({ outOfServiceReason: null, tracker: { id: 't1', lastSeenAt: new Date() } }),
     },
     trip: { findMany: jest.fn().mockResolvedValue([]), findFirst: jest.fn().mockResolvedValue(null) },
+    // Groupe de réservation (28/09) : par défaut, le véhicule n'a pas de groupe et la société n'en
+    // connaît aucun — les tests qui en parlent posent les leurs.
+    vehicleGroupAssignment: { findFirst: jest.fn().mockResolvedValue(null) },
+    vehicleGroup: { findFirst: jest.fn().mockResolvedValue(null) },
     ...over,
   } as never;
 }
@@ -1249,5 +1253,233 @@ describe('ReservationsService — hors service : le choix EXPLICITE d’un véhi
     await svc.update(makeUser(), 'r1', { reason: 'autre motif' });
     expect(findUnique).not.toHaveBeenCalled();
     await expect(svc.update(makeUser(), 'r1', { vehicleId: 'v2' })).rejects.toBeInstanceOf(ConflictException);
+  });
+});
+
+/**
+ * ── GROUPE DE RÉSERVATION (refonte UX du 28/09, point 9) ──────────────────────────────────────
+ *
+ * « Groupe du véhicule ≠ groupe de la réservation. » La réservation porte celui qui UTILISE le
+ * véhicule ; par défaut celui du véhicule, modifiable ; jamais écrit sur le véhicule.
+ */
+describe('ReservationsService — le groupe qui utilise le véhicule', () => {
+  const creer = (over: Record<string, unknown> = {}) => {
+    const create = jest.fn().mockImplementation(async (args: { data: Record<string, unknown> }) => ({
+      id: 'r9', fleetId: 'f1', vehicleId: 'v1', status: 'CONFIRMED',
+      type: 'RESERVATION', category: null, severity: null, title: 'x', description: null,
+      startAt: new Date('2026-10-01T08:00:00Z'), endAt: new Date('2026-10-01T10:00:00Z'),
+      allDay: false, blocksVehicle: true, odometerKm: null, planId: null, linkedEventId: null,
+      resolvedAt: null, source: 'MANUAL', metadata: args.data['metadata'] ?? null,
+      createdAt: new Date(), updatedAt: new Date(), vehicle: { plate: 'AA-1' },
+    }));
+    const update = jest.fn().mockImplementation(async (args: { data: Record<string, unknown> }) => ({
+      id: 'r1', fleetId: 'f1', vehicleId: 'v1', status: 'CONFIRMED',
+      type: 'RESERVATION', category: null, severity: null, title: 'x', description: null,
+      startAt: new Date(Date.now() + 86_400_000), endAt: new Date(Date.now() + 90_000_000),
+      allDay: false, blocksVehicle: true, odometerKm: null, planId: null, linkedEventId: null,
+      resolvedAt: null, source: 'MANUAL', metadata: args.data['metadata'] ?? null,
+      createdAt: new Date(), updatedAt: new Date(), vehicle: { plate: 'AA-1' },
+    }));
+    const prisma = makePrisma({
+      vehicleEvent: { findMany: jest.fn().mockResolvedValue([]), findUnique: jest.fn(), create, update },
+      vehicleGroupAssignment: {
+        findFirst: jest.fn().mockResolvedValue({ group: { id: 'g-nord', name: 'Nord' } }),
+      },
+      vehicleGroup: {
+        findFirst: jest.fn().mockImplementation(async ({ where }: { where: { id: string; fleetId: string } }) =>
+          where.id === 'g-sud' && where.fleetId === 'f1' ? { id: 'g-sud', name: 'Sud' } : null,
+        ),
+      },
+      ...over,
+    });
+    return { prisma, create, update };
+  };
+
+  const demande = (over: Record<string, unknown> = {}) => ({
+    vehicleId: 'v1',
+    startAt: new Date(Date.now() + 86_400_000).toISOString(),
+    endAt: new Date(Date.now() + 90_000_000).toISOString(),
+    ...over,
+  });
+
+  const metaDe = (mock: jest.Mock) => (mock.mock.calls[0][0].data as { metadata: Record<string, unknown> }).metadata;
+
+  it('par défaut, une demande hérite du groupe du véhicule', async () => {
+    const { prisma, create } = creer();
+    const svc = new ReservationsService(prisma, access('ALL'), makeEvents(), makePerms(true));
+    await svc.request(makeUser(), demande() as never);
+    expect(metaDe(create)['group']).toEqual({ id: 'g-nord', name: 'Nord' });
+  });
+
+  it('un groupe de la société choisi à la demande l’emporte, et son nom vient de la base', async () => {
+    const { prisma, create } = creer();
+    const svc = new ReservationsService(prisma, access('ALL'), makeEvents(), makePerms(true));
+    await svc.request(makeUser(), demande({ group: { id: 'g-sud', name: 'n’importe quoi' } }) as never);
+    expect(metaDe(create)['group']).toEqual({ id: 'g-sud', name: 'Sud' });
+  });
+
+  it('un groupe saisi en texte libre est gardé sans id', async () => {
+    const { prisma, create } = creer();
+    const svc = new ReservationsService(prisma, access('ALL'), makeEvents(), makePerms(true));
+    await svc.request(makeUser(), demande({ group: { id: null, name: '  Foyer des Lilas ' } }) as never);
+    expect(metaDe(create)['group']).toEqual({ id: null, name: 'Foyer des Lilas' });
+  });
+
+  /** ⚠️ Un id de groupe d'une AUTRE société est refusé : on ne range pas une réservation chez un autre client. */
+  it('refuse un id de groupe inconnu dans la société (400)', async () => {
+    const { prisma } = creer();
+    const svc = new ReservationsService(prisma, access('ALL'), makeEvents(), makePerms(true));
+    await expect(
+      svc.request(makeUser(), demande({ group: { id: 'g-autre-societe', name: 'X' } }) as never),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('à la validation, le groupe choisi prime ; sinon celui déjà posé ; sinon celui du véhicule', async () => {
+    const { prisma, update } = creer();
+    const findUnique = (prisma as { vehicleEvent: { findUnique: jest.Mock } }).vehicleEvent.findUnique;
+    const svc = new ReservationsService(prisma, access('ALL'), makeEvents(), makePerms(true));
+
+    findUnique.mockResolvedValue(evRow({ status: 'REQUESTED', metadata: { requesterId: 'u1' } }));
+    await svc.confirm(makeUser(), 'r1', { group: { id: 'g-sud', name: '' } });
+    expect((update.mock.calls[0][0].data as { metadata: Record<string, unknown> }).metadata['group']).toEqual({ id: 'g-sud', name: 'Sud' });
+
+    findUnique.mockResolvedValue(evRow({ status: 'REQUESTED', metadata: { group: { id: null, name: 'Libre' } } }));
+    await svc.confirm(makeUser(), 'r1', {});
+    expect((update.mock.calls[1][0].data as { metadata: Record<string, unknown> }).metadata['group']).toEqual({ id: null, name: 'Libre' });
+
+    findUnique.mockResolvedValue(evRow({ status: 'REQUESTED', metadata: null }));
+    await svc.confirm(makeUser(), 'r1', {});
+    expect((update.mock.calls[2][0].data as { metadata: Record<string, unknown> }).metadata['group']).toEqual({ id: 'g-nord', name: 'Nord' });
+  });
+
+  it('à l’édition, un objet remplace, null retire, absent ne touche à rien', async () => {
+    const { prisma, update } = creer();
+    const findUnique = (prisma as { vehicleEvent: { findUnique: jest.Mock } }).vehicleEvent.findUnique;
+    findUnique.mockResolvedValue(evRow({ status: 'CONFIRMED', metadata: { group: { id: 'g-nord', name: 'Nord' }, reason: 'x' } }));
+    const svc = new ReservationsService(prisma, access('ALL'), makeEvents(), makePerms(true));
+
+    await svc.update(makeUser(), 'r1', { group: { id: null, name: 'Sud-Ouest' } });
+    expect((update.mock.calls[0][0].data as { metadata: Record<string, unknown> }).metadata).toEqual(
+      expect.objectContaining({ reason: 'x', group: { id: null, name: 'Sud-Ouest' } }),
+    );
+
+    await svc.update(makeUser(), 'r1', { group: null });
+    expect((update.mock.calls[1][0].data as { metadata: Record<string, unknown> }).metadata['group']).toBeNull();
+
+    await svc.update(makeUser(), 'r1', { reason: 'y' });
+    expect((update.mock.calls[2][0].data as { metadata: Record<string, unknown> }).metadata['group']).toEqual({ id: 'g-nord', name: 'Nord' });
+  });
+
+  /** Le groupe du VÉHICULE n'est jamais touché : aucune écriture sur vehicle ni sur ses liens. */
+  it('n’écrit jamais le groupe sur le véhicule', async () => {
+    const { prisma, create } = creer();
+    const svc = new ReservationsService(prisma, access('ALL'), makeEvents(), makePerms(true));
+    await svc.request(makeUser(), demande({ group: { id: 'g-sud', name: 'Sud' } }) as never);
+    expect(create).toHaveBeenCalledTimes(1);
+    const p = prisma as { vehicle: Record<string, jest.Mock>; vehicleGroupAssignment: Record<string, jest.Mock> };
+    expect(p.vehicle['update']).toBeUndefined();
+    expect(p.vehicleGroupAssignment['create']).toBeUndefined();
+    expect(p.vehicleGroupAssignment['update']).toBeUndefined();
+  });
+});
+
+/**
+ * ── RÉAFFECTER (refonte UX du 28/09, point 4) — « un véhicule part au garage une semaine » ──────
+ */
+describe('ReservationsService.reaffecter — passer une réservation sur un autre véhicule', () => {
+  const H = 3_600_000;
+  const ligne = (over: Record<string, unknown> = {}) =>
+    evRow({
+      status: 'CONFIRMED',
+      startAt: new Date(Date.now() + 48 * H),
+      endAt: new Date(Date.now() + 50 * H),
+      metadata: { criteria: { minSeats: 7 } },
+      ...over,
+    });
+
+  function monter(row: Record<string, unknown>, vivier: string[]) {
+    const update = jest.fn().mockImplementation(async (args: { data: Record<string, unknown> }) => ({ ...ligne(row), ...args.data, vehicle: { plate: 'BB-2' } }));
+    const prisma = makePrisma({
+      vehicleEvent: { findMany: jest.fn().mockResolvedValue([]), findUnique: jest.fn().mockResolvedValue(ligne(row)), create: jest.fn(), update },
+    });
+    const svc = new ReservationsService(prisma, access('ALL'), makeEvents(), makePerms(true));
+    jest.spyOn(svc, 'suggest').mockResolvedValue({
+      startAt: '', endAt: '', excludedUnknownCapacity: 0, excludedImmobilized: 0, excludedDormant: 0,
+      vehicles: vivier.map((id) => ({ vehicleId: id, vehiclePlate: id, seats: 9, features: [], utilizationRatio: 0.1, underutilized: true })),
+    });
+    return { svc, prisma, update };
+  }
+
+  it('`auto` : prend le premier véhicule libre et conforme qui n’est PAS celui d’origine, avec les critères de la réservation', async () => {
+    const { svc, update } = monter({ vehicleId: 'v1' }, ['v1', 'v2', 'v3']);
+    await svc.reaffecter(makeUser(), 'r1', {});
+    expect(update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ vehicleId: 'v2' }) }));
+    expect((svc.suggest as jest.Mock).mock.calls[0][1]).toMatchObject({ criteria: { minSeats: 7 }, fleetId: 'f1' });
+  });
+
+  it('cible explicite : passe par update (conflits, hors service, sièges revérifiés là)', async () => {
+    const { svc, update } = monter({ vehicleId: 'v1' }, []);
+    await svc.reaffecter(makeUser(), 'r1', { versVehicleId: 'v9' });
+    expect(update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ vehicleId: 'v9' }) }));
+    expect(svc.suggest).not.toHaveBeenCalled();
+  });
+
+  it('refuse : même véhicule (400), aucun autre libre (409), réservation close ou passée (400)', async () => {
+    await expect(monter({ vehicleId: 'v1' }, ['v1']).svc.reaffecter(makeUser(), 'r1', {})).rejects.toBeInstanceOf(ConflictException);
+    await expect(monter({ vehicleId: 'v1' }, []).svc.reaffecter(makeUser(), 'r1', { versVehicleId: 'v1' })).rejects.toBeInstanceOf(BadRequestException);
+    await expect(monter({ vehicleId: 'v1', status: 'CANCELLED' }, ['v2']).svc.reaffecter(makeUser(), 'r1', {})).rejects.toBeInstanceOf(BadRequestException);
+    await expect(
+      monter({ vehicleId: 'v1', startAt: new Date(Date.now() - 50 * H), endAt: new Date(Date.now() - 48 * H) }, ['v2']).svc.reaffecter(makeUser(), 'r1', {}),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+});
+
+describe('ReservationsService.reorganiser — réaffecter un lot, et les comptes qui expliquent un lot vide', () => {
+  const H = 3_600_000;
+  const resa = (over: Record<string, unknown> = {}) => ({
+    id: 'e1', vehicleId: 'v1', vehiclePlate: 'AA-111-BB', type: 'RESERVATION', status: 'CONFIRMED', source: 'SYSTEM',
+    startAt: new Date(Date.now() + 48 * H).toISOString(), endAt: new Date(Date.now() + 50 * H).toISOString(),
+    ...over,
+  });
+  const fenetre = () => ({ from: new Date(Date.now() - 24 * H).toISOString(), to: new Date(Date.now() + 30 * 24 * H).toISOString() });
+
+  it('la simulation rend les totaux par origine et par véhicule — même quand le lot est vide', async () => {
+    const events = makeEvents({
+      list: jest.fn().mockResolvedValue([
+        resa(), // agent, v1
+        resa({ id: 'e2', vehicleId: 'v2', vehiclePlate: 'CC-3', source: 'MANUAL' }),
+        resa({ id: 'e3', vehicleId: 'v2', vehiclePlate: 'CC-3', source: 'SYSTEM', metadata: { public: true } }),
+      ]),
+    });
+    const svc = new ReservationsService(makePrisma(), access('ALL'), events, makePerms(true), { emit: jest.fn() } as never);
+    const r = await svc.reorganiser({ role: 'FLEET_ADMIN', fleetId: 'f1' } as never, { ...fenetre(), action: 'annuler', origine: 'auto', vehicleId: 'v2' });
+    expect(r.concernees).toBe(0); // v2 n'a rien de l'agent
+    expect(r.totaux).toEqual({ agent: 1, public: 1, manuelle: 1 });
+    expect(r.parVehicule).toEqual([{ vehicleId: 'v1', plate: 'AA-111-BB', n: 1 }]); // pour l'origine « agent »
+    // Le filtre véhicule se fait en mémoire : la liste a été demandée pour TOUS les véhicules.
+    expect((events as unknown as { list: jest.Mock }).list.mock.calls[0][1]).not.toHaveProperty('vehicleId');
+  });
+
+  it('`reaffecter` réaffecte chaque réservation du lot (auto), et remonte les refus ligne par ligne', async () => {
+    const events = makeEvents({ list: jest.fn().mockResolvedValue([resa(), resa({ id: 'e2' })]) });
+    const svc = new ReservationsService(makePrisma(), access('ALL'), events, makePerms(true), { emit: jest.fn() } as never);
+    const reaffecter = jest
+      .spyOn(svc, 'reaffecter')
+      .mockResolvedValueOnce({} as never)
+      .mockRejectedValueOnce(new ConflictException('Aucun autre véhicule libre et conforme sur ce créneau.'));
+    const r = await svc.reorganiser({ role: 'FLEET_ADMIN', fleetId: 'f1' } as never, {
+      ...fenetre(), action: 'reaffecter', origine: 'toutes', vehicleId: 'v1', simulation: false,
+    });
+    expect(reaffecter).toHaveBeenCalledTimes(2);
+    expect(reaffecter).toHaveBeenCalledWith(expect.anything(), 'e1', { versVehicleId: 'auto' });
+    expect(r.appliquees).toBe(1);
+    expect(r.refusees).toEqual([expect.objectContaining({ motif: 'Aucun autre véhicule libre et conforme sur ce créneau.' })]);
+  });
+
+  it('refuse de réaffecter vers le véhicule qu’on libère', async () => {
+    const svc = new ReservationsService(makePrisma(), access('ALL'), makeEvents(), makePerms(true), { emit: jest.fn() } as never);
+    await expect(
+      svc.reorganiser({ role: 'FLEET_ADMIN', fleetId: 'f1' } as never, { ...fenetre(), action: 'reaffecter', vehicleId: 'v1', versVehicleId: 'v1' }),
+    ).rejects.toBeInstanceOf(BadRequestException);
   });
 });

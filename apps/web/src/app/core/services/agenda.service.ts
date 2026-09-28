@@ -200,6 +200,11 @@ export class AgendaApiService {
     return this.http.post<VehicleEventDto>(`/api/reservations/${id}/cancel`, {});
   }
 
+  /** POST /api/reservations/:id/reaffecter — passer la réservation sur un autre véhicule (`auto` = premier libre et conforme). */
+  reaffecterReservation(id: string, versVehicleId?: string): Observable<VehicleEventDto> {
+    return this.http.post<VehicleEventDto>(`/api/reservations/${id}/reaffecter`, versVehicleId ? { versVehicleId } : {});
+  }
+
   /** PATCH /api/reservations/:id — éditer (créneau / critères / libellé). */
   updateReservation(id: string, dto: UpdateReservationDto): Observable<VehicleEventDto> {
     return this.http.patch<VehicleEventDto>(`/api/reservations/${id}`, dto);

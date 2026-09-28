@@ -55,31 +55,35 @@ export function domaineDe(url: string, courant?: string): string {
         } @else if (error(); as err) {
           <div class="rq-msg rq-msg--err">{{ err }}</div>
         } @else {
-          <div class="rq-cardwrap" [innerHTML]="cardHtml()"></div>
-
-          <p class="rq-usage">
-            Le conducteur scanne pour <strong>demander un véhicule</strong>.
-            Sa demande n'immobilise rien : elle attend votre validation.
-          </p>
-
-          @if (!active()) {
-            <p class="rq-warn">
-              Ce lien est <strong>désactivé</strong> : le QR s'ouvrira sur une page qui refuse les
-              demandes. Réactivez-le dans « Paramètres de l'agenda » avant de l'imprimer.
-            </p>
-          }
-
-          <div class="rq-actions">
-            <button type="button" class="rq-btn rq-btn--go" (click)="printCard()">
-              <lucide-icon [img]="Printer" [size]="16" /> Imprimer
-            </button>
-            <button type="button" class="rq-icon" (click)="copyLink()"
-                    title="Copier le lien de réservation" aria-label="Copier le lien de réservation">
-              <lucide-icon [img]="Copy" [size]="17" />
-            </button>
+          <!--
+            REFONTE UX DU 28/09 (point 5) — « first sans scroll ». La carte est réduite par son unité
+            (--tqu) selon la HAUTEUR disponible, et le texte passe à côté sur grand écran : tout se
+            lit et s'actionne sans défiler. L'impression, elle, garde la carte pleine (printCard).
+          -->
+          <div class="rq-layout">
+            <div class="rq-cardwrap" [innerHTML]="cardHtml()"></div>
+            <div class="rq-side">
+              <p class="rq-usage">
+                Le conducteur scanne pour <strong>demander un véhicule</strong> — sa demande
+                n'immobilise rien tant que vous ne l'avez pas validée.
+              </p>
+              @if (!active()) {
+                <p class="rq-warn">
+                  Lien <strong>désactivé</strong> : le QR s'ouvrirait sur une page qui refuse les demandes.
+                  Réactivez-le dans « Paramètres de l'agenda » avant d'imprimer.
+                </p>
+              }
+              <div class="rq-actions">
+                <button type="button" class="rq-btn rq-btn--go" (click)="printCard()">
+                  <lucide-icon [img]="Printer" [size]="16" /> Imprimer
+                </button>
+                <button type="button" class="rq-btn" (click)="copyLink()" title="Copier le lien de réservation">
+                  <lucide-icon [img]="Copy" [size]="16" /> Copier le lien
+                </button>
+              </div>
+              <p class="rq-format">Autocollant 60 × 90 mm — au dépôt ou dans chaque véhicule.</p>
+            </div>
           </div>
-
-          <p class="rq-format">Format autocollant 60 × 90 mm — à afficher au dépôt ou dans chaque véhicule.</p>
         }
       </div>
     </div>
@@ -87,22 +91,35 @@ export function domaineDe(url: string, courant?: string): string {
   styles: [QR_CARD_CSS, `
     /* Le voile et sa barre d'action suivent le VOILE, pas le thème : même raison et mêmes
        mesures de contraste que le dialogue QR des véhicules (.78 sur une encre presque noire). */
-    .rq-ov { position:fixed; inset:0; z-index:9000; display:flex; justify-content:center; padding:calc(env(safe-area-inset-top,0px) + 26px) 16px calc(env(safe-area-inset-bottom,0px) + 26px); background:rgba(4,10,8,.78); overflow-y:auto; overscroll-behavior:contain; }
+    .rq-ov { position:fixed; inset:0; z-index:9000; display:flex; justify-content:center; align-items:center; padding:calc(env(safe-area-inset-top,0px) + 16px) 16px calc(env(safe-area-inset-bottom,0px) + 16px); background:rgba(4,10,8,.78); overflow-y:auto; overscroll-behavior:contain; }
     .rq-modal { position:relative; width:100%; max-width:452px; margin:auto; }
     .rq-close { position:absolute; top:-12px; right:-12px; z-index:3; width:44px; height:44px; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; background:#0C1512; color:#EAF0ED; border:1px solid rgba(255,255,255,.28); cursor:pointer; }
+    .rq-layout { display:flex; flex-direction:column; align-items:center; gap:12px; }
+    .rq-side { display:flex; flex-direction:column; gap:10px; width:100%; }
     .rq-cardwrap { display:flex; justify-content:center; }
+    /* L'unité de la carte suit la place : jamais plus large que l'écran, jamais plus haute que ce
+       qui reste une fois le texte et les boutons posés (≈ 230 px en colonne). */
+    .rq-cardwrap .tq-scope .card { --tqu: min(0.62px, calc((100vw - 48px) / 452), calc((100dvh - 250px) / 792)); }
+    @media (min-width: 700px) {
+      .rq-modal { max-width: 760px; }
+      .rq-layout { flex-direction: row; align-items: center; gap: 22px; }
+      .rq-side { flex: 1; min-width: 0; }
+      .rq-cardwrap { flex: none; }
+      .rq-cardwrap .tq-scope .card { --tqu: min(0.72px, calc((100dvh - 80px) / 792)); }
+    }
     .rq-msg { padding:40px; text-align:center; color:#C2CCC8; background:#101514; border-radius:16px; line-height:1.55; }
     .rq-msg--err { color:#FCA5A5; }
-    .rq-usage { margin:14px 0 0; font-size:13.5px; line-height:1.5; color:#DCE4E1; text-align:center; }
+    .rq-usage { margin:0; font-size:13.5px; line-height:1.5; color:#DCE4E1; text-align:center; }
+    @media (min-width: 700px) { .rq-usage, .rq-format { text-align:left; } }
     .rq-usage strong { color:#FFFFFF; font-weight:700; }
-    .rq-warn { margin:10px 0 0; padding:10px 12px; border-radius:11px; font-size:13px; line-height:1.5; color:#FDE7C8; background:rgba(245,179,61,.16); border:1px solid rgba(245,179,61,.4); }
+    .rq-warn { margin:0; padding:10px 12px; border-radius:11px; font-size:13px; line-height:1.5; color:#FDE7C8; background:rgba(245,179,61,.16); border:1px solid rgba(245,179,61,.4); }
     .rq-warn strong { color:#FFFFFF; }
-    .rq-actions { display:flex; gap:10px; margin-top:12px; }
+    .rq-actions { display:flex; gap:10px; flex-wrap:wrap; }
     .rq-btn { flex:1; display:inline-flex; align-items:center; justify-content:center; gap:7px; min-height:44px; padding:11px 14px; border-radius:12px; font-size:14px; font-weight:600; cursor:pointer; border:1px solid transparent; background:rgba(255,255,255,.06); color:#EAF0ED; }
     .rq-btn--go { background:#10E0A0; color:#04130D; border-color:#10E0A0; }
     .rq-icon { flex:none; width:44px; height:44px; display:inline-flex; align-items:center; justify-content:center; border-radius:12px; cursor:pointer; border:1px solid rgba(255,255,255,.22); background:rgba(255,255,255,.08); color:#EAF0ED; }
     .rq-icon:hover { background:rgba(255,255,255,.14); }
-    .rq-format { margin:10px 0 0; font-size:12.5px; line-height:1.45; color:#C2CCC8; text-align:center; }
+    .rq-format { margin:0; font-size:12.5px; line-height:1.45; color:#C2CCC8; text-align:center; }
   `],
 })
 export class ReservationQrDialogComponent implements OnInit {

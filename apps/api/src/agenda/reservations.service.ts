@@ -12,7 +12,9 @@ import type {
   ReorganisationRefusDto,
   ReorganisationResultDto,
   ReorganiserReservationsDto,
+  ReaffecterReservationDto,
   RequestReservationDto,
+  ReservationGroupDto,
   SuggestReservationResultDto,
   SuggestedVehicleDto,
   UpdateReservationDto,
@@ -140,6 +142,50 @@ export class ReservationsService {
   private bookingRefOf(metadata: unknown): string | null {
     const ref = (metadata as { bookingRef?: unknown } | null | undefined)?.bookingRef;
     return typeof ref === 'string' && ref ? ref : null;
+  }
+
+  // ─── Groupe de réservation (refonte UX du 28/09, point 9) ─────────────────────────────────
+  //
+  // « Groupe du véhicule ≠ groupe de la réservation. » Le véhicule garde le sien ; la réservation
+  // porte celui qui s'en SERT (`metadata.group`). Par défaut, c'est le groupe du véhicule au moment
+  // où le véhicule est fixé — et ce défaut ne se recalcule pas quand on change de véhicule à
+  // l'édition : c'est l'utilisateur, pas le propriétaire, qu'on a écrit.
+
+  /**
+   * Nettoie un groupe reçu du client. Un `id` doit être un groupe de LA société (sinon 400 : on ne
+   * range pas une réservation sous le groupe d'un autre client) ; son nom est relu en base, jamais
+   * pris tel quel. Sans `id`, un nom libre (≤ 60 caractères). Vide = aucun groupe.
+   */
+  private async groupePropre(fleetId: string, input: unknown): Promise<ReservationGroupDto | null> {
+    if (!input || typeof input !== 'object') return null;
+    const brut = input as { id?: unknown; name?: unknown };
+    const id = typeof brut.id === 'string' && brut.id.trim() ? brut.id.trim() : null;
+    const name = typeof brut.name === 'string' ? brut.name.trim().slice(0, 60) : '';
+    if (id) {
+      const groupe = await this.prisma.vehicleGroup.findFirst({ where: { id, fleetId }, select: { id: true, name: true } });
+      if (!groupe) throw new BadRequestException('Groupe inconnu dans cette société.');
+      return { id: groupe.id, name: groupe.name };
+    }
+    return name ? { id: null, name } : null;
+  }
+
+  /** Le groupe (unique, cf. VehiclesService.withGroup) d'un véhicule, ou null. */
+  private async groupeDuVehicule(vehicleId: string): Promise<ReservationGroupDto | null> {
+    const lien = await this.prisma.vehicleGroupAssignment.findFirst({
+      where: { vehicleId },
+      select: { group: { select: { id: true, name: true } } },
+      orderBy: { group: { name: 'asc' } },
+    });
+    return lien?.group ? { id: lien.group.id, name: lien.group.name } : null;
+  }
+
+  /** Le groupe déjà posé sur une réservation (`metadata.group`), s'il est lisible. */
+  static groupeDe(metadata: unknown): ReservationGroupDto | null {
+    const g = (metadata as { group?: unknown } | null | undefined)?.group;
+    if (!g || typeof g !== 'object') return null;
+    const { id, name } = g as { id?: unknown; name?: unknown };
+    if (typeof name !== 'string' || !name.trim()) return null;
+    return { id: typeof id === 'string' && id ? id : null, name: name.trim() };
   }
 
   /**
@@ -675,6 +721,8 @@ export class ReservationsService {
             // sièges se recompte à chaque validation — une chaîne « 2 » ou un -1 y fausserait tout.
             criteria: ChildSeatsService.criteresPropres(dto.criteria),
             ...(retro ? { retroactive: true } : {}),
+            // Groupe qui utilise le véhicule : celui demandé, sinon celui du véhicule retenu.
+            group: (await this.groupePropre(fleetId, dto.group)) ?? (await this.groupeDuVehicule(vehicleId)),
           } as Prisma.InputJsonValue,
           createdBy: user.id,
           source: 'MANUAL',
@@ -741,10 +789,23 @@ export class ReservationsService {
       );
     }
 
+    // Groupe qui utilise le véhicule : celui choisi à la validation, sinon celui déjà posé sur la
+    // demande, sinon celui du véhicule (une demande publique ou une proposition de l'agent n'en a pas).
+    const metaConfirm = (resa.metadata as Record<string, unknown> | null) ?? {};
+    const groupe =
+      (dto.group !== undefined ? await this.groupePropre(fleetId, dto.group) : null) ??
+      ReservationsService.groupeDe(metaConfirm) ??
+      (await this.groupeDuVehicule(vehicleId));
+
     try {
       const row = await this.prisma.vehicleEvent.update({
         where: { id },
-        data: { status: VehicleEventStatus.CONFIRMED, vehicleId, fleetId },
+        data: {
+          status: VehicleEventStatus.CONFIRMED,
+          vehicleId,
+          fleetId,
+          metadata: { ...metaConfirm, group: groupe } as Prisma.InputJsonValue,
+        },
         include: INCLUDE_PLATE,
       });
       // Réservation validée : notifier le demandeur (flux public P4). Le notifier ne réagit qu'aux
@@ -864,11 +925,13 @@ export class ReservationsService {
     const criteresApres = dto.criteria !== undefined
       ? ChildSeatsService.criteresPropres(dto.criteria)
       : ((metaActuelle['criteria'] as RequestReservationDto['criteria'] | null | undefined) ?? null);
-    if (dto.reason !== undefined || dto.criteria !== undefined) {
+    if (dto.reason !== undefined || dto.criteria !== undefined || dto.group !== undefined) {
       data.metadata = {
         ...metaActuelle,
         ...(dto.reason !== undefined ? { reason: dto.reason } : {}),
         ...(dto.criteria !== undefined ? { criteria: criteresApres } : {}),
+        // Un objet remplace, `null` retire ; absent, on ne touche à rien (même si le véhicule change).
+        ...(dto.group !== undefined ? { group: await this.groupePropre(resa.fleetId, dto.group) } : {}),
       } as Prisma.InputJsonValue;
     }
 
@@ -974,11 +1037,54 @@ export class ReservationsService {
    * Le périmètre passe par `events.list`, donc par la chaîne de scoping anti-IDOR habituelle :
    * aucune réservation hors du périmètre de l'appelant ne peut entrer dans le lot.
    */
+  /**
+   * ── RÉAFFECTER UNE RÉSERVATION (refonte UX du 28/09, point 4) ──────────────────────────────
+   *
+   * Le geste qui manquait à la réorganisation : un véhicule part au garage, ses réservations
+   * passent sur un autre. Cible explicite (`versVehicleId`), ou `auto` : le premier véhicule libre
+   * et conforme aux critères de LA réservation (places, sièges auto, équipements), jamais le véhicule
+   * d'origine. Tout le reste — conflits, hors service, sièges, groupe qui reste celui de
+   * l'utilisateur — est ce que `update()` vérifie déjà : une seule règle, un seul endroit.
+   */
+  async reaffecter(user: AuthUser, id: string, dto: ReaffecterReservationDto = {}): Promise<VehicleEventDto> {
+    const resa = await this.loadScoped(user, id);
+    if (resa.status === VehicleEventStatus.DONE || resa.status === VehicleEventStatus.CANCELLED) {
+      throw new BadRequestException('Une réservation terminée ou annulée ne se réaffecte pas.');
+    }
+    if (!resa.endAt) throw new BadRequestException('Réservation sans créneau de fin.');
+    if (resa.endAt.getTime() < Date.now()) throw new BadRequestException('Une réservation passée ne se réaffecte pas.');
+
+    const voulu = typeof dto?.versVehicleId === 'string' ? dto.versVehicleId.trim() : '';
+    let cible = voulu && voulu !== 'auto' ? voulu : null;
+    if (!cible) {
+      const meta = (resa.metadata as { criteria?: RequestReservationDto['criteria'] } | null) ?? null;
+      const sug = await this.suggest(user, {
+        startAt: resa.startAt.toISOString(),
+        endAt: resa.endAt.toISOString(),
+        criteria: meta?.criteria ?? undefined,
+        fleetId: resa.fleetId,
+      });
+      const candidat = sug.vehicles.find((v) => v.vehicleId !== resa.vehicleId);
+      if (!candidat) {
+        throw new ConflictException('Aucun autre véhicule libre et conforme sur ce créneau.');
+      }
+      cible = candidat.vehicleId;
+    }
+    if (cible === resa.vehicleId) {
+      throw new BadRequestException('La réservation est déjà sur ce véhicule.');
+    }
+    return this.update(user, id, { vehicleId: cible });
+  }
+
   async reorganiser(user: AuthUser, dto: ReorganiserReservationsDto): Promise<ReorganisationResultDto> {
     const simulation = dto?.simulation !== false;
     const action = dto?.action;
-    if (action !== 'annuler' && action !== 'decaler') {
-      throw new BadRequestException('Action inconnue : « annuler » ou « decaler ».');
+    if (action !== 'annuler' && action !== 'decaler' && action !== 'reaffecter') {
+      throw new BadRequestException('Action inconnue : « annuler », « decaler » ou « reaffecter ».');
+    }
+    const versVehicleId = typeof dto?.versVehicleId === 'string' && dto.versVehicleId.trim() ? dto.versVehicleId.trim() : 'auto';
+    if (action === 'reaffecter' && versVehicleId !== 'auto' && dto?.vehicleId && versVehicleId === dto.vehicleId) {
+      throw new BadRequestException('Le véhicule de destination est celui qu’on libère.');
     }
     const decalage = Math.trunc(Number(dto?.decalageMinutes ?? 0));
     if (action === 'decaler' && (!Number.isFinite(decalage) || decalage === 0)) {
@@ -997,22 +1103,36 @@ export class ReservationsService {
     }
 
     const origine = dto?.origine ?? 'auto';
+    // Toute la fenêtre, TOUS les véhicules : les comptes par origine et par véhicule (pour l'écran)
+    // se calculent avant les filtres ; le lot lui-même est filtré en mémoire juste après.
     const toutes = await this.events.list(user, {
       from: debut,
       to,
       type: VehicleEventType.RESERVATION,
-      vehicleId: dto?.vehicleId,
       fleetId: dto?.fleetId,
     });
 
-    const candidates = toutes.filter((e) => {
+    const vivantes = toutes.filter((e) => {
       if (new Date(e.startAt).getTime() < debut.getTime()) return false; // chevauchant mais déjà commencée
-      if (e.status === VehicleEventStatus.DONE || e.status === VehicleEventStatus.CANCELLED) return false;
+      return e.status !== VehicleEventStatus.DONE && e.status !== VehicleEventStatus.CANCELLED;
+    });
+    const totaux = { agent: 0, public: 0, manuelle: 0 };
+    for (const e of vivantes) totaux[origineReservation(e)]++;
+    const retenueParOrigine = (e: VehicleEventDto): boolean => {
       // « auto » = l'agent seul ; une demande publique (SYSTEM elle aussi) n'en est pas.
       if (origine === 'auto') return origineReservation(e) === 'agent';
       if (origine === 'manuelle') return origineReservation(e) !== 'agent';
       return true;
-    });
+    };
+    const parVehiculeMap = new Map<string, { vehicleId: string; plate: string | null; n: number }>();
+    for (const e of vivantes.filter(retenueParOrigine)) {
+      const v = parVehiculeMap.get(e.vehicleId);
+      if (v) v.n++;
+      else parVehiculeMap.set(e.vehicleId, { vehicleId: e.vehicleId, plate: e.vehiclePlate, n: 1 });
+    }
+    const parVehicule = [...parVehiculeMap.values()].sort((a, b) => (a.plate ?? '').localeCompare(b.plate ?? ''));
+
+    const candidates = vivantes.filter((e) => retenueParOrigine(e) && (!dto?.vehicleId || e.vehicleId === dto.vehicleId));
 
     const plafonne = candidates.length > MAX_REORGANISATION;
     const lot = candidates.slice(0, MAX_REORGANISATION);
@@ -1026,7 +1146,7 @@ export class ReservationsService {
     const refusees: ReorganisationRefusDto[] = [];
 
     if (simulation) {
-      return { simulation: true, concernees: lot.length, appliquees: 0, refusees, apercu, plafonne };
+      return { simulation: true, concernees: lot.length, appliquees: 0, refusees, apercu, plafonne, totaux, parVehicule };
     }
 
     let appliquees = 0;
@@ -1034,6 +1154,8 @@ export class ReservationsService {
       try {
         if (action === 'annuler') {
           await this.cancel(user, e.id);
+        } else if (action === 'reaffecter') {
+          await this.reaffecter(user, e.id, { versVehicleId });
         } else {
           const debutNouveau = new Date(new Date(e.startAt).getTime() + decalage * 60_000);
           const finNouvelle = e.endAt ? new Date(new Date(e.endAt).getTime() + decalage * 60_000) : null;
@@ -1077,7 +1199,7 @@ export class ReservationsService {
       meta: { action, decalage, origine, concernees: lot.length, appliquees, refusees: refusees.length },
     });
 
-    return { simulation: false, concernees: lot.length, appliquees, refusees, apercu, plafonne };
+    return { simulation: false, concernees: lot.length, appliquees, refusees, apercu, plafonne, totaux, parVehicule };
   }
 
   // ─── Agent d'agenda (P3) : disponibilité + création système ────────────────
@@ -1157,6 +1279,9 @@ export class ReservationsService {
   }): Promise<VehicleEventDto | null> {
     const { fleetId, vehicleId, start, end } = input;
     if (!(await this.isVehicleFree(vehicleId, start, end))) return null;
+    // Groupe qui utilise le véhicule : une réservation posée par le système hérite du groupe du véhicule.
+    const metaSys = (input.metadata as Record<string, unknown> | null | undefined) ?? {};
+    const groupeSys = ReservationsService.groupeDe(metaSys) ?? (await this.groupeDuVehicule(vehicleId));
     try {
       const row = await this.prisma.vehicleEvent.create({
         data: {
@@ -1168,7 +1293,7 @@ export class ReservationsService {
           startAt: start,
           endAt: end,
           allDay: false,
-          metadata: input.metadata ?? Prisma.JsonNull,
+          metadata: { ...metaSys, group: groupeSys } as Prisma.InputJsonValue,
           createdBy: input.createdBy ?? SYSTEM_ACTOR_ID,
           source: 'SYSTEM',
         },

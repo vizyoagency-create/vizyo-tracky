@@ -91,6 +91,21 @@ export interface ChildSeatAvailabilityDto {
   vehiclePlate?: string | null;
 }
 
+/**
+ * Le groupe qui UTILISE le véhicule pour cette réservation (refonte UX du 28/09, point 9).
+ *
+ * ⚠️ Ce n'est PAS le groupe du véhicule, et il ne l'écrit jamais : un groupe peut prêter son
+ * véhicule à un autre — le véhicule reste rattaché à son groupe d'origine, la réservation dit qui
+ * s'en sert. Par défaut, c'est le groupe du véhicule au moment où le véhicule est fixé (demande
+ * avec véhicule, attribution automatique, validation) ; modifiable à la demande, à la validation
+ * et à l'édition. `id` null = un groupe saisi en texte libre (pas un groupe de la société).
+ * Rangé dans `metadata.group` de l'évènement.
+ */
+export interface ReservationGroupDto {
+  id: string | null;
+  name: string;
+}
+
 /** Critères de réservation (matching véhicule + sièges auto pris sur le stock). */
 export interface ReservationCriteria {
   minSeats?: number;
@@ -117,6 +132,8 @@ export interface RequestReservationDto {
   /** Consigner une réservation DÉJÀ EFFECTUÉE mais non enregistrée (créneau passé). Réservé aux
    *  gestionnaires : entre CONFIRMÉE à sa date réelle, sans bloquer sur le trajet réel (attendu). */
   retroactive?: boolean;
+  /** Groupe qui utilise le véhicule. Absent = celui du véhicule retenu. */
+  group?: ReservationGroupDto | null;
 }
 
 /** Véhicule proposé par l'auto-complétion : libre sur le créneau ET conforme aux critères. */
@@ -166,6 +183,8 @@ export interface SuggestReservationResultDto {
 /** Validation d'une demande : fixe le véhicule (si « ouverte ») et passe CONFIRMED. */
 export interface ConfirmReservationDto {
   vehicleId?: string;
+  /** Groupe qui utilise le véhicule. Absent = celui déjà posé sur la demande, sinon celui du véhicule. */
+  group?: ReservationGroupDto | null;
 }
 
 /** Mise à jour d'une réservation (créneau / critères / libellé / véhicule). */
@@ -179,4 +198,6 @@ export interface UpdateReservationDto {
   vehicleId?: string;
   /** Marque/maintient la réservation comme « déjà effectuée » (autorise un créneau passé à l'édition). */
   retroactive?: boolean;
+  /** Groupe qui utilise le véhicule : un objet remplace, `null` retire, absent ne touche à rien. */
+  group?: ReservationGroupDto | null;
 }
