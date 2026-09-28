@@ -3,6 +3,7 @@ import { inject, Injectable } from '@angular/core';
 import type {
   AiCapacityApplyDto,
   AiCapacityInputDto,
+  AiCapacityLatestDto,
   AiCapacityResultDto,
   AiCapacitySuggestRequestDto,
   AiPlacementInputDto,
@@ -26,6 +27,11 @@ export class AiApiService {
   /** POST /api/ai/capacity/suggest — propositions places/équipements (DRY-RUN). */
   capacitySuggest(body: AiCapacitySuggestRequestDto = {}): Observable<AiCapacityResultDto> {
     return this.http.post<AiCapacityResultDto>('/api/ai/capacity/suggest', body);
+  }
+
+  /** GET /api/ai/capacity/latest — la dernière analyse conservée (refonte du 28/09), et si une nouvelle est possible. */
+  capacityLatest(fleetId?: string): Observable<AiCapacityLatestDto> {
+    return this.http.get<AiCapacityLatestDto>('/api/ai/capacity/latest', { params: fleetId ? { fleetId } : {} });
   }
 
   /** POST /api/ai/capacity/apply — applique les propositions acceptées (écrit les véhicules). */

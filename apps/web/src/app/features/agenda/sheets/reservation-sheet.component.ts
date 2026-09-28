@@ -13,7 +13,7 @@ import { DatePipe, DecimalPipe, NgClass } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
 import { apiErrorMessage } from '../../../core/error/api-error';
 import {
-  LucideAngularModule, Sparkles, Check, AlertTriangle, Loader, CalendarCheck, Inbox, X, User, Baby,
+  LucideAngularModule, Sparkles, Check, AlertTriangle, Loader, CalendarCheck, Inbox, X, User, Baby, Users,
 } from 'lucide-angular';
 import {
   DORMANT_STOP_COUNTING_MS,
@@ -21,6 +21,7 @@ import {
   isVehicleDormant,
   type ChildSeatAvailabilityDto,
   type ReservationCriteria,
+  type ReservationGroupDto,
   type VehicleEventDto,
 } from '@vizyo/tracky-shared';
 import { firstValueFrom } from 'rxjs';
@@ -54,7 +55,12 @@ export interface ReservationSheetVehicle {
   /** Sièges auto INSTALLÉS à bord (2026-09-28) : ils couvrent le besoin avant le stock. */
   childSeatsBaby?: number | null;
   childSeatsChild?: number | null;
+  /** Groupe du véhicule — le DÉFAUT du groupe de réservation, jamais son maître. */
+  group?: { id: string; name: string } | null;
 }
+
+/** Valeur du sélecteur de groupe quand l'utilisateur veut saisir un nom qui n'est pas un groupe de la société. */
+const GROUPE_AUTRE = '__autre__';
 
 /** « 1 bébé · 2 enfant », ou null quand tout est à zéro. */
 export function siegesLabel(c: { baby: number; child: number } | null | undefined): string | null {
@@ -117,8 +123,6 @@ function toLocalInput(d: Date): string {
             <div class="rs-f">
               <span>Créneau</span>
               <app-datetime-range [start]="startAt()" [end]="endAt()" [minDay]="retroactive() ? '' : todayIso()" (startChange)="startAt.set($event)" (endChange)="endAt.set($event)"></app-datetime-range>
-              <!-- F9 (28/09) : la plage multi-jours existait, personne ne la trouvait. On le dit. -->
-              <span class="rs-ai-hint">Un jour, ou plusieurs : touche le premier jour, puis le dernier.</span>
             </div>
             <!-- Consignation rétroactive : autorise un créneau passé pour enregistrer une sortie DÉJÀ faite. -->
             <label class="rs-retro" [class.rs-retro--on]="retroactive()">
@@ -197,6 +201,35 @@ function toLocalInput(d: Date): string {
               }
             </div>
 
+            <!--
+              GROUPE QUI UTILISE LE VÉHICULE (refonte UX du 28/09, point 9).
+              Pré-rempli avec le groupe du véhicule choisi, modifiable ; « Autre… » ouvre un texte libre.
+              ⚠️ Ce champ n'écrit JAMAIS le groupe du véhicule : un groupe peut prêter sa voiture à un
+              autre — le véhicule garde le sien, la réservation dit qui s'en sert.
+            -->
+            @if (canManage()) {
+              <div class="rs-f">
+                <span class="rs-lbl-row"><span><lucide-icon [img]="UsersIcon" [size]="12"></lucide-icon> Groupe qui utilise le véhicule</span></span>
+                <div class="rs-grid">
+                  <select class="rs-in" [value]="groupChoice()" (change)="choisirGroupe($any($event.target).value)" aria-label="Groupe de la réservation">
+                    <option value="" [selected]="groupChoice() === ''">— Aucun groupe —</option>
+                    @for (g of groupOptions(); track g.id) {
+                      <option [value]="g.id" [selected]="g.id === groupChoice()">{{ g.name }}</option>
+                    }
+                    <option [value]="GROUPE_AUTRE" [selected]="groupChoice() === GROUPE_AUTRE">Autre…</option>
+                  </select>
+                  @if (groupChoice() === GROUPE_AUTRE) {
+                    <input type="text" class="rs-in" maxlength="60" placeholder="Nom du groupe" aria-label="Nom du groupe"
+                           [value]="groupName()" (input)="groupName.set($any($event.target).value); groupTouched.set(true)">
+                  }
+                </div>
+                <span class="rs-hint">
+                  @if (vehicleGroupName(); as vg) { Par défaut, le groupe du véhicule ({{ vg }}). } @else if (vehicleId()) { Ce véhicule n'a pas de groupe. }
+                  Le véhicule garde son propre groupe : ici, c'est celui qui s'en sert pour cette réservation.
+                </span>
+              </div>
+            }
+
             <!-- Loader explicatif : l'utilisateur comprend ce que fait l'IA et combien de temps ça prend -->
             @if (aiLoading()) {
               <div class="rs-ai-loading">
@@ -274,7 +307,7 @@ function toLocalInput(d: Date): string {
                     } @else {
                       <span class="rs-plate">{{ g.chef.vehiclePlate || '—' }}</span>
                     }
-                    <span class="rs-q-when">{{ g.chef.startAt | date:'dd MMM HH:mm' }} → {{ g.chef.endAt | date:(memeJour(g.chef) ? 'HH:mm' : 'dd MMM HH:mm') }}</span>
+                    <span class="rs-q-when">{{ g.chef.startAt | date:'dd MMM HH:mm' }} → {{ g.chef.endAt | date:(memeJour(g.chef) ? 'HH:mm' : 'dd MMM HH:mm') }}@if (dureeJours(g.chef) > 1) { <span class="rs-q-duree">· {{ dureeJours(g.chef) }} jours</span> }</span>
                   </div>
                   <p class="rs-q-title">{{ g.chef.title }}</p>
                   @if (g.items.length > 1) {
@@ -296,6 +329,18 @@ function toLocalInput(d: Date): string {
                   @if (besoinSieges(g.chef); as bs) {
                     <p class="rs-q-req"><lucide-icon [img]="BabyIcon" [size]="12"></lucide-icon> Sièges auto : {{ bs }}</p>
                   }
+                  <!-- Groupe qui utilise le véhicule, décidé À LA VALIDATION (point 9) : pré-rempli avec le
+                       groupe du véhicule pré-retenu, modifiable avant de dire oui. -->
+                  <div class="rs-q-groupe">
+                    <lucide-icon [img]="UsersIcon" [size]="12"></lucide-icon>
+                    <span class="rs-q-groupe-l">Groupe</span>
+                    <select class="rs-in rs-in--xs" [value]="groupeValidation(g)" (change)="choisirGroupeValidation(g.cle, $any($event.target).value)" [attr.aria-label]="'Groupe qui utilise le véhicule'">
+                      <option value="" [selected]="groupeValidation(g) === ''">— Aucun —</option>
+                      @for (og of groupOptions(); track og.id) {
+                        <option [value]="og.id" [selected]="og.id === groupeValidation(g)">{{ og.name }}</option>
+                      }
+                    </select>
+                  </div>
                   <!--
                     Lot 3b — CE QUE LA VALIDATION VA DÉPLACER.
                     Quand aucun véhicule n'était libre de tout engagement, la demande a pris celui
@@ -396,6 +441,11 @@ function toLocalInput(d: Date): string {
     .rs-q--groupe { border-left: 3px solid var(--tracky-light); }
     .rs-q-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
     .rs-q-when { font-size: 11.5px; color: var(--fg-tertiary); }
+    .rs-q-groupe { display: flex; align-items: center; gap: 6px; margin-top: 6px; font-size: 11.5px; color: var(--fg-tertiary); }
+    .rs-q-groupe lucide-icon { color: var(--tracky-light); }
+    .rs-q-groupe-l { font-weight: 600; text-transform: uppercase; letter-spacing: .03em; }
+    .rs-in--xs { flex: 1; min-height: 34px; padding: 5px 8px; font-size: 13px; }
+    .rs-q-duree { font-weight: 800; color: var(--texte-info); }
     .rs-q-title { font-size: 13px; font-weight: 600; color: var(--fg-primary); margin: 6px 0 0; }
     .rs-q-req { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; font-size: 11.5px; color: var(--fg-tertiary); margin: 5px 0 0; }
     .rs-q-contact { font-weight: 700; color: var(--tracky-light); }
@@ -452,6 +502,8 @@ export class ReservationSheetComponent {
   protected readonly XIcon = X;
   protected readonly UserIcon = User;
   protected readonly BabyIcon = Baby;
+  protected readonly UsersIcon = Users;
+  protected readonly GROUPE_AUTRE = GROUPE_AUTRE;
 
   protected readonly mode = signal<'request' | 'validate' | 'edit'>('request');
   protected readonly canManage = computed(() => this.perms.can('reservations_manage'));
@@ -495,6 +547,28 @@ export class ReservationSheetComponent {
   protected readonly seatsManque = computed(() => this.seatsManqueTexte() !== null);
   protected readonly reason = signal('');
   protected readonly vehicleId = signal('');
+
+  // ─── Groupe qui utilise le véhicule (point 9) ────────────────────────────────────────────
+  /** Choix du sélecteur : '' (aucun), un id de groupe de la société, ou GROUPE_AUTRE (texte libre). */
+  protected readonly groupChoice = signal('');
+  /** Nom saisi quand « Autre… » est choisi. */
+  protected readonly groupName = signal('');
+  /** Vrai dès que l'utilisateur a touché au groupe : le défaut (groupe du véhicule) ne l'écrase plus. */
+  protected readonly groupTouched = signal(false);
+  /** Groupes de la société, tirés des véhicules proposés (dédup par id, triés). */
+  protected readonly groupOptions = computed(() => {
+    const map = new Map<string, { id: string; name: string }>();
+    for (const v of this.vehicles()) if (v.group?.id && !map.has(v.group.id)) map.set(v.group.id, { id: v.group.id, name: v.group.name });
+    return [...map.values()].sort((a, b) => a.name.localeCompare(b.name));
+  });
+  /** Nom du groupe du véhicule choisi — la phrase d'aide le nomme. */
+  protected readonly vehicleGroupName = computed(() => {
+    const id = this.vehicleId();
+    if (!id) return null;
+    return this.vehicles().find((v) => v.id === id)?.group?.name ?? null;
+  });
+  /** Groupe choisi À LA VALIDATION, par carte de la file (clé de groupe → id de groupe, '' = aucun). */
+  protected readonly groupesValidation = signal<Record<string, string>>({});
   protected readonly submitting = signal(false);
   protected readonly reqError = signal<string | null>(null);
   /** Consigner une réservation DÉJÀ effectuée (autorise un créneau passé). Réservé aux gestionnaires. */
@@ -597,6 +671,12 @@ export class ReservationSheetComponent {
         this.minSeats.set(meta.criteria?.minSeats ? String(meta.criteria.minSeats) : '');
         this.childSeatsBaby.set(meta.criteria?.childSeatsBaby ? String(meta.criteria.childSeatsBaby) : '');
         this.childSeatsChild.set(meta.criteria?.childSeatsChild ? String(meta.criteria.childSeatsChild) : '');
+        // Le groupe posé sur la réservation, tel quel — on n'y substitue pas celui du véhicule.
+        const g = (edit.metadata as { group?: ReservationGroupDto | null } | null)?.group ?? null;
+        this.groupTouched.set(true);
+        if (!g) { this.groupChoice.set(''); this.groupName.set(''); }
+        else if (g.id) { this.groupChoice.set(g.id); this.groupName.set(''); }
+        else { this.groupChoice.set(GROUPE_AUTRE); this.groupName.set(g.name); }
         this.mode.set('edit');
         return;
       }
@@ -607,9 +687,21 @@ export class ReservationSheetComponent {
       this.vehicleId.set('');
       this.minSeats.set(''); this.childSeatsBaby.set(''); this.childSeatsChild.set(''); this.reason.set('');
       this.retroactive.set(false);
+      this.groupChoice.set(''); this.groupName.set(''); this.groupTouched.set(false); this.groupesValidation.set({});
       const m = this.startMode() === 'validate' && this.canManage() ? 'validate' : 'request';
       this.mode.set(m);
       if (m === 'validate') void this.loadQueue();
+    });
+    // Le groupe de la réservation SUIT le véhicule choisi (son groupe) tant que l'utilisateur n'a
+    // pas décidé lui-même — ensuite, c'est son choix qui tient, même si le véhicule change.
+    effect(() => {
+      const id = this.vehicleId();
+      const touche = this.groupTouched();
+      const ouvert = this.open();
+      if (!ouvert || touche || this.mode() !== 'request') return;
+      const g = this.vehicles().find((v) => v.id === id)?.group ?? null;
+      this.groupChoice.set(g?.id ?? '');
+      this.groupName.set('');
     });
     // Disponibilité des sièges auto sur le créneau saisi — relue à chaque changement de créneau
     // (ou de société), en mode demande et en mode édition. Best-effort : une lecture qui échoue
@@ -701,6 +793,16 @@ export class ReservationSheetComponent {
   });
 
   /** La fin tombe-t-elle le même jour que le début ? Sinon la file écrit la date de fin (F9). */
+  /** Jours civils couverts par une réservation (1 = même jour) — la file le dit sans ouvrir. */
+  protected dureeJours(r: VehicleEventDto): number {
+    if (!r.endAt) return 1;
+    const a = new Date(r.startAt); const b = new Date(r.endAt);
+    if (Number.isNaN(a.getTime()) || Number.isNaN(b.getTime())) return 1;
+    const ja = new Date(a.getFullYear(), a.getMonth(), a.getDate()).getTime();
+    const jb = new Date(b.getFullYear(), b.getMonth(), b.getDate()).getTime();
+    return jb < ja ? 1 : Math.round((jb - ja) / 86400000) + 1;
+  }
+
   protected memeJour(r: VehicleEventDto): boolean {
     if (!r.endAt) return true;
     const a = new Date(r.startAt);
@@ -712,8 +814,11 @@ export class ReservationSheetComponent {
     this.busyId.set(g.cle);
     let faits = 0;
     try {
+      // Le groupe choisi sur la carte part avec la validation ('' = aucun groupe, explicitement).
+      const choix = this.groupeValidation(g);
+      const groupe = choix ? this.groupOptions().find((x) => x.id === choix) ?? null : null;
       for (const r of g.items) {
-        await firstValueFrom(this.api.confirmReservation(r.id));
+        await firstValueFrom(this.api.confirmReservation(r.id, { group: groupe ? { id: groupe.id, name: groupe.name } : null }));
         faits++;
         this.pending.update((l) => l.filter((x) => x.id !== r.id));
       }
@@ -795,6 +900,39 @@ export class ReservationSheetComponent {
     return `Écartés d'office : ${parts.join(' · ')}.`;
   }
 
+  protected choisirGroupe(valeur: string): void {
+    this.groupTouched.set(true);
+    this.groupChoice.set(valeur);
+    if (valeur !== GROUPE_AUTRE) this.groupName.set('');
+  }
+
+  /** Ce qui part au serveur : un groupe de la société (id), un nom libre, ou null (aucun). */
+  private groupePayload(): ReservationGroupDto | null {
+    const c = this.groupChoice();
+    if (!c) return null;
+    if (c === GROUPE_AUTRE) {
+      const name = this.groupName().trim();
+      return name ? { id: null, name } : null;
+    }
+    const g = this.groupOptions().find((x) => x.id === c);
+    return g ? { id: g.id, name: g.name } : null;
+  }
+
+  /** Groupe affiché sur une carte de la file : choisi par le valideur, sinon celui du véhicule pré-retenu. */
+  protected groupeValidation(g: { cle: string; items: VehicleEventDto[] }): string {
+    const choisi = this.groupesValidation()[g.cle];
+    if (choisi !== undefined) return choisi;
+    const chef = g.items[0];
+    if (!chef) return '';
+    const pose = (chef.metadata as { group?: ReservationGroupDto | null } | null)?.group ?? null;
+    if (pose?.id) return pose.id;
+    return this.vehicles().find((v) => v.id === chef.vehicleId)?.group?.id ?? '';
+  }
+
+  protected choisirGroupeValidation(cle: string, valeur: string): void {
+    this.groupesValidation.update((m) => ({ ...m, [cle]: valeur }));
+  }
+
   private criteria(): ReservationCriteria {
     const s = parseInt(this.minSeats(), 10);
     const need = this.besoin();
@@ -860,6 +998,8 @@ export class ReservationSheetComponent {
         reason: this.reason() || undefined,
         criteria: this.criteria(),
         retroactive: this.retroactive() || undefined,
+        // Un gestionnaire choisit le groupe ; un simple demandeur laisse le serveur poser celui du véhicule.
+        ...(this.canManage() && this.groupTouched() ? { group: this.groupePayload() } : {}),
       }));
       this.created.emit();
       // #5 — le backend place la réservation selon le droit de l'appelant : CONFIRMED (directement
@@ -897,6 +1037,7 @@ export class ReservationSheetComponent {
         criteria: this.criteria(),
         vehicleId: this.vehicleId() || undefined,
         retroactive: this.retroactive() || undefined,
+        group: this.groupePayload(),
       }));
       this.toast.success('Réservation modifiée', 'Les changements sont enregistrés.');
       this.created.emit();

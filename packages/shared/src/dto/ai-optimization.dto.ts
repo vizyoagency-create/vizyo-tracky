@@ -73,6 +73,9 @@ export interface AiCapacityProposalDto {
 export interface AiCapacityResultDto {
   metier: FleetMetier;
   proposals: AiCapacityProposalDto[];
+  /** Analyse conservée en base (refonte du 28/09) : son id et sa date. Absents si rien n'a été payé. */
+  analysisId?: string;
+  analysedAt?: string;
 }
 
 /** Requête front → API (capacité) : périmètre optionnel. */
@@ -80,6 +83,33 @@ export interface AiCapacitySuggestRequestDto {
   fleetId?: string;
   /** Sous-ensemble optionnel de véhicules à enrichir. */
   vehicleIds?: string[];
+  /** SUPER_ADMIN seulement : passer outre « une analyse par jour » (recette). Ignoré sinon. */
+  force?: boolean;
+}
+
+/**
+ * Refonte UX du 28/09 (point 6) — la dernière analyse de capacités d'une société, CONSERVÉE.
+ * « Analyser » ne modifie rien ; « Appliquer » écrit les véhicules cochés. Une analyse par jour :
+ * le parc ne change pas d'heure en heure, et chaque analyse est facturée.
+ */
+export interface AiCapacityAnalysisDto {
+  id: string;
+  fleetId: string;
+  analysedAt: string; // ISO
+  metier: FleetMetier;
+  proposals: AiCapacityProposalDto[];
+  /** Véhicules dont la proposition a déjà été appliquée (écrite sur la fiche). */
+  appliedVehicleIds: string[];
+}
+
+export interface AiCapacityLatestDto {
+  analysis: AiCapacityAnalysisDto | null;
+  /** Vrai si une nouvelle analyse peut être lancée maintenant. */
+  canRun: boolean;
+  /** Sinon, quand (ISO). */
+  nextAllowedAt: string | null;
+  /** Fenêtre de la garde, en heures. */
+  windowHours: number;
 }
 
 /** Application (humaine) d'un sous-ensemble de propositions → écrit les véhicules. */

@@ -18,13 +18,12 @@ import { apiErrorMessage } from '../../core/error/api-error';
 import {
   LucideAngularModule, CalendarDays, ChevronDown, ChevronLeft, ChevronRight, Check,
   Layers, Truck, Plus, AlertTriangle, CalendarClock, Wrench, X, Trash2, Play, ListChecks,
-  Gauge, CalendarCheck, Inbox, Sparkles, Activity, ShieldCheck, Ban, Info, Pencil, Settings, QrCode, Shuffle, Route,
-  WifiOff,
+  CalendarCheck, Inbox, Sparkles, Activity, ShieldCheck, Ban, Info, Pencil, Settings, QrCode, Shuffle, Route,
+  WifiOff, MoreHorizontal,
 } from 'lucide-angular';
 import type {
   AgendaAgentProposalDto,
   AgendaSummaryDto,
-  AiCapacityResultDto,
   CreateVehicleEventDto,
   ForecastSlotDto,
   UpdateVehicleEventDto,
@@ -49,11 +48,11 @@ import { ToastService } from '../../shared/ui/toast/toast.service';
 import { GroupBadgeComponent } from '../../shared/ui/group-badge/group-badge.component';
 import { AgendaCalendarComponent, annulationSansObjet } from './agenda-calendar.component';
 import { horsServiceLabel, ReservationSheetComponent, siegesLabel } from './sheets/reservation-sheet.component';
-import { OptimizationSheetComponent } from './sheets/optimization-sheet.component';
 import { AgendaAgentSettingsSheetComponent } from './sheets/agenda-agent-settings-sheet.component';
-import { AgendaAgentProposalsSheetComponent } from './sheets/agenda-agent-proposals-sheet.component';
+import { AgendaIaViewComponent } from './ia/agenda-ia-view.component';
+import { AgendaParcViewComponent } from './parc/agenda-parc-view.component';
 import { ReservationQrDialogComponent } from './reservation-qr-dialog.component';
-import { ReorganisationSheetComponent } from './sheets/reorganisation-sheet.component';
+import { ReorganisationSheetComponent, type PresetReorganisation } from './sheets/reorganisation-sheet.component';
 import { AiJobPillComponent } from './ai-job-pill.component';
 import { AiJobService, type AiJob } from '../../core/services/ai-job.service';
 import { AuthService } from '../../core/services/auth.service';
@@ -80,11 +79,18 @@ interface GroupOption {
   name: string;
 }
 
+/** Id du groupe qui UTILISE le véhicule d'une réservation (`metadata.group.id`), sinon null. */
+function groupeReservationId(ev: VehicleEventDto): string | null {
+  if (ev.type !== 'RESERVATION') return null;
+  const g = (ev.metadata as { group?: { id?: unknown } | null } | null)?.group;
+  return g && typeof g.id === 'string' && g.id ? g.id : null;
+}
+
 @Component({
   selector: 'app-agenda',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [FormsModule, LucideAngularModule, DatePipe, GroupBadgeComponent, AgendaCalendarComponent, ReservationSheetComponent, OptimizationSheetComponent, AgendaAgentSettingsSheetComponent, AgendaAgentProposalsSheetComponent, AiJobPillComponent, VehicleLinkDirective, PlanUpsellComponent, MissionsPanelComponent, ReservationQrDialogComponent, ReorganisationSheetComponent],
+  imports: [FormsModule, LucideAngularModule, DatePipe, GroupBadgeComponent, AgendaCalendarComponent, ReservationSheetComponent, AgendaAgentSettingsSheetComponent, AgendaIaViewComponent, AgendaParcViewComponent, AiJobPillComponent, VehicleLinkDirective, PlanUpsellComponent, MissionsPanelComponent, ReservationQrDialogComponent, ReorganisationSheetComponent],
   template: `
     <div class="flex flex-col gap-5">
       <app-plan-upsell feature="agenda" />
@@ -107,6 +113,13 @@ interface GroupOption {
               }
             </p>
           </div>
+          <!--
+            REFONTE UX DU 28/09 — QUATRE ENTRÉES, pas huit. « Éviter d'avoir énormément de boutons
+            qui donnent l'impression qu'il faut tout faire en même temps. » Réserver et Demandes sont
+            les gestes du jour ; + Événement pose une indisponibilité ; le menu ⋯ garde les gestes
+            rares (QR à imprimer une fois, réorganisation en masse, réglages). Les gestes IA vivent
+            dans la vue « Assistant IA », dans l'ordre où ils servent.
+          -->
           <div class="ag-actions">
             @if (canReserve()) {
               <button type="button" (click)="openReserve()" class="ag-btn-soft">
@@ -118,57 +131,38 @@ interface GroupOption {
                 <lucide-icon [img]="InboxIcon" [size]="15"></lucide-icon><span>Demandes</span><span class="ag-badge">{{ pendingCount() }}</span>
               </button>
             }
-            <!--
-              P0-1 — LA PORTE D'ENTRÉE DES CONDUCTEURS.
-              Le lien public existait, mais seulement en copier-coller au fond des paramètres.
-              Ici il devient imprimable : c'est le standard qui remet le QR aux conducteurs, et
-              c'est lui qui validera leurs demandes — même permission pour les deux gestes.
-            -->
-            @if (canValidate()) {
-              <button type="button" (click)="qrDialogOpen.set(true)" class="ag-btn-soft"
-                      title="Afficher et imprimer le QR de réservation">
-                <lucide-icon [img]="QrCodeIcon" [size]="15"></lucide-icon><span>QR réservation</span>
-              </button>
-            }
-            <!--
-              Lot 3c — le geste de masse. Placé à côté des demandes : c'est le même poste qui
-              valide une demande et qui reprend un lot, et la même permission.
-            -->
-            @if (canValidate()) {
-              <button type="button" (click)="reorgSheetOpen.set(true)" class="ag-btn-soft"
-                      title="Annuler ou décaler un lot de réservations">
-                <lucide-icon [img]="ShuffleIcon" [size]="15"></lucide-icon><span>Réorganiser</span>
-              </button>
-            }
-            @if (canOptimize() && aiCapacity()) {
-              <button type="button" (click)="openOptim()" class="ag-btn-soft">
-                <lucide-icon [img]="GaugeIcon" [size]="15"></lucide-icon><span>Optimisation</span>
-              </button>
-            }
-            <!--
-              Couper l'IA ne doit pas ENFERMER les propositions déjà produites : elles se
-              valident et se refusent sans aucun appel moteur, et l'API ne demande d'ailleurs
-              que la permission « reservations_manage ». Ce bouton était la seule porte vers
-              elles — 779 propositions en attente le jour du correctif.
-
-              La génération de NOUVELLES propositions, elle, reste gouvernée par l'option :
-              c'est l'accès au réglage de l'agent qui exige la fonction « agendaAgent ».
-            -->
-            @if (canOptimize() && (agentProposalCount() > 0 || (aiAgendaAgent() && canConfigureAgent()))) {
-              <button type="button" (click)="openProposals()" class="ag-btn-soft">
-                <lucide-icon [img]="SparklesIcon" [size]="15"></lucide-icon><span>Propositions IA</span>
-                @if (agentProposalCount() > 0) { <span class="ag-badge">{{ agentProposalCount() }}</span> }
-              </button>
-            }
             @if (canManage()) {
               <button type="button" (click)="openCreate()" class="ag-btn-primary">
                 <lucide-icon [img]="PlusIcon" [size]="15"></lucide-icon><span>Événement</span>
               </button>
             }
-            @if (canConfigureAgent()) {
-              <button type="button" (click)="openAgentSettings()" class="ag-icon-btn" title="Paramètres de l'agenda" aria-label="Paramètres de l'agenda">
-                <lucide-icon [img]="SettingsIcon" [size]="17"></lucide-icon>
-              </button>
+            @if (canValidate() || canConfigureAgent()) {
+              <div class="ag-dd-wrapper">
+                <button type="button" (click)="plusOpen.set(!plusOpen())" class="ag-icon-btn ag-icon-btn--plus" [class.ag-icon-btn--on]="plusOpen()"
+                        title="Plus d'actions" aria-label="Plus d'actions" [attr.aria-expanded]="plusOpen()">
+                  <lucide-icon [img]="MoreIcon" [size]="18"></lucide-icon>
+                </button>
+                @if (plusOpen()) {
+                  <div class="ag-dd-backdrop" (click)="plusOpen.set(false)"></div>
+                  <div class="ag-dd-menu ag-dd-menu--right">
+                    @if (canValidate()) {
+                      <!-- P0-1 : la porte d'entrée des conducteurs (le QR s'imprime une fois, puis vit sur le pare-brise). -->
+                      <button type="button" class="ag-dd-item" (click)="plusOpen.set(false); qrDialogOpen.set(true)">
+                        <span class="ag-dd-item-row"><lucide-icon [img]="QrCodeIcon" [size]="14"></lucide-icon><span>QR de réservation</span></span>
+                      </button>
+                      <button type="button" class="ag-dd-item" (click)="plusOpen.set(false); reorgSheetOpen.set(true)">
+                        <span class="ag-dd-item-row"><lucide-icon [img]="ShuffleIcon" [size]="14"></lucide-icon><span>Réorganiser des réservations</span></span>
+                      </button>
+                    }
+                    @if (canConfigureAgent()) {
+                      @if (canValidate()) { <div class="ag-dd-divider"></div> }
+                      <button type="button" class="ag-dd-item" (click)="plusOpen.set(false); openAgentSettings()">
+                        <span class="ag-dd-item-row"><lucide-icon [img]="SettingsIcon" [size]="14"></lucide-icon><span>Paramètres de l'agenda</span></span>
+                      </button>
+                    }
+                  </div>
+                }
+              </div>
             }
           </div>
         </div>
@@ -248,10 +242,37 @@ interface GroupOption {
         </section>
       }
 
+      <!-- ── Les VUES de l'agenda (refonte UX du 28/09) ─────────────────────────────────
+           Calendrier · Missions · Parc · Assistant IA. « Mission » n'est plus un filtre de type :
+           il remplaçait déjà la grille, c'était une vue qui ne disait pas son nom. Parc et
+           Assistant IA sont nouvelles : le paramétrage des véhicules et les gestes IA, qui
+           vivaient dans des feuilles et des boutons dispersés, ont chacun leur écran. -->
+      @if (canSeeAgenda()) {
+      <nav class="ag-vues" aria-label="Vues de l'agenda">
+        <button type="button" class="ag-vue" [class.ag-vue--on]="vue() === 'calendrier'" (click)="vue.set('calendrier')">
+          <lucide-icon [img]="CalendarDaysIcon" [size]="14"></lucide-icon> Calendrier
+        </button>
+        <button type="button" class="ag-vue" [class.ag-vue--on]="vue() === 'missions'" (click)="vue.set('missions')">
+          <lucide-icon [img]="RouteIcon" [size]="14"></lucide-icon> Missions
+        </button>
+        @if (canSeeInsights()) {
+          <button type="button" class="ag-vue" [class.ag-vue--on]="vue() === 'parc'" (click)="vue.set('parc')">
+            <lucide-icon [img]="TruckIcon" [size]="14"></lucide-icon> Parc
+          </button>
+        }
+        @if (montrerVueIa()) {
+          <button type="button" class="ag-vue" [class.ag-vue--on]="vue() === 'ia'" (click)="vue.set('ia')">
+            <lucide-icon [img]="SparklesIcon" [size]="14"></lucide-icon> Assistant IA
+            @if (agentProposalCount() > 0) { <span class="ag-badge ag-badge--violet">{{ agentProposalCount() }}</span> }
+          </button>
+        }
+      </nav>
+      }
+
       <!-- Barre de filtres — groupe, véhicule, type et mois ne pilotent QUE la grille du
            calendrier. Sans la permission agenda_view il n'y a pas de grille : le tableau
            des missions porte ses propres filtres, et cette barre ne ferait rien. -->
-      @if (canSeeAgenda()) {
+      @if (canSeeAgenda() && vue() === 'calendrier') {
       <div class="ag-filters">
         @if (groupOptions().length > 0) {
           <div class="ag-dd-wrapper">
@@ -346,8 +367,18 @@ interface GroupOption {
            dans la grille sous « Tous » — c'est l'exigence d'A2 § 3.1 : le gestionnaire
            doit les voir sur le MÊME calendrier que la maintenance et les réservations,
            sinon il double-réserve. -->
-      @if (selectedType() === 'MISSION' || !canSeeAgenda()) {
+      @if (vue() === 'missions' || !canSeeAgenda()) {
         <app-missions-panel />
+      } @else if (vue() === 'parc') {
+        <app-agenda-parc-view [vehicles]="scopedVehicles()" (changed)="rafraichirVehicules()" />
+      } @else if (vue() === 'ia') {
+        <app-agenda-ia-view
+          [proposals]="agentProposals()"
+          (reserver)="openReserve()"
+          (reglages)="openAgentSettings()"
+          (parc)="vue.set('parc')"
+          (changed)="onAgentProposalsChanged()"
+          (capaciteAppliquee)="rafraichirVehicules()" />
       } @else {
 
       <!-- Calendrier -->
@@ -387,7 +418,7 @@ interface GroupOption {
       <!-- À venir / en retard — dérivé des événements de l'agenda. Sans le droit de les
            lire, « Aucune échéance à venir » n'est pas une information, c'est une
            affirmation fausse. -->
-      @if (canSeeAgenda()) {
+      @if (canSeeAgenda() && vue() === 'calendrier') {
       <section class="flex flex-col gap-2">
         <h2 class="text-sm font-display font-bold text-fg-primary flex items-center gap-2">
           <lucide-icon [img]="ListChecksIcon" [size]="16" class="text-fg-tertiary"></lucide-icon>
@@ -414,10 +445,11 @@ interface GroupOption {
                     @if (ev.vehiclePlate) { <span class="ag-up-plate" [vehicleLink]="ev.vehicleId" [attr.title]="'Voir ' + ev.vehiclePlate">{{ ev.vehiclePlate }}</span> · }
                     {{ eventTypeLabel(ev.type) }}
                     @if (ev.type === 'INCIDENT' && ev.severity) { · {{ severityLabel(ev.severity) }} }
+                    @if (groupeReservation(ev); as gr) { · {{ gr }} }
                   </span>
                 </span>
                 <span class="ag-up-date">
-                  <span class="ag-up-date-day">{{ ev.startAt | date:'dd MMM' }}</span>
+                  <span class="ag-up-date-day">{{ ev.startAt | date:'dd MMM' }}@if (dureeEnJours(ev) > 1) { <span class="ag-up-duree">· {{ dureeEnJours(ev) }} j</span> }</span>
                   <span class="ag-up-badge" [style.--u]="urgencyColor(eventUrgency(ev))">
                     {{ urgencyLabel(ev) }}
                   </span>
@@ -594,9 +626,15 @@ interface GroupOption {
                       · {{ plageHoraire(ev) }}
                     } @else if (!ev.allDay) { · {{ ev.startAt | date:'HH:mm' }} }
                     @if (ev.odometerKm != null) { · {{ ev.odometerKm }} km }
+                    <!-- Refonte UX du 28/09 (point 1) : la durée se lit ici, et « jour 2/3 » situe le jour ouvert. -->
+                    @if (dureeEnJours(ev) > 1) {
+                      <span class="ag-duree" [attr.title]="'Du ' + (ev.startAt | date:'EEEE d MMMM') + ' au ' + (ev.endAt | date:'EEEE d MMMM')">{{ dureeEnJours(ev) }} jours@if (positionJour(ev); as pj) { · {{ pj }} }</span>
+                    }
                   </p>
                   @if (ev.description) { <p class="ag-day-card-desc">{{ ev.description }}</p> }
                   @if (reservationReason(ev)) { <p class="ag-day-card-desc">{{ reservationReason(ev) }}</p> }
+                  <!-- Le groupe qui UTILISE le véhicule (point 9) — pas forcément celui du véhicule. -->
+                  @if (groupeReservation(ev); as gr) { <p class="ag-day-card-desc"><span class="ag-groupe">Groupe : {{ gr }}</span></p> }
                   <!-- Sièges auto : ce qui est déjà à bord et ce qu'il faut sortir du stock — celui qui prépare la voiture le lit ici. -->
                   @if (siegesAuto(ev); as sa) { <p class="ag-day-card-desc">Sièges auto : {{ sa }}</p> }
                   <!-- P2-1 : une MISSION n'a pas de boutons ici. Son ombre d'agenda se met à jour
@@ -669,133 +707,188 @@ interface GroupOption {
               <lucide-icon [img]="XIcon" [size]="18"></lucide-icon>
             </button>
           </header>
-          <div class="ag-modal-body">
-            <!-- Type -->
-            <div class="ag-field">
-              <label>Type</label>
-              <div class="ag-seg ag-seg--full">
-                <button type="button" (click)="setFormType('MAINTENANCE')" [disabled]="!!editingEvent()"
-                        class="ag-seg-btn" [class.ag-seg-btn--active]="form.type === 'MAINTENANCE'">Maintenance</button>
-                <button type="button" (click)="setFormType('INCIDENT')" [disabled]="!!editingEvent()"
-                        class="ag-seg-btn" [class.ag-seg-btn--active]="form.type === 'INCIDENT'">Incident</button>
-              </div>
-            </div>
-            <!-- Véhicule -->
-            <div class="ag-field">
-              <label for="ag-f-veh">Véhicule</label>
-              <select id="ag-f-veh" class="ag-input" [(ngModel)]="form.vehicleId" (ngModelChange)="onCreateVehicleChange($event)" [disabled]="!!editingEvent()">
-                <option value="" disabled>Sélectionner…</option>
-                <!--
-                  ⚠️ On itère « scopedVehicles », et NON « vehicles ». La liste brute contient le parc de
-                  TOUTES les sociétés : un super-admin dont le bandeau est réglé sur « Client
-                  test » se voyait proposer les plaques du cdef31 et de mh cars, et pouvait poser
-                  une maintenance sur le véhicule d'un autre client sans que rien ne l'avertisse.
-                  Relevé en recette le 2026-09-24. Toute la page obéit au filtre société ; ce
-                  sélecteur était le seul à l'ignorer.
-                -->
-                @for (v of scopedVehicles(); track v.id) {
-                  <option [value]="v.id">{{ v.plate }}@if (v.brand) { — {{ v.brand }} {{ v.model }} }</option>
-                }
-              </select>
-            </div>
-            <!-- Titre -->
-            <div class="ag-field">
-              <label for="ag-f-title">Titre</label>
-              <input id="ag-f-title" type="text" class="ag-input" [(ngModel)]="form.title"
-                     placeholder="{{ form.type === 'INCIDENT' ? 'Ex. Pare-brise fissuré' : 'Ex. Vidange + filtres' }}" />
-            </div>
-            <!-- Catégorie -->
-            <div class="ag-field">
-              <label for="ag-f-cat">Catégorie</label>
-              <input id="ag-f-cat" type="text" class="ag-input" [(ngModel)]="form.category"
-                     placeholder="{{ form.type === 'INCIDENT' ? 'Ex. Carrosserie' : 'Ex. Révision' }}" />
-            </div>
-            <!-- Sévérité (incident) -->
-            @if (form.type === 'INCIDENT') {
+          <!--
+            REFONTE UX DU 28/09 (point 8) — un seul formulaire d'INDISPONIBILITÉ, deux natures.
+            Maintenance et incident « se ressemblent » : même fiche, même clôture (« À clore »), même
+            immobilisation. La nature dit ce qui diffère en une ligne. Deux colonnes sur grand écran :
+            QUOI (nature, véhicule, titre…) | QUAND (dates, immobilisation) — et, quand l'évènement
+            immobilise le véhicule, les RÉSERVATIONS prises sur la période, à décider ici même.
+          -->
+          <div class="ag-modal-body ag-modal-body--2col">
+            <div class="ag-col">
+              <!-- Nature -->
               <div class="ag-field">
-                <label>Sévérité</label>
+                <label>Nature</label>
                 <div class="ag-seg ag-seg--full">
-                  <button type="button" (click)="form.severity = 'LOW'"
-                          class="ag-seg-btn" [class.ag-seg-btn--active]="form.severity === 'LOW'">Faible</button>
-                  <button type="button" (click)="form.severity = 'MEDIUM'"
-                          class="ag-seg-btn" [class.ag-seg-btn--active]="form.severity === 'MEDIUM'">Moyenne</button>
-                  <button type="button" (click)="form.severity = 'HIGH'"
-                          class="ag-seg-btn" [class.ag-seg-btn--active]="form.severity === 'HIGH'">Critique</button>
+                  <button type="button" (click)="setFormType('MAINTENANCE')" [disabled]="!!editingEvent()"
+                          class="ag-seg-btn" [class.ag-seg-btn--active]="form.type === 'MAINTENANCE'">Maintenance</button>
+                  <button type="button" (click)="setFormType('INCIDENT')" [disabled]="!!editingEvent()"
+                          class="ag-seg-btn" [class.ag-seg-btn--active]="form.type === 'INCIDENT'">Incident</button>
                 </div>
+                <p class="ag-field-note">
+                  @if (form.type === 'INCIDENT') {
+                    Panne, accident, dégât : l'incident reste <strong>ouvert jusqu'à résolution</strong> et immobilise le véhicule par défaut.
+                  } @else {
+                    Entretien prévu (vidange, contrôle technique, pneus) : planifié à une date, <strong>n'immobilise pas</strong> le véhicule sauf si vous le cochez.
+                  }
+                </p>
               </div>
-            }
-            <!-- Date + heure -->
-            <div class="ag-field-row">
+              <!-- Véhicule -->
               <div class="ag-field">
-                <label for="ag-f-date">Date</label>
-                <input id="ag-f-date" type="date" class="ag-input" [(ngModel)]="form.date" />
+                <label for="ag-f-veh">Véhicule</label>
+                <select id="ag-f-veh" class="ag-input" [(ngModel)]="form.vehicleId" (ngModelChange)="onCreateVehicleChange($event)" [disabled]="!!editingEvent()">
+                  <option value="" disabled>Sélectionner…</option>
+                  <!--
+                    ⚠️ On itère « scopedVehicles », et NON « vehicles ». La liste brute contient le parc de
+                    TOUTES les sociétés : un super-admin dont le bandeau est réglé sur « Client
+                    test » se voyait proposer les plaques du cdef31 et de mh cars, et pouvait poser
+                    une maintenance sur le véhicule d'un autre client sans que rien ne l'avertisse.
+                    Relevé en recette le 2026-09-24. Toute la page obéit au filtre société ; ce
+                    sélecteur était le seul à l'ignorer.
+                  -->
+                  @for (v of scopedVehicles(); track v.id) {
+                    <option [value]="v.id">{{ v.plate }}@if (v.brand) { — {{ v.brand }} {{ v.model }} }</option>
+                  }
+                </select>
               </div>
-              <div class="ag-field ag-field--allday">
-                <label class="ag-check">
-                  <input type="checkbox" [(ngModel)]="form.allDay" />
-                  <span>Toute la journée</span>
-                </label>
-              </div>
-            </div>
-            @if (!form.allDay) {
+              <!-- Titre -->
               <div class="ag-field">
-                <label for="ag-f-time">Heure</label>
-                <input id="ag-f-time" type="time" class="ag-input" [(ngModel)]="form.time" />
+                <label for="ag-f-title">Titre</label>
+                <input id="ag-f-title" type="text" class="ag-input" [(ngModel)]="form.title"
+                       placeholder="{{ form.type === 'INCIDENT' ? 'Ex. Pare-brise fissuré' : 'Ex. Vidange + filtres' }}" />
               </div>
-            }
-            <!-- Lot multi-jours (28/09) — « un véhicule en garage, ça peut prendre une semaine ».
-                 Une fin facultative : vide, c'est la journée (maintenance) ou jusqu'à résolution
-                 (incident), comme avant. Renseignée, le véhicule est immobilisé chaque jour de
-                 l'intervalle, et la grille le montre en « suite » sur chacun. -->
-            <div class="ag-field-row">
+              <!-- Catégorie -->
               <div class="ag-field">
-                <label for="ag-f-end">Jusqu'au <span class="ag-field-hint">optionnel</span></label>
-                <input id="ag-f-end" type="date" class="ag-input" [(ngModel)]="form.endDate" [min]="form.date" />
+                <label for="ag-f-cat">Catégorie <span class="ag-field-hint">optionnel</span></label>
+                <input id="ag-f-cat" type="text" class="ag-input" [(ngModel)]="form.category"
+                       placeholder="{{ form.type === 'INCIDENT' ? 'Ex. Carrosserie' : 'Ex. Révision' }}" />
               </div>
-              @if (!form.allDay && form.endDate) {
+              <!-- Sévérité (incident) -->
+              @if (form.type === 'INCIDENT') {
                 <div class="ag-field">
-                  <label for="ag-f-end-time">Heure de fin</label>
-                  <input id="ag-f-end-time" type="time" class="ag-input" [(ngModel)]="form.endTime" />
+                  <label>Sévérité</label>
+                  <div class="ag-seg ag-seg--full">
+                    <button type="button" (click)="form.severity = 'LOW'"
+                            class="ag-seg-btn" [class.ag-seg-btn--active]="form.severity === 'LOW'">Faible</button>
+                    <button type="button" (click)="form.severity = 'MEDIUM'"
+                            class="ag-seg-btn" [class.ag-seg-btn--active]="form.severity === 'MEDIUM'">Moyenne</button>
+                    <button type="button" (click)="form.severity = 'HIGH'"
+                            class="ag-seg-btn" [class.ag-seg-btn--active]="form.severity === 'HIGH'">Critique</button>
+                  </div>
                 </div>
               }
+              <!-- Odomètre (pré-rempli via estimation GPS) -->
+              <div class="ag-field">
+                <label for="ag-f-odo">
+                  Kilométrage
+                  @if (odometerHint()) { <span class="ag-field-hint">{{ odometerHint() }}</span> }
+                </label>
+                <input id="ag-f-odo" type="number" min="0" class="ag-input" [(ngModel)]="form.odometerKm"
+                       placeholder="km" />
+              </div>
+              <!-- Description -->
+              <div class="ag-field">
+                <label for="ag-f-desc">Description <span class="ag-field-hint">optionnel</span></label>
+                <textarea id="ag-f-desc" class="ag-input ag-textarea" [(ngModel)]="form.description"
+                          rows="2" placeholder="Détails"></textarea>
+              </div>
             </div>
-            <p class="ag-field-note">
-              Laisse vide pour une seule journée. Un passage au garage d'une semaine : mets la date de retour —
-              le véhicule reste indisponible chaque jour de l'intervalle, et l'agenda te demandera
-              « terminée ? » quand cette date sera passée.
-            </p>
-            <!-- Immobilisation : rend le véhicule indisponible (réservations + IA) -->
-            <div class="ag-field">
-              <label class="ag-check">
-                <input type="checkbox" [(ngModel)]="form.blocksVehicle" />
-                <span>Immobilise le véhicule</span>
-              </label>
+
+            <div class="ag-col">
+              <!-- Date + heure -->
+              <div class="ag-field-row">
+                <div class="ag-field">
+                  <label for="ag-f-date">{{ form.type === 'INCIDENT' ? 'Depuis le' : 'Date' }}</label>
+                  <input id="ag-f-date" type="date" class="ag-input" [(ngModel)]="form.date" (ngModelChange)="onPeriodeChange()" />
+                </div>
+                <div class="ag-field ag-field--allday">
+                  <label class="ag-check">
+                    <input type="checkbox" [(ngModel)]="form.allDay" (ngModelChange)="onPeriodeChange()" />
+                    <span>Toute la journée</span>
+                  </label>
+                </div>
+              </div>
+              @if (!form.allDay) {
+                <div class="ag-field">
+                  <label for="ag-f-time">Heure</label>
+                  <input id="ag-f-time" type="time" class="ag-input" [(ngModel)]="form.time" (ngModelChange)="onPeriodeChange()" />
+                </div>
+              }
+              <!-- Lot multi-jours (28/09) — « un véhicule en garage, ça peut prendre une semaine ».
+                   Une fin facultative : vide, c'est la journée (maintenance) ou jusqu'à résolution
+                   (incident), comme avant. Renseignée, le véhicule est immobilisé chaque jour de
+                   l'intervalle, et la grille le montre en « suite » sur chacun. -->
+              <div class="ag-field-row">
+                <div class="ag-field">
+                  <label for="ag-f-end">Jusqu'au <span class="ag-field-hint">optionnel</span></label>
+                  <input id="ag-f-end" type="date" class="ag-input" [(ngModel)]="form.endDate" [min]="form.date" (ngModelChange)="onPeriodeChange()" />
+                </div>
+                @if (!form.allDay && form.endDate) {
+                  <div class="ag-field">
+                    <label for="ag-f-end-time">Heure de fin</label>
+                    <input id="ag-f-end-time" type="time" class="ag-input" [(ngModel)]="form.endTime" (ngModelChange)="onPeriodeChange()" />
+                  </div>
+                }
+              </div>
               <p class="ag-field-note">
-                Tant que l'événement n'est pas terminé, le véhicule est exclu des réservations
-                et des suggestions de l'IA (ex. roue crevée, passage au garage).
+                @if (dureeFormulaire() > 1) {
+                  <strong>{{ dureeFormulaire() }} jours</strong> — le véhicule est indisponible chaque jour de l'intervalle, et l'agenda demandera « terminée ? » quand la date de retour sera passée.
+                } @else {
+                  Laissez vide pour une seule journée. Un passage au garage d'une semaine : mettez la date de retour.
+                }
               </p>
-            </div>
-            <!-- Odomètre (pré-rempli via estimation GPS) -->
-            <div class="ag-field">
-              <label for="ag-f-odo">
-                Kilométrage
-                @if (odometerHint()) { <span class="ag-field-hint">{{ odometerHint() }}</span> }
-              </label>
-              <input id="ag-f-odo" type="number" min="0" class="ag-input" [(ngModel)]="form.odometerKm"
-                     placeholder="km" />
-            </div>
-            <!-- Description -->
-            <div class="ag-field">
-              <label for="ag-f-desc">Description</label>
-              <textarea id="ag-f-desc" class="ag-input ag-textarea" [(ngModel)]="form.description"
-                        rows="3" placeholder="Détails (optionnel)"></textarea>
+              <!-- Immobilisation : rend le véhicule indisponible (réservations + IA) -->
+              <div class="ag-field">
+                <label class="ag-check">
+                  <input type="checkbox" [(ngModel)]="form.blocksVehicle" (ngModelChange)="onPeriodeChange()" />
+                  <span>Immobilise le véhicule</span>
+                </label>
+                <p class="ag-field-note">
+                  Tant que l'événement n'est pas terminé, le véhicule est exclu des réservations
+                  et des suggestions de l'IA (ex. roue crevée, passage au garage).
+                </p>
+              </div>
+
+              <!--
+                LES RÉSERVATIONS PRISES SUR LA PÉRIODE (point 8 : « regrouper une ou plusieurs
+                réservations directement dans l'événement »). Une immobilisation qui écrase des
+                réservations sans le dire, c'est un véhicule promis deux fois. Ici : la liste, et
+                une décision par ligne — laisser, annuler, ou réaffecter (auto : premier véhicule
+                libre et conforme). Appliquées juste après la création, tracées dans l'événement.
+              -->
+              @if (form.blocksVehicle && form.vehicleId && !editingEvent()) {
+                <div class="ag-resas">
+                  <div class="ag-resas-head">
+                    <span class="ag-resas-t"><lucide-icon [img]="CalendarCheckIcon" [size]="13"></lucide-icon> Réservations pendant cette période</span>
+                    @if (resasPeriodeLoading()) { <span class="ag-resas-n">…</span> } @else { <span class="ag-resas-n">{{ resasPeriode().length }}</span> }
+                  </div>
+                  @if (resasPeriode().length === 0 && !resasPeriodeLoading()) {
+                    <p class="ag-field-note">Aucune réservation sur ce véhicule pendant la période : rien à reprendre.</p>
+                  } @else {
+                    <p class="ag-field-note">Le véhicule sera indisponible : que faire de chacune ?</p>
+                    @for (r of resasPeriode(); track r.id) {
+                      <div class="ag-resa">
+                        <div class="ag-resa-main">
+                          <span class="ag-resa-title">{{ r.title }}</span>
+                          <span class="ag-resa-when">{{ plageHoraire(r) }}@if (dureeEnJours(r) > 1) { · {{ dureeEnJours(r) }} j }@if (r.status === 'REQUESTED') { · demande en attente }@if (groupeReservation(r); as g) { · {{ g }} }</span>
+                        </div>
+                        <div class="ag-seg ag-seg--mini">
+                          <button type="button" class="ag-seg-btn" [class.ag-seg-btn--active]="decisionDe(r.id) === 'laisser'" (click)="decider(r.id, 'laisser')" title="Ne rien changer : la réservation reste sur ce véhicule">Laisser</button>
+                          <button type="button" class="ag-seg-btn" [class.ag-seg-btn--active]="decisionDe(r.id) === 'reaffecter'" (click)="decider(r.id, 'reaffecter')" title="Passer sur le premier véhicule libre et conforme">Réaffecter</button>
+                          <button type="button" class="ag-seg-btn ag-seg-btn--danger" [class.ag-seg-btn--active]="decisionDe(r.id) === 'annuler'" (click)="decider(r.id, 'annuler')" title="Annuler la réservation">Annuler</button>
+                        </div>
+                      </div>
+                    }
+                  }
+                </div>
+              }
             </div>
           </div>
           <footer class="ag-modal-foot">
             <button type="button" (click)="createOpen.set(false)" class="ag-btn-ghost">Annuler</button>
             <button type="button" (click)="submitCreate()" [disabled]="!canSubmitCreate() || saving()"
                     class="ag-btn-primary">
-              {{ saving() ? 'Enregistrement…' : (editingEvent() ? 'Enregistrer' : 'Créer l\\'événement') }}
+              {{ saving() ? 'Enregistrement…' : (editingEvent() ? 'Enregistrer' : (nbDecisions() > 0 ? 'Créer et reprendre ' + nbDecisions() + ' réservation(s)' : 'Créer l\\'événement')) }}
             </button>
           </footer>
         </div>
@@ -811,27 +904,19 @@ interface GroupOption {
       [editReservation]="resEditReservation()"
       (closed)="resSheetOpen.set(false)"
       (created)="onReservationChanged()" />
-    <app-optimization-sheet
-      [open]="optSheetOpen()"
-      [presetCapacity]="optPreset()"
-      (closed)="optSheetOpen.set(false)"
-      (applied)="onReservationChanged()" />
-    <!-- À la fermeture, le parc est relu : c'est dans cette feuille que les sièges à bord se règlent,
-         et la carte du jour comme la feuille de réservation les lisent depuis la liste des véhicules. -->
     <app-agenda-agent-settings-sheet
       [open]="agentSheetOpen()"
-      (closed)="agentSheetOpen.set(false); rafraichirVehicules()"
-      (saved)="loadAgentProposals()" />
-    <app-agenda-agent-proposals-sheet
-      [open]="proposalsSheetOpen()"
-      (closed)="proposalsSheetOpen.set(false)"
-      (changed)="onAgentProposalsChanged()" />
+      (closed)="agentSheetOpen.set(false)"
+      (saved)="loadAgentProposals()"
+      (parc)="vue.set('parc')" />
     @if (qrDialogOpen()) {
       <app-reservation-qr-dialog (closed)="qrDialogOpen.set(false)" />
     }
     <app-reorganisation-sheet
       [open]="reorgSheetOpen()"
-      (closed)="reorgSheetOpen.set(false)"
+      [vehicles]="scopedVehicles()"
+      [preset]="reorgPreset()"
+      (closed)="reorgSheetOpen.set(false); reorgPreset.set(null)"
       (applique)="onReservationChanged()" />
   `,
   styles: [`
@@ -893,6 +978,22 @@ interface GroupOption {
       transition: all .15s; flex-shrink: 0;
     }
     .ag-icon-btn:hover { color: var(--fg-primary); background: var(--bg-tertiary); }
+
+    /* ─── Vues de l'agenda (refonte UX du 28/09) ─── */
+    .ag-vues { display: flex; gap: 4px; padding: 4px; border-radius: 12px; background: var(--bg-secondary); border: 1px solid var(--border-subtle); overflow-x: auto; }
+    .ag-vue { display: inline-flex; align-items: center; gap: 6px; padding: 8px 14px; border-radius: 9px; font-size: 13px; font-weight: 700;
+              color: var(--fg-tertiary); white-space: nowrap; min-height: 40px; transition: all .12s; }
+    .ag-vue lucide-icon { color: currentColor; }
+    .ag-vue:hover { color: var(--fg-primary); background: var(--bg-tertiary); }
+    .ag-vue--on { background: var(--bg-primary); color: var(--texte-succes); box-shadow: 0 1px 2px rgba(0,0,0,.12); }
+    .ag-vue--on lucide-icon { color: var(--tracky-light); }
+    .ag-badge--violet { background: color-mix(in srgb, var(--violet) 18%, transparent); color: var(--texte-violet); }
+    .ag-dd-menu--right { left: auto; right: 0; }
+    .ag-dd-item-row { display: inline-flex; align-items: center; gap: 9px; }
+    .ag-dd-item-row lucide-icon { color: var(--tracky-light); }
+    .ag-icon-btn--plus { border: 1px solid var(--border-subtle); background: var(--bg-secondary); width: 36px; height: 36px; border-radius: 10px; }
+    .ag-icon-btn--on { color: var(--fg-primary); background: var(--bg-tertiary); }
+    @media (max-width: 480px) { .ag-vue { flex: 1; justify-content: center; padding: 8px 8px; } }
 
     /* ─── Strip de résumé ─── */
     .ag-summary {
@@ -1105,6 +1206,7 @@ interface GroupOption {
     .ag-up-plate { font-family: var(--font-mono, monospace); font-weight: 700; color: var(--fg-secondary); }
     .ag-up-date { display: flex; flex-direction: column; align-items: flex-end; gap: 3px; flex-shrink: 0; }
     .ag-up-date-day { font-size: 12px; font-weight: 700; color: var(--fg-secondary); white-space: nowrap; }
+    .ag-up-duree { font-weight: 800; color: var(--texte-info); }
     .ag-up-badge {
       font-size: 9px; font-weight: 800; text-transform: uppercase; letter-spacing: .04em;
       padding: 2px 7px; border-radius: 9999px;
@@ -1163,6 +1265,11 @@ interface GroupOption {
     }
     .ag-day-card-title { font-size: 14px; font-weight: 700; color: var(--fg-primary); margin: 8px 0 0; }
     .ag-day-card-meta { font-size: 11px; color: var(--fg-tertiary); margin: 3px 0 0; }
+    .ag-groupe { display: inline-block; padding: 1px 7px; border-radius: 999px; font-size: 10.5px; font-weight: 700;
+                 color: var(--fg-secondary); background: var(--bg-tertiary); border: 1px solid var(--border-subtle); }
+    /* Multi-jours : une pastille bleue, la couleur des réservations, lisible sans ouvrir. */
+    .ag-duree { display: inline-block; margin-left: 6px; padding: 1px 7px; border-radius: 999px; font-size: 10.5px; font-weight: 800;
+                color: var(--texte-info); background: color-mix(in srgb, var(--texte-info) 12%, transparent); }
     .ag-day-card-plate { font-family: var(--font-mono, monospace); font-weight: 700; color: var(--fg-secondary); }
     .ag-day-card-desc { font-size: 12px; color: var(--fg-secondary); margin: 8px 0 0; line-height: 1.45; white-space: pre-wrap; }
     .ag-day-card-actions { display: flex; gap: 6px; margin-top: 10px; flex-wrap: wrap; }
@@ -1204,6 +1311,23 @@ interface GroupOption {
 
     /* ─── Formulaire de création ─── */
     .ag-modal-body { padding: 14px 16px; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; }
+    /* Deux colonnes sur grand écran : QUOI | QUAND. Le dialogue s'élargit pour les tenir. */
+    .ag-col { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+    @media (min-width: 760px) {
+      .ag-modal:has(.ag-modal-body--2col) { max-width: 820px; }
+      .ag-modal-body--2col { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 22px; align-items: start; }
+    }
+    .ag-seg--mini .ag-seg-btn { min-height: 32px; padding: 5px 8px; font-size: 11.5px; }
+    .ag-seg-btn--danger.ag-seg-btn--active { color: var(--texte-alerte); }
+    .ag-resas { display: flex; flex-direction: column; gap: 8px; padding: 10px 11px; border-radius: 12px; background: var(--bg-secondary); border: 1px solid var(--border-subtle); }
+    .ag-resas-head { display: flex; align-items: center; justify-content: space-between; }
+    .ag-resas-t { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 700; color: var(--fg-primary); }
+    .ag-resas-t lucide-icon { color: var(--texte-info); }
+    .ag-resas-n { font-size: 11px; font-weight: 800; padding: 1px 7px; border-radius: 999px; background: color-mix(in srgb, var(--texte-info) 14%, transparent); color: var(--texte-info); }
+    .ag-resa { display: flex; flex-direction: column; gap: 6px; padding: 8px 9px; border-radius: 10px; background: var(--bg-tertiary); }
+    .ag-resa-main { display: flex; flex-direction: column; gap: 2px; }
+    .ag-resa-title { font-size: 12.5px; font-weight: 700; color: var(--fg-primary); }
+    .ag-resa-when { font-size: 11px; color: var(--fg-tertiary); }
     .ag-modal-foot {
       display: flex; gap: 8px; justify-content: flex-end;
       padding: 12px 16px; padding-bottom: max(12px, env(safe-area-inset-bottom));
@@ -1408,7 +1532,7 @@ export class AgendaComponent implements OnInit {
   protected readonly ShuffleIcon = Shuffle;
   protected readonly PlayIcon = Play;
   protected readonly ListChecksIcon = ListChecks;
-  protected readonly GaugeIcon = Gauge;
+  protected readonly MoreIcon = MoreHorizontal;
   protected readonly CalendarCheckIcon = CalendarCheck;
   protected readonly InboxIcon = Inbox;
   protected readonly SparklesIcon = Sparkles;
@@ -1487,9 +1611,8 @@ export class AgendaComponent implements OnInit {
     { value: 'INCIDENT', label: 'Incident' },
     { value: 'RESERVATION', label: 'Réservation' },
     // Espace dépôt (2026-08) — les missions apparaissent dans la MÊME grille que la
-    // maintenance, les incidents et les réservations. C'est l'exigence d'A2 § 3.1 :
-    // un gestionnaire qui ne voit pas les missions sur son calendrier double-réserve.
-    { value: 'MISSION', label: 'Mission' },
+    // maintenance, les incidents et les réservations sous « Tous » (A2 § 3.1). Leur tableau,
+    // lui, est une VUE (sélecteur de vues, refonte du 28/09), plus un filtre de type.
   ];
 
   private readonly monthFmt = new Intl.DateTimeFormat('fr-FR', { month: 'long', year: 'numeric' });
@@ -1533,11 +1656,17 @@ export class AgendaComponent implements OnInit {
   /** ⚙️ Paramètres de l'agenda (agent IA). */
   protected readonly agentSheetOpen = signal(false);
   /** Propositions de l'agent nocturne (revue). */
-  protected readonly proposalsSheetOpen = signal(false);
   /** QR imprimable du lien public de réservation (P0-1). */
   protected readonly qrDialogOpen = signal(false);
   /** Reprise en masse des réservations (lot 3c). */
   protected readonly reorgSheetOpen = signal(false);
+  /** Pré-réglage de la feuille Réorganiser quand elle s'ouvre depuis un geste (véhicule, fenêtre, action). */
+  protected readonly reorgPreset = signal<PresetReorganisation | null>(null);
+  /** Réservations du véhicule prises sur la période du formulaire d'indisponibilité, et la décision par ligne. */
+  protected readonly resasPeriode = signal<VehicleEventDto[]>([]);
+  protected readonly resasPeriodeLoading = signal(false);
+  protected readonly resasDecisions = signal<Record<string, 'laisser' | 'annuler' | 'reaffecter'>>({});
+  protected readonly nbDecisions = computed(() => Object.values(this.resasDecisions()).filter((d) => d !== 'laisser').length);
   /**
    * Propositions de l'agent EN ATTENTE — la liste, plus seulement son compte (lot 3a, 23/09).
    *
@@ -1548,9 +1677,15 @@ export class AgendaComponent implements OnInit {
    */
   protected readonly agentProposals = signal<AgendaAgentProposalDto[]>([]);
   protected readonly agentProposalCount = computed(() => this.agentProposals().length);
-  protected readonly optSheetOpen = signal(false);
+  /** Vue affichée sous l'en-tête (refonte UX du 28/09) — Calendrier par défaut. */
+  protected readonly vue = signal<'calendrier' | 'missions' | 'parc' | 'ia'>('calendrier');
+  /** Menu « ⋯ » de l'en-tête (QR, réorganiser, paramètres). */
+  protected readonly plusOpen = signal(false);
+  /** La vue Assistant IA n'a de sens qu'avec une fonction IA ouverte, ou des propositions à traiter. */
+  protected readonly montrerVueIa = computed(
+    () => this.canOptimize() && (this.aiCapacity() || this.aiAgendaAgent() || this.aiStatus.can('placement') || this.agentProposalCount() > 0),
+  );
   /** Résultat de capacité IA pré-chargé (analyse async) à réafficher quand on ouvre l'optimisation via la pastille. */
-  protected readonly optPreset = signal<AiCapacityResultDto | null>(null);
   /**
    * Nb de demandes de réservation EN ATTENTE, toutes dates confondues.
    *
@@ -1626,9 +1761,12 @@ export class AgendaComponent implements OnInit {
   private readonly scopedEvents = computed(() => {
     const vid = this.selectedVehicleId();
     const gids = this.groupVehicleIdSet();
+    const gid = this.selectedGroupId();
     return this.events().filter((ev) => {
       if (vid && ev.vehicleId !== vid) return false;
-      if (gids && !gids.has(ev.vehicleId)) return false;
+      // Filtre « groupe » : par le véhicule (son groupe), OU par le groupe qui UTILISE le véhicule
+      // (point 9) — le prêt d'un véhicule à un autre groupe se lit des deux côtés.
+      if (gids && !gids.has(ev.vehicleId) && groupeReservationId(ev) !== gid) return false;
       return true;
     });
   });
@@ -1951,10 +2089,11 @@ export class AgendaComponent implements OnInit {
     const type = this.selectedType();
     const vid = this.selectedVehicleId();
     const gids = this.groupVehicleIdSet();
+    const gid = this.selectedGroupId();
     return this.echeances()
       .filter((ev) => {
         if (vid && ev.vehicleId !== vid) return false;
-        if (gids && !gids.has(ev.vehicleId)) return false;
+        if (gids && !gids.has(ev.vehicleId) && groupeReservationId(ev) !== gid) return false;
         if (type && ev.type !== type) return false;
         return estUneEcheance(ev);
       })
@@ -2308,6 +2447,13 @@ export class AgendaComponent implements OnInit {
    * deux fois de suite (recette du 28/09 : « Ramassage secteur nord » en titre, puis en ligne de
    * détail). Un titre explicite différent du motif garde les deux lignes.
    */
+  /** Nom du groupe qui utilise le véhicule pour cette réservation (`metadata.group`), sinon null. */
+  protected groupeReservation(ev: VehicleEventDto): string | null {
+    if (ev.type !== 'RESERVATION') return null;
+    const g = (ev.metadata as { group?: { name?: unknown } | null } | null)?.group;
+    return g && typeof g.name === 'string' && g.name.trim() ? g.name.trim() : null;
+  }
+
   protected reservationReason(ev: VehicleEventDto): string | null {
     const reason = (ev.metadata as { reason?: unknown } | null)?.reason;
     if (typeof reason !== 'string' || !reason.trim()) return null;
@@ -2412,6 +2558,7 @@ export class AgendaComponent implements OnInit {
     this.editingEvent.set(null);
     this.form = this.blankForm();
     this.odometerHint.set('');
+    this.resasPeriode.set([]); this.resasDecisions.set({});
     this.createOpen.set(true);
     // Pré-remplit l'odomètre si un véhicule est déjà sélectionné via le filtre.
     if (this.form.vehicleId) void this.prefillOdometer(this.form.vehicleId);
@@ -2459,6 +2606,24 @@ export class AgendaComponent implements OnInit {
     const b = startOfDay(new Date(ev.endAt)).getTime();
     if (Number.isNaN(a) || Number.isNaN(b) || b < a) return 1;
     return Math.round((b - a) / 86400000) + 1;
+  }
+
+  /**
+   * « jour 2/3 » : où le jour ouvert dans le panneau se situe dans un évènement de plusieurs jours.
+   * Null si l'évènement tient sur un jour, ou si le jour ouvert n'est pas dedans (évènement
+   * immobilisant qui déborde sa fin prévue : la position n'aurait pas de sens).
+   */
+  protected positionJour(ev: VehicleEventDto): string | null {
+    const total = this.dureeEnJours(ev);
+    if (total <= 1) return null;
+    const jour = this.selectedDay();
+    if (!jour) return null;
+    const debut = startOfDay(new Date(ev.startAt)).getTime();
+    const cible = new Date(`${jour}T00:00:00`).getTime();
+    if (Number.isNaN(debut) || Number.isNaN(cible)) return null;
+    const idx = Math.round((cible - debut) / 86400000) + 1;
+    if (idx < 1 || idx > total) return null;
+    return `jour ${idx}/${total}`;
   }
 
   /** « 09:00 → 12:00 », ou « lun. 5 oct. 09:00 → jeu. 8 oct. 12:00 » quand la réservation change de jour. */
@@ -2580,6 +2745,105 @@ export class AgendaComponent implements OnInit {
 
   protected onCreateVehicleChange(vehicleId: string): void {
     if (vehicleId) void this.prefillOdometer(vehicleId);
+    this.onPeriodeChange();
+  }
+
+  /** Jours civils couverts par le formulaire (1 = une journée). */
+  protected dureeFormulaire(): number {
+    const f = this.form;
+    if (!f.date || !f.endDate || f.endDate < f.date) return 1;
+    const a = new Date(`${f.date}T00:00:00`).getTime();
+    const b = new Date(`${f.endDate}T00:00:00`).getTime();
+    return Math.round((b - a) / 86400000) + 1;
+  }
+
+  /** Fenêtre d'indisponibilité du formulaire, en ISO — la même que celle qui partira au serveur. */
+  private fenetreFormulaire(): { startAt: string; endAt: string | null } | null {
+    const f = this.form;
+    if (!f.date) return null;
+    const startAt = f.allDay ? new Date(`${f.date}T00:00:00`).toISOString() : new Date(`${f.date}T${f.time || '00:00'}:00`).toISOString();
+    const endAt = f.endDate
+      ? (f.allDay ? new Date(`${f.endDate}T23:59:59`).toISOString() : new Date(`${f.endDate}T${f.endTime || '18:00'}:00`).toISOString())
+      : null;
+    return { startAt, endAt };
+  }
+
+  /** Numéro de la dernière lecture partie : une réponse en retard ne doit pas écraser la dernière. */
+  private resasLecture = 0;
+
+  /**
+   * Relit les réservations du véhicule sur la période dès qu'un champ qui la définit change. Sans
+   * fin explicite, la fenêtre est celle de l'immobilisation EFFECTIVE (la journée pour une
+   * maintenance ; un incident bloque jusqu'à résolution → on regarde 30 jours devant).
+   */
+  protected onPeriodeChange(): void {
+    const f = this.form;
+    if (!f.blocksVehicle || !f.vehicleId || !f.date || this.editingEvent()) {
+      this.resasPeriode.set([]); this.resasDecisions.set({}); return;
+    }
+    const fen = this.fenetreFormulaire();
+    if (!fen) return;
+    const startMs = new Date(fen.startAt).getTime();
+    const effEnd = effectiveBlockingEndMs(f.type, startMs, fen.endAt ? new Date(fen.endAt).getTime() : null);
+    const endMs = Number.isFinite(effEnd) ? effEnd : startMs + 30 * 86400000;
+    const n = ++this.resasLecture;
+    this.resasPeriodeLoading.set(true);
+    void firstValueFrom(this.api.listReservations({
+      vehicleId: f.vehicleId,
+      from: new Date(Math.max(startMs, Date.now())).toISOString(),
+      to: new Date(endMs).toISOString(),
+      fleetId: this.currentFleetId(),
+    })).then((liste) => {
+      if (n !== this.resasLecture) return;
+      const now = Date.now();
+      const vivantes = liste.filter((r) =>
+        (r.status === 'CONFIRMED' || r.status === 'REQUESTED' || r.status === 'IN_PROGRESS') &&
+        new Date(r.startAt).getTime() < endMs && (r.endAt ? new Date(r.endAt).getTime() : new Date(r.startAt).getTime()) > Math.max(startMs, now),
+      ).sort((a, b) => new Date(a.startAt).getTime() - new Date(b.startAt).getTime());
+      this.resasPeriode.set(vivantes);
+      // Défaut : réaffecter — c'est le cas du garage ; « laisser » reste à un clic.
+      this.resasDecisions.set(Object.fromEntries(vivantes.map((r) => [r.id, 'reaffecter' as const])));
+    }).catch((err) => {
+      swallow('agenda:resasPeriode', err);
+      if (n === this.resasLecture) { this.resasPeriode.set([]); this.resasDecisions.set({}); }
+    }).finally(() => { if (n === this.resasLecture) this.resasPeriodeLoading.set(false); });
+  }
+
+  protected decisionDe(id: string): 'laisser' | 'annuler' | 'reaffecter' { return this.resasDecisions()[id] ?? 'laisser'; }
+  protected decider(id: string, d: 'laisser' | 'annuler' | 'reaffecter'): void {
+    this.resasDecisions.update((m) => ({ ...m, [id]: d }));
+  }
+
+  /**
+   * Applique les décisions prises sur les réservations de la période, APRÈS la création de
+   * l'événement : une par une (un refus n'arrête pas les autres), un bilan, et un renvoi vers
+   * Réorganiser pour ce qui a été refusé (véhicule et fenêtre déjà réglés).
+   */
+  private async appliquerDecisions(created: VehicleEventDto): Promise<void> {
+    const decisions = Object.entries(this.resasDecisions()).filter(([, d]) => d !== 'laisser');
+    if (decisions.length === 0) return;
+    let faits = 0;
+    const refus: string[] = [];
+    for (const [id, d] of decisions) {
+      const r = this.resasPeriode().find((x) => x.id === id);
+      try {
+        await firstValueFrom(d === 'annuler' ? this.api.cancelReservation(id) : this.api.reaffecterReservation(id));
+        faits++;
+      } catch (err) {
+        swallow('agenda:appliquerDecisions', err);
+        refus.push(`${r ? formatDate(new Date(r.startAt), 'dd/MM HH:mm', 'fr') : id} — ${apiErrorMessage(err, 'refusé')}`);
+      }
+    }
+    if (refus.length === 0) {
+      this.toast.success(`${faits} réservation(s) reprise(s)`, 'Réaffectées ou annulées comme décidé.');
+    } else {
+      this.toast.error(`${faits} reprise(s), ${refus.length} refusée(s)`, refus.slice(0, 3).join(' · '));
+      // Ce qui reste se reprend dans Réorganiser, déjà réglé sur ce véhicule et cette période.
+      const fen = this.fenetreFormulaire();
+      this.reorgPreset.set({ vehicleId: created.vehicleId, from: fen?.startAt ?? null, to: fen?.endAt ?? null, action: 'reaffecter' });
+      this.reorgSheetOpen.set(true);
+    }
+    this.onReservationChanged();
   }
 
   /** Récupère l'estimation kilométrique et pré-remplit le champ + un hint. */
@@ -2665,6 +2929,9 @@ export class AgendaComponent implements OnInit {
     if (f.description.trim()) payload.description = f.description.trim();
     if (f.type === 'INCIDENT') payload.severity = f.severity;
     if (f.odometerKm != null && !Number.isNaN(f.odometerKm)) payload.odometerKm = Number(f.odometerKm);
+    // Les décisions prises sur les réservations de la période sont tracées dans l'événement.
+    const decisions = Object.entries(this.resasDecisions()).filter(([, d]) => d !== 'laisser');
+    if (decisions.length > 0) payload.metadata = { reservations: decisions.map(([id, decision]) => ({ id, decision })) };
 
     this.saving.set(true);
     try {
@@ -2678,6 +2945,8 @@ export class AgendaComponent implements OnInit {
       this.toast.success('Événement créé', created.title);
       this.createOpen.set(false);
       void this.loadSummary();
+      await this.appliquerDecisions(created);
+      this.resasPeriode.set([]); this.resasDecisions.set({});
     } catch (err) {
       swallow('agenda:toISOString', err);
       this.toast.error('Échec création', apiErrorMessage(err, 'Création impossible.'));
@@ -2727,19 +2996,9 @@ export class AgendaComponent implements OnInit {
     }
   }
 
-  protected openOptim(): void {
-    this.optPreset.set(null); // ouverture normale : pas de résultat pré-chargé
-    this.optSheetOpen.set(true);
-  }
-
   /** ⚙️ Ouvre les paramètres de l'agent (config par société via le sélecteur global). */
   protected openAgentSettings(): void {
     this.agentSheetOpen.set(true);
-  }
-
-  /** Ouvre la revue des propositions de l'agent nocturne. */
-  protected openProposals(): void {
-    this.proposalsSheetOpen.set(true);
   }
 
   /** Une proposition a été validée/refusée : recharge l'agenda + le compteur. */
@@ -2748,21 +3007,11 @@ export class AgendaComponent implements OnInit {
     void this.loadAgentProposals();
   }
 
-  /** Clic « Voir » sur une pastille IA PRÊTE : ouvre les résultats selon le type d'opération. */
+  /** Clic « Voir » sur une pastille IA PRÊTE : la vue Assistant IA porte les résultats (elle relit l'analyse conservée). */
   protected onAiJobView(job: AiJob): void {
     this.aiJob.dismiss(job.id);
-    switch (job.kind) {
-      case 'agent-run':
-        void this.loadAgentProposals();
-        this.openProposals();
-        break;
-      case 'optimization':
-      case 'capacity':
-        // Ré-affiche la feuille Optimisation avec le résultat de capacité pré-chargé.
-        this.optPreset.set((job.payload as AiCapacityResultDto) ?? null);
-        this.optSheetOpen.set(true);
-        break;
-    }
+    if (job.kind === 'agent-run') void this.loadAgentProposals();
+    this.vue.set('ia');
   }
 
   /**

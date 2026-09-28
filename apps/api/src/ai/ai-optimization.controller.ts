@@ -41,6 +41,14 @@ export class AiOptimizationController {
     return this.ai.suggestCapacity(req.user, dto ?? {});
   }
 
+  /** Refonte du 28/09 — la dernière analyse conservée de la société, et si une nouvelle est possible. */
+  @Get('capacity/latest')
+  @Roles(...ALL_ROLES)
+  @RequirePermissions('ai_optimize')
+  latestCapacity(@Req() req: AuthenticatedRequest, @Query('fleetId') fleetId?: string) {
+    return this.ai.latestCapacity(req.user, fleetId);
+  }
+
   /** Application HUMAINE des propositions acceptées → écrit les véhicules. */
   @Post('capacity/apply')
   @Roles(...ALL_ROLES)

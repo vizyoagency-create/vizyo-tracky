@@ -15,6 +15,7 @@ import {
 import { UserRole, VehicleEventStatus } from '@prisma/client';
 import type {
   ConfirmReservationDto,
+  ReaffecterReservationDto,
   ReorganiserReservationsDto,
   RequestReservationDto,
   UpdateReservationDto,
@@ -104,6 +105,21 @@ export class ReservationsController {
     @Body() dto: ConfirmReservationDto,
   ) {
     return this.reservations.confirm(req.user, id, dto ?? {});
+  }
+
+  /**
+   * Refonte du 28/09 — réaffecter UNE réservation à un autre véhicule (`auto` = premier libre et
+   * conforme). Même permission que la validation : changer la voiture de quelqu'un, c'est gérer.
+   */
+  @Post(':id/reaffecter')
+  @Roles(...ALL_ROLES)
+  @RequirePermissions('reservations_manage')
+  reaffecter(
+    @Req() req: AuthenticatedRequest,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: ReaffecterReservationDto,
+  ) {
+    return this.reservations.reaffecter(req.user, id, dto ?? {});
   }
 
   /** Refuser / annuler -> CANCELLED. */

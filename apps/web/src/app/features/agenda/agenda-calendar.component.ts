@@ -31,6 +31,18 @@ export function joursCouverts(ev: Pick<VehicleEventDto, 'startAt' | 'endAt'>, ma
   return jours;
 }
 
+/**
+ * Le libellé d'une pilule qui s'étale sur plusieurs jours (refonte UX du 28/09, point 1) : « comprendre
+ * immédiatement la durée d'une réservation sans devoir ouvrir chaque élément ».
+ *  - premier jour : « Sortie Carcassonne · 3 j » ;
+ *  - jours suivants : « ↳ Sortie Carcassonne (2/3) » — la flèche dit « ça continue », la fraction dit où on en est.
+ * Un évènement d'un seul jour garde son titre nu.
+ */
+export function libelleMultiJours(titre: string, jour: number, total: number): string {
+  if (total <= 1) return titre;
+  return jour <= 1 ? `${titre} · ${total} j` : `↳ ${titre} (${jour}/${total})`;
+}
+
 interface CalendarPill {
   id: string;
   color: string;
@@ -642,16 +654,17 @@ export class AgendaCalendarComponent {
    * Borné à 62 jours : la grille n'en montre jamais plus de 42.
    */
   private readonly eventsByDay = computed(() => {
-    const map = new Map<string, { ev: VehicleEventDto; suite: boolean }[]>();
+    const map = new Map<string, { ev: VehicleEventDto; suite: boolean; jour: number; total: number }[]>();
     const maintenant = Date.now();
-    const ajouter = (key: string, ev: VehicleEventDto, suite: boolean) => {
+    const ajouter = (key: string, entree: { ev: VehicleEventDto; suite: boolean; jour: number; total: number }) => {
       const list = map.get(key);
-      if (list) list.push({ ev, suite });
-      else map.set(key, [{ ev, suite }]);
+      if (list) list.push(entree);
+      else map.set(key, [entree]);
     };
     for (const ev of this.events()) {
       if (annulationSansObjet(ev, maintenant)) continue;
-      joursCouverts(ev).forEach((jour, i) => ajouter(jour, ev, i > 0));
+      const jours = joursCouverts(ev);
+      jours.forEach((jour, i) => ajouter(jour, { ev, suite: i > 0, jour: i + 1, total: jours.length }));
     }
     return map;
   });
@@ -677,10 +690,10 @@ export class AgendaCalendarComponent {
         if (aDone !== bDone) return aDone - bDone;
         return new Date(a.startAt).getTime() - new Date(b.startAt).getTime();
       });
-      const pills: CalendarPill[] = sorted.slice(0, MAX_PILLS).map(({ ev, suite }) => ({
+      const pills: CalendarPill[] = sorted.slice(0, MAX_PILLS).map(({ ev, suite, jour, total }) => ({
         id: ev.id,
         color: eventColor(ev),
-        label: ev.title || ev.vehiclePlate || '—',
+        label: libelleMultiJours(ev.title || ev.vehiclePlate || '—', jour, total),
         muted: ev.status === 'DONE' || ev.status === 'CANCELLED',
         deplacable: !suite && this.estDeplacable(ev),
         suite,

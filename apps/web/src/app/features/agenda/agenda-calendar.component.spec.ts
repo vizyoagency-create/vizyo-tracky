@@ -1,4 +1,4 @@
-import { annulationSansObjet, joursCouverts, peutEtreDeplace } from './agenda-calendar.component';
+import { annulationSansObjet, joursCouverts, libelleMultiJours, peutEtreDeplace } from './agenda-calendar.component';
 
 /**
  * LOT MULTI-JOURS (28/09) — « un véhicule en garage, ça peut prendre une semaine ».
@@ -125,5 +125,22 @@ describe('peutEtreDeplace', () => {
   it('refuse ce qui est clôturé ou annulé', () => {
     expect(peutEtreDeplace({ type: 'MAINTENANCE', status: 'DONE' }, TOUT)).toBe(false);
     expect(peutEtreDeplace({ type: 'RESERVATION', status: 'CANCELLED' }, TOUT)).toBe(false);
+  });
+});
+
+/**
+ * Refonte UX du 28/09 (point 1) — « comprendre immédiatement la durée d'une réservation sans devoir
+ * ouvrir chaque élément ». La pilule le dit elle-même.
+ */
+describe('libelleMultiJours', () => {
+  it('un seul jour : le titre nu', () => {
+    expect(libelleMultiJours('Sortie', 1, 1)).toBe('Sortie');
+  });
+  it('le premier jour annonce la durée', () => {
+    expect(libelleMultiJours('Sortie', 1, 3)).toBe('Sortie · 3 j');
+  });
+  it('une suite dit où on en est', () => {
+    expect(libelleMultiJours('Sortie', 2, 3)).toBe('↳ Sortie (2/3)');
+    expect(libelleMultiJours('Sortie', 3, 3)).toBe('↳ Sortie (3/3)');
   });
 });

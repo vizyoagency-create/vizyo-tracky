@@ -168,9 +168,16 @@ export interface ReorganiserReservationsDto {
   vehicleId?: string;
   /** Défaut : `auto` — c'est le cas qui a motivé la fonction. */
   origine?: OrigineReservation;
-  action: 'annuler' | 'decaler';
+  /**
+   * `reaffecter` (refonte UX du 28/09) : le cas « un véhicule part au garage une semaine » — ses
+   * réservations passent sur un autre véhicule, `versVehicleId` explicite ou `auto` (le premier
+   * véhicule libre et conforme aux critères de chaque réservation, jamais le véhicule d'origine).
+   */
+  action: 'annuler' | 'decaler' | 'reaffecter';
   /** Requis pour `decaler` : minutes (négatif = avancer). */
   decalageMinutes?: number;
+  /** Pour `reaffecter` : un id de véhicule, ou `auto` (défaut). */
+  versVehicleId?: string;
   /** Société visée (SUPER_ADMIN) ; ignoré pour les autres rôles. */
   fleetId?: string;
   /** `true` (défaut) = on calcule et on montre, sans rien écrire. */
@@ -207,6 +214,18 @@ export interface ReorganisationResultDto {
   }[];
   /** Vrai si le périmètre dépasse le plafond de sûreté et a été tronqué. */
   plafonne: boolean;
+  /**
+   * Refonte du 28/09 — ce que la fenêtre contient AVANT le filtre d'origine et de véhicule, pour
+   * que l'écran écrive les comptes sur ses choix et explique un lot vide au lieu de le montrer.
+   */
+  totaux?: { agent: number; public: number; manuelle: number };
+  /** Réservations à venir par véhicule (pour l'origine choisie), toutes plaques confondues. */
+  parVehicule?: { vehicleId: string; plate: string | null; n: number }[];
+}
+
+/** Réaffecter UNE réservation à un autre véhicule (`auto` = premier libre et conforme). */
+export interface ReaffecterReservationDto {
+  versVehicleId?: string;
 }
 
 /**
