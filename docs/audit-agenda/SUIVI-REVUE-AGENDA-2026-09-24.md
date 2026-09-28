@@ -480,6 +480,18 @@ par le propriétaire. Les cases cochées et les verdicts sont dans le plan lui-m
 | **F14** | La ligne d'un destinataire était un `<label>` entier : **un clic sur l'adresse basculait l'avis, et le `PUT` partait aussitôt** — j'ai coupé l'avis d'un gestionnaire par un clic égaré (rétabli). | Seul l'interrupteur agit ; l'adresse est son `aria-label`. |
 | **F15** | La file « À valider » appelait `GET /reservations?status=REQUESTED` **sans le filtre société** du bandeau (super-admin) — « Demander » le portait, « À valider » l'avait oublié. | `fleetId` passé. |
 
+**Vérifié** (commit `c158ea70`, poussé sur `main` à 07:56) : types, `ng build`, suite API complète
+(4 332 tests — un seul rouge, `partner-invitation` « ouvert, puis envoyé », une marge d'une seconde
+entre le `describe` et le test qui cède sous une suite chargée : portée à une minute, sans rapport
+avec l'agenda), suite web (781). Aucune migration, aucun fournisseur DI nouveau — pas de smoke-boot.
+**Rejoué sur la démo à 08:05** (images reconstruites sur le VPS, démo seule recréée, marqueurs
+`origineReservation` / `PROPOSITIONS_LISTE_MAX` / `ro-tag--public` lus dans ses conteneurs, la prod
+toujours sur `11ad5120fb74`) : « 0 en retard » avec l'incident ouvert, **451** propositions visibles
+jusqu'au 11/10, badges en ligne, métier « Générique », un seul ascenseur jusqu'aux boutons, un clic
+sur une adresse n'envoie plus rien, `GET /reservations?status=REQUESTED&fleetId=…`, et dans
+Réorganiser une demande publique fraîche porte « lien public » sous « Toutes » et **n'apparaît pas**
+sous « Posées par l'agent ».
+
 ### Ce qui reste à reprendre — après la mise en service, rien de bloquant
 
 - **F3** — les badges ● / ~ des cellules ignorent les filtres véhicule / groupe (ils parlent de tout
