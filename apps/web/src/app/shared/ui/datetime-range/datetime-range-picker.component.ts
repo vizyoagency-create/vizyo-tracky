@@ -135,8 +135,10 @@ export function resumeCreneau(
         <button type="button" class="dtr-chip" (click)="heures('08:00', '18:00')">Journée</button>
       </div>
 
-      <p class="dtr-sum" [class.dtr-sum--warn]="invalid()" aria-live="polite">
-        @if (invalid()) { La fin doit être après le début. } @else { {{ summary() }} }
+      <p class="dtr-sum" [class.dtr-sum--warn]="invalid() || debutPasse()" aria-live="polite">
+        @if (invalid()) { La fin doit être après le début. }
+        @else if (debutPasse()) { {{ summary() }} — <span class="dtr-sum-note">le début est déjà passé : choisissez une heure à venir.</span> }
+        @else { {{ summary() }} }
       </p>
     </div>
   `,
@@ -167,6 +169,7 @@ export function resumeCreneau(
     /* La ligne de lecture : en gras, c'est elle qu'on vérifie avant d'envoyer. */
     .dtr-sum { margin: 0; font-size: 13px; font-weight: 700; color: var(--fg-primary); text-transform: none; letter-spacing: 0; }
     .dtr-sum--warn { color: var(--texte-alerte); }
+    .dtr-sum-note { font-weight: 600; }
 
     /* Téléphone : Début et Fin l'un sous l'autre, la flèche disparaît. */
     @media (max-width: 480px) {
@@ -219,6 +222,18 @@ export class DateTimeRangePickerComponent {
   protected readonly summary = computed(() =>
     resumeCreneau(this.startDayIso(), this.endDayIso() || this.startDayIso(), this.startTime(), this.endTime()),
   );
+
+  /**
+   * Le début est déjà passé alors qu'une borne existe (`minDay` = aujourd'hui) : un raccourci
+   * « Journée » pris le soir met le début à 08:00 du jour même, et le serveur refuse. Dit ICI,
+   * sous les champs, avant le clic — pas dans un refus au bout de la feuille.
+   */
+  protected readonly debutPasse = computed(() => {
+    const s = this.startDayIso();
+    if (!s || !this.minDay()) return false;
+    const debut = new Date(`${s}T${this.startTime()}:00`).getTime();
+    return Number.isFinite(debut) && debut < Date.now();
+  });
 
   /** Créneau invalide (fin ≤ début) — avertit sans bloquer (le parent revalide). */
   protected readonly invalid = computed(() => {
