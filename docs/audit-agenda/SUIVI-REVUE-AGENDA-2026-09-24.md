@@ -492,6 +492,23 @@ sur une adresse n'envoie plus rien, `GET /reservations?status=REQUESTED&fleetId=
 Réorganiser une demande publique fraîche porte « lien public » sous « Toutes » et **n'apparaît pas**
 sous « Posées par l'agent ».
 
+### 🚀 Déployé le 28/09 à 08:22 (Paris), sur le go du propriétaire
+
+`deploy.sh --attendre --force` (fenêtre du matin encore ouverte jusqu'à 09:00 : passée outre en le
+disant, **personne en ligne** — 0 session, 0 activité sur 20 min — et les reprises de 07:00 faites).
+Verdict du script : 150 migrations, aucune en attente ; API saine en 10 s, 0 redémarrage ; démo
+recréée et saine ; journal `46ec3f32`, 311 s. Marqueurs lus dans les conteneurs de prod
+(`origineReservation`, `PROPOSITIONS_LISTE_MAX`, `purgerPropositions`, `MAX_EVENEMENTS_PAR_FENETRE`
+côté API ; `ro-tag--public`, `op-fleet` côté web), 0 erreur dans le journal de l'API. À l'écran,
+cdef31 : compteurs 0 / 0 / 0, 309 propositions, et **la feuille Optimisation dit « Société :
+CDEF31 »** (P1-4, invisible sur la démo).
+
+⚠️ **Un repère de repli n'a pas pu être posé pour `tracky-api` et `tracky-web`** : leurs images
+(`11ad5120fb74`, `208474b25fd1`) n'existaient plus (nettoyage d'images pendant que les conteneurs
+tournaient dessus) — le repli automatique aurait été impossible si la santé n'était pas venue.
+Elle est venue. À regarder : le ménage d'images ne doit jamais retirer l'image d'un conteneur en
+service.
+
 ### Ce qui reste à reprendre — après la mise en service, rien de bloquant
 
 - **F3** — les badges ● / ~ des cellules ignorent les filtres véhicule / groupe (ils parlent de tout
