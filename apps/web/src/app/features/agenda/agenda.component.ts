@@ -816,9 +816,11 @@ interface GroupOption {
       [presetCapacity]="optPreset()"
       (closed)="optSheetOpen.set(false)"
       (applied)="onReservationChanged()" />
+    <!-- À la fermeture, le parc est relu : c'est dans cette feuille que les sièges à bord se règlent,
+         et la carte du jour comme la feuille de réservation les lisent depuis la liste des véhicules. -->
     <app-agenda-agent-settings-sheet
       [open]="agentSheetOpen()"
-      (closed)="agentSheetOpen.set(false)"
+      (closed)="agentSheetOpen.set(false); rafraichirVehicules()"
       (saved)="loadAgentProposals()" />
     <app-agenda-agent-proposals-sheet
       [open]="proposalsSheetOpen()"
@@ -2284,6 +2286,19 @@ export class AgendaComponent implements OnInit {
     if (c >= 0.6) return '#10E0A0';
     if (c >= 0.35) return '#F59E0B';
     return '#94A3B8';
+  }
+
+  /**
+   * Recharge le parc (sièges à bord, hors service, boîtiers) — après « Paramètres de l'agenda »,
+   * où les sièges à bord se règlent : sans ça, la carte du jour disait « 2 bébé du stock » pour un
+   * véhicule qu'on venait d'équiper (vu sur la démo le 28/09). Best-effort : la liste d'avant reste.
+   */
+  protected async rafraichirVehicules(): Promise<void> {
+    try {
+      this.vehicles.set(await firstValueFrom(this.vehiclesApi.list()));
+    } catch (e) {
+      swallow('agenda:rafraichirVehicules', e);
+    }
   }
 
   /** Motif d'une réservation (stocké en metadata) pour l'afficher dans la carte du jour. */
