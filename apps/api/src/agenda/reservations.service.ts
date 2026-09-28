@@ -597,10 +597,14 @@ export class ReservationsService {
         // boîtier muet (batterie débranchée, SIM coupée) à faire réparer. Une exclusion ne fait
         // jamais baisser un chiffre client en silence — y compris dans un message d'erreur.
         // Chemin AUTHENTIFIÉ (le lien public passe par systemRequest) : aucune fuite d'état de parc.
+        // Sièges auto (28/09) : quand ce sont les sièges qui ont vidé le vivier, le dire — sinon
+        // l'exploitant cherche un créneau libre alors qu'il lui manque un siège à bord ou en stock.
         throw new BadRequestException(
-          sug.excludedDormant > 0
-            ? `Aucun véhicule libre ne correspond aux critères sur ce créneau (${sug.excludedDormant} véhicule(s) écarté(s) : boîtier muet depuis plus de 7 jours).`
-            : 'Aucun véhicule libre ne correspond aux critères sur ce créneau.',
+          (sug.excludedChildSeats ?? 0) > 0
+            ? `Aucun véhicule libre ne peut recevoir les sièges auto demandés sur ce créneau (${sug.excludedChildSeats} véhicule(s) écarté(s) : pas assez de sièges à bord, et le stock ne complète pas ou ne suffit plus). Choisissez un véhicule équipé, installez un siège, ou changez le réglage dans Paramètres de l'agenda.`
+            : sug.excludedDormant > 0
+              ? `Aucun véhicule libre ne correspond aux critères sur ce créneau (${sug.excludedDormant} véhicule(s) écarté(s) : boîtier muet depuis plus de 7 jours).`
+              : 'Aucun véhicule libre ne correspond aux critères sur ce créneau.',
         );
       }
       vehicleId = sug.vehicles[0].vehicleId;
