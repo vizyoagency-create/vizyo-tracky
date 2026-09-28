@@ -657,6 +657,28 @@ plages 5308–5407 et 5433–5532 (`netsh interface ipv4 show excludedportrange`
 conteneur relancé sur **15436** (`POSTGRES_PORT` + `DATABASE_URL` surchargés, sans toucher aux
 `.env`) ; le conteneur y reste tant que la plage n'est pas libérée (`winnat`, ou redémarrage).
 
+### Le « check de tout » — deux trous dans la disponibilité, fermés avant de déployer
+
+Le propriétaire a demandé de « ne pas mettre un véhicule dispo dans l'agenda, idem pour les voitures
+dormantes depuis longtemps ». La lecture du code (`computeSuggestions`, `isVehicleFree`, le lien
+public, l'IA) montre que les **quatre surfaces automatiques** écartent bien hors service et dormants.
+Deux chemins passaient à côté :
+
+- **Le panneau du jour** (« N / 30 véhicules disponibles ») ne connaissait que « immobilisé » et
+  « réservé » : un véhicule **déclaré hors service** ou **muet depuis des semaines** comptait comme
+  disponible — « 30 / 30 » sur un parc où quatre voitures sont accidentées. Il porte maintenant
+  quatre raisons, par force décroissante : hors service (déclaré) > boîtier muet (déduit, seuil 7 j,
+  le même prédicat que le vivier) > immobilisé > réservé — avec le motif et la durée du silence.
+- **Le choix explicite d'un véhicule** (feuille de réservation, validation avec réaffectation,
+  édition) ne vérifiait pas le hors service : l'API acceptait de réserver **fermement** une voiture
+  accidentée dont le boîtier parle encore. `assertEnService` refuse (409, plaque + motif) à la
+  demande, à la validation et à la réaffectation — jamais en rétroactif. La feuille grise ces
+  véhicules comme les dormants, avec leur motif.
+
+Le choix d'un véhicule **dormant** par un humain reste possible côté API (la feuille le grise, mais
+un véhicule sans boîtier ou garé pour un pont est bien là) ; l'agent, lui, ne l'engage jamais.
+Tests : +4 (API). Types, `ng build`, suites vertes.
+
 ---
 
 ## Ce qu'il ne faut pas défaire

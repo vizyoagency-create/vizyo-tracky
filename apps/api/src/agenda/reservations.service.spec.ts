@@ -1177,3 +1177,46 @@ describe('ReservationsService — sièges auto : le stock de la société borne 
     expect(create).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('ReservationsService — hors service : le choix EXPLICITE d’un véhicule est refusé (2026-09-28)', () => {
+  /** Véhicule déclaré accidenté par un super-admin ; boîtier qui parle encore (le cas qui passait). */
+  const horsService = () =>
+    jest.fn().mockResolvedValue({ outOfServiceReason: 'ACCIDENT', plate: 'HS-001-XX', tracker: { id: 't1', lastSeenAt: new Date() } });
+
+  it('request avec vehicleId sur un véhicule hors service -> 409 qui nomme la plaque et le motif', async () => {
+    const prisma = makePrisma({ vehicle: { findMany: jest.fn().mockResolvedValue([]), findUnique: horsService() } });
+    const svc = new ReservationsService(prisma, access('ALL'), makeEvents(), makePerms(true));
+    await expect(svc.request(makeUser(), { vehicleId: 'v1', ...SLOT })).rejects.toThrow(/HS-001-XX .*hors service \(accidenté\)/);
+    expect((prisma as { vehicleEvent: { create: jest.Mock } }).vehicleEvent.create).not.toHaveBeenCalled();
+  });
+
+  it('request rétroactif (sortie déjà faite) : consigner ne promet rien -> accepté même hors service', async () => {
+    const prisma = makePrisma({ vehicle: { findMany: jest.fn().mockResolvedValue([]), findUnique: horsService() } });
+    (prisma as { vehicleEvent: { create: jest.Mock } }).vehicleEvent.create.mockResolvedValue(evRow({ status: 'CONFIRMED', metadata: { retroactive: true } }));
+    const svc = new ReservationsService(prisma, access('ALL'), makeEvents(), makePerms(true));
+    await expect(svc.request(makeUser(), { vehicleId: 'v1', ...PAST_SLOT, retroactive: true })).resolves.toMatchObject({ status: 'CONFIRMED' });
+  });
+
+  it('confirm : la demande porte un véhicule déclaré hors service depuis son dépôt -> 409, rien n’est validé', async () => {
+    const prisma = makePrisma({
+      vehicle: { findMany: jest.fn().mockResolvedValue([]), findUnique: horsService() },
+      vehicleEvent: { findUnique: jest.fn().mockResolvedValue(evRow()), findMany: jest.fn().mockResolvedValue([]), update: jest.fn(), create: jest.fn() },
+    });
+    const svc = new ReservationsService(prisma, access('ALL'), makeEvents(), makePerms());
+    await expect(svc.confirm(makeUser(), 'r1', {})).rejects.toBeInstanceOf(ConflictException);
+    expect((prisma as { vehicleEvent: { update: jest.Mock } }).vehicleEvent.update).not.toHaveBeenCalled();
+  });
+
+  it('update : réaffecter vers un véhicule hors service -> 409 ; changer le motif seul ne lit pas le véhicule', async () => {
+    const findUnique = horsService();
+    const row = evRow({ status: 'CONFIRMED' });
+    const prisma = makePrisma({
+      vehicle: { findMany: jest.fn().mockResolvedValue([]), findUnique },
+      vehicleEvent: { findUnique: jest.fn().mockResolvedValue(row), findMany: jest.fn().mockResolvedValue([]), update: jest.fn().mockResolvedValue(row), create: jest.fn() },
+    });
+    const svc = new ReservationsService(prisma, access('ALL'), makeEvents(), makePerms(true));
+    await svc.update(makeUser(), 'r1', { reason: 'autre motif' });
+    expect(findUnique).not.toHaveBeenCalled();
+    await expect(svc.update(makeUser(), 'r1', { vehicleId: 'v2' })).rejects.toBeInstanceOf(ConflictException);
+  });
+});

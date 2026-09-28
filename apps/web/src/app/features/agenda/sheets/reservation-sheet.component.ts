@@ -46,6 +46,21 @@ export interface ReservationSheetVehicle {
    * donc l'agenda l'alimente déjà sans rien changer chez lui.
    */
   tracker?: { id: string; lastSeenAt: string | null } | null;
+  /**
+   * Hors service DÉCLARÉ par un super-admin (accident, boîtier débranché, immobilisation durable).
+   * Le serveur refuse de réserver un tel véhicule (409) : autant ne pas le laisser choisir.
+   */
+  outOfServiceReason?: string | null;
+}
+
+/** Libellé court d'un motif de mise hors service (même vocabulaire que la fiche véhicule). */
+export function horsServiceLabel(reason: string | null | undefined): string | null {
+  switch (reason) {
+    case 'ACCIDENT': return 'accidenté';
+    case 'TRACKER_UNPLUGGED': return 'boîtier débranché';
+    case 'IMMOBILIZED': return 'immobilisé durablement';
+    default: return reason ? 'hors service' : null;
+  }
 }
 
 function toLocalInput(d: Date): string {
@@ -146,9 +161,12 @@ function toLocalInput(d: Date): string {
               <select class="rs-in" [value]="vehicleId()" (change)="vehicleId.set($any($event.target).value)">
                 <option value="">Auto (le 1er disponible conforme)</option>
                 @for (v of vehicleOptions(); track v.id) {
-                  <option [value]="v.id" [disabled]="v.disabled">{{ v.label }}@if (v.silence) { — boîtier muet depuis {{ v.silence }} }</option>
+                  <option [value]="v.id" [disabled]="v.disabled">{{ v.label }}@if (v.horsService) { — hors service ({{ v.horsService }}) } @else if (v.silence) { — boîtier muet depuis {{ v.silence }} }</option>
                 }
               </select>
+              @if (horsServiceCount() > 0) {
+                <span class="rs-hint">{{ horsServiceCount() }} véhicule(s) grisé(s) : déclaré(s) hors service. Ils reviennent dès leur remise en service.</span>
+              }
               @if (dormantCount() > 0) {
                 <!-- « redeviennent sélectionnables » et non « réapparaissent » : ils n'ont
                      jamais disparu de la liste — les faire disparaître laisserait croire à une
@@ -483,19 +501,27 @@ export class ReservationSheetComponent {
         DORMANT_STOP_COUNTING_MS,
       );
       const brand = v.brand ? ` · ${v.brand} ${v.model ?? ''}`.trimEnd() : '';
+      // Hors service DÉCLARÉ : grisé même en édition (le serveur refuserait la réaffectation),
+      // sauf s'il est déjà le véhicule de la réservation — sinon la feuille devient inenregistrable.
+      const horsService = horsServiceLabel(v.outOfServiceReason);
       return {
         id: v.id,
         label: `${v.plate || '—'}${brand}`,
+        horsService,
         // On DATE le silence au lieu de dire « indisponible » : l'exploitant sait quoi faire.
         silence: dormant ? formatSilenceLabel(tracker?.lastSeenAt, now) : null,
-        disabled: dormant && v.id !== selected && !retro,
+        disabled: (!!horsService && v.id !== selected && !retro) || (dormant && v.id !== selected && !retro),
       };
     });
   });
 
-  /** Nombre de véhicules effectivement grisés — sert la phrase d'explication sous le champ. */
+  /** Nombre de véhicules grisés pour DORMANCE — sert la phrase d'explication sous le champ. */
   protected readonly dormantCount = computed(
-    () => this.vehicleOptions().filter((o) => o.disabled).length,
+    () => this.vehicleOptions().filter((o) => o.disabled && !o.horsService).length,
+  );
+  /** Nombre de véhicules grisés parce que déclarés HORS SERVICE. */
+  protected readonly horsServiceCount = computed(
+    () => this.vehicleOptions().filter((o) => o.disabled && !!o.horsService).length,
   );
 
   // IA placement

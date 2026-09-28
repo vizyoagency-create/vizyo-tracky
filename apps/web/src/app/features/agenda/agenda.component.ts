@@ -19,6 +19,7 @@ import {
   LucideAngularModule, CalendarDays, ChevronDown, ChevronLeft, ChevronRight, Check,
   Layers, Truck, Plus, AlertTriangle, CalendarClock, Wrench, X, Trash2, Play, ListChecks,
   Gauge, CalendarCheck, Inbox, Sparkles, Activity, ShieldCheck, Ban, Info, Pencil, Settings, QrCode, Shuffle, Route,
+  WifiOff,
 } from 'lucide-angular';
 import type {
   AgendaAgentProposalDto,
@@ -32,7 +33,13 @@ import type {
   VehicleEventStatus,
   VehicleEventType,
 } from '@vizyo/tracky-shared';
-import { effectiveBlockingEndMs, isImmobilizingEvent } from '@vizyo/tracky-shared';
+import {
+  DORMANT_STOP_COUNTING_MS,
+  effectiveBlockingEndMs,
+  formatSilenceLabel,
+  isImmobilizingEvent,
+  isVehicleDormant,
+} from '@vizyo/tracky-shared';
 import { firstValueFrom } from 'rxjs';
 import { AgendaApiService } from '../../core/services/agenda.service';
 import { PermissionsService } from '../../core/services/permissions.service';
@@ -41,7 +48,7 @@ import { VehiclesApiService, type VehicleDetailDto } from '../../core/services/v
 import { ToastService } from '../../shared/ui/toast/toast.service';
 import { GroupBadgeComponent } from '../../shared/ui/group-badge/group-badge.component';
 import { AgendaCalendarComponent, annulationSansObjet } from './agenda-calendar.component';
-import { ReservationSheetComponent } from './sheets/reservation-sheet.component';
+import { horsServiceLabel, ReservationSheetComponent } from './sheets/reservation-sheet.component';
 import { OptimizationSheetComponent } from './sheets/optimization-sheet.component';
 import { AgendaAgentSettingsSheetComponent } from './sheets/agenda-agent-settings-sheet.component';
 import { AgendaAgentProposalsSheetComponent } from './sheets/agenda-agent-proposals-sheet.component';
@@ -457,10 +464,10 @@ interface GroupOption {
                     @for (u of dayAvailability().unavailable; track u.vehicleId) {
                       <li class="ag-unavail-row">
                         <span class="ag-unavail-ic" [attr.data-kind]="u.kind">
-                          <lucide-icon [img]="u.kind === 'immobilized' ? BanIcon : CalendarCheckIcon" [size]="12"></lucide-icon>
+                          <lucide-icon [img]="u.kind === 'reserved' ? CalendarCheckIcon : u.kind === 'dormant' ? WifiOffIcon : BanIcon" [size]="12"></lucide-icon>
                         </span>
                         <span class="ag-unavail-plate" [vehicleLink]="u.vehicleId" [attr.title]="'Voir ' + u.plate">{{ u.plate }}</span>
-                        <span class="ag-unavail-lbl">{{ u.kind === 'immobilized' ? 'Immobilisé' : 'Réservé' }} · {{ u.label }}</span>
+                        <span class="ag-unavail-lbl">{{ unavailKindLabel(u.kind) }} · {{ u.label }}</span>
                       </li>
                     }
                   </ul>
@@ -1269,6 +1276,10 @@ interface GroupOption {
     }
     .ag-unavail-ic[data-kind="immobilized"] { background: rgba(239,68,68,.14); color: var(--danger); }
     .ag-unavail-ic[data-kind="reserved"] { background: rgba(56,189,248,.14); color: #38BDF8; }
+    /* Hors service (déclaré) et boîtier muet (déduit) : deux raisons de plus de ne pas compter un
+       véhicule comme disponible — le même vocabulaire que la feuille de réservation. */
+    .ag-unavail-ic[data-kind="out_of_service"] { background: rgba(239,68,68,.14); color: var(--danger); }
+    .ag-unavail-ic[data-kind="dormant"] { background: color-mix(in srgb, var(--warning) 16%, transparent); color: var(--texte-attente); }
     .ag-unavail-plate { font-family: var(--font-mono, monospace); font-weight: 700; color: var(--fg-primary); }
     .ag-unavail-lbl { font-size: 12px; color: var(--fg-tertiary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
@@ -1402,6 +1413,7 @@ export class AgendaComponent implements OnInit {
   protected readonly ActivityIcon = Activity;
   protected readonly ShieldCheckIcon = ShieldCheck;
   protected readonly BanIcon = Ban;
+  protected readonly WifiOffIcon = WifiOff;
   protected readonly InfoIcon = Info;
 
   // ─── Helpers exposés au template ───────────────────────────────────────────
@@ -1833,20 +1845,48 @@ export class AgendaComponent implements OnInit {
       .sort((a, b2) => b2.distanceKm - a.distanceKm);
   });
 
+  /** Libellé d'une raison d'indisponibilité, dans le panneau du jour. */
+  protected unavailKindLabel(kind: 'immobilized' | 'reserved' | 'out_of_service' | 'dormant'): string {
+    switch (kind) {
+      case 'immobilized': return 'Immobilisé';
+      case 'reserved': return 'Réservé';
+      case 'out_of_service': return 'Hors service';
+      case 'dormant': return 'Boîtier muet';
+    }
+  }
+
   /**
    * Disponibilité du jour (aujourd'hui + à venir) : combien de véhicules du périmètre sont libres,
-   * et le détail des indisponibles (immobilisés / réservés). Aligné sur la logique backend
-   * (findImmobilized) : incident sans fin = jusqu'à résolution, maintenance sans fin = sa journée.
+   * et le détail des indisponibles. Aligné sur la logique backend (`computeSuggestions` +
+   * `findImmobilized`) : incident sans fin = jusqu'à résolution, maintenance sans fin = sa journée.
+   *
+   * « Check de tout » du 28/09 : le panneau comptait comme DISPONIBLE un véhicule déclaré hors
+   * service et un véhicule dont le boîtier se tait depuis des semaines — alors que la réservation,
+   * le lien public et l'IA les écartent tous les trois. Un chiffre « 30 / 30 » sur un parc où 4
+   * voitures sont accidentées est un chiffre faux. Quatre raisons désormais, par force décroissante :
+   * hors service (déclaré) > boîtier muet (déduit, seuil 7 j) > immobilisé > réservé.
    */
   protected readonly dayAvailability = computed(() => {
     const universe = this.availabilityVehicles();
     const total = universe.length;
     const b = this.selectedDayBounds();
-    const unavailable: { vehicleId: string; plate: string; kind: 'immobilized' | 'reserved'; label: string }[] = [];
+    const unavailable: { vehicleId: string; plate: string; kind: 'immobilized' | 'reserved' | 'out_of_service' | 'dormant'; label: string }[] = [];
     if (!b || total === 0) return { total, available: total, pct: 100, unavailable };
 
     const ids = new Set(universe.map((v) => v.id));
     const plateOf = new Map(universe.map((v) => [v.id, v.plate ?? '—']));
+    const now = Date.now();
+    const horsService = new Map<string, string>();
+    const dormant = new Map<string, string>();
+    for (const v of universe) {
+      const motif = horsServiceLabel(v.outOfServiceReason);
+      if (motif) { horsService.set(v.id, motif); continue; }
+      // Même seuil (7 j) et même prédicat que le vivier de réservation : un véhicule sans boîtier
+      // n'est PAS dormant, il reste disponible.
+      if (isVehicleDormant({ trackerId: v.tracker?.id ?? null, lastSeenAt: v.tracker?.lastSeenAt ?? null }, now, DORMANT_STOP_COUNTING_MS)) {
+        dormant.set(v.id, `depuis ${formatSilenceLabel(v.tracker?.lastSeenAt ?? null, now)}`);
+      }
+    }
     const immobilized = new Map<string, string>();
     const reserved = new Map<string, string>();
     for (const ev of this.events()) {
@@ -1866,11 +1906,18 @@ export class AgendaComponent implements OnInit {
         immobilized.set(ev.vehicleId, ev.title);
       }
     }
+    for (const [vid, motif] of horsService) {
+      unavailable.push({ vehicleId: vid, plate: plateOf.get(vid) ?? '—', kind: 'out_of_service', label: motif });
+    }
+    for (const [vid, label] of dormant) {
+      unavailable.push({ vehicleId: vid, plate: plateOf.get(vid) ?? '—', kind: 'dormant', label });
+    }
     for (const [vid, reason] of immobilized) {
+      if (horsService.has(vid) || dormant.has(vid)) continue; // une raison plus forte l'a déjà sorti
       unavailable.push({ vehicleId: vid, plate: plateOf.get(vid) ?? '—', kind: 'immobilized', label: reason });
     }
     for (const [vid, label] of reserved) {
-      if (immobilized.has(vid)) continue; // immobilisé = raison plus forte, pas de doublon
+      if (horsService.has(vid) || dormant.has(vid) || immobilized.has(vid)) continue; // pas de doublon
       unavailable.push({ vehicleId: vid, plate: plateOf.get(vid) ?? '—', kind: 'reserved', label });
     }
     const available = Math.max(0, total - unavailable.length);
