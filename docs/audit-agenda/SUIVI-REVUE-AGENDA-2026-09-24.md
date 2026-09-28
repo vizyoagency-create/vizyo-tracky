@@ -777,7 +777,49 @@ pour gérer cela. » Le modèle du midi ne connaissait que le stock ; celui-ci c
 Migration `20260928150000_sieges_auto_installes_par_vehicule_et_politique` (enum, colonne sur
 `fleets`, deux colonnes sur `vehicles`). Tests : `child-seats.service.spec.ts` réécrit (13),
 réservations (+1), lien public (+2), placement (2 réécrits). Types, `ng build`, API (176 sur les
-suites touchées), rejeu des 152 migrations verts.
+suites touchées), web (788), rejeu des 152 migrations verts.
+
+### Preview sur la démo (14:45 – 15:35, Transports Méridien)
+
+GD-057-AG équipé d'un siège bébé depuis la feuille (« Équiper un véhicule… » → Bébé 1 → OK,
+`PUT …/vehicles/:id` 200 ; « installés : 1 bébé · 0 enfant — en stock : 1 bébé · 3 enfant »).
+Réserver, GD-057-AG choisi : « À bord de GD-057-AG : 1 bébé · 0 enfant — stock disponible sur ce
+créneau : 1 bébé sur 1 · 3 enfant sur 3 » ; Bébé = 3 → **409** « il manque 1 siège(s) « Bébé » (1 à
+bord, 1 disponible(s) en stock sur 1) » ; Bébé = 2 → **201**. Réglage « Sièges installés seulement »
+(PUT 200) puis GR-903-GS (non équipé) + Bébé = 1 : la ligne dit « il en manque à bord de ce
+véhicule », le serveur refuse. Deux défauts vus et corrigés avant le déploiement : la carte du jour
+disait « 2 bébé du stock » pour le véhicule qu'on venait d'équiper (la page gardait sa liste de
+véhicules → relue à la fermeture de la feuille, `436d9ffe`) ; une demande « Auto » vidée par les
+sièges disait « aucun véhicule libre » (`00606db4`).
+
+### 🚀 Déployé le 28/09 à 17:41 — après trois heures de guichet fermé
+
+Lancé à 14:51 (images pré-construites), le script a attendu le passage de 14:45 (fini 15:38),
+buté sur la fenêtre HH:42–46, attendu celui de 15:45 (fini 16:42, **dans** la fenêtre), puis s'est
+arrêté sur sa borne de 65 min à 16:47 — la migration, elle, était déjà appliquée (conteneur
+éphémère, l'API en place intacte). Relancé à 16:48, il a attendu le passage de 16:45 (fini 17:37)
+et recréé à 17:41:45 : API saine en 26 s, noms `en-service` posés, démo recréée, journal écrit,
+artefacts vérifiés dans les conteneurs (`child-seats.service.js` porte « Sièges installés
+seulement », le chunk web porte « Équiper un véhicule »), colonnes présentes, 0 erreur au journal.
+Passages du jour : fins à 14:09, 15:38, 16:42, 17:37 — de 24 à 58 min.
+
+### Recette prod (17:45 – 18:00) — Client test, puis cdef31 sans un courriel
+
+| Où | Geste | Vu |
+|---|---|---|
+| Client test | Paramètres : possédés 2 / 3, TEST-004-XX équipé 1 bébé | PUT 200 ×2, « installés : 1 bébé — en stock : 1 bébé · 3 enfant » |
+| Client test | Réserver TEST-004-XX, Bébé = 2 | « À bord de TEST-004-XX : 1 bébé · 0 enfant — stock disponible : 1 bébé sur 1 » → **201**, `criteria {"childSeatsBaby":2}` |
+| Client test | Réserver « Auto », Bébé = 1, même créneau (équipé pris, stock à 0) | ligne « le stock seul ne suffit pas : il faudra un véhicule déjà équipé » → **400** « Aucun véhicule libre ne peut recevoir les sièges auto demandés sur ce créneau (7 véhicule(s) écarté(s) : pas assez de sièges à bord, et le stock ne complète pas ou ne suffit plus)… » |
+| Client test | Réglage « Sièges installés seulement », puis TEST-003-XX + Bébé = 1 | « il en manque à bord de ce véhicule » → **409** « … (0 à bord) à bord de TEST-003-XX, et la société ne prend pas les sièges sur le stock (réglage « Sièges installés seulement »)… » |
+| Client test | Lien public (celui de Client test), dictée « 5 places avec 1 siège bébé pour Albi demain matin », réglage strict | **201** ; le serveur a retenu **TEST-004-XX**, le seul équipé ; file « Sièges auto : 1 bébé (1 bébé à bord) » ; Valider → 201 |
+| cdef31 | Paramètres : possédés 2 bébé, **AL-927-QM** (véhicule réel) équipé 1 bébé | PUT 200 ×2 |
+| cdef31 | Réserver « Auto », Bébé = 1 → **Suggérer avec l'IA** | 77 s, 0,08 € (claude-sonnet-5, 4 135 → 7 586 jetons) : **#1 AL-927-QM 95 %** « siège bébé déjà installé à bord (aucune manipulation de stock nécessaire) … choix idéal et immédiatement opérationnel » ; #2 FY-038-TS 90 % « dimensionnement le plus juste pour 1 enfant … + 1 siège bébé à prendre au stock disponible » ; #3, #4 idem |
+| cdef31 | Réserver (AL-927-QM pré-sélectionné) | **201**, CONFIRMED directement — **aucun courriel** (une réservation interne n'en envoie pas) |
+| Courriels | sur toute la fenêtre | trois, tous à l'adresse du propriétaire (accusé, avis au valideur, confirmation — Client test) ; **aucune adresse @cdef31.org** |
+
+Ménage : réservations de recette supprimées (2 sur Client test, 1 sur cdef31), sièges à bord remis
+à 0 (TEST-004-XX, AL-927-QM), possédés et réglage remis à 0 / 0 et « installés + stock » sur les
+deux sociétés — rendues comme trouvées. La démo garde sa politique par défaut.
 
 ---
 
