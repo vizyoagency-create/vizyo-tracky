@@ -37,6 +37,8 @@ export const ALLOWLIST: Readonly<Record<string, RegleModele>> = {
     copies: [
       'metier', 'adaptiveSamplingEnabled', 'adaptiveFixModeEnabled', 'fuelPriceEurL',
       'speedAlertEnabled', 'speedAlertOverKmh', 'speedAlertAbsoluteKmh', 'speedAlertUpdatedAt',
+      // Sièges auto (28/09) : ce que la société possède et son réglage — un réglage de parc, copié.
+      'childSeatsBaby', 'childSeatsChild', 'childSeatPolicy',
       'createdAt', 'updatedAt',
     ],
     transformes: ['id', 'name'],
@@ -67,7 +69,7 @@ export const ALLOWLIST: Readonly<Record<string, RegleModele>> = {
     copies: [
       'type', 'energy', 'year', 'color', 'fuelConsumptionL100km',
       'calibratedConsumptionL100km', 'calibratedTanks', 'calibratedAt', 'lastOdometerKm', 'lastOdometerAt',
-      'seats', 'childSeats', 'features', 'mixedUseEnabled', 'speedAlertEnabled', 'speedAlertOverKmh',
+      'seats', 'childSeats', 'childSeatsBaby', 'childSeatsChild', 'features', 'mixedUseEnabled', 'speedAlertEnabled', 'speedAlertOverKmh',
       'outOfServiceReason', 'outOfServiceSince', 'privacyModeEnabled', 'privacyModeSince', 'workOverrideUntil',
       'createdAt', 'updatedAt',
     ],
@@ -267,7 +269,7 @@ export const EXCLUS: Readonly<Record<string, string>> = {
   ),
   ...exclure(
     "IA : réglages, budgets, traces et conversations — les échanges d'assistance portent sur des données réelles, les analyses de lieux nomment des sites, les rapports d'activité nomment des comptes",
-    'AiUsageLog', 'AiBudget', 'AiProviderSettings', 'AiSubscription', 'AiFeatureFlags', 'AiAgentTrace',
+    'AiUsageLog', 'AiBudget', 'AiProviderSettings', 'AiSubscription', 'AiFeatureFlags', 'AiAgentTrace', 'AiCapacityAnalysis',
     'AssistanceConversation', 'AssistanceMessage', 'AgendaAgentSettings', 'AgendaAgentProposal', 'AgendaAgentRun',
     'PlaceAnalysis', 'PlaceAutomationSettings', 'PlaceAutomationRun', 'TripAutomationSettings', 'TripAutomationRun',
     'ActivityReport', 'ActivityReportSchedule',
