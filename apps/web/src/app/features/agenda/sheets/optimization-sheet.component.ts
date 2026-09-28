@@ -98,7 +98,7 @@ const METIERS: FleetMetier[] = ['CHILDREN_TRANSPORT', 'PARCELS', 'RENTAL', 'GENE
               </select>
             }
           </div>
-          <p class="op-hint"><lucide-icon [img]="InfoIcon" [size]="12"></lucide-icon> Conditionne l'IA : enfants → places/sièges-enfant · colis → charge · location → disponibilité.</p>
+          <p class="op-hint"><lucide-icon [img]="InfoIcon" [size]="12"></lucide-icon> Conditionne l'IA : enfants → places et sièges auto du stock · colis → charge · location → disponibilité.</p>
 
           <!-- Capacité IA (masquée si l'IA est coupée pour la flotte) -->
           @if (aiEnabled()) {
@@ -110,7 +110,7 @@ const METIERS: FleetMetier[] = ['CHILDREN_TRANSPORT', 'PARCELS', 'RENTAL', 'GENE
                 {{ capLoading() ? 'Analyse…' : 'Analyser' }}
               </button>
             </div>
-            <p class="op-sec-sub">L'IA déduit places &amp; places-enfant par modèle (Jumpy/Expert : 9 ou 2). Vérifiez puis appliquez.</p>
+            <p class="op-sec-sub">L'IA déduit les places par modèle (Jumpy/Expert : 9 ou 2). Vérifiez puis appliquez. Les sièges auto, eux, sont un stock de la société (Paramètres de l'agenda).</p>
             @if (needsFleet()) { <div class="op-alert op-alert--warn"><lucide-icon [img]="InfoIcon" [size]="13"></lucide-icon> Choisissez une société dans le bandeau pour analyser son parc.</div> }
             @if (capError()) { <div class="op-alert op-alert--err"><lucide-icon [img]="AlertIcon" [size]="13"></lucide-icon> {{ capError() }}</div> }
             @if (capLoading()) { <div class="op-skel"></div><div class="op-skel"></div> }
@@ -135,7 +135,7 @@ const METIERS: FleetMetier[] = ['CHILDREN_TRANSPORT', 'PARCELS', 'RENTAL', 'GENE
                         <span class="op-plate">{{ p.plate || '—' }}@if (p.model) { <span class="op-model">{{ p.model }}</span> }</span>
                         <span class="op-chip" [ngClass]="confClass(p.confidence)">{{ p.confidence * 100 | number:'1.0-0' }}%</span>
                       </div>
-                      <div class="op-vals"><span>{{ valOf(p.seats) }} places</span><span>{{ valOf(p.childSeats) }} sièges-enfant</span></div>
+                      <div class="op-vals"><span>{{ valOf(p.seats) }} places</span>@if (p.features.length > 0) { <span>{{ p.features.join(', ') }}</span> }</div>
                       @if (p.reasoning) { <p class="op-reason">{{ p.reasoning }}</p> }
                     </button>
                   }
@@ -477,7 +477,7 @@ export class OptimizationSheetComponent {
     this.aiJob.run({
       kind: 'optimization',
       title: 'Analyse des capacités',
-      hint: 'L\'IA déduit les places et sièges-enfant par modèle de véhicule à partir du parc. Ça prend quelques secondes…',
+      hint: 'L\'IA déduit les places par modèle de véhicule à partir du parc. Ça prend quelques secondes…',
       // P1-5 : le résultat est mémorisé DÈS qu'il arrive, avant même que la pastille l'annonce —
       // un rechargement entre les deux ne coûte plus une seconde analyse.
       task: firstValueFrom(this.ai.capacitySuggest({ fleetId: fleetId ?? undefined })).then((r) => {
@@ -486,7 +486,7 @@ export class OptimizationSheetComponent {
       }),
       summarize: (r) =>
         r.proposals.length
-          ? `${r.proposals.length} véhicule(s) dont la capacité peut être complétée (places / sièges-enfant).`
+          ? `${r.proposals.length} véhicule(s) dont la capacité peut être complétée (places / équipements).`
           : 'Aucune capacité à compléter : le parc semble déjà renseigné.',
     });
     this.closed.emit(); // suivi dans la pastille ; « Voir » ré-ouvre avec le résultat.
@@ -509,7 +509,7 @@ export class OptimizationSheetComponent {
     if (!r) return;
     const items = r.proposals
       .filter((p) => this.selected().has(p.vehicleId))
-      .map((p) => ({ vehicleId: p.vehicleId, seats: p.seats, childSeats: p.childSeats, features: p.features }));
+      .map((p) => ({ vehicleId: p.vehicleId, seats: p.seats, features: p.features }));
     if (items.length === 0) return;
     this.applying.set(true);
     this.capError.set(null);

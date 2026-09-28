@@ -6,10 +6,50 @@
  *   (metadata porte demandeur + critères + motif). Types partagés API ↔ web.
  */
 
-/** Critères de réservation (matching véhicule). */
+/**
+ * Sièges auto (2026-09-28) — deux types, JAMAIS interchangeables : un enfant « bébé » ne peut pas
+ * aller dans un siège « enfant », ni l'inverse. Ils ne sont pas une caractéristique du véhicule
+ * mais un STOCK de la société (réglé dans « Paramètres de l'agenda »), installé dans le véhicule
+ * retenu ; c'est le stock, sur le créneau, qui borne les réservations.
+ */
+export type ChildSeatType = 'BABY' | 'CHILD';
+export const CHILD_SEAT_LABELS: Record<ChildSeatType, string> = { BABY: 'Bébé', CHILD: 'Enfant' };
+
+/** Un compte par type de siège. */
+export interface ChildSeatCounts {
+  baby: number;
+  child: number;
+}
+
+/** Le stock d'une société. */
+export interface ChildSeatStockDto {
+  fleetId: string;
+  stock: ChildSeatCounts;
+}
+
+export interface SetChildSeatStockDto {
+  /** Société ciblée (super-admin) ; sinon celle du compte. */
+  fleetId?: string;
+  baby: number;
+  child: number;
+}
+
+/** Ce qui reste disponible sur un créneau : stock − sièges engagés par les réservations qui le chevauchent. */
+export interface ChildSeatAvailabilityDto {
+  startAt: string;
+  endAt: string;
+  stock: ChildSeatCounts;
+  engaged: ChildSeatCounts;
+  available: ChildSeatCounts;
+}
+
+/** Critères de réservation (matching véhicule + sièges auto pris sur le stock). */
 export interface ReservationCriteria {
   minSeats?: number;
-  minChildSeats?: number;
+  /** Sièges auto « bébé » à installer (pris sur le stock de la société, sur le créneau). */
+  childSeatsBaby?: number;
+  /** Sièges auto « enfant » à installer (idem — jamais substituable au type bébé). */
+  childSeatsChild?: number;
   /** Équipements requis : TOUS doivent être présents sur le véhicule (insensible à la casse). */
   requiredFeatures?: string[];
 }
@@ -36,7 +76,6 @@ export interface SuggestedVehicleDto {
   vehicleId: string;
   vehiclePlate: string | null;
   seats: number | null;
-  childSeats: number | null;
   features: string[];
   /** 0..1 — utilisation récente (tri : sous-utilisés d'abord = mutualisation). */
   utilizationRatio: number;
@@ -47,7 +86,13 @@ export interface SuggestReservationResultDto {
   startAt: string;
   endAt: string;
   vehicles: SuggestedVehicleDto[];
-  /** Véhicules écartés faute de capacité renseignée (places/sièges-enfant NULL avec critère).
+  /**
+   * Sièges auto sur ce créneau (stock de la société − engagés), quand la société est connue.
+   * Un véhicule libre ne suffit pas : si le stock ne couvre pas le besoin, la réservation est
+   * refusée — et l'IA de placement le sait (elle le lit dans son payload).
+   */
+  childSeats?: ChildSeatAvailabilityDto | null;
+  /** Véhicules écartés faute de capacité renseignée (places NULL avec critère de places).
    *  Rendus visibles pour ne pas fausser silencieusement les résultats. */
   excludedUnknownCapacity: number;
   /** Véhicules conformes mais immobilisés (incident/maintenance bloquant sur le créneau). */

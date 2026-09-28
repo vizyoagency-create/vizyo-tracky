@@ -327,8 +327,15 @@ se recale.
 Les réservations suivent deux états : demandée (n'immobilise pas le véhicule) puis confirmée
 (immobilise). Deux réservations ne peuvent pas se chevaucher sur le même véhicule : la seconde est
 refusée, y compris si les deux partent au même instant. L'application peut proposer les véhicules
-libres correspondant au besoin (nombre de places, sièges enfant, équipements), en privilégiant les
-véhicules peu utilisés.
+libres correspondant au besoin (nombre de places, équipements), en privilégiant les véhicules peu
+utilisés.
+
+Les sièges auto ne sont pas rattachés à un véhicule : la société possède un stock de sièges, réglé
+dans les paramètres de l'agenda, en deux types qui ne se remplacent jamais — « bébé » (coque, cosy,
+nacelle) et « enfant » (siège, rehausseur). Une réservation indique combien de sièges de chaque type
+elle demande ; ils s'installent dans le véhicule retenu. Sur un créneau, on ne peut pas promettre plus
+de sièges qu'il n'en reste une fois retirés ceux des réservations validées qui se chevauchent : la
+demande est alors refusée en nommant le type qui manque. L'assistant de placement en tient compte.
 
 Un lien public permet à un tiers de demander une réservation sans compte. Il décrit son besoin ; c'est
 l'application qui choisit les véhicules libres, sans jamais lui révéler la composition de la flotte.
@@ -347,16 +354,16 @@ personne ne les valide ou ne les refuse.`,
     titre: 'Véhicules, groupes, capacités et conducteurs',
     motsCles: ['vehicule', 'voiture', 'camion', 'plaque', 'immatriculation', 'groupe', 'places', 'conducteur', 'chauffeur', 'affecter'],
     contenu: `La fiche véhicule regroupe plaque, type, marque, modèle, année, couleur, énergie, nombre de
-places, sièges enfant et équipements. Les types disponibles sont voiture, camion, fourgon, moto, vélo,
+places et équipements. Les types disponibles sont voiture, camion, fourgon, moto, vélo,
 bus, engin de chantier et autre. Les énergies sont diesel, essence, électrique, hybride et autre. Une
 plaque ne peut exister qu'une fois par société.
 
 Les véhicules peuvent être rassemblés en groupes. Un véhicule appartient à un seul groupe à la fois.
 Les groupes servent aussi à donner des accès : un utilisateur peut être limité à un groupe.
 
-L'onglet des capacités permet de renseigner en masse les places, sièges enfant, énergie et
-équipements — ce sont ces informations qui permettent de proposer le bon véhicule lors d'une
-réservation.
+L'onglet des capacités permet de renseigner en masse les places, l'énergie et les équipements — ce
+sont ces informations qui permettent de proposer le bon véhicule lors d'une réservation. Les sièges
+auto, eux, se comptent une fois pour toute la société, dans les paramètres de l'agenda.
 
 Les conducteurs se gèrent séparément : nom, téléphone, e-mail, numéro de permis, couleur et notes. Un
 conducteur peut être désigné comme conducteur courant d'un véhicule ; il est alors attribué

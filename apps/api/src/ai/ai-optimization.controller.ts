@@ -33,7 +33,7 @@ const ALL_ROLES = [
 export class AiOptimizationController {
   constructor(private readonly ai: AiOptimizationService) {}
 
-  /** Propositions de capacité (places / places-enfant / équipements) — DRY-RUN. */
+  /** Propositions de capacité (places / équipements) — DRY-RUN. Les sièges auto sont un stock société. */
   @Post('capacity/suggest')
   @Roles(...ALL_ROLES)
   @RequirePermissions('ai_optimize')

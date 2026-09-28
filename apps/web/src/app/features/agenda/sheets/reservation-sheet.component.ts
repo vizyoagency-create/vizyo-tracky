@@ -13,12 +13,14 @@ import { DatePipe, DecimalPipe, NgClass } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
 import { apiErrorMessage } from '../../../core/error/api-error';
 import {
-  LucideAngularModule, Sparkles, Check, AlertTriangle, Loader, CalendarCheck, Inbox, X, User,
+  LucideAngularModule, Sparkles, Check, AlertTriangle, Loader, CalendarCheck, Inbox, X, User, Baby,
 } from 'lucide-angular';
 import {
   DORMANT_STOP_COUNTING_MS,
   formatSilenceLabel,
   isVehicleDormant,
+  type ChildSeatAvailabilityDto,
+  type ReservationCriteria,
   type VehicleEventDto,
 } from '@vizyo/tracky-shared';
 import { firstValueFrom } from 'rxjs';
@@ -101,9 +103,29 @@ function toLocalInput(d: Date): string {
                 <span class="rs-retro-s">Coche si la sortie a <strong>déjà eu lieu</strong> : elle sera enregistrée à sa date réelle (passée). Sinon, les dates passées sont bloquées.</span>
               </span>
             </label>
-            <div class="rs-grid">
-              <label class="rs-f rs-f--sm"><span>Places min.</span><input type="number" min="0" inputmode="numeric" class="rs-in" [value]="minSeats()" (input)="minSeats.set($any($event.target).value)"></label>
-              <label class="rs-f rs-f--sm"><span>Sièges-enfant min.</span><input type="number" min="0" inputmode="numeric" class="rs-in" [value]="minChildSeats()" (input)="minChildSeats.set($any($event.target).value)"></label>
+            <label class="rs-f rs-f--sm"><span>Places min.</span><input type="number" min="0" inputmode="numeric" class="rs-in" [value]="minSeats()" (input)="minSeats.set($any($event.target).value)"></label>
+            <!--
+              SIÈGES AUTO (2026-09-28) — pris sur le STOCK de la société, pas sur le véhicule. Deux
+              types, jamais interchangeables : un bébé ne va pas dans un siège enfant, ni l'inverse.
+              La ligne sous les champs dit ce qu'il reste sur le créneau saisi : celui qui demande
+              sait avant d'envoyer, et pas par un refus.
+            -->
+            <div class="rs-f">
+              <span class="rs-lbl-row"><span><lucide-icon [img]="BabyIcon" [size]="12"></lucide-icon> Sièges auto à installer</span></span>
+              <div class="rs-grid">
+                <label class="rs-f rs-f--sm"><span class="rs-sub-lbl">Bébé <em>coque, cosy</em></span><input type="number" min="0" max="50" inputmode="numeric" class="rs-in" [value]="childSeatsBaby()" (input)="childSeatsBaby.set($any($event.target).value)" placeholder="0"></label>
+                <label class="rs-f rs-f--sm"><span class="rs-sub-lbl">Enfant <em>siège, rehausseur</em></span><input type="number" min="0" max="50" inputmode="numeric" class="rs-in" [value]="childSeatsChild()" (input)="childSeatsChild.set($any($event.target).value)" placeholder="0"></label>
+              </div>
+              @if (seatsAvail(); as a) {
+                @if (a.stock.baby === 0 && a.stock.child === 0) {
+                  <span class="rs-hint">Aucun stock de sièges auto renseigné pour cette société — à compter dans « Paramètres de l'agenda ». Une réservation qui en demande sera refusée.</span>
+                } @else {
+                  <span class="rs-hint" [class.rs-hint--manque]="seatsManque()">
+                    Disponibles sur ce créneau : <strong>{{ a.available.baby }}</strong> bébé sur {{ a.stock.baby }} · <strong>{{ a.available.child }}</strong> enfant sur {{ a.stock.child }}
+                    @if (seatsManque()) { — il en manque pour cette demande. }
+                  </span>
+                }
+              }
             </div>
             <label class="rs-f"><span>Motif (optionnel)</span><input type="text" class="rs-in" [value]="reason()" (input)="reason.set($any($event.target).value)" placeholder="Ex. Ramassage scolaire secteur nord"></label>
 
@@ -164,7 +186,7 @@ function toLocalInput(d: Date): string {
                     </div>
                     <p class="rs-ai-reason">{{ p.reasoning }}</p>
                     <span class="rs-ai-seats">
-                      {{ valOf(p.seats) }} places · {{ valOf(p.childSeats) }} sièges-enfant
+                      {{ valOf(p.seats) }} places
                       @if (p.energy) { · <span class="rs-tag">{{ energyLabel(p.energy) }}</span> }
                       @if (p.costPerKm != null) { · <span class="rs-tag rs-tag--cost">≈ {{ p.costPerKm | number:'1.2-2' }} €/km</span> }
                     </span>
@@ -231,6 +253,11 @@ function toLocalInput(d: Date): string {
                       @if (pi.seats) { · {{ pi.seats }} places demandées }
                     </p>
                   }
+                  <!-- Sièges auto à installer : le valideur doit le voir AVANT de dire oui — c'est lui
+                       qui sort le matériel du stock, et la validation refuse (409) s'il n'en reste pas. -->
+                  @if (besoinSieges(g.chef); as bs) {
+                    <p class="rs-q-req"><lucide-icon [img]="BabyIcon" [size]="12"></lucide-icon> Sièges auto à installer : {{ bs }}</p>
+                  }
                   <!--
                     Lot 3b — CE QUE LA VALIDATION VA DÉPLACER.
                     Quand aucun véhicule n'était libre de tout engagement, la demande a pris celui
@@ -281,6 +308,10 @@ function toLocalInput(d: Date): string {
     .rs-ai-list { display: flex; flex-direction: column; gap: 8px; }
     .rs-ai-hint { font-size: 11.5px; color: var(--fg-tertiary); }
     .rs-hint { font-size: 11px; color: var(--fg-tertiary); line-height: 1.35; text-transform: none; letter-spacing: 0; font-weight: 400; }
+    .rs-hint--manque { color: var(--texte-attente); }
+    .rs-sub-lbl { text-transform: none; letter-spacing: 0; }
+    .rs-sub-lbl em { font-style: normal; font-weight: 400; color: var(--fg-tertiary); }
+    .rs-lbl-row lucide-icon { vertical-align: -2px; margin-right: 3px; }
     .rs-ai-card { text-align: left; padding: 11px; border-radius: 12px; background: var(--bg-tertiary); border: 1px solid var(--border-subtle); }
     .rs-ai-card--on { border-color: var(--tracky-light); box-shadow: 0 0 0 1px var(--tracky-light) inset; background: rgba(16,224,160,.06); }
     .rs-ai-top { display: flex; align-items: center; gap: 8px; }
@@ -381,6 +412,7 @@ export class ReservationSheetComponent {
   protected readonly InboxIcon = Inbox;
   protected readonly XIcon = X;
   protected readonly UserIcon = User;
+  protected readonly BabyIcon = Baby;
 
   protected readonly mode = signal<'request' | 'validate' | 'edit'>('request');
   protected readonly canManage = computed(() => this.perms.can('reservations_manage'));
@@ -395,7 +427,18 @@ export class ReservationSheetComponent {
   protected readonly startAt = signal('');
   protected readonly endAt = signal('');
   protected readonly minSeats = signal('');
-  protected readonly minChildSeats = signal('');
+  /** Sièges auto demandés, par type (stock de la société — pas une capacité du véhicule). */
+  protected readonly childSeatsBaby = signal('');
+  protected readonly childSeatsChild = signal('');
+  /** Ce qu'il reste de sièges sur le créneau saisi (rechargé à chaque changement de créneau). */
+  protected readonly seatsAvail = signal<ChildSeatAvailabilityDto | null>(null);
+  /** Le besoin saisi dépasse-t-il ce qui reste ? Dit sous les champs, avant l'envoi. */
+  protected readonly seatsManque = computed(() => {
+    const a = this.seatsAvail();
+    if (!a) return false;
+    const need = this.besoin();
+    return need.baby > a.available.baby || need.child > a.available.child;
+  });
   protected readonly reason = signal('');
   protected readonly vehicleId = signal('');
   protected readonly submitting = signal(false);
@@ -460,7 +503,7 @@ export class ReservationSheetComponent {
   protected readonly aiError = signal<string | null>(null);
   protected readonly aiNoMatch = signal(false);
   protected readonly aiNotes = signal<string | null>(null);
-  protected readonly aiProposals = signal<{ vehicleId: string; plate: string | null; seats: number | null; childSeats: number | null; energy?: string | null; costPerKm?: number | null; score: number; reasoning: string }[]>([]);
+  protected readonly aiProposals = signal<{ vehicleId: string; plate: string | null; seats: number | null; energy?: string | null; costPerKm?: number | null; score: number; reasoning: string }[]>([]);
   /** Phrase « N véhicule(s) écarté(s) » (immobilisés / capacité inconnue), sinon null. */
   protected readonly aiExcludedInfo = signal<string | null>(null);
   /** Coût € de l'appel IA (transparence), affiché après l'analyse. */
@@ -481,14 +524,15 @@ export class ReservationSheetComponent {
       this.resetAi();
       this.reqError.set(null);
       if (edit) {
-        const meta = (edit.metadata ?? {}) as { reason?: string; retroactive?: boolean; criteria?: { minSeats?: number; minChildSeats?: number } };
+        const meta = (edit.metadata ?? {}) as { reason?: string; retroactive?: boolean; criteria?: ReservationCriteria };
         this.startAt.set(toLocalInput(new Date(edit.startAt)));
         this.endAt.set(edit.endAt ? toLocalInput(new Date(edit.endAt)) : '');
         this.vehicleId.set(edit.vehicleId);
         this.reason.set(meta.reason ?? '');
         this.retroactive.set(meta.retroactive === true);
         this.minSeats.set(meta.criteria?.minSeats ? String(meta.criteria.minSeats) : '');
-        this.minChildSeats.set(meta.criteria?.minChildSeats ? String(meta.criteria.minChildSeats) : '');
+        this.childSeatsBaby.set(meta.criteria?.childSeatsBaby ? String(meta.criteria.childSeatsBaby) : '');
+        this.childSeatsChild.set(meta.criteria?.childSeatsChild ? String(meta.criteria.childSeatsChild) : '');
         this.mode.set('edit');
         return;
       }
@@ -497,12 +541,58 @@ export class ReservationSheetComponent {
       this.startAt.set(toLocalInput(base));
       this.endAt.set(toLocalInput(new Date(base.getTime() + 60 * 60 * 1000)));
       this.vehicleId.set('');
-      this.minSeats.set(''); this.minChildSeats.set(''); this.reason.set('');
+      this.minSeats.set(''); this.childSeatsBaby.set(''); this.childSeatsChild.set(''); this.reason.set('');
       this.retroactive.set(false);
       const m = this.startMode() === 'validate' && this.canManage() ? 'validate' : 'request';
       this.mode.set(m);
       if (m === 'validate') void this.loadQueue();
     });
+    // Disponibilité des sièges auto sur le créneau saisi — relue à chaque changement de créneau
+    // (ou de société), en mode demande et en mode édition. Best-effort : une lecture qui échoue
+    // laisse simplement la ligne vide ; le serveur revalide de toute façon à l'envoi.
+    effect(() => {
+      const ouvert = this.open();
+      const mode = this.mode();
+      const s = this.startAt();
+      const e = this.endAt();
+      const fleetId = this.fleetFilter.selectedFleetId() ?? undefined;
+      const edit = this.editReservation();
+      if (!ouvert || mode === 'validate' || !s || !e) { this.seatsAvail.set(null); return; }
+      const si = new Date(s); const ei = new Date(e);
+      if (Number.isNaN(si.getTime()) || Number.isNaN(ei.getTime()) || ei.getTime() <= si.getTime()) { this.seatsAvail.set(null); return; }
+      if (this.needsFleet()) { this.seatsAvail.set(null); return; }
+      void this.chargerSieges({ startAt: si.toISOString(), endAt: ei.toISOString(), fleetId, excludeId: mode === 'edit' ? edit?.id : undefined });
+    });
+  }
+
+  /** Numéro de la dernière lecture partie : une réponse en retard ne doit pas écraser la dernière. */
+  private siegesLecture = 0;
+  private async chargerSieges(q: { startAt: string; endAt: string; fleetId?: string; excludeId?: string }): Promise<void> {
+    const n = ++this.siegesLecture;
+    try {
+      const a = await firstValueFrom(this.api.childSeatAvailability(q));
+      if (n === this.siegesLecture) this.seatsAvail.set(a);
+    } catch (e) {
+      swallow('reservation-sheet:childSeats', e);
+      if (n === this.siegesLecture) this.seatsAvail.set(null);
+    }
+  }
+
+  /** Le besoin de sièges saisi, en entiers (vide ou invalide = 0). */
+  private besoin(): { baby: number; child: number } {
+    const lire = (v: string) => { const n = parseInt(v, 10); return Number.isFinite(n) && n > 0 ? Math.min(50, n) : 0; };
+    return { baby: lire(this.childSeatsBaby()), child: lire(this.childSeatsChild()) };
+  }
+
+  /** « 1 bébé · 2 enfant » — sièges auto portés par une demande (critères), sinon null. */
+  protected besoinSieges(r: VehicleEventDto): string | null {
+    const c = (r.metadata as { criteria?: ReservationCriteria } | null)?.criteria;
+    if (!c) return null;
+    const parts = [
+      c.childSeatsBaby && c.childSeatsBaby > 0 ? `${c.childSeatsBaby} bébé` : '',
+      c.childSeatsChild && c.childSeatsChild > 0 ? `${c.childSeatsChild} enfant` : '',
+    ].filter(Boolean);
+    return parts.length > 0 ? parts.join(' · ') : null;
   }
 
   protected valOf(n: number | null): string { return n === null || n === undefined ? '—' : String(n); }
@@ -635,12 +725,13 @@ export class ReservationSheetComponent {
     return `Écartés d'office : ${parts.join(' · ')}.`;
   }
 
-  private criteria() {
+  private criteria(): ReservationCriteria {
     const s = parseInt(this.minSeats(), 10);
-    const c = parseInt(this.minChildSeats(), 10);
+    const need = this.besoin();
     return {
       minSeats: Number.isFinite(s) && s > 0 ? s : undefined,
-      minChildSeats: Number.isFinite(c) && c > 0 ? c : undefined,
+      childSeatsBaby: need.baby > 0 ? need.baby : undefined,
+      childSeatsChild: need.child > 0 ? need.child : undefined,
     };
   }
 

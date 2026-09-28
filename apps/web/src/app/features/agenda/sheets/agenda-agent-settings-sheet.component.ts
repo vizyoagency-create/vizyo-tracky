@@ -12,7 +12,7 @@ import {
 import { DatePipe, DecimalPipe } from '@angular/common';
 import { apiErrorMessage } from '../../../core/error/api-error';
 import { RouterLink } from '@angular/router';
-import { LucideAngularModule, Settings, X, Loader, Zap, ExternalLink, Link2, Copy, Plus, Power, History, Mail } from 'lucide-angular';
+import { LucideAngularModule, Settings, X, Loader, Zap, ExternalLink, Link2, Copy, Plus, Power, History, Mail, Baby } from 'lucide-angular';
 import {
   FLEET_METIER_LABELS,
   type AgendaAgentAutonomy,
@@ -24,6 +24,7 @@ import {
   type ReservationBookingLinkDto,
 } from '@vizyo/tracky-shared';
 import { firstValueFrom } from 'rxjs';
+import { AgendaApiService } from '../../../core/services/agenda.service';
 import { AgendaAgentApiService } from '../../../core/services/agenda-agent.service';
 import { ReservationBookingApiService } from '../../../core/services/reservation-booking.service';
 import { AiApiService } from '../../../core/services/ai.service';
@@ -102,6 +103,37 @@ import { BottomSheetComponent } from '../../../shared/ui/bottom-sheet/bottom-she
               <select class="aas-in" [value]="metier()" (change)="onMetierChange($any($event.target).value)">
                 @for (m of metiers; track m) { <option [value]="m" [selected]="m === metier()">{{ metierLabel(m) }}</option> }
               </select>
+            </div>
+
+            <!--
+              SIÈGES AUTO — LE STOCK DE LA SOCIÉTÉ (2026-09-28).
+              Un siège n'est pas une caractéristique du véhicule : c'est du matériel mobile qu'on
+              installe dans la voiture retenue. Deux types, jamais interchangeables — un bébé ne va
+              pas dans un siège enfant, ni l'inverse. Ce stock borne les réservations qui en
+              demandent, et l'IA de placement le lit.
+            -->
+            <div class="aas-sieges">
+              <div class="aas-links-head">
+                <span class="aas-lbl"><lucide-icon [img]="BabyIcon" [size]="13"></lucide-icon> Sièges auto de la société</span>
+                <button type="button" class="aas-mini aas-mini--accent" [disabled]="seatsSaving() || !seatsDirty()" (click)="saveSeats()">
+                  @if (seatsSaving()) { <lucide-icon [img]="LoaderIcon" [size]="12" class="aas-spin"></lucide-icon> } Enregistrer le stock
+                </button>
+              </div>
+              <span class="aas-sub">
+                Le nombre de sièges que {{ fleetName() || 'la société' }} possède, par type. Ils s'installent dans le
+                véhicule réservé ; sur un créneau, on ne peut pas en promettre plus qu'il n'en reste.
+                <strong>Un siège « Bébé » ne remplace jamais un siège « Enfant », ni l'inverse.</strong>
+              </span>
+              <div class="aas-grid">
+                <label class="aas-row aas-row--col"><span class="aas-lbl">Bébé <span class="aas-sieges-ex">coque, cosy, nacelle</span></span>
+                  <input type="number" min="0" max="500" inputmode="numeric" class="aas-in" [value]="seatsBaby()" (input)="seatsBaby.set(clampStock($any($event.target).value))"></label>
+                <label class="aas-row aas-row--col"><span class="aas-lbl">Enfant <span class="aas-sieges-ex">siège, rehausseur</span></span>
+                  <input type="number" min="0" max="500" inputmode="numeric" class="aas-in" [value]="seatsChild()" (input)="seatsChild.set(clampStock($any($event.target).value))"></label>
+              </div>
+              @if (seatsError(); as e) { <p class="aas-avis-err">{{ e }}</p> }
+              @else if (seatsBaby() === 0 && seatsChild() === 0) {
+                <span class="aas-sub">Aucun stock renseigné : toute réservation qui demande un siège auto sera refusée tant que ce n'est pas compté.</span>
+              }
             </div>
 
             <!-- Analyse nocturne -->
@@ -346,6 +378,10 @@ import { BottomSheetComponent } from '../../../shared/ui/bottom-sheet/bottom-she
     .aas-cost-list li { display: flex; justify-content: space-between; font-size: 12px; color: var(--fg-tertiary); }
     .aas-cost-link { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 600; color: var(--tracky-light); }
     .aas-links { display: flex; flex-direction: column; gap: 8px; border-top: 1px solid var(--border-subtle); padding-top: 12px; }
+    /* Stock de sièges auto : un bloc à part, cadré comme les coûts — c'est un réglage de matériel, pas d'agent. */
+    .aas-sieges { display: flex; flex-direction: column; gap: 8px; padding: 12px; border-radius: 12px; background: var(--bg-tertiary); border: 1px solid var(--border-subtle); }
+    .aas-sieges .aas-in { min-width: 0; width: 100%; }
+    .aas-sieges-ex { font-weight: 400; font-size: 11px; color: var(--fg-tertiary); }
     .aas-links-head { display: flex; align-items: center; justify-content: space-between; }
     .aas-mini { display: inline-flex; align-items: center; gap: 4px; padding: 6px 8px; border-radius: 8px; font-size: 11.5px; font-weight: 700; background: var(--bg-tertiary); border: 1px solid var(--border-subtle); color: var(--fg-secondary); flex: 0 0 auto; }
     .aas-mini--accent { background: rgba(16,224,160,.12); color: var(--tracky-light); border-color: rgba(16,224,160,.25); }
@@ -389,6 +425,7 @@ import { BottomSheetComponent } from '../../../shared/ui/bottom-sheet/bottom-she
 })
 export class AgendaAgentSettingsSheetComponent {
   private readonly agentApi = inject(AgendaAgentApiService);
+  private readonly agendaApi = inject(AgendaApiService);
   private readonly bookingApi = inject(ReservationBookingApiService);
   private readonly ai = inject(AiApiService);
   private readonly aiStatus = inject(AiStatusService);
@@ -414,7 +451,18 @@ export class AgendaAgentSettingsSheetComponent {
   protected readonly PowerIcon = Power;
   protected readonly HistoryIcon = History;
   protected readonly MailIcon = Mail;
+  protected readonly BabyIcon = Baby;
   protected readonly metiers = Object.keys(FLEET_METIER_LABELS) as FleetMetier[];
+
+  // Sièges auto — le stock de la société (bébé / enfant), et ce qui est enregistré en base.
+  protected readonly seatsBaby = signal(0);
+  protected readonly seatsChild = signal(0);
+  protected readonly seatsSaved = signal<{ baby: number; child: number }>({ baby: 0, child: 0 });
+  protected readonly seatsSaving = signal(false);
+  protected readonly seatsError = signal<string | null>(null);
+  protected readonly seatsDirty = computed(
+    () => this.seatsBaby() !== this.seatsSaved().baby || this.seatsChild() !== this.seatsSaved().child,
+  );
 
   protected readonly loading = signal(false);
   protected readonly saving = signal(false);
@@ -531,6 +579,33 @@ export class AgendaAgentSettingsSheetComponent {
     const n = Math.trunc(Number(v));
     return Number.isFinite(n) ? Math.max(0, Math.min(23, n)) : 0;
   }
+  protected clampStock(v: string): number {
+    const n = Math.trunc(Number(v));
+    return Number.isFinite(n) ? Math.max(0, Math.min(500, n)) : 0;
+  }
+
+  /** Enregistre le stock de sièges auto — un PUT à part : ce n'est pas un réglage de l'agent. */
+  protected async saveSeats(): Promise<void> {
+    if (this.seatsSaving()) return;
+    this.seatsSaving.set(true);
+    this.seatsError.set(null);
+    try {
+      const r = await firstValueFrom(this.agendaApi.setChildSeatStock({
+        fleetId: this.currentFleetId(),
+        baby: this.seatsBaby(),
+        child: this.seatsChild(),
+      }));
+      this.seatsSaved.set({ baby: r.stock.baby, child: r.stock.child });
+      this.seatsBaby.set(r.stock.baby);
+      this.seatsChild.set(r.stock.child);
+      this.toast.success('Stock de sièges enregistré', `${r.stock.baby} bébé · ${r.stock.child} enfant`);
+    } catch (e) {
+      swallow('agenda-agent-settings-sheet:saveSeats', e);
+      this.seatsError.set(apiErrorMessage(e, "Le stock n'a pas pu être enregistré."));
+    } finally {
+      this.seatsSaving.set(false);
+    }
+  }
 
   private currentFleetId(): string | undefined {
     return this.fleetFilter.selectedFleetId() ?? undefined;
@@ -586,6 +661,17 @@ export class AgendaAgentSettingsSheetComponent {
     } catch (err) {
       swallow('agenda-agent-settings-sheet:load', err);
       this.links.set([]);
+    }
+    // Stock de sièges auto (best-effort, mais DIT : un stock illisible n'est pas un stock vide).
+    this.seatsError.set(null);
+    try {
+      const s = await firstValueFrom(this.agendaApi.childSeatStock(fleetId));
+      this.seatsSaved.set({ baby: s.stock.baby, child: s.stock.child });
+      this.seatsBaby.set(s.stock.baby);
+      this.seatsChild.set(s.stock.child);
+    } catch (err) {
+      swallow('agenda-agent-settings-sheet:childSeats', err);
+      this.seatsError.set(apiErrorMessage(err, "Le stock de sièges auto n'a pas pu être lu."));
     }
     await this.chargerDestinataires(fleetId);
   }

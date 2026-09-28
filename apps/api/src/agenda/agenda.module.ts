@@ -8,6 +8,8 @@ import { AgendaAgentSettingsController } from './agenda-agent-settings.controlle
 import { AgendaAgentSettingsService } from './agenda-agent-settings.service';
 import { DestinatairesAvisService } from './destinataires-avis.service';
 import { AgendaController } from './agenda.controller';
+import { ChildSeatsController } from './child-seats.controller';
+import { ChildSeatsService } from './child-seats.service';
 import { FleetInsightsController } from './fleet-insights.controller';
 import { FleetInsightsService } from './fleet-insights.service';
 import { ForecastService } from './forecast.service';
@@ -38,12 +40,15 @@ import { VehicleEventsService } from './vehicle-events.service';
     ReservationsController,
     AgendaAgentSettingsController,
     AgendaAgentController,
+    ChildSeatsController,
   ],
   providers: [
     VehicleEventsService,
     MaintenancePlansService,
     MaintenanceReminderService,
     FleetInsightsService,
+    // Sièges auto (2026-09-28) : déclaré AVANT ReservationsService, qui l'injecte en @Optional().
+    ChildSeatsService,
     ReservationsService,
     ForecastService,
     AgendaAgentSettingsService,
@@ -60,6 +65,8 @@ import { VehicleEventsService } from './vehicle-events.service';
     ReservationsService,
     ForecastService,
     DestinatairesAvisService,
+    // Le lien public (reservation-booking) vérifie le stock de sièges à la soumission.
+    ChildSeatsService,
   ],
 })
 export class AgendaModule {}

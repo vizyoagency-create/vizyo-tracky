@@ -10,7 +10,7 @@ import {
 import { HttpErrorResponse } from '@angular/common/http';
 import {
   LucideAngularModule, Fuel, Save, Check, X, ArrowLeftRight, AlertTriangle, Loader,
-  Info, Users, Baby, ClipboardList, Sparkles,
+  Info, Users, ClipboardList, Sparkles,
 } from 'lucide-angular';
 import type {
   InstallationEnergy,
@@ -39,7 +39,6 @@ const FIELD_LABELS: Record<VehicleSyncableField, string> = {
 
 interface EditRow extends VehicleCapacityRowDto {
   draftSeats: string;
-  draftChildSeats: string;
   draftFeatures: string;
   draftEnergy: InstallationEnergy | '';
   saving: boolean;
@@ -48,7 +47,9 @@ interface EditRow extends VehicleCapacityRowDto {
 
 /**
  * Sprint 10 — Vue « Parc & capacités ». Un endroit unique pour voir QUI a QUOI et éditer
- * la capacité (places / sièges-enfant / équipements / énergie) de chaque véhicule, avec en
+ * la capacité (places / équipements / énergie) de chaque véhicule, avec en
+ * (Les sièges auto ne sont plus ici depuis le 28/09 : c'est un STOCK de la société, réglé dans
+ * « Paramètres de l'agenda » — pas une capacité du véhicule.)
  * regard le modèle/énergie issus du planning d'installation + une synchro 1-clic (aperçu des
  * écarts, application au choix). Édition gardée `vehicles_edit` (lecture seule sinon).
  */
@@ -135,11 +136,6 @@ interface EditRow extends VehicleCapacityRowDto {
                   <span><lucide-icon [img]="UsersIcon" [size]="12"></lucide-icon> Places</span>
                   <input type="number" min="1" max="99" inputmode="numeric" class="cap-in" [disabled]="!canEdit()"
                          [value]="r.draftSeats" (input)="patch(r, 'draftSeats', $any($event.target).value)">
-                </label>
-                <label class="cap-f">
-                  <span><lucide-icon [img]="BabyIcon" [size]="12"></lucide-icon> Sièges-enfant</span>
-                  <input type="number" min="0" max="20" inputmode="numeric" class="cap-in" [disabled]="!canEdit()"
-                         [value]="r.draftChildSeats" (input)="patch(r, 'draftChildSeats', $any($event.target).value)">
                 </label>
                 <label class="cap-f">
                   <span><lucide-icon [img]="FuelIcon" [size]="12"></lucide-icon> Énergie</span>
@@ -240,7 +236,6 @@ export class VehicleCapacityTableComponent implements OnInit {
   protected readonly LoaderIcon = Loader;
   protected readonly InfoIcon = Info;
   protected readonly UsersIcon = Users;
-  protected readonly BabyIcon = Baby;
   protected readonly ClipboardIcon = ClipboardList;
   protected readonly SparklesIcon = Sparkles;
   protected readonly energies = ENERGIES;
@@ -265,7 +260,6 @@ export class VehicleCapacityTableComponent implements OnInit {
     return {
       ...r,
       draftSeats: r.seats != null ? String(r.seats) : '',
-      draftChildSeats: r.childSeats != null ? String(r.childSeats) : '',
       draftFeatures: (r.features ?? []).join(', '),
       draftEnergy: r.energy ?? '',
       saving: false,
@@ -290,14 +284,13 @@ export class VehicleCapacityTableComponent implements OnInit {
   protected isDirty(r: EditRow): boolean {
     return (
       r.draftSeats !== (r.seats != null ? String(r.seats) : '') ||
-      r.draftChildSeats !== (r.childSeats != null ? String(r.childSeats) : '') ||
       r.draftFeatures !== (r.features ?? []).join(', ') ||
       (r.draftEnergy || '') !== (r.energy ?? '')
     );
   }
 
   /** Mise à jour immuable d'un champ de brouillon (OnPush-safe). */
-  protected patch(row: EditRow, key: 'draftSeats' | 'draftChildSeats' | 'draftFeatures' | 'draftEnergy', value: string): void {
+  protected patch(row: EditRow, key: 'draftSeats' | 'draftFeatures' | 'draftEnergy', value: string): void {
     this.rows.update((list) => list.map((r) => (r.vehicleId === row.vehicleId ? { ...r, [key]: value } : r)));
   }
 
@@ -314,14 +307,12 @@ export class VehicleCapacityTableComponent implements OnInit {
   protected async save(row: EditRow): Promise<void> {
     if (!this.canEdit() || row.saving) return;
     const seats = this.parseIntOrNull(row.draftSeats, 1, 99);
-    const childSeats = this.parseIntOrNull(row.draftChildSeats, 0, 20);
     const features = row.draftFeatures.split(',').map((x) => x.trim()).filter(Boolean).slice(0, 30);
     const energy = (row.draftEnergy || null) as InstallationEnergy | null;
     // Le DTO d'update ne valide pas `seats:null` (Min 1) — on n'envoie le champ que s'il a une valeur ;
     // un champ vidé reste donc à sa valeur précédente (capacité non destructive côté formulaire).
     const payload: Record<string, unknown> = { features, energy };
     if (seats != null) payload['seats'] = seats;
-    if (childSeats != null) payload['childSeats'] = childSeats;
 
     this.setRow(row.vehicleId, { saving: true });
     try {
@@ -332,7 +323,6 @@ export class VehicleCapacityTableComponent implements OnInit {
             ? this.toEditRow({
                 ...r,
                 seats: updated.seats,
-                childSeats: updated.childSeats,
                 features: updated.features ?? [],
                 energy: updated.energy,
               })

@@ -230,23 +230,21 @@ import { BrandLogoComponent } from '../../../shared/ui/brand-logo/brand-logo.com
                     </div>
                   </div>
 
-                  <!-- Sprint 8 — Caractéristiques (critères de réservation) -->
+                  <!-- Sprint 8 — Caractéristiques (critères de réservation). Les sièges auto ne sont
+                       plus ici (28/09) : c'est un STOCK de la société, réglé dans « Paramètres de
+                       l'agenda », qu'on installe dans le véhicule réservé. -->
                   <div class="grid grid-cols-2 gap-3 mt-3">
                     <div>
                       <label class="field-label">Places</label>
                       <input type="number" [(ngModel)]="seats" placeholder="5" min="1" max="99" class="field-input" />
                     </div>
                     <div>
-                      <label class="field-label">Sièges enfants</label>
-                      <input type="number" [(ngModel)]="childSeats" placeholder="0" min="0" max="20" class="field-input" />
+                      <label class="field-label">Énergie</label>
+                      <select [(ngModel)]="energy" class="field-input">
+                        <option [ngValue]="undefined">—</option>
+                        @for (e of energyOptions; track e.value) { <option [ngValue]="e.value">{{ e.label }}</option> }
+                      </select>
                     </div>
-                  </div>
-                  <div class="mt-3">
-                    <label class="field-label">Énergie</label>
-                    <select [(ngModel)]="energy" class="field-input">
-                      <option [ngValue]="undefined">—</option>
-                      @for (e of energyOptions; track e.value) { <option [ngValue]="e.value">{{ e.label }}</option> }
-                    </select>
                   </div>
                   <div class="mt-3">
                     <label class="field-label">Équipements</label>
@@ -559,7 +557,6 @@ export class VehicleDialogComponent {
   protected color = '';
   // Sprint 8 — caractéristiques (critères de réservation)
   protected seats: number | undefined;
-  protected childSeats: number | undefined;
   // Sprint 10 — type de carburant (synchronisé depuis le planning d'installation).
   protected energy: InstallationEnergy | undefined;
   protected readonly energyOptions: { value: InstallationEnergy; label: string }[] = [
@@ -640,7 +637,6 @@ export class VehicleDialogComponent {
       this.year = v.year ?? undefined;
       this.color = v.color ?? '';
       this.seats = v.seats ?? undefined;
-      this.childSeats = v.childSeats ?? undefined;
       this.energy = v.energy ?? undefined;
       this.features = Array.isArray(v.features) ? [...v.features] : [];
       this.selectedFleetId = v.fleetId;
@@ -771,10 +767,9 @@ export class VehicleDialogComponent {
     this.features = this.features.filter((x) => x !== f);
   }
 
-  /** Sprint 8 — ajoute les caractéristiques (places / sièges enfants / équipements) au payload. */
+  /** Sprint 8 — ajoute les caractéristiques (places / énergie / équipements) au payload. */
   private applyCharacteristics(data: Record<string, unknown>): void {
     data['seats'] = this.seats ?? null;
-    data['childSeats'] = this.childSeats ?? null;
     data['energy'] = this.energy ?? null;
     data['features'] = this.features;
   }
@@ -792,7 +787,6 @@ export class VehicleDialogComponent {
     this.year = undefined;
     this.color = '';
     this.seats = undefined;
-    this.childSeats = undefined;
     this.energy = undefined;
     this.features = [];
     this.featureInput = '';

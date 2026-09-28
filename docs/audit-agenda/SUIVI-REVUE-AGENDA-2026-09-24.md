@@ -615,6 +615,50 @@ le cas exact que la liste devait faire remonter. C'est à cdef31 d'y répondre.
 
 ---
 
+## 2026-09-28, midi — les sièges auto : un stock de la société, deux types, jamais substituables
+
+### Ce que le propriétaire a demandé, et pourquoi l'ancien modèle était faux
+
+Jusqu'ici un siège enfant était **une caractéristique du véhicule** (`Vehicle.childSeats`) : un
+nombre à renseigner voiture par voiture dans *Parc & capacités*, que l'IA de capacité devinait
+d'après le modèle (« Kangoo : 3 places-enfant »), et qu'une réservation filtrait avec
+`minChildSeats`. Mesuré en prod le 28/09 : **2 sièges déclarés sur 30 véhicules** chez cdef31, et
+**0 réservation** n'a jamais porté ce critère. Le modèle ne décrivait pas le métier.
+
+Le métier : la société **possède un stock de sièges**, du matériel mobile qu'elle installe dans le
+véhicule retenu. Et il y a **deux sortes de sièges qui ne se remplacent jamais** — « Bébé »
+(coque, cosy, nacelle) et « Enfant » (siège, rehausseur) : *un enfant petit petit ne peut pas
+aller dans un siège petit moyen*, ni l'inverse. Décisions du propriétaire : libellés « Bébé » /
+« Enfant », **aucune substitution dans aucun sens**, stock réglé dans **« Paramètres de l'agenda »**.
+
+### Ce qui a été refait (commit de midi, `main`)
+
+| Couche | Avant | Après |
+|---|---|---|
+| Base | `vehicles.childSeats` par véhicule | `fleets.childSeatsBaby` / `childSeatsChild` (migration `20260928120000_stock_sieges_auto_par_societe`, défaut 0 ; l'ancienne colonne reste, ignorée) |
+| Critères | `minChildSeats` (filtre de véhicule) | `childSeatsBaby` / `childSeatsChild` (besoin pris sur le stock) — écrits **propres** en base (`criteresPropres`) |
+| Règle | aucune | `ChildSeatsService` : engagés = somme des besoins des réservations **fermes** qui chevauchent le créneau, **une demande groupée (même `bookingRef`) comptée une fois** ; disponible = stock − engagés, type par type ; refus 409 qui nomme le type et le compte manquants |
+| Réservation interne | — | vérifié à la **demande** (pas seulement à la validation : celui qui dépose l'apprend tout de suite), à la **validation** (le stock a pu partir depuis ; la demande et ses sœurs s'excluent) et à l'**édition** (créneau ou besoin revu) ; jamais en rétroactif |
+| Lien public | — | deux champs + dictée (« 2 sièges bébé et un rehausseur » → 2 / 1 ; « 2 sièges bébé » n'est **plus** compté comme 2 places) ; vérifié **demandes en attente comprises** ; refus **sans chiffre** (anti-sondage) mais qui nomme le type ; besoin dans `metadata.criteria`, dans l'avis aux valideurs et dans l'accusé de réception |
+| IA de placement | payload `childSeats` par candidat | payload `childSeats` = { stock, engaged, available } + prompt réécrit (deux types, aucune substitution, un siège occupe une place assise) ; **si le stock ne suffit pas, le service tranche avant l'appel** — aucun jeton pour une réponse certaine, note explicite |
+| IA de capacité | devinait `childSeats` | ne le déduit plus, ne l'écrit plus (`applyCapacity` ignore un `childSeats` reçu) ; schéma et prompt pack `docs/sprint-9-ai/prompts/*.md` alignés |
+| Écrans | Sièges-enfant dans la fiche véhicule, *Parc & capacités*, la feuille Optimisation | **Paramètres de l'agenda → « Sièges auto de la société »** (Bébé / Enfant, bouton dédié) ; feuille de réservation : deux champs + ligne « Disponibles sur ce créneau : 1 bébé sur 2 · 3 enfant sur 4 » relue à chaque changement de créneau ; file « À valider » et carte du jour : « Sièges auto à installer : 1 bébé · 2 enfant » ; page publique : deux champs + exemple dicté |
+
+Tests ajoutés : `child-seats.service.spec.ts` (9), réservations (7), lien public (5), placement
+(2) ; les anciens verrous `childSeats` réécrits. Types, `ng build`, API (217 sur les suites
+touchées), web (788) et **rejeu des 151 migrations** verts.
+
+⚠️ **Le stock part à zéro chez tout le monde.** Tant que cdef31 n'a pas compté ses sièges dans
+Paramètres de l'agenda, toute réservation qui en demande est refusée — avec un message qui envoie
+au bon écran. C'est voulu : on ne promet pas un siège qu'on n'a pas compté. À dire au client.
+
+En chemin, sur le poste : le Postgres de dev n'écoutait plus sur 5436 — Windows avait réservé les
+plages 5308–5407 et 5433–5532 (`netsh interface ipv4 show excludedportrange`). Rejeu fait avec le
+conteneur relancé sur **15436** (`POSTGRES_PORT` + `DATABASE_URL` surchargés, sans toucher aux
+`.env`) ; le conteneur y reste tant que la plage n'est pas libérée (`winnat`, ou redémarrage).
+
+---
+
 ## Ce qu'il ne faut pas défaire
 
 - **L'agent ne réserve plus fermement.** Le réglage `autonomy` est passé à `suggest` en base le
