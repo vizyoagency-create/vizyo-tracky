@@ -262,7 +262,7 @@ function groupeReservationId(ev: VehicleEventDto): string | null {
         }
         @if (montrerVueIa()) {
           <button type="button" class="ag-vue" [class.ag-vue--on]="vue() === 'ia'" (click)="vue.set('ia')">
-            <lucide-icon [img]="SparklesIcon" [size]="14"></lucide-icon> Assistant IA
+            <lucide-icon [img]="SparklesIcon" [size]="14"></lucide-icon> <span class="ag-vue-long">Assistant </span>IA
             @if (agentProposalCount() > 0) { <span class="ag-badge ag-badge--violet">{{ agentProposalCount() }}</span> }
           </button>
         }
@@ -993,7 +993,8 @@ function groupeReservationId(ev: VehicleEventDto): string | null {
     .ag-dd-item-row lucide-icon { color: var(--tracky-light); }
     .ag-icon-btn--plus { border: 1px solid var(--border-subtle); background: var(--bg-secondary); width: 36px; height: 36px; border-radius: 10px; }
     .ag-icon-btn--on { color: var(--fg-primary); background: var(--bg-tertiary); }
-    @media (max-width: 480px) { .ag-vue { flex: 1; justify-content: center; padding: 8px 8px; } }
+    /* Téléphone : quatre vues sur une ligne — « Assistant IA » devient « IA », le badge reste visible. */
+    @media (max-width: 480px) { .ag-vue { flex: 1; justify-content: center; padding: 8px 6px; font-size: 12.5px; gap: 4px; } .ag-vue-long { display: none; } }
 
     /* ─── Strip de résumé ─── */
     .ag-summary {
