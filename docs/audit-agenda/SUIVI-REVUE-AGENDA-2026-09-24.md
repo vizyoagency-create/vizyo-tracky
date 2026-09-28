@@ -823,6 +823,103 @@ deux sociétés — rendues comme trouvées. La démo garde sa politique par dé
 
 ---
 
+## 2026-09-28, soir — la refonte UX du module, en onze points
+
+### La commande
+
+Onze points et cinq captures, le soir même de la mise en service : « l'utilisation doit être
+évidente, fluide et rapide, même pour un utilisateur qui découvre complètement le module ». La
+conception, décidée avant de coder à partir d'une lecture complète du module tel qu'il était, est
+dans [`REFONTE-UX-AGENDA-2026-09-28.md`](./REFONTE-UX-AGENDA-2026-09-28.md) : le diagnostic en une
+page, l'architecture cible, les décisions point par point. Ce qui suit dit ce qui a été livré et
+ce que la recette a vu.
+
+### Ce qui change pour le gestionnaire
+
+| Avant | Après |
+|---|---|
+| Huit boutons en tête de page | **Quatre entrées** : Réserver · Demandes (si > 0) · + Événement · ⋯ (QR de réservation, Réorganiser, Paramètres) |
+| Les gestes IA dispersés dans des feuilles | **Sélecteur de vues** Calendrier · Missions · Parc · Assistant IA — « Mission » n'est plus un filtre de type, c'était déjà une vue |
+| Un grand calendrier de 42 jours pour choisir un créneau | **Début (date · heure) → Fin (date · heure)**, six raccourcis (Même jour, +1 jour, +1 semaine, Matin, Après-midi, Journée), une ligne de lecture « 7 jours · mar. 29 sept. 08:00 → lun. 5 oct. 18:00 » |
+| Une réservation de sept jours = sept pilules identiques | Pilule du premier jour « titre · 7 j », suites « ↳ titre (2/7) » ; carte du jour « 7 jours · jour 3/7 » ; durée dans À venir et dans la file de validation |
+| Pas de groupe sur une réservation | Champ **« Groupe qui utilise le véhicule »**, pré-rempli avec le groupe du véhicule, modifiable à la demande, à la validation (par carte) et à l'édition, texte libre possible ; **jamais écrit sur le véhicule** ; le filtre groupe de l'agenda retient une réservation par son groupe ou par celui de son véhicule |
+| Optimisation : « on ne sait pas ce qu'Analyser va changer » | Vue Assistant IA, étape 1 : ce que ça lit / propose / change, **une analyse par jour et par société** (refus 429 daté), résultat **conservé en base** (`ai_capacity_analyses`), appliqué fiche par fiche |
+| Propositions IA : une carte par proposition, on se perd | **Regroupées par véhicule**, une ligne par proposition (jour · heure · destination · confiance · ✓ ✗), « Tout réserver / Tout écarter » par véhicule, repliées sauf le premier, « Tout replier / Tout déplier » |
+| Le paramétrage des véhicules dans trois écrans | Vue **Parc** : stock de sièges dessiné (siège plein = à bord, creux = en stock), cartes véhicule (places, sièges, équipements, groupe, état), réglage rapide au clic (places, énergie, équipements, sièges à bord) ; le bloc sièges des Paramètres devient un résumé qui y renvoie |
+| Réorganiser ouvre sur « Aucune réservation ne correspond » | Trois cas nommés (garage → réaffecter · journée tombée → annuler · horaires → décaler), **comptes sur chaque choix**, véhicule ciblable, action **Réaffecter** (« auto » = premier véhicule libre et conforme, jamais celui d'origine), vide expliqué |
+| Une immobilisation écrasait les réservations sans le dire | Formulaire d'indisponibilité en deux colonnes, nature expliquée, et **« Réservations pendant cette période »** : laisser / réaffecter / annuler par ligne, appliquées après la création, tracées dans l'événement (`metadata.reservations`) |
+| Le QR déborde de l'écran | Carte réduite par son unité selon la hauteur, deux colonnes dès 700 px : tout visible sans défiler |
+
+Côté serveur : `POST /reservations/:id/reaffecter`, `GET /ai/capacity/latest`, la garde 24 h sur
+`POST /ai/capacity/suggest` (`force` réservé au super-admin), `metadata.group` sur les réservations
+(vérifié dans la société), `totaux` et `parVehicule` dans la simulation de réorganisation. Une
+migration : la table `ai_capacity_analyses`. Les feuilles Optimisation et Propositions de l'agent
+sont supprimées.
+
+### Vérifié avant de déployer
+
+`pnpm verify` complet — **une fois l'allowlist de l'import de démo mise à jour** : le spec exigeait
+une décision pour les colonnes sièges auto ajoutées à midi (Fleet, Vehicle : copiées) et pour la
+table d'analyses (exclue — elle porte des ids de la production) ; trois tests étaient rouges depuis
+l'après-midi sans que personne ne lance la suite entière. Puis : typecheck, 153 migrations
+rejouées, smoke-boot, 4 398 tests API (dont 91 sur les réservations et 31 sur l'IA), 791 tests web.
+
+### Preview sur la démo (20:50 – 21:30, Transports Méridien, dans Chrome)
+
+Requêtes lues à chaque geste. Tout ce qui est livré marche ; **trois défauts** trouvés et corrigés
+avant le déploiement (`ee134038`) :
+
+| Parcours | Vu |
+|---|---|
+| En-tête, menu ⋯, sélecteur de vues | quatre entrées, le menu porte QR · Réorganiser · Paramètres ; Assistant IA badgé 418 |
+| Assistant IA, propositions | 418 propositions sur 20 véhicules, groupées ; Écarter → `dismiss` 201, Réserver → `apply` 201, repli d'un véhicule d'un clic ; sous-utilisés sur 28 jours en trois colonnes. **Défaut 1** : tout déplié = 418 lignes → repliées sauf le premier véhicule, « Tout replier / Tout déplier » |
+| Parc | 37 véhicules, 2 sans places, 4 hors service, stock dessiné ; CQ-903-GL réglé depuis la carte (9 places, climatisation + attelage, 1 siège bébé à bord) → fiche et stock relus (2 bébé à bord · 0 en stock) |
+| Réserver, multi-jours | « +1 semaine » puis « Journée » → « 8 jours · lun. 28 sept. 08:00 → lun. 5 oct. 18:00 ». **Défaut 2** : pris le soir, « Journée » met le début à 08:00 du jour même, le serveur refuse, et **défaut 3** : le refus s'affichait au fond du corps défilant, invisible → le sélecteur prévient sous les champs, l'erreur vit dans le pied. Début au 29/09 → `request` 201, HG-270-RN, groupe « Secteur Ouest » posé par défaut |
+| Calendrier, carte du jour | pilules « Recette refonte — 8 jours · 7 j » puis « ↳ … (2/7) » à « (7/7) » ; le 1ᵉʳ octobre : « 7 jours · jour 3/7 · Groupe : Secteur Ouest » |
+| Éditer, groupe libre | « Autre… » → « Foyer des Lilas » → `PATCH` 200, la carte du jour l'affiche |
+| Valider, groupe | la demande publique GD-057-AG ouvre avec « Saisonniers » (le groupe du véhicule) ; changé en « Secteur Nord » → `confirm` 201, `metadata.group` = Secteur Nord |
+| Réorganiser | totaux « 2 saisies à la main · 2 du lien public · 1 de l'agent », véhicules avec leurs comptes ; HG-270-RN + Réaffecter (auto) → « 1 réservation serait réaffectée » → appliqué : la réservation de 7 jours passe sur **GR-903-GS**, groupe conservé |
+| Indisponibilité + réservations | GD-057-AG, maintenance du 29/09 au 02/10, « Immobilise » : le bloc liste ses deux réservations (« Ramassage secteur nord », « Demande publique → Albi · Secteur Nord ») ; bouton « Créer et reprendre 2 réservation(s) » ; après création : `reaffecter` 201 (→ VH-091-DL), `cancel` 201, `metadata.reservations` sur l'événement |
+| QR, mobile | non exercés dans Chrome : l'onglet est passé en arrière-plan (viewport 843 × 100, `visibilityState: hidden`) — la fin de la recette s'est faite au DOM et au réseau ; à rejouer sur la prod |
+
+État laissé sur la démo : une maintenance « Passage au garage (recette refonte) » sur GD-057-AG,
+la réservation de 7 jours sur GR-903-GS, CQ-903-GL renseigné — tout ça sur la flotte fictive.
+
+Vu ensuite, l'onglet redevenu capturable : QR sur grand écran en deux colonnes (modale de 127 à 698 px
+dans 826, rien à défiler) ; en 412 px (cadre injecté) : quatre entrées en tête, vues sur une ligne
+défilante, QR de 97 à 730 px sans défilement, sélecteur de créneau Début/Fin empilés avec ses
+raccourcis. Un quatrième correctif (`c8c549b3`, pour le prochain déploiement) : sur téléphone l'onglet
+« Assistant IA » s'écrit « IA » pour que les quatre vues tiennent.
+
+### 🚀 Déployé le 28/09 à 21:13 (Paris) — `ee134038`
+
+`deploy.sh --attendre` lancé à 21:11, juste après le build des images pour la démo (V42) : migration
+`ai_capacity_analyses` jouée en conteneur éphémère, recréation à 21:13:48, **API saine en 11 s, 0
+redémarrage**, repères `en-service` posés, démo mise à jour dans la foulée. Personne d'autre que le
+super-admin en ligne dans le quart d'heure précédent (1 compte dans l'heure). Artefacts vérifiés
+dans les conteneurs (`capacity/latest` dans l'API, « Tout replier » dans le web).
+
+### Recette prod (21:15 – 21:25) — Client test, puis cdef31 sans un courriel
+
+| Société | Geste | Résultat |
+|---|---|---|
+| Client test | page rechargée après la bannière de mise à jour | quatre entrées (Réserver · Événement · ⋯), vues Calendrier · Missions · Parc — pas d'Assistant IA : aucune fonction IA ouverte et aucune proposition, la vue n'aurait rien à dire |
+| Client test | vue Parc | 8 véhicules, stock à 0/0, réglage « installés + stock » |
+| Client test | Réserver : 29/09, « +1 jour », « Journée », TEST-006-XX, motif « Recette refonte prod » | « 2 jours · mar. 29 sept. 08:00 → mer. 30 sept. 18:00 » → `request` **201** ; grille : « Recette refonte prod · 2 j » puis « ↳ … (2/2) » ; pas de groupe (la société n'en a pas) |
+| Client test | Réorganiser | « Tous les véhicules (1) · TEST-006-XX (1) », « 1 saisie à la main · 0 du lien public · 0 de l'agent », « 1 réservation serait annulée » — rien appliqué |
+| Client test | QR (⋯) | deux colonnes, modale de 127 à 698 px dans 826 : rien à défiler |
+| cdef31 | vue Assistant IA | quatre blocs ; 351 propositions sur 25 véhicules, repliées sauf le premier (18 lignes) ; « Aucune analyse pour l'instant » |
+| cdef31 | **Analyser le parc** (une seule fois, aucun courriel) | pastille « IA en cours… » puis « Résultats prêts — 26 fiche(s) véhicule à compléter » en 54 s (claude-sonnet-5, **0,055 $**) ; badge « 26 à appliquer » ; ligne « Dernière analyse le 28/09 à 21:20 — prochaine possible le mardi 29 sept. à 21:20 » ; bouton grisé avec le motif. Rien d'appliqué : c'est au gestionnaire de cocher demain. Exemples : GR-270-HZ C3 → 5 places (90 %), FR-428-DQ Expert → 9 places + porte latérale (50 %, « fourgon ou combi, à confirmer ») |
+| cdef31 | vue Parc | 30 véhicules, 1 sans places renseignées, 4 hors service, stock 0/0 |
+| cdef31 | Réorganiser | « Tous les véhicules (0) … Aucune réservation à venir dans les 30 prochains jours : rien à réorganiser. C'est le bon état. » |
+| base | `ai_capacity_analyses` | 1 ligne (cdef31, 26 propositions, 0 appliquée) |
+
+Ménage : la réservation de recette de Client test supprimée en base (`DELETE /agenda/events/:id`
+refuse une réservation, 400 — c'est voulu : une réservation s'annule, elle ne s'efface pas depuis
+l'écran). Aucun courriel vers `@cdef31.org` sur la fenêtre (vérifié dans `email_logs`).
+
+---
+
 ## Ce qu'il ne faut pas défaire
 
 - **L'agent ne réserve plus fermement.** Le réglage `autonomy` est passé à `suggest` en base le
