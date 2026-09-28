@@ -236,6 +236,14 @@ enum FleetMetier {
   GENERIC
 }
 
+/// Sièges auto (2026-09-28) — un véhicule sans les sièges à bord peut-il recevoir ceux du stock ?
+enum ChildSeatPolicy {
+  /// Défaut : les sièges à bord comptent, et le stock complète ce qui manque (borné par le stock disponible sur le créneau).
+  STOCK_OR_INSTALLED
+  /// Seuls les sièges déjà installés dans le véhicule comptent ; le stock n'est jamais promis.
+  INSTALLED_ONLY
+}
+
 model Fleet {
   id                      String      @id @default(uuid()) @db.Uuid
   name                    String
@@ -249,8 +257,14 @@ model Fleet {
   // quel véhicule qui a une place ; c'est le stock, sur le créneau, qui borne les réservations —
   // plus le véhicule. `Vehicle.childSeats` (un nombre par véhicule) est abandonné : mesuré le
   // 28/09 en prod, 2 sièges déclarés sur 30 véhicules chez le client concerné, jamais un critère.
+  // Précision du 28/09 (après-midi) : un siège est soit INSTALLÉ dans un véhicule
+  // (`Vehicle.childSeatsBaby/Child`, à bord et prêt), soit dans le STOCK (mobile). Ces deux
+  // compteurs sont ce que la société POSSÈDE ; le stock = possédés − installés (dérivé, jamais
+  // stocké). `childSeatPolicy` dit si le stock peut compléter un véhicule qui n'a pas les
+  // sièges à bord, ou si seuls les sièges installés comptent.
   childSeatsBaby          Int         @default(0)
   childSeatsChild         Int         @default(0)
+  childSeatPolicy         ChildSeatPolicy @default(STOCK_OR_INSTALLED)
   // V1.5 (Sprint H1) — sampling adaptatif des positions cote serveur.
   // true = positions redondantes (vehicule arrete) ne sont pas persistees pour
   // economiser le stockage. UX-first : le broadcast WS reste integral.
@@ -787,7 +801,12 @@ model Vehicle {
   // Sprint 8 — caractéristiques pour les critères de réservation : nb de places,
   // sièges enfants/pouponnière, équipements (tags libres extensibles).
   seats                       Int?
+  /// Ancien modèle (un nombre de « places-enfant » par véhicule) : plus lu depuis le 2026-09-28.
   childSeats                  Int?
+  /// Sièges auto INSTALLÉS à bord, par type (2026-09-28) — pris sur ce que la société possède
+  /// (`Fleet.childSeatsBaby/Child`). Un siège à bord est prêt ; le reste du besoin vient du stock.
+  childSeatsBaby              Int                      @default(0)
+  childSeatsChild             Int                      @default(0)
   features                    String[]                 @default([])
   vehicleEvents               VehicleEvent[]
   maintenancePlans            MaintenancePlan[]

@@ -835,7 +835,7 @@ export class VehiclesService {
       where,
       select: {
         id: true, plate: true, type: true, brand: true, model: true, energy: true,
-        seats: true, features: true,
+        seats: true, childSeatsBaby: true, childSeatsChild: true, features: true,
         // Greffé sur la requête EXISTANTE (jointure 1-1 déjà indexée) plutôt qu'une 2e requête :
         // le VPS 2 vCPU ne doit pas payer un aller-retour de plus pour deux colonnes.
         tracker: { select: { id: true, lastSeenAt: true } },
@@ -888,6 +888,9 @@ export class VehiclesService {
         model: v.model,
         energy: v.energy,
         seats: v.seats,
+        // Sièges auto à bord (lecture seule ici : se règlent dans Paramètres de l'agenda).
+        childSeatsBaby: v.childSeatsBaby ?? 0,
+        childSeatsChild: v.childSeatsChild ?? 0,
         features: v.features,
         group: v.groups?.[0]?.group ?? null,
         installationSource: source,

@@ -20,9 +20,8 @@ import type {
   FleetMetierDto,
   SetFleetMetierDto,
 } from '@vizyo/tracky-shared';
-import { CHILD_SEAT_LABELS, DORMANT_STOP_COUNTING_MS, isVehicleDormant } from '@vizyo/tracky-shared';
+import { DORMANT_STOP_COUNTING_MS, isVehicleDormant } from '@vizyo/tracky-shared';
 import type { AuthUser } from '../auth/types/auth-user';
-import { ChildSeatsService } from '../agenda/child-seats.service';
 import { ForecastService } from '../agenda/forecast.service';
 import { ReservationsService } from '../agenda/reservations.service';
 import { VehicleEventsService } from '../agenda/vehicle-events.service';
@@ -308,7 +307,7 @@ export class AiOptimizationService {
     payload: AiPlacementInputDto;
     candidates: AiPlacementCandidateInput[];
     slot: { startAt: string; endAt: string };
-    excluded: { unknownCapacity: number; immobilized: number; dormant: number };
+    excluded: { unknownCapacity: number; immobilized: number; dormant: number; childSeats: number };
     fleetId: string;
   }> {
     if (!dto?.startAt || !dto?.endAt) throw new BadRequestException('startAt et endAt (ISO) requis.');
@@ -442,6 +441,9 @@ export class AiOptimizationService {
           energy,
           costPerKm: estimateCostPerKm(energy, m?.fuelConsumptionL100km ?? null),
           upcomingMaintenance: maintSet.has(v.vehicleId),
+          // Sièges auto : ce qui est déjà à bord, et ce que le stock devrait fournir pour ce candidat.
+          childSeatsInstalled: v.childSeatsInstalled ?? { baby: 0, child: 0 },
+          childSeatsFromStock: v.childSeatsFromStock ?? { baby: 0, child: 0 },
         };
       });
     const underutilizedCount = candidates.filter((c) => c.underutilized).length;
@@ -477,8 +479,8 @@ export class AiOptimizationService {
         reason: dto.reason,
         criteria: dto.criteria,
       },
-      // Sièges auto : ce que le stock laisse sur le créneau. Le prompt sait qu'un besoin au-delà
-      // rend TOUT candidat inapte — mais `suggestPlacement` tranche ce cas avant d'appeler l'IA.
+      // Sièges auto : politique de la société et stock du créneau. Les candidats qui ne peuvent
+      // pas couvrir le besoin (à bord + stock) ont déjà été écartés par le vivier, et comptés.
       childSeats: sug.childSeats ?? null,
       candidates,
       fleetSummary: {
@@ -498,6 +500,7 @@ export class AiOptimizationService {
         unknownCapacity: sug.excludedUnknownCapacity ?? 0,
         immobilized: sug.excludedImmobilized ?? 0,
         dormant: excludedDormant,
+        childSeats: sug.excludedChildSeats ?? 0,
       },
       fleetId,
     };
@@ -518,33 +521,20 @@ export class AiOptimizationService {
         // « Aucun véhicule » tout court laisserait croire que la flotte est pleine sur ce créneau
         // alors que la vraie cause est un parc qui ne répond plus : on nomme la cause, sinon
         // l'exploitant cherche un conflit d'agenda qui n'existe pas.
+        // Sièges auto (2026-09-28) : quand des véhicules libres ont été écartés faute de sièges
+        // (pas assez à bord, et le stock ne complète pas ou ne suffit plus), la réponse est
+        // CERTAINE et ne coûte aucun jeton — on la donne, avec la cause, pas « aucun véhicule ».
         notes:
-          excluded.dormant > 0
-            ? `Aucun véhicule libre ne correspond aux critères sur ce créneau (${excluded.dormant} véhicule(s) écarté(s) : boîtier muet depuis plus de ${DORMANT_COUNTING_DAYS} jours).`
-            : 'Aucun véhicule libre ne correspond aux critères sur ce créneau.',
+          excluded.childSeats > 0
+            ? `Aucun véhicule libre ne peut recevoir les sièges auto demandés sur ce créneau (${excluded.childSeats} véhicule(s) écarté(s) : pas assez de sièges à bord, et le stock ne complète pas ou ne suffit plus). Un siège « Bébé » ne remplace jamais un siège « Enfant », ni l'inverse.`
+            : excluded.dormant > 0
+              ? `Aucun véhicule libre ne correspond aux critères sur ce créneau (${excluded.dormant} véhicule(s) écarté(s) : boîtier muet depuis plus de ${DORMANT_COUNTING_DAYS} jours).`
+              : 'Aucun véhicule libre ne correspond aux critères sur ce créneau.',
         excludedUnknownCapacity: excluded.unknownCapacity,
         excludedImmobilized: excluded.immobilized,
         excludedDormant: excluded.dormant,
+        excludedChildSeats: excluded.childSeats,
       };
-    }
-    // Sièges auto : si le stock ne couvre pas le besoin, la réponse est CERTAINE — aucun véhicule,
-    // même libre et même grand, ne peut être retenu, et la réservation serait refusée (409) de
-    // toute façon. On ne paie pas des jetons pour se l'entendre dire : on le dit nous-mêmes, avec
-    // le type et le nombre qui manquent, et les candidats restent visibles (transparence).
-    const besoinSieges = ChildSeatsService.needOf(dto.criteria);
-    if ((besoinSieges.baby > 0 || besoinSieges.child > 0) && payload.childSeats) {
-      const manque = ChildSeatsService.manque(payload.childSeats, besoinSieges);
-      if (manque) {
-        return {
-          slot,
-          proposals: [],
-          noGoodMatch: true,
-          notes: `${manque} Aucun véhicule ne peut être proposé sans les sièges auto « ${CHILD_SEAT_LABELS.BABY} » / « ${CHILD_SEAT_LABELS.CHILD} » demandés — ils s'installent dans le véhicule retenu et ne se remplacent pas l'un l'autre.`,
-          excludedUnknownCapacity: excluded.unknownCapacity,
-          excludedImmobilized: excluded.immobilized,
-          excludedDormant: excluded.dormant,
-        };
-      }
     }
     // Interrupteur maître : IA désactivée pour la flotte → pas de placement IA (l'app tourne sans IA).
     if (!(await this.aiAvail.isEnabledForFleet(fleetId, 'placement'))) {
@@ -556,6 +546,7 @@ export class AiOptimizationService {
         excludedUnknownCapacity: excluded.unknownCapacity,
         excludedImmobilized: excluded.immobilized,
         excludedDormant: excluded.dormant,
+        excludedChildSeats: excluded.childSeats,
       };
     }
 
@@ -608,6 +599,7 @@ export class AiOptimizationService {
       excludedUnknownCapacity: excluded.unknownCapacity,
       excludedImmobilized: excluded.immobilized,
       excludedDormant: excluded.dormant,
+      excludedChildSeats: excluded.childSeats,
       aiCostEur,
     };
   }

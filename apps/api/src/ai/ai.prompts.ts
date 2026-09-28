@@ -54,21 +54,27 @@ CONTEXTE MÉTIER = {{METIER}}.
   alternative équivalente existe.
 - GENERIC : optimise mutualisation + adéquation simple.
 
-SIÈGES AUTO — règle à part, valable pour tous les métiers. Les sièges auto ne sont PAS une
-caractéristique des candidats : la société possède un STOCK de sièges, en DEUX types JAMAIS
-interchangeables — « bébé » (coque, cosy, nacelle) et « enfant » (siège, rehausseur). Un bébé ne
-va pas dans un siège enfant, ni l'inverse : aucune substitution, dans aucun sens. Le stock
-s'installe dans le véhicule retenu, quel qu'il soit.
+SIÈGES AUTO — règle à part, valable pour tous les métiers. La société POSSÈDE des sièges auto en
+DEUX types JAMAIS interchangeables — « bébé » (coque, cosy, nacelle) et « enfant » (siège,
+rehausseur). Un bébé ne va pas dans un siège enfant, ni l'inverse : aucune substitution, dans aucun
+sens. Chaque siège est soit INSTALLÉ à bord d'un véhicule (prêt), soit dans le STOCK (mobile, à
+installer dans le véhicule retenu avant le départ).
 - Le besoin est dans "request.criteria.childSeatsBaby" / "childSeatsChild" (absent = 0).
-- "childSeats" (au niveau du payload) donne, pour ce créneau : "stock", "engaged" (déjà pris par
-  d'autres réservations) et "available", type par type.
-- Si le besoin dépasse "available" pour l'un des deux types, AUCUN véhicule ne peut couvrir la
-  demande, même libre et même grand : mets "noGoodMatch"=true et écris dans "notes" ce qui manque
-  (« il manque 1 siège bébé sur ce créneau : 2 demandés, 1 disponible »). Ne propose pas de
-  compenser par l'autre type.
-- Si le besoin tient dans "available", les sièges n'influencent pas le classement : dis simplement
-  dans "reasoning" qu'ils seront installés (« + 2 sièges enfant du stock »), et vérifie que le
-  véhicule a assez de PLACES pour les enfants qui les occuperont.
+- "childSeats" (au niveau du payload) donne la "policy" de la société et, pour ce créneau : "total"
+  (possédés), "installed" (à bord de véhicules), "stock", "engaged" (déjà pris par d'autres
+  réservations) et "available" (stock encore libre), type par type.
+- Chaque candidat porte "childSeatsInstalled" (ce qu'il a DÉJÀ à bord) et "childSeatsFromStock"
+  (ce que le stock devrait lui fournir = besoin − à bord). Zéro partout = tout est à bord, rien à
+  installer.
+- policy "STOCK_OR_INSTALLED" : un candidat couvre le besoin si "childSeatsFromStock" ≤ "available",
+  type par type. policy "INSTALLED_ONLY" : seuls les sièges à bord comptent — un candidat dont
+  "childSeatsFromStock" n'est pas nul NE COUVRE PAS le besoin.
+- À adéquation et dimensionnement comparables, PRÉFÈRE le candidat qui a déjà ses sièges à bord
+  (aucune installation avant le départ, et le stock reste libre pour une autre course), et dis-le
+  dans "reasoning" (« 2 sièges enfant déjà à bord » / « + 1 siège bébé à prendre au stock »).
+- Vérifie que le véhicule a assez de PLACES pour les enfants qui occuperont ces sièges. Ne compense
+  jamais un type par l'autre. Si AUCUN candidat ne couvre le besoin, "noGoodMatch"=true et dis dans
+  "notes" ce qui manque (« il manque 1 siège bébé : 0 à bord, 0 en stock disponible »).
 
 Chaque candidat porte aussi son énergie ("energy"), un coût/km estimé ("costPerKm", en €, plus bas =
 moins cher à faire rouler) et un signal "upcomingMaintenance" (une maintenance est prévue peu après).

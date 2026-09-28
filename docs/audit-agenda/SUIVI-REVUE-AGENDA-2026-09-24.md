@@ -738,6 +738,49 @@ refusée en le disant.
 
 ---
 
+## 2026-09-28, après-midi — un siège est installé dans un véhicule, ou laissé en stock
+
+### La précision du propriétaire
+
+« Je pouvais faire les deux : assigner un siège auto bébé ou normal à une voiture, ou le laisser
+dans le stock. Si la voiture n'a pas de siège équipé, alors regarder le stock — et un paramètre
+pour gérer cela. » Le modèle du midi ne connaissait que le stock ; celui-ci connaît les deux.
+
+### Le modèle
+
+- La société **possède** des sièges (`fleets.childSeatsBaby/Child`, inchangés en valeur). Chacun est
+  soit **installé** dans un véhicule (`vehicles.childSeatsBaby/Child`, à bord, prêt), soit **en
+  stock** = possédés − installés (dérivé, jamais stocké). Deux types, jamais interchangeables.
+- **Le réglage** `fleets.childSeatPolicy` — « Si le véhicule choisi n'a pas les sièges à bord » :
+  **« Sièges installés + stock »** (défaut : les sièges à bord comptent d'abord, le stock complète
+  ce qui manque, sans promettre plus qu'il n'en reste sur le créneau) ou **« Sièges installés
+  seulement »** (le stock n'est jamais promis — personne ne peut installer un siège avant le départ).
+- Sur un créneau, les sièges à bord ne se disputent jamais entre réservations (deux réservations du
+  même véhicule se heurtent déjà sur le véhicule) : **seul le stock se compte** — stock − ce que les
+  réservations fermes chevauchantes prennent dessus (leur besoin − les sièges à bord de leur
+  véhicule ; une demande groupée = un besoin contre la somme de ses véhicules).
+- Invariant : possédés ≥ installés. Réduire le total sous ce qui est à bord est refusé ; équiper un
+  véhicule au-delà du total **relève** le total (« 2 à bord » dit qu'on en possède au moins 2).
+
+### Où ça se voit
+
+| Surface | Ce qui change |
+|---|---|
+| Paramètres de l'agenda | « Sièges auto de la société » : possédés (Bébé / Enfant), la ligne « installés · en stock », le réglage, puis **« À bord des véhicules »** — une ligne par véhicule équipé (Bébé / Enfant / OK) et « Équiper un véhicule… » pour en ajouter |
+| Feuille de réservation | le sélecteur dit « · à bord : 1 bébé, 2 enfant » ; la ligne sous les champs dit ce que le véhicule choisi a à bord puis le stock disponible (ou, sous « installés seulement », que le stock n'est pas promis) ; « Auto » prend en premier un véhicule déjà équipé |
+| Refus (409) | « il manque 1 siège(s) « Bébé » (0 à bord, 1 disponible(s) en stock sur 2) » — ou, sous « installés seulement », « … à bord de AB-123-CD, et la société ne prend pas les sièges sur le stock … Choisissez un véhicule équipé, ou changez le réglage » |
+| File « À valider », panneau du jour | « Sièges auto : 1 bébé · 2 enfant (1 bébé à bord · 2 enfant du stock) » — celui qui prépare la voiture sait quoi sortir |
+| Lien public | le besoin entre dans les critères du vivier ; une combinaison de deux véhicules additionne leurs sièges à bord avant de prendre au stock ; refus sans chiffre, type nommé |
+| IA de placement | le payload porte la politique, le stock du créneau, et par candidat l'à-bord et le reste à prendre au stock ; le prompt préfère un véhicule déjà équipé à adéquation égale et le dit dans `reasoning` ; sous « installés seulement », un candidat sans les sièges à bord ne couvre pas |
+| Parc & capacités | « Sièges auto à bord » en lecture seule, avec le renvoi vers Paramètres de l'agenda (une seule règle, un seul endroit) |
+
+Migration `20260928150000_sieges_auto_installes_par_vehicule_et_politique` (enum, colonne sur
+`fleets`, deux colonnes sur `vehicles`). Tests : `child-seats.service.spec.ts` réécrit (13),
+réservations (+1), lien public (+2), placement (2 réécrits). Types, `ng build`, API (176 sur les
+suites touchées), rejeu des 152 migrations verts.
+
+---
+
 ## Ce qu'il ne faut pas défaire
 
 - **L'agent ne réserve plus fermement.** Le réglage `autonomy` est passé à `suggest` en base le

@@ -367,6 +367,9 @@ export class ReservationsService {
         id: true,
         plate: true,
         seats: true,
+        // Sièges auto À BORD (2026-09-28) : ils couvrent le besoin avant le stock.
+        childSeatsBaby: true,
+        childSeatsChild: true,
         features: true,
         // Dormance : lue par JOINTURE sur la relation 1-1 déjà là (aucune requête de plus — le VPS
         // 2 vCPU ne pardonne pas un N+1 sur un parc de 2000). `lastSeenAt` est l'UNIQUE source :
@@ -379,8 +382,8 @@ export class ReservationsService {
 
     // Capacité filtrée EN JS (pas via `gte` Prisma, qui écarterait silencieusement les
     // NULL) : les véhicules à capacité inconnue sont COMPTÉS et rendus visibles à l'UI.
-    // Les sièges auto ne filtrent AUCUN véhicule : ils s'installent dans celui qu'on retient. Ce
-    // qui borne, c'est le stock de la société sur le créneau — rendu à part (`childSeats`).
+    // Les sièges auto, eux, se jugent APRÈS l'occupation (plus bas) : sièges à bord + stock du
+    // créneau, selon la politique de la société.
     let excludedUnknownCapacity = 0;
     const capacityOk = candidates.filter((v) => {
       if (c.minSeats && v.seats == null) {
@@ -407,11 +410,12 @@ export class ReservationsService {
             const have = new Set(v.features.map((f) => f.toLowerCase()));
             return required.every((r) => have.has(r));
           });
-    const empty = (excludedImmobilized: number, excludedDormant = 0): SuggestReservationResultDto => ({
+    const empty = (excludedImmobilized: number, excludedDormant = 0, excludedChildSeats = 0): SuggestReservationResultDto => ({
       startAt: start.toISOString(),
       endAt: end.toISOString(),
       vehicles: [],
       childSeats: childSeatsAvail,
+      excludedChildSeats,
       excludedUnknownCapacity,
       excludedImmobilized,
       excludedDormant,
@@ -479,10 +483,34 @@ export class ReservationsService {
     const free = awake.filter((v) => !busy.has(v.id) && !immobilized.has(v.id));
     if (free.length === 0) return empty(excludedImmobilized, excludedDormant);
 
-    const util = await this.recentUtilization(free.map((v) => v.id));
-    const vehicles: SuggestedVehicleDto[] = free
+    // SIÈGES AUTO (2026-09-28) — un véhicule libre ne suffit pas quand la demande a des enfants à
+    // bord : il faut ses sièges À BORD, et pour le reste le STOCK du créneau — si la politique de
+    // la société l'autorise. Un véhicule que le besoin ne peut pas couvrir est ÉCARTÉ et COMPTÉ
+    // (jamais un chiffre qui baisse en silence). Jugé ici, après l'occupation : inutile de juger
+    // les sièges d'un véhicule déjà pris.
+    const need = ChildSeatsService.needOf(criteria);
+    const aBesoin = need.baby > 0 || need.child > 0;
+    const aBordDe = (v: { childSeatsBaby?: number | null; childSeatsChild?: number | null }) => ({
+      baby: v.childSeatsBaby ?? 0,
+      child: v.childSeatsChild ?? 0,
+    });
+    let excludedChildSeats = 0;
+    const couverts =
+      aBesoin && childSeatsAvail
+        ? free.filter((v) => {
+            const ok = ChildSeatsService.couvre(childSeatsAvail, need, aBordDe(v));
+            if (!ok) excludedChildSeats++;
+            return ok;
+          })
+        : free;
+    if (couverts.length === 0) return empty(excludedImmobilized, excludedDormant, excludedChildSeats);
+
+    const util = await this.recentUtilization(couverts.map((v) => v.id));
+    const duStock = (c: { baby: number; child: number }) => c.baby + c.child;
+    const vehicles: SuggestedVehicleDto[] = couverts
       .map((v) => {
         const ratio = util.get(v.id) ?? 0;
+        const aBord = aBordDe(v);
         return {
           vehicleId: v.id,
           vehiclePlate: v.plate,
@@ -490,15 +518,23 @@ export class ReservationsService {
           features: v.features,
           utilizationRatio: Math.round(ratio * 100) / 100,
           underutilized: ratio < UNDERUTILIZED_RATIO,
+          childSeatsInstalled: aBord,
+          childSeatsFromStock: ChildSeatsService.fromStock(need, aBord),
         };
       })
-      .sort((a, b) => a.utilizationRatio - b.utilizationRatio); // sous-utilisés d'abord
+      // Avec des enfants à bord : d'abord le véhicule qui a DÉJÀ ses sièges (rien à installer, stock
+      // préservé pour une autre course), puis les sous-utilisés. Sans besoin : sous-utilisés d'abord.
+      .sort((a, b) =>
+        (aBesoin ? duStock(a.childSeatsFromStock!) - duStock(b.childSeatsFromStock!) : 0) ||
+        a.utilizationRatio - b.utilizationRatio,
+      );
 
     return {
       startAt: start.toISOString(),
       endAt: end.toISOString(),
       vehicles,
       childSeats: childSeatsAvail,
+      excludedChildSeats,
       excludedUnknownCapacity,
       excludedImmobilized,
       excludedDormant,
@@ -589,10 +625,11 @@ export class ReservationsService {
       if ((await this.findImmobilized([vehicleId], start, end)).has(vehicleId)) {
         throw new ConflictException('Ce véhicule est immobilisé (incident ou maintenance) sur ce créneau.');
       }
-      // Sièges auto : un véhicule libre ne suffit pas, il faut aussi de quoi asseoir les enfants.
-      // Vérifié pour une DEMANDE aussi (pas seulement une réservation ferme) : celui qui dépose
-      // doit l'apprendre tout de suite, pas le valideur trois jours plus tard.
-      await this.childSeats?.assertAvailable(fleetId, start, end, ChildSeatsService.needOf(dto.criteria));
+      // Sièges auto : un véhicule libre ne suffit pas, il faut aussi de quoi asseoir les enfants —
+      // ses sièges à bord, puis le stock selon la politique. Vérifié pour une DEMANDE aussi (pas
+      // seulement une réservation ferme) : celui qui dépose l'apprend tout de suite, pas le
+      // valideur trois jours plus tard.
+      await this.childSeats?.assertAvailable(fleetId, start, end, ChildSeatsService.needOf(dto.criteria), { vehicleId });
     }
 
     // #5 — Placement DIRECT si l'appelant peut GÉRER les réservations de CE véhicule
@@ -696,7 +733,7 @@ export class ReservationsService {
         resa.startAt,
         resa.endAt,
         ChildSeatsService.needOf(meta?.criteria as RequestReservationDto['criteria']),
-        { excludeId: id, excludeBookingRef: this.bookingRefOf(resa.metadata) },
+        { vehicleId, excludeId: id, excludeBookingRef: this.bookingRefOf(resa.metadata) },
       );
     }
 
@@ -863,13 +900,13 @@ export class ReservationsService {
     // réservation ferme comme pour une demande encore en attente (le valideur ne doit pas hériter
     // d'un refus). Une réservation close ne bouge plus ; une rétroactive n'engage plus rien.
     const vivante = resa.status !== VehicleEventStatus.DONE && resa.status !== VehicleEventStatus.CANCELLED;
-    if (vivante && !isRetro && end && (slotChanged || dto.criteria !== undefined)) {
+    if (vivante && !isRetro && end && (slotChanged || dto.criteria !== undefined || vehicleChanged)) {
       await this.childSeats?.assertAvailable(
         (data.fleetId as string | undefined) ?? resa.fleetId,
         start,
         end,
         ChildSeatsService.needOf(criteresApres),
-        { excludeId: id, excludeBookingRef: this.bookingRefOf(resa.metadata) },
+        { vehicleId: targetVehicleId, excludeId: id, excludeBookingRef: this.bookingRefOf(resa.metadata) },
       );
     }
 

@@ -5,6 +5,7 @@ import type {
   ChildSeatAvailabilityDto,
   ChildSeatStockDto,
   SetChildSeatStockDto,
+  SetVehicleChildSeatsDto,
   FleetOptimizationDto,
   ForecastResultDto,
   VehicleAvailabilityDto,
@@ -211,16 +212,25 @@ export class AgendaApiService {
     return this.http.get<ChildSeatStockDto>('/api/agenda/child-seats', { params: fleetId ? { fleetId } : {} });
   }
 
-  /** PUT /api/agenda/child-seats — règle le stock (Paramètres de l'agenda). */
+  /** PUT /api/agenda/child-seats — règle le total possédé et la politique (Paramètres de l'agenda). */
   setChildSeatStock(dto: SetChildSeatStockDto): Observable<ChildSeatStockDto> {
     return this.http.put<ChildSeatStockDto>('/api/agenda/child-seats', dto);
   }
 
-  /** GET /api/agenda/child-seats/availability — stock, engagés et disponibles sur un créneau. */
-  childSeatAvailability(query: { startAt: string; endAt: string; fleetId?: string; excludeId?: string }): Observable<ChildSeatAvailabilityDto> {
+  /** PUT /api/agenda/child-seats/vehicles/:id — règle les sièges à bord d'un véhicule. */
+  setVehicleChildSeats(vehicleId: string, dto: SetVehicleChildSeatsDto): Observable<ChildSeatStockDto> {
+    return this.http.put<ChildSeatStockDto>(`/api/agenda/child-seats/vehicles/${vehicleId}`, dto);
+  }
+
+  /**
+   * GET /api/agenda/child-seats/availability — politique, stock, engagés et disponibles sur un
+   * créneau ; avec `vehicleId`, ce que ce véhicule a déjà à bord.
+   */
+  childSeatAvailability(query: { startAt: string; endAt: string; fleetId?: string; excludeId?: string; vehicleId?: string }): Observable<ChildSeatAvailabilityDto> {
     const params: Record<string, string> = { startAt: query.startAt, endAt: query.endAt };
     if (query.fleetId) params['fleetId'] = query.fleetId;
     if (query.excludeId) params['excludeId'] = query.excludeId;
+    if (query.vehicleId) params['vehicleId'] = query.vehicleId;
     return this.http.get<ChildSeatAvailabilityDto>('/api/agenda/child-seats/availability', { params });
   }
 

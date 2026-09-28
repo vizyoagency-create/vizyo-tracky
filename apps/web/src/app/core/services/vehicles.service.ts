@@ -29,6 +29,9 @@ export interface VehicleDetailDto {
   /** Sprint 8 — caractéristiques (critères de réservation). */
   seats: number | null;
   childSeats: number | null;
+  /** Sièges auto INSTALLÉS à bord, par type (2026-09-28) — réglés dans Paramètres de l'agenda. */
+  childSeatsBaby?: number;
+  childSeatsChild?: number;
   features: string[];
   fleetId: string;
   /**

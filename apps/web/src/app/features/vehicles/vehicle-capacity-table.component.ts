@@ -144,6 +144,12 @@ interface EditRow extends VehicleCapacityRowDto {
                     @for (e of energies; track e) { <option [value]="e">{{ energyLabel(e) }}</option> }
                   </select>
                 </label>
+                <!-- Sièges auto à bord : lecture seule ici — ils se règlent, avec le total possédé et le
+                     stock, dans Agenda → Paramètres de l'agenda (une seule règle, un seul endroit). -->
+                <div class="cap-f cap-f--wide">
+                  <span><lucide-icon [img]="UsersIcon" [size]="12"></lucide-icon> Sièges auto à bord</span>
+                  <span class="cap-ro-val">{{ r.childSeatsBaby }} bébé · {{ r.childSeatsChild }} enfant — se règle dans <a routerLink="/agenda" class="cap-link">Agenda → Paramètres</a></span>
+                </div>
                 <label class="cap-f cap-f--wide">
                   <span><lucide-icon [img]="ClipboardIcon" [size]="12"></lucide-icon> Équipements (séparés par des virgules)</span>
                   <input type="text" class="cap-in" [disabled]="!canEdit()" placeholder="Ex. climatisation, hayon, GPS"
@@ -205,6 +211,8 @@ interface EditRow extends VehicleCapacityRowDto {
     .cap-f { display: flex; flex-direction: column; gap: 4px; font-size: 11px; color: var(--fg-tertiary); }
     .cap-f--wide { grid-column: 1 / -1; }
     .cap-f > span { display: inline-flex; align-items: center; gap: 5px; font-weight: 600; text-transform: uppercase; letter-spacing: .03em; }
+    /* Valeur en lecture seule (sièges auto à bord) : même grille que les champs, sans la casse de libellé. */
+    .cap-f > span.cap-ro-val { text-transform: none; letter-spacing: 0; font-weight: 400; font-size: 12.5px; color: var(--fg-secondary); padding: 6px 0; }
     .cap-in { width: 100%; padding: 9px 10px; border-radius: 9px; background: var(--bg-primary); border: 1px solid var(--border-subtle); color: var(--fg-primary); font-size: 16px; }
     .cap-in:focus { outline: none; border-color: var(--tracky-light); }
     .cap-in:disabled { opacity: .6; cursor: not-allowed; }

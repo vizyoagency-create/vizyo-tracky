@@ -1118,7 +1118,8 @@ describe('ReservationsService — sièges auto : le stock de la société borne 
     const { create, svc } = creer(childSeats);
     await svc.request(makeUser(), { vehicleId: 'v1', ...SLOT, criteria: { minSeats: 4, childSeatsBaby: 1, childSeatsChild: '2' as unknown as number } });
     const cs = childSeats as unknown as { assertAvailable: jest.Mock };
-    expect(cs.assertAvailable).toHaveBeenCalledWith('f1', new Date(SLOT.startAt), new Date(SLOT.endAt), { baby: 1, child: 2 });
+    // Le véhicule visé est passé : ses sièges à bord comptent avant le stock (28/09, après-midi).
+    expect(cs.assertAvailable).toHaveBeenCalledWith('f1', new Date(SLOT.startAt), new Date(SLOT.endAt), { baby: 1, child: 2 }, { vehicleId: 'v1' });
     expect(create.mock.calls[0][0].data.metadata.criteria).toEqual({ minSeats: 4, childSeatsBaby: 1, childSeatsChild: 2 });
   });
 
@@ -1146,7 +1147,7 @@ describe('ReservationsService — sièges auto : le stock de la société borne 
     });
     await svc.confirm(makeUser(), 'r1', {});
     expect((childSeats as unknown as { assertAvailable: jest.Mock }).assertAvailable).toHaveBeenCalledWith(
-      'f1', row.startAt, row.endAt, { baby: 0, child: 2 }, { excludeId: 'r1', excludeBookingRef: 'g1' },
+      'f1', row.startAt, row.endAt, { baby: 0, child: 2 }, { vehicleId: 'v1', excludeId: 'r1', excludeBookingRef: 'g1' },
     );
   });
 
@@ -1168,7 +1169,37 @@ describe('ReservationsService — sièges auto : le stock de la société borne 
     const cs = childSeats as unknown as { assertAvailable: jest.Mock };
     expect(cs.assertAvailable).not.toHaveBeenCalled();
     await svc.update(makeUser(), 'r1', { criteria: { childSeatsBaby: 2 } });
-    expect(cs.assertAvailable).toHaveBeenCalledWith('f1', row.startAt, row.endAt, { baby: 2, child: 0 }, { excludeId: 'r1', excludeBookingRef: null });
+    expect(cs.assertAvailable).toHaveBeenCalledWith('f1', row.startAt, row.endAt, { baby: 2, child: 0 }, { vehicleId: 'v1', excludeId: 'r1', excludeBookingRef: null });
+  });
+
+  it('suggest : avec un besoin, un véhicule libre que les sièges ne couvrent pas est ÉCARTÉ et COMPTÉ ; l’équipé passe devant', async () => {
+    // Stock : 0 bébé disponible. v1 a 1 bébé à bord (rien au stock) ; v2 n'a rien (1 bébé au stock → impossible).
+    const childSeats = {
+      availability: jest.fn().mockResolvedValue({
+        startAt: '', endAt: '', policy: 'STOCK_OR_INSTALLED', total: { baby: 1, child: 0 }, installed: { baby: 1, child: 0 },
+        stock: { baby: 0, child: 0 }, engaged: { baby: 0, child: 0 }, available: { baby: 0, child: 0 },
+      }),
+      assertAvailable: jest.fn().mockResolvedValue(undefined),
+    } as never;
+    const prisma = makePrisma({
+      vehicle: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: 'v2', plate: 'BB-2', seats: 5, childSeatsBaby: 0, childSeatsChild: 0, features: [] },
+          { id: 'v1', plate: 'AA-1', seats: 5, childSeatsBaby: 1, childSeatsChild: 0, features: [] },
+        ]),
+      },
+    });
+    const svc = new ReservationsService(prisma, access('ALL'), makeEvents(), makePerms(), undefined, undefined, childSeats);
+    const res = await svc.suggest(makeUser(), { ...SLOT, criteria: { childSeatsBaby: 1 } });
+    expect(res.vehicles.map((v) => v.vehicleId)).toEqual(['v1']);
+    expect(res.vehicles[0].childSeatsInstalled).toEqual({ baby: 1, child: 0 });
+    expect(res.vehicles[0].childSeatsFromStock).toEqual({ baby: 0, child: 0 });
+    expect(res.excludedChildSeats).toBe(1);
+    // Le stock est lu avec les demandes en attente quand le flux public le demande.
+    await svc.availableForFleet('f1', SLOT.startAt, SLOT.endAt, { childSeatsBaby: 1 }, { excludeRequested: true });
+    expect((childSeats as unknown as { availability: jest.Mock }).availability).toHaveBeenLastCalledWith(
+      'f1', expect.any(Date), expect.any(Date), { includeRequested: true },
+    );
   });
 
   it('sans service de sièges (specs historiques, module absent) : aucun contrôle, aucune erreur', async () => {
