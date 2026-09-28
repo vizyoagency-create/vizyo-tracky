@@ -394,6 +394,50 @@ image_encore_presente() {   # $1 = ID d'image
   [ -n "$1" ] && docker image inspect "$1" >/dev/null 2>&1
 }
 
+# ── V42 (2026-09-28) : L'IMAGE EN SERVICE GARDE UN NOM ──────────────────────────────────────
+#
+# Pourquoi une image disparaît sous son conteneur — mesuré ce jour sur le VPS (Docker 29.1.3,
+# magasin d'images containerd) avec une image sonde : RECONSTRUIRE `x:latest` pendant qu'un
+# conteneur tourne sur l'ancien `latest` fait disparaître l'ancienne image comme objet.
+# `docker image inspect <id>` répond « No such image », aucune image « dangling » n'apparaît,
+# le conteneur continue sur son instantané. Ce n'est PAS le ménage nocturne
+# (`docker image prune -af --filter until=72h` épargne toute image utilisée par un conteneur,
+# et 72 h n'étaient pas passées) : c'est la construction elle-même — celle de ce script comme
+# celle d'une preview sur la démo entre deux déploiements. Deux fois vu : 23/09 13:36 et 28/09
+# 08:17 (« aucun repère posable » → repli automatique impossible pour ce passage).
+#
+# Le remède, mesuré avec la même sonde : une image qui porte un SECOND nom survit à la
+# reconstruction de `latest`. Après chaque mise en service — déploiement, repli automatique,
+# démo — l'image de chaque conteneur reçoit donc `<image>:en-service` (`<image>:demo-en-service`
+# pour la démo). Le nom SUIT le conteneur : reposé à chaque passage, il ne protège que ce qui
+# tourne, et l'image d'avant perd ce nom quand plus rien ne tourne dessus. Les repères `avant-*`
+# restent posés depuis le conteneur, comme avant — ils ont simplement toujours une image sous
+# eux, et le repli automatique redevient toujours possible.
+#
+# Ne tue jamais un déploiement : l'image absente ou un `tag` en échec se DISENT, sans code.
+nommer_en_service() {   # $1 = périmètre : production (défaut) | demo
+  local perimetre="${1:-production}" image conteneur nom source
+  for image in $IMAGES; do
+    if [ "$perimetre" = demo ]; then
+      [ "$image" = tracky-lp ] && continue   # pas de site marketing de démo
+      conteneur="${image/tracky-/tracky-demo-}"; nom="$image:demo-en-service"
+    else
+      conteneur="$image"; nom="$image:en-service"
+    fi
+    source="$(image_en_service "$conteneur")"
+    [ -z "$source" ] && continue   # pas de conteneur : rien à nommer
+    if ! image_encore_presente "$source"; then
+      dire "   ⚠️ $conteneur tourne sur une image déjà absente (${source:7:12}) : pas de nom posable — la prochaine recréation assainira."
+      continue
+    fi
+    if docker tag "$source" "$nom" >/dev/null 2>&1; then
+      dire "   nom posé : $nom ← ${source:7:12} (l'image de $conteneur survivra aux reconstructions de latest)"
+    else
+      dire "   ⚠️ docker tag $nom en échec — sans effet sur ce passage, mais l'image de $conteneur n'est pas protégée."
+    fi
+  done
+}
+
 etiqueter_repli() {
   local etiquette="avant-$(horodatage_etiquette)-$(git -C "$RACINE" rev-parse --short HEAD)"
   ETIQUETTE_POSEE="$etiquette"
@@ -411,6 +455,7 @@ etiqueter_repli() {
     elif ! image_encore_presente "$source"; then
       # Le conteneur tourne sur une image supprimée sous lui : il n'existe AUCUN point de retour.
       dire "   ⛔ $image : le conteneur tourne sur une image absente (${source:7:19}) — aucun repère posable."
+      dire "      (une reconstruction de latest l'a renommée sous lui — V42 : depuis ce passage, l'image en service garde le nom $image:en-service)"
       dire "      Le repli automatique sera donc refusé pour ce passage. Recréer la pile assainira la situation."
       continue
     else
@@ -568,7 +613,8 @@ repli_automatique() {
   done
   cd "$RACINE/deploy/vps"
   recreer_perimetre
-  attendre_sante "après repli automatique"
+  attendre_sante "après repli automatique" || return 1
+  nommer_en_service production   # V42 : l'image revenue en service garde un nom, elle aussi
 }
 
 # ── LA DÉMO SUIT LA PRODUCTION (V36 b, 2026-09-20) ──────────────────────────────────────────
@@ -597,6 +643,7 @@ mettre_a_jour_demo() {
   fi
   if attendre_sante_conteneur tracky-demo-api "démo"; then
     DEMO_ETAT="saine"
+    nommer_en_service demo   # V42 : la démo aussi garde un nom sur ce qui tourne
   else
     dire "⚠️  L'API de démo n'est pas saine après recréation. La PRODUCTION n'est pas concernée ; la démo n'a pas de véhicule."
     dire "   Cause probable : une migration en échec au démarrage (journal ci-dessus). Corriger, puis relancer ce script (la démo suit)."
@@ -705,6 +752,10 @@ main() {
     fi
     exit 4
   fi
+
+  # ── 6 ter. L'IMAGE EN SERVICE GARDE UN NOM (V42) — avant toute autre construction ──
+  dire "l'image en service garde un nom :"
+  nommer_en_service production
 
   # ── 6 bis. LA DÉMO SUIT — la production est saine, elle ne sera plus touchée (V36 b) ──
   mettre_a_jour_demo

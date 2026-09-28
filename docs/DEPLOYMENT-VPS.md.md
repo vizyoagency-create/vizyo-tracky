@@ -742,6 +742,16 @@ docker exec tracky-postgres psql -U tracky -d tracky_prod -c \
 ## 9. Redéploiement (après `git pull`)
 
 ```bash
+> ⚠️ **Procédure HISTORIQUE, à ne plus suivre.** Depuis la décision D1 (2026-09-13) le seul
+> chemin vers la production est `bash /opt/vizyo-tracky/deploy/vps/deploy.sh` (garde des passages
+> d'automatisation, migration avant recréation, attente de santé, repli automatique). Un
+> `compose up` à la main est signalé au centre d'alerte comme « déploiement hors script ».
+> Et le ménage d'images est déjà planifié (`/etc/cron.d/docker-image-prune`, `until=72h`) —
+> ne pas en rajouter : depuis le 28/09 (V42), `deploy.sh` nomme l'image de chaque conteneur en
+> service (`tracky-api:en-service`…) pour qu'une reconstruction de `latest` ne la fasse plus
+> disparaître sous lui.
+
+```bash
 cd /opt/vizyo-tracky
 git pull origin main
 
