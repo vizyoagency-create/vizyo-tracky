@@ -1,8 +1,12 @@
 # Prompt pack — Capacité 1 : enrichissement de capacité (CDEF d'abord)
 
 **But.** Pour chaque véhicule (marque / modèle / énergie / type), l'IA **propose** le nombre de
-places, le nombre de places-enfant et des équipements probables — avec **confiance + justification**.
+places et des équipements probables — avec **confiance + justification**.
 C'est ce qui débloque CDEF (« Jumpy 9 vs 2 places »). Résultat **à valider par un humain**.
+
+> **Sièges auto (2026-09-28).** Plus de `childSeats` ici : un siège auto n'est pas une
+> caractéristique du véhicule mais un **stock de la société** (deux types, « bébé » / « enfant »,
+> jamais interchangeables), réglé dans « Paramètres de l'agenda » et vérifié par le placement.
 
 ## Comment tester dans la Console Anthropic
 
@@ -26,19 +30,20 @@ Tu es un expert du parc automobile français. Tu aides une société de gestion 
 
 Pour chaque véhicule fourni (marque, modèle, énergie, type), propose :
 - "seats"      : nombre TOTAL de places assises homologuées, CONDUCTEUR INCLUS ;
-- "childSeats" : nombre de places où l'on peut installer un siège/rehausseur enfant
-                 (places arrière à ceinture 3 points ; jamais la place conducteur ;
-                 un utilitaire 2 places sans banquette arrière = 0) ;
 - "features"   : étiquettes courtes et utiles, déductibles du modèle
                  (ex. "climatisation", "porte latérale coulissante", "plancher bas", "PMR") ;
 - "confidence" : ta certitude dans [0,1] ;
 - "reasoning"  : UNE phrase en français qui justifie (modèle → version → places).
 
+Les SIÈGES AUTO (bébé / enfant) ne sont PAS une caractéristique du véhicule : la société possède
+un stock de sièges qu'elle installe dans le véhicule retenu. Ne les déduis pas, ne les mentionne pas.
+
 CONTEXTE MÉTIER de la flotte = {{METIER}}.
-- CHILDREN_TRANSPORT : la flotte TRANSPORTE DES ENFANTS. Le nombre de places et surtout de
-  places-enfant est CRITIQUE (sécurité). Un même modèle peut exister en version « fourgon »
-  (2–3 places) ou « navette / Traveller / Combi / Life » (8–9 places) : sers-toi de l'énergie,
-  du type et du contexte pour trancher, et BAISSE ta confiance si c'est ambigu.
+- CHILDREN_TRANSPORT : la flotte TRANSPORTE DES ENFANTS. Le nombre de places est CRITIQUE
+  (sécurité : chaque enfant occupe une place assise, siège auto compris). Un même modèle peut
+  exister en version « fourgon » (2–3 places) ou « navette / Traveller / Combi / Life »
+  (8–9 places) : sers-toi de l'énergie, du type et du contexte pour trancher, et BAISSE ta
+  confiance si c'est ambigu.
 - PARCELS : transport de colis. Les places importent peu ; déduis plutôt le volume utile.
 - RENTAL / GENERIC : véhicules standards.
 
@@ -72,11 +77,10 @@ Renvoie UNIQUEMENT un objet JSON conforme au schéma. Aucun texte hors du JSON.
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["vehicleId", "seats", "childSeats", "features", "confidence", "reasoning"],
+        "required": ["vehicleId", "seats", "features", "confidence", "reasoning"],
         "properties": {
           "vehicleId": { "type": "string" },
           "seats": { "anyOf": [{ "type": "integer" }, { "type": "null" }] },
-          "childSeats": { "anyOf": [{ "type": "integer" }, { "type": "null" }] },
           "features": { "type": "array", "items": { "type": "string" } },
           "confidence": { "type": "number" },
           "reasoning": { "type": "string" }
@@ -111,12 +115,12 @@ Renvoie UNIQUEMENT un objet JSON conforme au schéma. Aucun texte hors du JSON.
 ```json
 {
   "proposals": [
-    { "vehicleId": "v1", "seats": 5, "childSeats": 3, "features": ["porte latérale coulissante"], "confidence": 0.8, "reasoning": "Kangoo familial : 5 places, banquette arrière 3 places-enfant." },
-    { "vehicleId": "v2", "seats": 5, "childSeats": 3, "features": ["climatisation"], "confidence": 0.9, "reasoning": "Clio IV : citadine 5 places, 3 places-enfant à l'arrière." },
-    { "vehicleId": "v3", "seats": 9, "childSeats": 6, "features": ["porte latérale coulissante", "plancher bas"], "confidence": 0.5, "reasoning": "ë-Jumpy électrique : probable navette 8–9 places, mais existe en fourgon — confiance modérée." },
-    { "vehicleId": "v4", "seats": 3, "childSeats": 0, "features": ["porte latérale coulissante"], "confidence": 0.45, "reasoning": "Jumpy II HDi : très probablement fourgon 2–3 places (0 place-enfant) ; à confirmer." },
-    { "vehicleId": "v5", "seats": 9, "childSeats": 6, "features": ["climatisation"], "confidence": 0.55, "reasoning": "Expert/Traveller : si version Traveller, 8–9 places ; si fourgon Expert, 3 places — confiance modérée." },
-    { "vehicleId": "v6", "seats": 5, "childSeats": 3, "features": ["climatisation"], "confidence": 0.9, "reasoning": "C3 : citadine 5 places, 3 places-enfant à l'arrière." }
+    { "vehicleId": "v1", "seats": 5, "features": ["porte latérale coulissante"], "confidence": 0.8, "reasoning": "Kangoo familial : 5 places, banquette arrière 3 places." },
+    { "vehicleId": "v2", "seats": 5, "features": ["climatisation"], "confidence": 0.9, "reasoning": "Clio IV : citadine 5 places." },
+    { "vehicleId": "v3", "seats": 9, "features": ["porte latérale coulissante", "plancher bas"], "confidence": 0.5, "reasoning": "ë-Jumpy électrique : probable navette 8–9 places, mais existe en fourgon — confiance modérée." },
+    { "vehicleId": "v4", "seats": 3, "features": ["porte latérale coulissante"], "confidence": 0.45, "reasoning": "Jumpy II HDi : très probablement fourgon 2–3 places ; à confirmer." },
+    { "vehicleId": "v5", "seats": 9, "features": ["climatisation"], "confidence": 0.55, "reasoning": "Expert/Traveller : si version Traveller, 8–9 places ; si fourgon Expert, 3 places — confiance modérée." },
+    { "vehicleId": "v6", "seats": 5, "features": ["climatisation"], "confidence": 0.9, "reasoning": "C3 : citadine 5 places." }
   ]
 }
 ```

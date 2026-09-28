@@ -10,7 +10,11 @@ import type {
   SubmitPublicReservationResultDto,
   SuggestedVehicleDto,
 } from '@vizyo/tracky-shared';
+import { Optional } from '@nestjs/common';
+import type { ChildSeatCounts } from '@vizyo/tracky-shared';
+import { CHILD_SEAT_LABELS } from '@vizyo/tracky-shared';
 import type { AuthUser } from '../auth/types/auth-user';
+import { ChildSeatsService } from '../agenda/child-seats.service';
 import { fleetTzFormatter, localParts, localWallToUtc } from '../agenda/fleet-tz.util';
 import { ReservationsService } from '../agenda/reservations.service';
 import { AiUsageService } from '../ai-usage/ai-usage.service';
@@ -24,8 +28,22 @@ import { ReservationBookingNotifier } from './reservation-booking-notifier.servi
 import { BOOKING_PARSE_SCHEMA, renderBookingParseSystem } from './reservation-parse.prompt';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
-/** Extrait un nombre de places d'un texte libre (« 11 places », « 9 personnes »…). */
-const SEATS_RE = /(\d{1,3})\s*(?:places?|pax|personnes?|passagers?|si[èe]ges?)/i;
+/**
+ * Extrait un nombre de places d'un texte libre (« 11 places », « 9 personnes »…).
+ * « 2 sièges bébé » ou « 1 siège auto » ne sont PAS des places : ce sont des sièges auto (regex
+ * dédiées ci-dessous) — d'où l'exclusion sur ce qui suit « siège ».
+ */
+const SEATS_RE = /(\d{1,3})\s*(?:places?|pax|personnes?|passagers?|si[èe]ges?(?!\s*(?:auto|b[ée]b[ée]|enfant|r[ée]hausseur|coque|cosy|nacelle)))/i;
+/**
+ * Sièges auto dictés, par type — deux types jamais interchangeables (2026-09-28).
+ * « 2 sièges bébé », « un cosy », « une coque », « 1 nacelle » → bébé ;
+ * « 3 sièges enfant », « deux rehausseurs », « 1 siège auto enfant » → enfant.
+ * Le nombre peut être en chiffres ou en lettres (un/une/deux/trois/quatre).
+ */
+const NOMBRE = '(\\d{1,2}|un|une|deux|trois|quatre|cinq|six)';
+const BABY_SEATS_RE = new RegExp(`${NOMBRE}\\s*(?:si[èe]ges?\\s*)?(?:auto\\s*)?(?:(?:pour\\s+)?b[ée]b[ée]s?|cosys?|coques?|nacelles?)`, 'i');
+const CHILD_SEATS_RE = new RegExp(`${NOMBRE}\\s*(?:si[èe]ges?\\s*)?(?:auto\\s*)?(?:(?:pour\\s+)?enfants?|r[ée]hausseurs?)`, 'i');
+const NOMBRES_EN_LETTRES: Record<string, number> = { un: 1, une: 1, deux: 2, trois: 3, quatre: 4, cinq: 5, six: 6 };
 /** Extrait une destination (« pour Carcassonne », « vers Toulouse »…). */
 const DEST_RE = /(?:pour|vers|à|a|direction|jusqu'?[àa])\s+([A-Za-zÀ-ÿ][A-Za-zÀ-ÿ' \-]{1,39})/i;
 
@@ -69,6 +87,12 @@ export class ReservationBookingService {
     // Interrupteur maître IA par flotte (@Global) : si la flotte a désactivé l'IA, on n'affine pas au LLM.
     // Placé EN FIN pour ne pas décaler les constructions positionnelles des specs (DI = par type).
     private readonly aiAvail?: AiAvailabilityService,
+    /**
+     * Sièges auto (2026-09-28) : le stock de la société borne aussi les demandes publiques — en
+     * comptant les demandes en attente, comme pour les véhicules. Exporté par AgendaModule.
+     * `@Optional()` : les specs construisent ce service à la main ; sans lui, pas de contrôle.
+     */
+    @Optional() private readonly childSeats?: ChildSeatsService,
   ) {}
 
   private resolveFleetId(user: AuthUser, fleetId?: string): string {
@@ -170,11 +194,14 @@ export class ReservationBookingService {
   async parsePublic(token: string, text: string): Promise<ParsedNeedDto> {
     const link = await this.loadActiveLink(token);
     const clean = (text || '').trim().slice(0, 500);
-    if (!clean) return { seatsNeeded: null, destination: null, startAt: null, endAt: null };
+    if (!clean) return { seatsNeeded: null, childSeatsBaby: null, childSeatsChild: null, destination: null, startAt: null, endAt: null };
 
     const when = this.parseWhen(clean);
+    const sieges = this.parseChildSeats(clean);
     const deterministic: ParsedNeedDto = {
       seatsNeeded: this.parseSeatsOrNull(clean),
+      childSeatsBaby: sieges.baby,
+      childSeatsChild: sieges.child,
       destination: this.extractDestination(clean),
       startAt: when.startAt,
       endAt: when.endAt,
@@ -185,13 +212,19 @@ export class ReservationBookingService {
     if (this.ai?.isConfigured() && this.aiUsage && aiEnabled) {
       try {
         const nowIso = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Paris', dateStyle: 'short', timeStyle: 'short' }).format(new Date());
-        const call = await this.ai.completeJson<{ seatsNeeded: number | null; destination: string | null; startAt: string | null; endAt: string | null }>({
+        const call = await this.ai.completeJson<{
+          seatsNeeded: number | null; childSeatsBaby: number | null; childSeatsChild: number | null;
+          destination: string | null; startAt: string | null; endAt: string | null;
+        }>({
           system: renderBookingParseSystem(nowIso),
           userPayload: { text: clean },
           schema: BOOKING_PARSE_SCHEMA,
           maxTokens: 400,
         }, { trace: { action: 'booking_parse', userId: null, fleetId: link.fleetId } });
-        const r = call.result ?? ({} as { seatsNeeded?: unknown; destination?: unknown; startAt?: unknown; endAt?: unknown });
+        const r = call.result ?? ({} as {
+          seatsNeeded?: unknown; childSeatsBaby?: unknown; childSeatsChild?: unknown;
+          destination?: unknown; startAt?: unknown; endAt?: unknown;
+        });
         void this.aiUsage.record({
           userId: null, fleetId: link.fleetId, action: 'booking_parse', model: call.model, provider: call.provider,
           inputTokens: call.usage.inputTokens, outputTokens: call.usage.outputTokens,
@@ -200,6 +233,9 @@ export class ReservationBookingService {
         });
         return {
           seatsNeeded: this.cleanSeats(r.seatsNeeded) ?? deterministic.seatsNeeded,
+          // L'IA prime quand elle a compris (un chiffre) ; sinon la lecture déterministe.
+          childSeatsBaby: this.cleanChildSeats(r.childSeatsBaby) ?? deterministic.childSeatsBaby,
+          childSeatsChild: this.cleanChildSeats(r.childSeatsChild) ?? deterministic.childSeatsChild,
           destination: typeof r.destination === 'string' && r.destination.trim() ? r.destination.trim().slice(0, 60) : deterministic.destination,
           startAt: this.validIso(r.startAt, link) ?? deterministic.startAt,
           endAt: this.validIso(r.endAt, link) ?? deterministic.endAt,
@@ -234,6 +270,25 @@ export class ReservationBookingService {
     const end = new Date(slot.endAt);
     // #5 — Entrée publique non authentifiée : borne la destination comme requester(120)/contact(160)/freeText(500).
     const destination = ((dto?.destination?.trim() || this.extractDestination(dto?.freeText)) ?? null)?.slice(0, 120) ?? null;
+
+    // Sièges auto : le besoin (champs du formulaire, sinon la phrase dictée) contre le STOCK de la
+    // société sur le créneau — demandes en attente comprises, comme pour les véhicules. Vérifié
+    // AVANT de chercher un véhicule : c'est une seule requête, et un refus ici n'a pas à classer
+    // le parc. Message sans chiffre (anti-sondage du stock via le lien public), mais qui nomme le
+    // TYPE qui manque : c'est ce que le demandeur peut corriger.
+    const sieges = this.resolveChildSeats(dto);
+    if ((sieges.baby > 0 || sieges.child > 0) && this.childSeats) {
+      const avail = await this.childSeats.availability(link.fleetId, start, end, { includeRequested: true });
+      const manquent: string[] = [];
+      if (sieges.baby > avail.available.baby) manquent.push(`« ${CHILD_SEAT_LABELS.BABY} »`);
+      if (sieges.child > avail.available.child) manquent.push(`« ${CHILD_SEAT_LABELS.CHILD} »`);
+      if (manquent.length > 0) {
+        throw new BadRequestException(
+          `Les sièges auto ${manquent.join(' et ')} demandés ne sont pas tous disponibles sur ce créneau. ` +
+            "Essayez un autre horaire, ou contactez directement l'organisation.",
+        );
+      }
+    }
     const { combination, freeCount, withSeatsCount, deplacements } = await this.pickCombination(link.fleetId, slot, seatsNeeded);
     const totalSeats = combination.reduce((s, v) => s + (v.seats ?? 0), 0);
     if (combination.length === 0 || totalSeats < seatsNeeded) {
@@ -269,6 +324,12 @@ export class ReservationBookingService {
           requester,
           requesterContact: contact.slice(0, 160),
           seatsNeeded,
+          // Le besoin de sièges vit dans `criteria`, comme pour une réservation interne : c'est là
+          // que le stock se recompte à chaque validation (une demande groupée = un seul besoin,
+          // dédoublonné par `bookingRef`). Absent quand il n'y a pas d'enfant à bord.
+          ...(sieges.baby > 0 || sieges.child > 0
+            ? { criteria: { ...(sieges.baby > 0 ? { childSeatsBaby: sieges.baby } : {}), ...(sieges.child > 0 ? { childSeatsChild: sieges.child } : {}) } }
+            : {}),
           destination,
           freeText: (dto?.freeText || '').slice(0, 500),
           /**
@@ -294,6 +355,7 @@ export class ReservationBookingService {
       startAt: slot.startAt,
       endAt: slot.endAt,
       seats: seatsNeeded,
+      childSeats: sieges,
     });
 
     /**
@@ -314,17 +376,22 @@ export class ReservationBookingService {
       startAt: slot.startAt,
       endAt: slot.endAt,
       seats: seatsNeeded,
+      childSeats: sieges,
       vehicleCount: created,
     });
 
+    const siegesTxt = [
+      sieges.baby > 0 ? `${sieges.baby} siège(s) bébé` : '',
+      sieges.child > 0 ? `${sieges.child} siège(s) enfant` : '',
+    ].filter(Boolean).join(', ');
     this.systemActivity.record({
       category: 'RESERVATION',
       action: 'public_booking_submitted',
       status: 'SUCCESS',
       actor: 'client',
-      detail: `Demande publique : ${created} véhicule(s), ${seatsNeeded} place(s)${destination ? ' → ' + destination : ''}`,
+      detail: `Demande publique : ${created} véhicule(s), ${seatsNeeded} place(s)${siegesTxt ? ', ' + siegesTxt : ''}${destination ? ' → ' + destination : ''}`,
       fleetId: link.fleetId,
-      meta: { created, seatsNeeded, linkId: link.id },
+      meta: { created, seatsNeeded, childSeatsBaby: sieges.baby, childSeatsChild: sieges.child, linkId: link.id },
     });
     // Message générique (pas de nombre de véhicules : anti-sondage capacité via le lien public).
     return { created, message: 'Demande envoyée. Vous recevrez la confirmation dès sa validation par l\'organisation.' };
@@ -502,6 +569,40 @@ export class ReservationBookingService {
   private cleanSeats(v: unknown): number | null {
     const n = Math.floor(Number(v));
     return Number.isFinite(n) && n > 0 ? Math.min(200, n) : null;
+  }
+
+  /**
+   * Sièges auto dictés, par type (null = la phrase n'en parle pas). « 2 sièges bébé et 1
+   * rehausseur » → { baby: 2, child: 1 }. Déterministe ; l'IA affine par-dessus quand elle tourne.
+   */
+  private parseChildSeats(text: string): { baby: number | null; child: number | null } {
+    const lire = (re: RegExp): number | null => {
+      const m = text.match(re);
+      if (!m) return null;
+      const brut = m[1].toLowerCase();
+      const n = NOMBRES_EN_LETTRES[brut] ?? parseInt(brut, 10);
+      return Number.isFinite(n) && n > 0 ? Math.min(50, n) : null;
+    };
+    return { baby: lire(BABY_SEATS_RE), child: lire(CHILD_SEATS_RE) };
+  }
+
+  /** Entier dans [1, 50] renvoyé par l'IA, sinon null (jamais 0 : « aucun » = null, on garde le repli). */
+  private cleanChildSeats(v: unknown): number | null {
+    const n = Math.floor(Number(v));
+    return Number.isFinite(n) && n > 0 ? Math.min(50, n) : null;
+  }
+
+  /**
+   * Le besoin de sièges d'une soumission : les champs du formulaire s'ils sont renseignés (0
+   * compris — « aucun siège » est une réponse), sinon la phrase dictée. Un besoin absent vaut 0.
+   */
+  private resolveChildSeats(need: { childSeatsBaby?: unknown; childSeatsChild?: unknown; freeText?: string }): ChildSeatCounts {
+    const explicite = need?.childSeatsBaby !== undefined || need?.childSeatsChild !== undefined;
+    if (explicite) {
+      return { baby: ChildSeatsService.cleanNeed(need.childSeatsBaby), child: ChildSeatsService.cleanNeed(need.childSeatsChild) };
+    }
+    const dicte = this.parseChildSeats(need?.freeText || '');
+    return { baby: dicte.baby ?? 0, child: dicte.child ?? 0 };
   }
 
   /** Valide un ISO renvoyé par l'IA (date réelle, fenêtre plausible), sinon null. */

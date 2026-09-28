@@ -753,7 +753,7 @@ export class AdminAiUsageComponent implements OnInit {
   protected readonly aiFeatures: { key: AiFeatureKey; label: string; desc: string; owner?: boolean }[] = [
     { key: 'tripAnalysis', label: 'Récit IA de trajet', desc: 'Résumé vulgarisé + Trust Score + conseils, par trajet.' },
     { key: 'agendaAgent', label: 'Agent d’agenda', desc: 'Analyse nocturne + propositions de réservation.' },
-    { key: 'capacity', label: 'Optimiseur — capacités', desc: 'Déduction des places / sièges-enfant par modèle.' },
+    { key: 'capacity', label: 'Optimiseur — capacités', desc: 'Déduction des places et équipements par modèle.' },
     { key: 'placement', label: 'Optimiseur — placement', desc: 'Classement des véhicules pour une réservation.' },
     { key: 'bookingParse', label: 'Saisie vocale (réservations)', desc: 'Dictée du besoin sur les liens publics.' },
     { key: 'placeAnalysis', label: 'Analyse de lieu', desc: 'Fiche IA d’un lieu clé (station, parking, dépôt) à partir des faits OpenStreetMap et de l’usage réel de la flotte.' },

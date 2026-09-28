@@ -1091,3 +1091,89 @@ describe('ReservationsService — le motif devient le titre', () => {
     );
   });
 });
+
+describe('ReservationsService — sièges auto : le stock de la société borne la réservation (2026-09-28)', () => {
+  /** Stock mocké : `assertAvailable` refuse (409) dès que `manque` est vrai. */
+  const makeChildSeats = (manque = false) =>
+    ({
+      assertAvailable: jest.fn().mockImplementation(() =>
+        manque ? Promise.reject(new ConflictException('Sièges auto insuffisants sur ce créneau : il manque 1 siège(s) « Bébé »')) : Promise.resolve(),
+      ),
+      availability: jest.fn().mockResolvedValue({
+        startAt: '', endAt: '', stock: { baby: 2, child: 3 }, engaged: { baby: 0, child: 0 }, available: { baby: 2, child: 3 },
+      }),
+    }) as never;
+  const creer = (childSeats: unknown, over: Record<string, unknown> = {}) => {
+    const create = jest.fn().mockResolvedValue(evRow({ status: 'CONFIRMED', metadata: {} }));
+    const prisma = makePrisma({
+      vehicleEvent: { findMany: jest.fn().mockResolvedValue([]), findUnique: jest.fn(), create, update: jest.fn(), ...over },
+    });
+    // Position 7 du constructeur : (prisma, accès, events, perms, emitter, journal, sièges).
+    const svc = new ReservationsService(prisma, access('ALL'), makeEvents(), makePerms(true), undefined, undefined, childSeats as never);
+    return { prisma, create, svc };
+  };
+
+  it('request : le besoin de sièges est vérifié contre le stock, et écrit PROPRE dans les critères', async () => {
+    const childSeats = makeChildSeats(false);
+    const { create, svc } = creer(childSeats);
+    await svc.request(makeUser(), { vehicleId: 'v1', ...SLOT, criteria: { minSeats: 4, childSeatsBaby: 1, childSeatsChild: '2' as unknown as number } });
+    const cs = childSeats as unknown as { assertAvailable: jest.Mock };
+    expect(cs.assertAvailable).toHaveBeenCalledWith('f1', new Date(SLOT.startAt), new Date(SLOT.endAt), { baby: 1, child: 2 });
+    expect(create.mock.calls[0][0].data.metadata.criteria).toEqual({ minSeats: 4, childSeatsBaby: 1, childSeatsChild: 2 });
+  });
+
+  it('request : stock insuffisant -> 409, rien n\'est créé (même pour une simple DEMANDE)', async () => {
+    const { create, svc } = creer(makeChildSeats(true));
+    await expect(
+      svc.request(makeUser(), { vehicleId: 'v1', ...SLOT, criteria: { childSeatsBaby: 3 } }),
+    ).rejects.toBeInstanceOf(ConflictException);
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it('request : une consignation RÉTROACTIVE n\'engage plus aucun siège (pas de vérification)', async () => {
+    const childSeats = makeChildSeats(true);
+    const { svc } = creer(childSeats);
+    await svc.request(makeUser(), { vehicleId: 'v1', ...PAST_SLOT, retroactive: true, criteria: { childSeatsBaby: 3 } });
+    expect((childSeats as unknown as { assertAvailable: jest.Mock }).assertAvailable).not.toHaveBeenCalled();
+  });
+
+  it('confirm : revérifie le stock en excluant la demande ET ses sœurs (même bookingRef)', async () => {
+    const childSeats = makeChildSeats(false);
+    const row = evRow({ status: 'REQUESTED', metadata: { public: true, bookingRef: 'g1', criteria: { childSeatsChild: 2 } } });
+    const { svc } = creer(childSeats, {
+      findUnique: jest.fn().mockResolvedValue(row),
+      update: jest.fn().mockResolvedValue({ ...row, status: 'CONFIRMED' }),
+    });
+    await svc.confirm(makeUser(), 'r1', {});
+    expect((childSeats as unknown as { assertAvailable: jest.Mock }).assertAvailable).toHaveBeenCalledWith(
+      'f1', row.startAt, row.endAt, { baby: 0, child: 2 }, { excludeId: 'r1', excludeBookingRef: 'g1' },
+    );
+  });
+
+  it('confirm : le stock a été pris depuis le dépôt -> 409, la demande reste en attente', async () => {
+    const row = evRow({ status: 'REQUESTED', metadata: { criteria: { childSeatsBaby: 1 } } });
+    const { prisma, svc } = creer(makeChildSeats(true), { findUnique: jest.fn().mockResolvedValue(row) });
+    await expect(svc.confirm(makeUser(), 'r1', {})).rejects.toBeInstanceOf(ConflictException);
+    expect((prisma as unknown as { vehicleEvent: { update: jest.Mock } }).vehicleEvent.update).not.toHaveBeenCalled();
+  });
+
+  it('update : un besoin revu à la hausse se vérifie (en s\'excluant soi-même) ; un motif seul ne relit pas le stock', async () => {
+    const childSeats = makeChildSeats(false);
+    const row = evRow({ status: 'CONFIRMED', metadata: { criteria: { childSeatsBaby: 1 } } });
+    const { svc } = creer(childSeats, {
+      findUnique: jest.fn().mockResolvedValue(row),
+      update: jest.fn().mockResolvedValue(row),
+    });
+    await svc.update(makeUser(), 'r1', { reason: 'nouveau motif' });
+    const cs = childSeats as unknown as { assertAvailable: jest.Mock };
+    expect(cs.assertAvailable).not.toHaveBeenCalled();
+    await svc.update(makeUser(), 'r1', { criteria: { childSeatsBaby: 2 } });
+    expect(cs.assertAvailable).toHaveBeenCalledWith('f1', row.startAt, row.endAt, { baby: 2, child: 0 }, { excludeId: 'r1', excludeBookingRef: null });
+  });
+
+  it('sans service de sièges (specs historiques, module absent) : aucun contrôle, aucune erreur', async () => {
+    const { create, svc } = creer(undefined);
+    await svc.request(makeUser(), { vehicleId: 'v1', ...SLOT, criteria: { childSeatsBaby: 99 } });
+    expect(create).toHaveBeenCalledTimes(1);
+  });
+});

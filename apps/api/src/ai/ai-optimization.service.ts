@@ -20,8 +20,9 @@ import type {
   FleetMetierDto,
   SetFleetMetierDto,
 } from '@vizyo/tracky-shared';
-import { DORMANT_STOP_COUNTING_MS, isVehicleDormant } from '@vizyo/tracky-shared';
+import { CHILD_SEAT_LABELS, DORMANT_STOP_COUNTING_MS, isVehicleDormant } from '@vizyo/tracky-shared';
 import type { AuthUser } from '../auth/types/auth-user';
+import { ChildSeatsService } from '../agenda/child-seats.service';
 import { ForecastService } from '../agenda/forecast.service';
 import { ReservationsService } from '../agenda/reservations.service';
 import { VehicleEventsService } from '../agenda/vehicle-events.service';
@@ -110,7 +111,6 @@ type CapacityVehicleRow = {
   brand: string | null;
   model: string | null;
   seats: number | null;
-  childSeats: number | null;
   features: string[];
 };
 
@@ -118,7 +118,6 @@ type CapacityAiOutput = {
   proposals: Array<{
     vehicleId: string;
     seats: number | null;
-    childSeats: number | null;
     features: string[];
     confidence: number;
     reasoning: string;
@@ -190,7 +189,7 @@ export class AiOptimizationService {
       where,
       select: {
         id: true, plate: true, type: true, brand: true, model: true,
-        seats: true, childSeats: true, features: true,
+        seats: true, features: true,
       },
       take: 2000,
     });
@@ -221,7 +220,6 @@ export class AiOptimizationService {
         model: v.model,
         energy: energyByVeh.get(v.id) ?? null,
         currentSeats: v.seats,
-        currentChildSeats: v.childSeats,
         currentFeatures: v.features,
       })),
     };
@@ -272,7 +270,6 @@ export class AiOptimizationService {
           plate: v.plate,
           model: v.model,
           seats: cleanInt(p.seats),
-          childSeats: cleanInt(p.childSeats),
           features: cleanFeatures(p.features),
           confidence: clamp01(p.confidence),
           reasoning: typeof p.reasoning === 'string' ? p.reasoning.slice(0, 400) : '',
@@ -292,7 +289,7 @@ export class AiOptimizationService {
       await this.events.assertVehicleAccess(user, it.vehicleId); // 403/404 si hors périmètre
       const data: Prisma.VehicleUpdateInput = {};
       if (it.seats !== undefined) data.seats = cleanInt(it.seats);
-      if (it.childSeats !== undefined) data.childSeats = cleanInt(it.childSeats);
+      // Plus de `childSeats` (2026-09-28) : les sièges auto sont un stock de la société.
       if (it.features !== undefined) data.features = cleanFeatures(it.features);
       if (Object.keys(data).length === 0) continue;
       await this.prisma.vehicle.update({ where: { id: it.vehicleId }, data });
@@ -438,7 +435,6 @@ export class AiOptimizationService {
           vehicleId: v.vehicleId,
           plate: v.vehiclePlate,
           seats: v.seats,
-          childSeats: v.childSeats,
           features: v.features,
           utilizationRatio: v.utilizationRatio,
           underutilized: v.underutilized,
@@ -481,6 +477,9 @@ export class AiOptimizationService {
         reason: dto.reason,
         criteria: dto.criteria,
       },
+      // Sièges auto : ce que le stock laisse sur le créneau. Le prompt sait qu'un besoin au-delà
+      // rend TOUT candidat inapte — mais `suggestPlacement` tranche ce cas avant d'appeler l'IA.
+      childSeats: sug.childSeats ?? null,
       candidates,
       fleetSummary: {
         totalVehicles: candidates.length,
@@ -528,6 +527,25 @@ export class AiOptimizationService {
         excludedDormant: excluded.dormant,
       };
     }
+    // Sièges auto : si le stock ne couvre pas le besoin, la réponse est CERTAINE — aucun véhicule,
+    // même libre et même grand, ne peut être retenu, et la réservation serait refusée (409) de
+    // toute façon. On ne paie pas des jetons pour se l'entendre dire : on le dit nous-mêmes, avec
+    // le type et le nombre qui manquent, et les candidats restent visibles (transparence).
+    const besoinSieges = ChildSeatsService.needOf(dto.criteria);
+    if ((besoinSieges.baby > 0 || besoinSieges.child > 0) && payload.childSeats) {
+      const manque = ChildSeatsService.manque(payload.childSeats, besoinSieges);
+      if (manque) {
+        return {
+          slot,
+          proposals: [],
+          noGoodMatch: true,
+          notes: `${manque} Aucun véhicule ne peut être proposé sans les sièges auto « ${CHILD_SEAT_LABELS.BABY} » / « ${CHILD_SEAT_LABELS.CHILD} » demandés — ils s'installent dans le véhicule retenu et ne se remplacent pas l'un l'autre.`,
+          excludedUnknownCapacity: excluded.unknownCapacity,
+          excludedImmobilized: excluded.immobilized,
+          excludedDormant: excluded.dormant,
+        };
+      }
+    }
     // Interrupteur maître : IA désactivée pour la flotte → pas de placement IA (l'app tourne sans IA).
     if (!(await this.aiAvail.isEnabledForFleet(fleetId, 'placement'))) {
       return {
@@ -574,7 +592,6 @@ export class AiOptimizationService {
           vehicleId: p.vehicleId,
           plate: c.plate,
           seats: c.seats,
-          childSeats: c.childSeats,
           energy: c.energy ?? null,
           costPerKm: c.costPerKm ?? null,
           score: clamp01(p.score),

@@ -2,6 +2,9 @@ import { HttpClient } from '@angular/common/http';
 import { inject, Injectable } from '@angular/core';
 import type {
   AgendaSummaryDto,
+  ChildSeatAvailabilityDto,
+  ChildSeatStockDto,
+  SetChildSeatStockDto,
   FleetOptimizationDto,
   ForecastResultDto,
   VehicleAvailabilityDto,
@@ -199,6 +202,26 @@ export class AgendaApiService {
   /** PATCH /api/reservations/:id — éditer (créneau / critères / libellé). */
   updateReservation(id: string, dto: UpdateReservationDto): Observable<VehicleEventDto> {
     return this.http.patch<VehicleEventDto>(`/api/reservations/${id}`, dto);
+  }
+
+  // ─── Sièges auto (2026-09-28) — un STOCK par société, deux types non substituables ───
+
+  /** GET /api/agenda/child-seats — le stock (bébé / enfant) de la société. */
+  childSeatStock(fleetId?: string): Observable<ChildSeatStockDto> {
+    return this.http.get<ChildSeatStockDto>('/api/agenda/child-seats', { params: fleetId ? { fleetId } : {} });
+  }
+
+  /** PUT /api/agenda/child-seats — règle le stock (Paramètres de l'agenda). */
+  setChildSeatStock(dto: SetChildSeatStockDto): Observable<ChildSeatStockDto> {
+    return this.http.put<ChildSeatStockDto>('/api/agenda/child-seats', dto);
+  }
+
+  /** GET /api/agenda/child-seats/availability — stock, engagés et disponibles sur un créneau. */
+  childSeatAvailability(query: { startAt: string; endAt: string; fleetId?: string; excludeId?: string }): Observable<ChildSeatAvailabilityDto> {
+    const params: Record<string, string> = { startAt: query.startAt, endAt: query.endAt };
+    if (query.fleetId) params['fleetId'] = query.fleetId;
+    if (query.excludeId) params['excludeId'] = query.excludeId;
+    return this.http.get<ChildSeatAvailabilityDto>('/api/agenda/child-seats/availability', { params });
   }
 
   /** GET /api/agenda/forecast — usage PRÉVU (récurrence dérivée), projeté sur la fenêtre. */

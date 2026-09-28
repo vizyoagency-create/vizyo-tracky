@@ -590,6 +590,8 @@ interface GroupOption {
                   </p>
                   @if (ev.description) { <p class="ag-day-card-desc">{{ ev.description }}</p> }
                   @if (reservationReason(ev)) { <p class="ag-day-card-desc">{{ reservationReason(ev) }}</p> }
+                  <!-- Sièges auto à installer (stock de la société) : celui qui prépare la voiture le lit ici. -->
+                  @if (siegesAuto(ev); as sa) { <p class="ag-day-card-desc">Sièges auto à installer : {{ sa }}</p> }
                   <!-- P2-1 : une MISSION n'a pas de boutons ici. Son ombre d'agenda se met à jour
                        depuis l'onglet Missions ; « Terminé » ou « Supprimer » depuis cette carte
                        libérait le véhicule pendant une mission qui existait toujours. -->
@@ -2249,6 +2251,19 @@ export class AgendaComponent implements OnInit {
     if (typeof reason !== 'string' || !reason.trim()) return null;
     const motif = reason.trim();
     return motif === ev.title.trim() ? null : motif;
+  }
+
+  /**
+   * « 1 bébé · 2 enfant » — sièges auto qu'une réservation demande (pris sur le stock de la
+   * société, réglé dans « Paramètres de l'agenda »), sinon null. Deux types, jamais interchangeables.
+   */
+  protected siegesAuto(ev: VehicleEventDto): string | null {
+    if (ev.type !== 'RESERVATION') return null;
+    const c = (ev.metadata as { criteria?: { childSeatsBaby?: unknown; childSeatsChild?: unknown } } | null)?.criteria;
+    if (!c) return null;
+    const n = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : 0);
+    const parts = [n(c.childSeatsBaby) ? `${n(c.childSeatsBaby)} bébé` : '', n(c.childSeatsChild) ? `${n(c.childSeatsChild)} enfant` : ''].filter(Boolean);
+    return parts.length > 0 ? parts.join(' · ') : null;
   }
 
   /** Met à jour le statut d'un événement (En cours / Terminé) — optimiste. */

@@ -41,12 +41,15 @@ export class ReservationBookingNotifier {
     startAt: string;
     endAt: string;
     seats?: number | null;
+    /** Sièges auto demandés (bébé / enfant) — rappelés au demandeur, il pourra corriger. */
+    childSeats?: { baby: number; child: number } | null;
   }): Promise<void> {
     const built = this.email.buildReservationRequestedEmail({
       fleetName: await this.fleetNameOf(input.fleetId),
       slotLabel: this.fmtSlot(input.startAt, input.endAt),
       destination: input.destination,
       seats: input.seats ?? null,
+      childSeatsLabel: this.libelleSieges(input.childSeats),
     });
     await this.notify(input.contact, input.fleetId, built, 'reservation_requested');
   }
@@ -161,6 +164,8 @@ export class ReservationBookingNotifier {
     startAt: string;
     endAt: string;
     seats: number | null;
+    /** Sièges auto à installer (bébé / enfant) : le valideur doit le savoir avant de dire oui. */
+    childSeats?: { baby: number; child: number } | null;
     vehicleCount: number;
   }): Promise<number> {
     try {
@@ -196,6 +201,7 @@ export class ReservationBookingNotifier {
         slotLabel,
         destination: input.destination,
         seats: input.seats,
+        childSeatsLabel: this.libelleSieges(input.childSeats),
         vehicleCount: input.vehicleCount,
         agendaUrl: `${(process.env.APP_BASE_URL || '').replace(/\/$/, '')}/agenda`,
       });
@@ -313,6 +319,13 @@ export class ReservationBookingNotifier {
         { fleetId, channel: isEmail ? 'email' : 'sms', contact: this.mask(c) },
       );
     }
+  }
+
+  /** « 1 bébé · 2 enfant » — les sièges auto demandés, ou null s'il n'y en a pas. */
+  private libelleSieges(c: { baby: number; child: number } | null | undefined): string | null {
+    if (!c) return null;
+    const parts = [c.baby > 0 ? `${c.baby} bébé` : '', c.child > 0 ? `${c.child} enfant` : ''].filter(Boolean);
+    return parts.length > 0 ? parts.join(' · ') : null;
   }
 
   /** Créneau lisible (Europe/Paris) pour l'e-mail / SMS. */

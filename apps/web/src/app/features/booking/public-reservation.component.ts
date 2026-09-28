@@ -2,7 +2,7 @@ import { swallow } from '../../core/error/swallow';
 import { ChangeDetectionStrategy, Component, computed, inject, OnDestroy, OnInit, signal } from '@angular/core';
 import { apiErrorMessage } from '../../core/error/api-error';
 import { ActivatedRoute } from '@angular/router';
-import { LucideAngularModule, MapPin, Users, Check, Loader, Send, Sparkles, Mic, MicOff, Keyboard } from 'lucide-angular';
+import { LucideAngularModule, MapPin, Users, Check, Loader, Send, Sparkles, Mic, MicOff, Keyboard, Baby } from 'lucide-angular';
 import type { PublicReservationLinkDto } from '@vizyo/tracky-shared';
 import { firstValueFrom } from 'rxjs';
 import { ReservationBookingApiService } from '../../core/services/reservation-booking.service';
@@ -82,6 +82,7 @@ import { ReservationBookingApiService } from '../../core/services/reservation-bo
               <div class="pr-exemples">
                 <div class="pr-ex-t"><lucide-icon [img]="SparklesIcon" [size]="13" /> Exemples</div>
                 <div class="pr-ex-l">« 11 places pour Carcassonne demain de 9 h à 17 h »</div>
+                <div class="pr-ex-l">« 6 places avec 2 sièges bébé et 1 rehausseur, lundi matin »</div>
                 <div class="pr-ex-l">« Un utilitaire vendredi toute la journée, on déménage le local »</div>
               </div>
 
@@ -127,6 +128,21 @@ import { ReservationBookingApiService } from '../../core/services/reservation-bo
               <label class="pr-f">
                 <span><lucide-icon [img]="MapPinIcon" [size]="12" /> Destination @if (estDicte('destination')) { <em class="pr-dit">déduit</em> }</span>
                 <input type="text" class="pr-in" [value]="destination()" (input)="destination.set($any($event.target).value)" placeholder="ex. Carcassonne">
+              </label>
+            </div>
+            <!--
+              SIÈGES AUTO (2026-09-28). Deux types, jamais interchangeables : un bébé ne va pas dans
+              un siège enfant, ni l'inverse. La société les installe dans le véhicule qu'elle retient ;
+              on demande combien, par type — et 0 est une réponse.
+            -->
+            <div class="pr-grid">
+              <label class="pr-f">
+                <span><lucide-icon [img]="BabyIcon" [size]="12" /> Sièges bébé <em class="pr-ex">coque, cosy</em> @if (estDicte('childSeatsBaby')) { <em class="pr-dit">déduit</em> }</span>
+                <input type="number" min="0" max="50" inputmode="numeric" class="pr-in" [value]="childSeatsBaby()" (input)="childSeatsBaby.set($any($event.target).value)" placeholder="0">
+              </label>
+              <label class="pr-f">
+                <span><lucide-icon [img]="BabyIcon" [size]="12" /> Sièges enfant <em class="pr-ex">siège, rehausseur</em> @if (estDicte('childSeatsChild')) { <em class="pr-dit">déduit</em> }</span>
+                <input type="number" min="0" max="50" inputmode="numeric" class="pr-in" [value]="childSeatsChild()" (input)="childSeatsChild.set($any($event.target).value)" placeholder="0">
               </label>
             </div>
             <div class="pr-grid">
@@ -267,6 +283,7 @@ import { ReservationBookingApiService } from '../../core/services/reservation-bo
       background: color-mix(in srgb, var(--color-tracky-light) 14%, transparent); color: var(--texte-succes);
     }
     .pr-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .pr-ex { font-style: normal; font-weight: 400; font-size: 11px; color: var(--fg-secondary); opacity: .85; }
     .pr-in {
       width: 100%; min-height: 44px; padding: 11px 12px; border-radius: 11px;
       background: var(--bg-primary); border: 1px solid var(--border-strong);
@@ -338,6 +355,7 @@ export class PublicReservationComponent implements OnInit, OnDestroy {
   protected readonly MicIcon = Mic;
   protected readonly MicOffIcon = MicOff;
   protected readonly KeyboardIcon = Keyboard;
+  protected readonly BabyIcon = Baby;
 
   private token = '';
   protected readonly link = signal<PublicReservationLinkDto | null>(null);
@@ -345,6 +363,9 @@ export class PublicReservationComponent implements OnInit, OnDestroy {
 
   protected readonly freeText = signal('');
   protected readonly seats = signal('');
+  /** Sièges auto demandés, par type — '' = pas renseigné (le serveur lira alors la phrase dictée). */
+  protected readonly childSeatsBaby = signal('');
+  protected readonly childSeatsChild = signal('');
   protected readonly destination = signal('');
   protected readonly startAt = signal('');
   protected readonly endAt = signal('');
@@ -423,9 +444,15 @@ export class PublicReservationComponent implements OnInit, OnDestroy {
     this.submitting.set(true);
     try {
       const seatsNum = parseInt(this.seats(), 10);
+      // Sièges auto : envoyés dès qu'un des deux champs est renseigné (0 compris — « aucun » est une
+      // réponse, et elle prime sur ce que la phrase dictée aurait pu laisser croire).
+      const lireSiege = (v: string): number | undefined => { const n = parseInt(v, 10); return Number.isFinite(n) && n >= 0 ? Math.min(50, n) : undefined; };
+      const baby = lireSiege(this.childSeatsBaby());
+      const child = lireSiege(this.childSeatsChild());
       const res = await firstValueFrom(this.api.submit(this.token, {
         startAt, endAt,
         seatsNeeded: Number.isFinite(seatsNum) && seatsNum > 0 ? seatsNum : undefined,
+        ...(baby !== undefined || child !== undefined ? { childSeatsBaby: baby ?? 0, childSeatsChild: child ?? 0 } : {}),
         destination: this.destination().trim() || undefined,
         freeText: this.freeText().trim() || undefined,
         requesterName: this.requesterName().trim() || undefined,
@@ -518,6 +545,8 @@ export class PublicReservationComponent implements OnInit, OnDestroy {
       const r = await firstValueFrom(this.api.parse(this.token, text));
       const vus = new Set<string>();
       if (r.seatsNeeded != null) { this.seats.set(String(r.seatsNeeded)); vus.add('seats'); }
+      if (r.childSeatsBaby != null) { this.childSeatsBaby.set(String(r.childSeatsBaby)); vus.add('childSeatsBaby'); }
+      if (r.childSeatsChild != null) { this.childSeatsChild.set(String(r.childSeatsChild)); vus.add('childSeatsChild'); }
       if (r.destination) { this.destination.set(r.destination); vus.add('destination'); }
       if (r.startAt) { this.startAt.set(this.toLocal(new Date(r.startAt))); vus.add('startAt'); }
       if (r.endAt) { this.endAt.set(this.toLocal(new Date(r.endAt))); vus.add('endAt'); }

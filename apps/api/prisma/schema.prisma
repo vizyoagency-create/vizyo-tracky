@@ -244,6 +244,13 @@ model Fleet {
   // (CHILDREN_TRANSPORT = enfants/places, PARCELS = colis, RENTAL = location).
   // Defaut GENERIC. Regle par un super-admin.
   metier                  FleetMetier @default(GENERIC)
+  // Sièges auto (2026-09-28) — un STOCK par société, en deux types jamais interchangeables :
+  // « bébé » et « enfant ». Les sièges sont du matériel MOBILE : ils se posent dans n'importe
+  // quel véhicule qui a une place ; c'est le stock, sur le créneau, qui borne les réservations —
+  // plus le véhicule. `Vehicle.childSeats` (un nombre par véhicule) est abandonné : mesuré le
+  // 28/09 en prod, 2 sièges déclarés sur 30 véhicules chez le client concerné, jamais un critère.
+  childSeatsBaby          Int         @default(0)
+  childSeatsChild         Int         @default(0)
   // V1.5 (Sprint H1) — sampling adaptatif des positions cote serveur.
   // true = positions redondantes (vehicule arrete) ne sont pas persistees pour
   // economiser le stockage. UX-first : le broadcast WS reste integral.

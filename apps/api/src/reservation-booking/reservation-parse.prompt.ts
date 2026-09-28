@@ -7,10 +7,14 @@
 export const BOOKING_PARSE_SCHEMA = {
   type: 'object',
   additionalProperties: false,
-  required: ['seatsNeeded', 'destination', 'startAt', 'endAt'],
+  required: ['seatsNeeded', 'childSeatsBaby', 'childSeatsChild', 'destination', 'startAt', 'endAt'],
   properties: {
     /** Nombre de places demandé, ou null si non précisé. */
     seatsNeeded: { type: ['integer', 'null'] },
+    /** Sièges auto « bébé » (coque, cosy, nacelle) demandés, ou null si la phrase n'en parle pas. */
+    childSeatsBaby: { type: ['integer', 'null'] },
+    /** Sièges auto « enfant » (siège, rehausseur) demandés, ou null. */
+    childSeatsChild: { type: ['integer', 'null'] },
     /** Ville / lieu de destination, ou null. */
     destination: { type: ['string', 'null'] },
     /** Début en ISO 8601 avec fuseau (ex. 2026-07-08T09:00:00+02:00), ou null si non précisé. */
@@ -26,7 +30,12 @@ export function renderBookingParseSystem(nowIso: string): string {
     "Tu extrais, d'une phrase en français décrivant un besoin de véhicule, des champs structurés.",
     `Référence temporelle (maintenant, fuseau Europe/Paris) : ${nowIso}.`,
     'Renseigne, en te basant sur cette phrase :',
-    '- seatsNeeded : le nombre de PLACES / personnes demandé (entier), sinon null ;',
+    '- seatsNeeded : le nombre de PLACES / personnes demandé (entier), sinon null. Un siège auto',
+    "  n'est PAS une place : « 8 places et 2 sièges bébé » → seatsNeeded = 8 ;",
+    '- childSeatsBaby : le nombre de sièges auto pour BÉBÉ (coque, cosy, nacelle, « siège bébé »),',
+    '  sinon null ;',
+    '- childSeatsChild : le nombre de sièges auto pour ENFANT (siège enfant, rehausseur), sinon null.',
+    '  Les deux types ne se confondent jamais : dans le doute sur le type, null ;',
     '- destination : la ville ou le lieu de destination, sinon null ;',
     "- startAt / endAt : le créneau, en ISO 8601 AVEC fuseau (ex. 2026-07-08T09:00:00+02:00). Résous les",
     "  formulations relatives (« aujourd'hui », « demain matin », « ce soir », « lundi », « de 9h à 17h »)",

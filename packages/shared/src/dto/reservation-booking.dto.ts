@@ -21,6 +21,10 @@ export interface ParsePublicNeedDto {
 /** Résultat de l'analyse : champs extraits (null = non compris). Créneaux en ISO. */
 export interface ParsedNeedDto {
   seatsNeeded: number | null;
+  /** Sièges auto « bébé » demandés (2026-09-28), ou null si la phrase n'en parle pas. */
+  childSeatsBaby: number | null;
+  /** Sièges auto « enfant » demandés, ou null. */
+  childSeatsChild: number | null;
   destination: string | null;
   startAt: string | null;
   endAt: string | null;
@@ -31,6 +35,9 @@ export interface SubmitPublicReservationDto {
   startAt: string;
   endAt: string;
   seatsNeeded?: number;
+  /** Sièges auto à installer, pris sur le stock de la société (deux types, non substituables). */
+  childSeatsBaby?: number;
+  childSeatsChild?: number;
   destination?: string;
   freeText?: string;
   requesterName?: string;

@@ -1774,12 +1774,15 @@ Répondez à cet e-mail si vous souhaitez convenir d'une autre date.${opts.telep
     slotLabel: string;
     destination?: string | null;
     seats?: number | null;
+    /** « 1 bébé · 2 enfant » — sièges auto demandés (2026-09-28), vide sans enfant à bord. */
+    childSeatsLabel?: string | null;
   }): { subject: string; html: string; text: string } {
     const subject = `Votre demande de réservation a bien été reçue`;
     const rows = [
       this.kvRow('Créneau', opts.slotLabel),
       opts.destination ? this.kvRow('Destination', opts.destination) : '',
       opts.seats ? this.kvRow('Places', String(opts.seats)) : '',
+      opts.childSeatsLabel ? this.kvRow('Sièges auto', opts.childSeatsLabel) : '',
     ].filter(Boolean);
     const body = `
         <tr><td style="padding:28px 36px 0;">
@@ -1794,7 +1797,7 @@ Répondez à cet e-mail si vous souhaitez convenir d'une autre date.${opts.telep
     const text = `Bonjour,
 
 Nous avons bien reçu votre demande de réservation auprès de ${opts.fleetName}.
-Créneau : ${opts.slotLabel}${opts.destination ? `\nDestination : ${opts.destination}` : ''}${opts.seats ? `\nPlaces : ${opts.seats}` : ''}
+Créneau : ${opts.slotLabel}${opts.destination ? `\nDestination : ${opts.destination}` : ''}${opts.seats ? `\nPlaces : ${opts.seats}` : ''}${opts.childSeatsLabel ? `\nSièges auto : ${opts.childSeatsLabel}` : ''}
 
 Vous recevrez une confirmation dès qu'elle sera validée.`;
     return { subject, html, text };
@@ -1821,6 +1824,8 @@ Vous recevrez une confirmation dès qu'elle sera validée.`;
     slotLabel: string;
     destination?: string | null;
     seats?: number | null;
+    /** « 1 bébé · 2 enfant » — sièges auto à installer (pris sur le stock de la société). */
+    childSeatsLabel?: string | null;
     vehicleCount: number;
     agendaUrl: string;
   }): { subject: string; html: string; text: string } {
@@ -1831,6 +1836,7 @@ Vous recevrez une confirmation dès qu'elle sera validée.`;
       this.kvRow('Créneau', opts.slotLabel),
       opts.destination ? this.kvRow('Destination', opts.destination) : '',
       opts.seats ? this.kvRow('Places demandées', String(opts.seats)) : '',
+      opts.childSeatsLabel ? this.kvRow('Sièges auto à installer', opts.childSeatsLabel) : '',
       this.kvRow(
         'Véhicule(s) pré-retenu(s)',
         String(opts.vehicleCount),
@@ -1860,7 +1866,7 @@ Vous recevrez une confirmation dès qu'elle sera validée.`;
 
 Demandeur : ${opts.requester}
 Contact : ${opts.contact}
-Créneau : ${opts.slotLabel}${opts.destination ? `\nDestination : ${opts.destination}` : ''}${opts.seats ? `\nPlaces demandées : ${opts.seats}` : ''}
+Créneau : ${opts.slotLabel}${opts.destination ? `\nDestination : ${opts.destination}` : ''}${opts.seats ? `\nPlaces demandées : ${opts.seats}` : ''}${opts.childSeatsLabel ? `\nSièges auto à installer : ${opts.childSeatsLabel}` : ''}
 Véhicule(s) pré-retenu(s) : ${opts.vehicleCount}
 
 Le véhicule n'est pas bloqué tant que la demande n'est pas validée.
@@ -2314,6 +2320,7 @@ ${this.commercialSignatureText()}`;
           slotLabel: 'mar. 8 juil., 09:00 → 17:00',
           destination: 'Carcassonne',
           seats: 11,
+          childSeatsLabel: '1 bébé · 2 enfant',
         });
       case 'reservation_request_pending':
         return this.buildReservationRequestPendingEmail({
@@ -2323,6 +2330,7 @@ ${this.commercialSignatureText()}`;
           slotLabel: 'mar. 8 juil., 09:00 → 17:00',
           destination: 'Carcassonne',
           seats: 11,
+          childSeatsLabel: '1 bébé · 2 enfant',
           vehicleCount: 1,
           agendaUrl: `${(process.env.APP_BASE_URL || '').replace(/\/$/, '')}/agenda`,
         });

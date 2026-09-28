@@ -27,6 +27,7 @@ import { PermissionsResolverService } from '../permissions/permissions-resolver.
 import { PrismaService } from '../prisma/prisma.service';
 import { SystemActivityService } from '../system-activity/system-activity.service';
 import { VehicleAccessService } from '../vehicle-access/vehicle-access.service';
+import { ChildSeatsService } from './child-seats.service';
 import { VehicleEventsService } from './vehicle-events.service';
 
 type EventRow = Prisma.VehicleEventGetPayload<{ include: { vehicle: { select: { plate: true } } } }>;
@@ -94,6 +95,12 @@ export class ReservationsService {
      * main, et un journal absent ne doit pas empêcher la réorganisation.
      */
     @Optional() private readonly systemActivity?: SystemActivityService,
+    /**
+     * Sièges auto (2026-09-28) : le STOCK de la société borne les réservations qui en demandent.
+     * `@Optional()` pour les specs montées à la main ; en production il est toujours là (même
+     * module). Sans lui, aucun contrôle de sièges — ce que les specs historiques attendent.
+     */
+    @Optional() private readonly childSeats?: ChildSeatsService,
   ) {}
 
   // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -110,21 +117,29 @@ export class ReservationsService {
     return { start, end };
   }
 
-  /** Coerce des critères (corps non typé à l'exécution) en valeurs sûres pour les requêtes. */
+  /**
+   * Coerce des critères (corps non typé à l'exécution) en valeurs sûres pour les requêtes.
+   * Les sièges auto n'y sont plus : ce n'est pas un filtre de VÉHICULE mais un besoin pris sur le
+   * stock de la société (`ChildSeatsService.needOf`), vérifié à part.
+   */
   private sanitizeCriteria(
     c: RequestReservationDto['criteria'] | undefined,
-  ): { minSeats?: number; minChildSeats?: number; requiredFeatures?: string[] } {
+  ): { minSeats?: number; requiredFeatures?: string[] } {
     if (!c || typeof c !== 'object') return {};
     const minSeats = Number((c as { minSeats?: unknown }).minSeats);
-    const minChildSeats = Number((c as { minChildSeats?: unknown }).minChildSeats);
     const rf = Array.isArray(c.requiredFeatures)
       ? c.requiredFeatures.filter((x): x is string => typeof x === 'string')
       : undefined;
     return {
       minSeats: Number.isFinite(minSeats) && minSeats > 0 ? Math.floor(minSeats) : undefined,
-      minChildSeats: Number.isFinite(minChildSeats) && minChildSeats > 0 ? Math.floor(minChildSeats) : undefined,
       requiredFeatures: rf && rf.length > 0 ? rf : undefined,
     };
+  }
+
+  /** Le `bookingRef` d'une demande groupée (lien public), sinon null. */
+  private bookingRefOf(metadata: unknown): string | null {
+    const ref = (metadata as { bookingRef?: unknown } | null | undefined)?.bookingRef;
+    return typeof ref === 'string' && ref ? ref : null;
   }
 
   private async resolveScope(
@@ -327,7 +342,6 @@ export class ReservationsService {
         id: true,
         plate: true,
         seats: true,
-        childSeats: true,
         features: true,
         // Dormance : lue par JOINTURE sur la relation 1-1 déjà là (aucune requête de plus — le VPS
         // 2 vCPU ne pardonne pas un N+1 sur un parc de 2000). `lastSeenAt` est l'UNIQUE source :
@@ -340,16 +354,24 @@ export class ReservationsService {
 
     // Capacité filtrée EN JS (pas via `gte` Prisma, qui écarterait silencieusement les
     // NULL) : les véhicules à capacité inconnue sont COMPTÉS et rendus visibles à l'UI.
+    // Les sièges auto ne filtrent AUCUN véhicule : ils s'installent dans celui qu'on retient. Ce
+    // qui borne, c'est le stock de la société sur le créneau — rendu à part (`childSeats`).
     let excludedUnknownCapacity = 0;
     const capacityOk = candidates.filter((v) => {
-      if ((c.minSeats && v.seats == null) || (c.minChildSeats && v.childSeats == null)) {
+      if (c.minSeats && v.seats == null) {
         excludedUnknownCapacity++;
         return false;
       }
       if (c.minSeats && (v.seats ?? 0) < c.minSeats) return false;
-      if (c.minChildSeats && (v.childSeats ?? 0) < c.minChildSeats) return false;
       return true;
     });
+
+    // Disponibilité des sièges auto sur le créneau — quand la société est connue. Lue en parallèle
+    // du reste : c'est une requête de plus, mais une seule, et seulement si un stock peut exister.
+    const fleetId = typeof where.fleetId === 'string' ? where.fleetId : null;
+    const childSeatsAvail = fleetId && this.childSeats
+      ? await this.childSeats.availability(fleetId, start, end, { includeRequested: opts?.excludeRequested })
+      : null;
 
     // Équipements : superset insensible à la casse (non exprimable en `hasEvery` Prisma).
     const required = (c.requiredFeatures ?? []).map((f) => f.trim().toLowerCase()).filter(Boolean);
@@ -364,6 +386,7 @@ export class ReservationsService {
       startAt: start.toISOString(),
       endAt: end.toISOString(),
       vehicles: [],
+      childSeats: childSeatsAvail,
       excludedUnknownCapacity,
       excludedImmobilized,
       excludedDormant,
@@ -439,7 +462,6 @@ export class ReservationsService {
           vehicleId: v.id,
           vehiclePlate: v.plate,
           seats: v.seats,
-          childSeats: v.childSeats,
           features: v.features,
           utilizationRatio: Math.round(ratio * 100) / 100,
           underutilized: ratio < UNDERUTILIZED_RATIO,
@@ -451,6 +473,7 @@ export class ReservationsService {
       startAt: start.toISOString(),
       endAt: end.toISOString(),
       vehicles,
+      childSeats: childSeatsAvail,
       excludedUnknownCapacity,
       excludedImmobilized,
       excludedDormant,
@@ -538,6 +561,10 @@ export class ReservationsService {
       if ((await this.findImmobilized([vehicleId], start, end)).has(vehicleId)) {
         throw new ConflictException('Ce véhicule est immobilisé (incident ou maintenance) sur ce créneau.');
       }
+      // Sièges auto : un véhicule libre ne suffit pas, il faut aussi de quoi asseoir les enfants.
+      // Vérifié pour une DEMANDE aussi (pas seulement une réservation ferme) : celui qui dépose
+      // doit l'apprendre tout de suite, pas le valideur trois jours plus tard.
+      await this.childSeats?.assertAvailable(fleetId, start, end, ChildSeatsService.needOf(dto.criteria));
     }
 
     // #5 — Placement DIRECT si l'appelant peut GÉRER les réservations de CE véhicule
@@ -575,7 +602,9 @@ export class ReservationsService {
           metadata: {
             requesterId: user.id,
             reason: dto.reason ?? null,
-            criteria: dto.criteria ?? null,
+            // Écrits PROPRES (entiers sûrs, sans clé vide) : c'est sur ces critères que le stock de
+            // sièges se recompte à chaque validation — une chaîne « 2 » ou un -1 y fausserait tout.
+            criteria: ChildSeatsService.criteresPropres(dto.criteria),
             ...(retro ? { retroactive: true } : {}),
           } as Prisma.InputJsonValue,
           createdBy: user.id,
@@ -626,6 +655,18 @@ export class ReservationsService {
     }
     if ((await this.findImmobilized([vehicleId], resa.startAt, resa.endAt)).has(vehicleId)) {
       throw new ConflictException('Ce véhicule est immobilisé (incident ou maintenance) sur ce créneau.');
+    }
+    // Sièges auto : le stock a pu être pris par d'autres réservations validées depuis le dépôt.
+    // La demande elle-même et ses sœurs (même `bookingRef`, même besoin) ne se comptent pas.
+    {
+      const meta = (resa.metadata as { criteria?: unknown } | null) ?? null;
+      await this.childSeats?.assertAvailable(
+        fleetId,
+        resa.startAt,
+        resa.endAt,
+        ChildSeatsService.needOf(meta?.criteria as RequestReservationDto['criteria']),
+        { excludeId: id, excludeBookingRef: this.bookingRefOf(resa.metadata) },
+      );
     }
 
     try {
@@ -747,12 +788,15 @@ export class ReservationsService {
       );
     }
     if (dto.title !== undefined) data.title = dto.title.trim() || 'Réservation';
+    const metaActuelle = (resa.metadata as Record<string, unknown> | null) ?? {};
+    const criteresApres = dto.criteria !== undefined
+      ? ChildSeatsService.criteresPropres(dto.criteria)
+      : ((metaActuelle['criteria'] as RequestReservationDto['criteria'] | null | undefined) ?? null);
     if (dto.reason !== undefined || dto.criteria !== undefined) {
-      const meta = (resa.metadata as Record<string, unknown> | null) ?? {};
       data.metadata = {
-        ...meta,
+        ...metaActuelle,
         ...(dto.reason !== undefined ? { reason: dto.reason } : {}),
-        ...(dto.criteria !== undefined ? { criteria: dto.criteria } : {}),
+        ...(dto.criteria !== undefined ? { criteria: criteresApres } : {}),
       } as Prisma.InputJsonValue;
     }
 
@@ -781,6 +825,19 @@ export class ReservationsService {
           throw new ConflictException('Ce véhicule est immobilisé (incident ou maintenance) sur le nouveau créneau.');
         }
       }
+    }
+    // Sièges auto : un créneau déplacé ou un besoin revu se re-vérifie contre le stock — pour une
+    // réservation ferme comme pour une demande encore en attente (le valideur ne doit pas hériter
+    // d'un refus). Une réservation close ne bouge plus ; une rétroactive n'engage plus rien.
+    const vivante = resa.status !== VehicleEventStatus.DONE && resa.status !== VehicleEventStatus.CANCELLED;
+    if (vivante && !isRetro && end && (slotChanged || dto.criteria !== undefined)) {
+      await this.childSeats?.assertAvailable(
+        (data.fleetId as string | undefined) ?? resa.fleetId,
+        start,
+        end,
+        ChildSeatsService.needOf(criteresApres),
+        { excludeId: id, excludeBookingRef: this.bookingRefOf(resa.metadata) },
+      );
     }
 
     try {

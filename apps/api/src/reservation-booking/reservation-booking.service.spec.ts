@@ -183,6 +183,78 @@ describe('ReservationBookingService (P4 — lien public)', () => {
     expect(r.destination).toBe('Toulouse');
     expect(r.startAt).toBeNull();
     expect(r.endAt).toBeNull();
+    expect(r.childSeatsBaby).toBeNull(); // la phrase n'en parle pas : null, pas 0
+    expect(r.childSeatsChild).toBeNull();
+  });
+
+  // ─── Sièges auto (2026-09-28) : deux types, jamais confondus, jamais comptés comme des places ──
+
+  it('parsePublic : « 6 places avec 2 sièges bébé et un rehausseur » → 6 places, 2 bébé, 1 enfant', async () => {
+    const svc = new ReservationBookingService(makePrisma(), makeReservations([]), makeActivity(), makeNotifier());
+    const r = await svc.parsePublic('t', '6 places avec 2 sièges bébé et un rehausseur pour Albi lundi matin');
+    expect(r.seatsNeeded).toBe(6); // « 2 sièges bébé » n'est PAS « 2 places »
+    expect(r.childSeatsBaby).toBe(2);
+    expect(r.childSeatsChild).toBe(1);
+    expect(r.destination).toBe('Albi');
+  });
+
+  it('parsePublic : « 1 siège auto enfant » et « une coque » se rangent chacun dans leur type', async () => {
+    const svc = new ReservationBookingService(makePrisma(), makeReservations([]), makeActivity(), makeNotifier());
+    const r = await svc.parsePublic('t', 'Il me faut une coque et 1 siège auto enfant, 4 personnes');
+    expect(r.childSeatsBaby).toBe(1);
+    expect(r.childSeatsChild).toBe(1);
+    expect(r.seatsNeeded).toBe(4);
+  });
+
+  /** Stock mocké : ce qu'il reste sur le créneau, tel que le rend `ChildSeatsService.availability`. */
+  const makeChildSeats = (available: { baby: number; child: number }) =>
+    ({
+      availability: jest.fn().mockResolvedValue({
+        startAt: '', endAt: '', stock: { baby: 2, child: 4 }, engaged: { baby: 0, child: 0 }, available,
+      }),
+    }) as never;
+
+  it('submitPublic : sièges demandés au-delà du stock → 400 qui nomme le TYPE, sans chiffre, et rien n\'est créé', async () => {
+    const reservations = makeReservations([veh('v1', 9)]);
+    const childSeats = makeChildSeats({ baby: 0, child: 4 });
+    const svc = new ReservationBookingService(makePrisma(), reservations, makeActivity(), makeNotifier(), undefined, undefined, undefined, undefined, childSeats);
+    await expect(
+      svc.submitPublic('t', { ...futureSlot(), ...CONTACT, seatsNeeded: 3, childSeatsBaby: 1, childSeatsChild: 2 }),
+    ).rejects.toThrow(/« Bébé »/);
+    await expect(
+      svc.submitPublic('t', { ...futureSlot(), ...CONTACT, seatsNeeded: 3, childSeatsBaby: 1, childSeatsChild: 2 }),
+    ).rejects.not.toThrow(/\d+ disponible/); // anti-sondage : pas de compte du stock via le lien public
+    expect((reservations as unknown as { systemRequest: jest.Mock }).systemRequest).not.toHaveBeenCalled();
+    // Les demandes en attente comptent aussi (un siège déjà demandé par un autre n'est pas promis deux fois).
+    expect((childSeats as unknown as { availability: jest.Mock }).availability.mock.calls[0][3]).toEqual({ includeRequested: true });
+  });
+
+  it('submitPublic : sièges couverts → le besoin part dans `criteria` (metadata), dans l\'avis aux valideurs et dans l\'accusé', async () => {
+    const reservations = makeReservations([veh('v1', 9)]);
+    const notifier = makeNotifier();
+    const svc = new ReservationBookingService(
+      makePrisma(), reservations, makeActivity(), notifier, undefined, undefined, undefined, undefined, makeChildSeats({ baby: 2, child: 4 }),
+    );
+    const res = await svc.submitPublic('t', { ...futureSlot(), ...CONTACT, seatsNeeded: 3, childSeatsBaby: 1, childSeatsChild: 0 });
+    expect(res.created).toBe(1);
+    const meta = (reservations as unknown as { systemRequest: jest.Mock }).systemRequest.mock.calls[0][0].metadata;
+    expect(meta.criteria).toEqual({ childSeatsBaby: 1 }); // pas de clé à zéro
+    expect((notifier as unknown as { notifyFleetOfPendingRequest: jest.Mock }).notifyFleetOfPendingRequest.mock.calls[0][0].childSeats).toEqual({ baby: 1, child: 0 });
+    expect((notifier as unknown as { sendAcknowledgment: jest.Mock }).sendAcknowledgment.mock.calls[0][0].childSeats).toEqual({ baby: 1, child: 0 });
+  });
+
+  it('submitPublic : sans champ de sièges, la phrase dictée fait foi ; un 0 explicite prime sur la phrase', async () => {
+    const reservations = makeReservations([veh('v1', 9)]);
+    const childSeats = makeChildSeats({ baby: 2, child: 4 });
+    const svc = new ReservationBookingService(makePrisma(), reservations, makeActivity(), makeNotifier(), undefined, undefined, undefined, undefined, childSeats);
+    await svc.submitPublic('t', { ...futureSlot(), ...CONTACT, seatsNeeded: 3, freeText: '3 places et deux sièges bébé' });
+    const m1 = (reservations as unknown as { systemRequest: jest.Mock }).systemRequest.mock.calls[0][0].metadata;
+    expect(m1.criteria).toEqual({ childSeatsBaby: 2 });
+    await svc.submitPublic('t', { ...futureSlot(), ...CONTACT, seatsNeeded: 3, freeText: '3 places et deux sièges bébé', childSeatsBaby: 0, childSeatsChild: 0 });
+    const m2 = (reservations as unknown as { systemRequest: jest.Mock }).systemRequest.mock.calls[1][0].metadata;
+    expect(m2).not.toHaveProperty('criteria');
+    // Sans besoin, le stock n'est même pas lu.
+    expect((childSeats as unknown as { availability: jest.Mock }).availability).toHaveBeenCalledTimes(1);
   });
 
   it('createLink : super-admin sans fleetId -> 400', async () => {

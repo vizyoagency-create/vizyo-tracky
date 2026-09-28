@@ -7,7 +7,7 @@
  * placement → flux de réservation S8 (request → confirm, gardes EXCLUDE/scoping).
  */
 
-import type { ReservationCriteria } from './reservation.dto';
+import type { ChildSeatAvailabilityDto, ReservationCriteria } from './reservation.dto';
 
 /** Métier d'une flotte — conditionne l'objectif d'optimisation de l'IA. */
 export type FleetMetier = 'CHILDREN_TRANSPORT' | 'PARCELS' | 'RENTAL' | 'GENERIC';
@@ -44,7 +44,6 @@ export interface AiCapacityVehicleInput {
   /** Énergie issue de l'InstallationTask liée, si disponible. */
   energy?: string | null;
   currentSeats?: number | null;
-  currentChildSeats?: number | null;
   currentFeatures?: string[];
 }
 
@@ -55,13 +54,16 @@ export interface AiCapacityInputDto {
   vehicles: AiCapacityVehicleInput[];
 }
 
-/** Proposition IA par véhicule (DRY-RUN — non écrite tant que non acceptée). */
+/**
+ * Proposition IA par véhicule (DRY-RUN — non écrite tant que non acceptée).
+ * Plus de `childSeats` (2026-09-28) : les sièges auto sont un stock de la société, pas une
+ * caractéristique à deviner d'après le modèle du véhicule.
+ */
 export interface AiCapacityProposalDto {
   vehicleId: string;
   plate: string | null;
   model: string | null;
   seats: number | null;
-  childSeats: number | null;
   features: string[];
   /** 0..1 — certitude IA (basse = variante ambiguë, à confirmer). */
   confidence: number;
@@ -84,7 +86,6 @@ export interface AiCapacitySuggestRequestDto {
 export interface AiCapacityApplyItem {
   vehicleId: string;
   seats?: number | null;
-  childSeats?: number | null;
   features?: string[];
 }
 export interface AiCapacityApplyDto {
@@ -98,7 +99,6 @@ export interface AiPlacementCandidateInput {
   vehicleId: string;
   plate: string | null;
   seats: number | null;
-  childSeats: number | null;
   features: string[];
   /** 0..1 — utilisation récente (bas = sous-utilisé → mutualisation). */
   utilizationRatio: number;
@@ -137,6 +137,13 @@ export interface AiPlacementInputDto {
    */
   scopeNote?: string;
   request: AiPlacementRequestInput;
+  /**
+   * Sièges auto (2026-09-28) : ce que le STOCK de la société laisse de disponible sur le créneau,
+   * type par type. Le besoin est dans `request.criteria.childSeatsBaby` / `childSeatsChild`. Ce
+   * n'est PAS une caractéristique des candidats : un siège s'installe dans le véhicule retenu, et
+   * les deux types ne se remplacent jamais. Absent quand la société est inconnue.
+   */
+  childSeats?: ChildSeatAvailabilityDto | null;
   candidates: AiPlacementCandidateInput[];
   fleetSummary: {
     totalVehicles: number;
@@ -159,7 +166,6 @@ export interface AiPlacementProposalDto {
   vehicleId: string;
   plate: string | null;
   seats: number | null;
-  childSeats: number | null;
   /** Énergie du véhicule (affichée dans la proposition). */
   energy?: string | null;
   /** Coût/km estimé (€) — transparence sur le levier coût. */

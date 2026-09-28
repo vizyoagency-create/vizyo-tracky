@@ -23,7 +23,7 @@ import { Observable } from 'rxjs';
 export class AiApiService {
   private readonly http = inject(HttpClient);
 
-  /** POST /api/ai/capacity/suggest — propositions places/places-enfant (DRY-RUN). */
+  /** POST /api/ai/capacity/suggest — propositions places/équipements (DRY-RUN). */
   capacitySuggest(body: AiCapacitySuggestRequestDto = {}): Observable<AiCapacityResultDto> {
     return this.http.post<AiCapacityResultDto>('/api/ai/capacity/suggest', body);
   }
