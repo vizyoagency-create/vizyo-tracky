@@ -72,6 +72,8 @@ IMG_LP="sha256:744ac977a0390000000000000000000000000000000000000000000000000000"
 IMAGE_EN_SERVICE_API="$IMG_API"; IMAGE_EN_SERVICE_WEB="$IMG_WEB"; IMAGE_EN_SERVICE_LP="$IMG_LP"
 LATEST_ID_API="$IMG_API"; LATEST_ID_WEB="$IMG_WEB"; LATEST_ID_LP="$IMG_LP"
 CODE_UP_DEMO=0
+# V42 : l'image des conteneurs de démo, et les images qui n'existent plus comme objet.
+IMAGE_EN_SERVICE_DEMO_API="$IMG_API"; IMAGE_EN_SERVICE_DEMO_WEB="$IMG_WEB"; IMAGES_ABSENTES=""
 
 noter() { echo "$1" >> "$TRACE"; }
 trace() { paste -sd'|' "$TRACE"; }
@@ -132,10 +134,14 @@ docker() {
     "inspect --format {{.Image}} tracky-api") [ -n "$IMAGE_EN_SERVICE_API" ] && echo "$IMAGE_EN_SERVICE_API" || return 1 ;;
     "inspect --format {{.Image}} tracky-web") [ -n "$IMAGE_EN_SERVICE_WEB" ] && echo "$IMAGE_EN_SERVICE_WEB" || return 1 ;;
     "inspect --format {{.Image}} tracky-lp")  [ -n "$IMAGE_EN_SERVICE_LP" ]  && echo "$IMAGE_EN_SERVICE_LP"  || return 1 ;;
+    # V42 : l'image des conteneurs de DÉMO (mêmes images que la prod, sauf cas contraire)
+    "inspect --format {{.Image}} tracky-demo-api") [ -n "$IMAGE_EN_SERVICE_DEMO_API" ] && echo "$IMAGE_EN_SERVICE_DEMO_API" || return 1 ;;
+    "inspect --format {{.Image}} tracky-demo-web") [ -n "$IMAGE_EN_SERVICE_DEMO_WEB" ] && echo "$IMAGE_EN_SERVICE_DEMO_WEB" || return 1 ;;
     "image inspect --format {{.Id}} tracky-api:latest") echo "$LATEST_ID_API" ;;
     "image inspect --format {{.Id}} tracky-web:latest") echo "$LATEST_ID_WEB" ;;
     "image inspect --format {{.Id}} tracky-lp:latest")  echo "$LATEST_ID_LP" ;;
-    "image inspect "*) return 0 ;;
+    # V42 : une image listée dans IMAGES_ABSENTES n'existe plus comme objet (« No such image »)
+    "image inspect "*) case " $IMAGES_ABSENTES " in *" $3 "*) return 1 ;; esac; return 0 ;;
     "images "*"--format {{.Tag}}") echo "$ETIQUETTES_EXISTANTES" | tr ' ' '\n' | sed '/^$/d' ;;
     "images "*) echo "   tracky-api:avant-x  (2 days ago)" ;;
     "tag "*) noter "tag $2 $3" ;;
@@ -171,6 +177,7 @@ reinitialiser() {
   FORCE=0; ATTENDRE=0; AVEC_DEMO=1; MARKETING_SEUL=0; BRANCHE=main; REPLI=""; DEMO_ETAT="non"
   IMAGE_EN_SERVICE_API="$IMG_API"; IMAGE_EN_SERVICE_WEB="$IMG_WEB"; IMAGE_EN_SERVICE_LP="$IMG_LP"
   LATEST_ID_API="$IMG_API"; LATEST_ID_WEB="$IMG_WEB"; LATEST_ID_LP="$IMG_LP"; CODE_UP_DEMO=0
+  IMAGE_EN_SERVICE_DEMO_API="$IMG_API"; IMAGE_EN_SERVICE_DEMO_WEB="$IMG_WEB"; IMAGES_ABSENTES=""
   IMAGES="$IMAGES_COMPLETES"
   JOURNAL="$(mktemp)"; RACINE="$(mktemp -d)"; mkdir -p "$RACINE/deploy/vps"
   # la démo existe sur la machine de test (compose + .env) — un cas les retire pour lire « absente »
@@ -180,6 +187,12 @@ reinitialiser() {
 REPERE_API="tag $IMG_API tracky-api:avant-20260913-1130-a8f9575e"
 REPERE_WEB="tag $IMG_WEB tracky-web:avant-20260913-1130-a8f9575e"
 REPERE_LP="tag $IMG_LP tracky-lp:avant-20260913-1130-a8f9575e"
+# V42 : le nom que garde l'image en service, posé après chaque santé — prod puis démo.
+NOM_API="tag $IMG_API tracky-api:en-service"
+NOM_WEB="tag $IMG_WEB tracky-web:en-service"
+NOM_LP="tag $IMG_LP tracky-lp:en-service"
+NOM_DEMO_API="tag $IMG_API tracky-api:demo-en-service"
+NOM_DEMO_WEB="tag $IMG_WEB tracky-web:demo-en-service"
 
 echo "deploy.sh — la garde"
 
@@ -321,13 +334,54 @@ contient "…et annonce la conséquence" "repli automatique sera donc refusé" "
 contient "…les autres images gardent leur repère" "$REPERE_WEB" "$(trace)"
 eval "$(declare -f docker_double | sed '1s/^docker_double/docker/')"; unset -f docker_double
 
+echo "deploy.sh — l'image en service garde un nom (V42, 2026-09-28)"
+
+# Mesuré sur le VPS le 28/09 avec une image sonde : reconstruire `latest` pendant qu'un
+# conteneur tourne sur l'ancien fait DISPARAÎTRE l'ancienne image comme objet (magasin containerd),
+# et le repère `avant-*` du déploiement suivant n'a plus rien sous lui. Une image qui porte un
+# second nom survit : c'est ce nom que ces cas fixent.
+reinitialiser
+sortie="$( (nommer_en_service production) 2>&1 )"; code=$?
+attend "nommer_en_service rend 0" 0 "$code"
+contient "l'image du conteneur API reçoit le nom en-service" "$NOM_API" "$(trace)"
+contient "…celle du web aussi" "$NOM_WEB" "$(trace)"
+contient "…et celle du site marketing" "$NOM_LP" "$(trace)"
+contient "…et le script le dit" "survivra aux reconstructions de latest" "$sortie"
+
+reinitialiser
+sortie="$( (nommer_en_service demo) 2>&1 )"
+contient "la démo reçoit demo-en-service, sur l'image de SON conteneur" "$NOM_DEMO_API" "$(trace)"
+contient "…le web de démo aussi" "$NOM_DEMO_WEB" "$(trace)"
+absent "…jamais de site marketing de démo" "tracky-lp:demo-en-service" "$(trace)"
+
+reinitialiser; IMAGE_EN_SERVICE_API=""
+sortie="$( (nommer_en_service production) 2>&1 )"
+absent "sans conteneur API, rien n'est nommé pour lui" "tracky-api:en-service" "$(trace)"
+contient "…les autres le sont" "$NOM_WEB" "$(trace)"
+
+reinitialiser; IMAGES_ABSENTES="$IMG_API"
+sortie="$( (nommer_en_service production) 2>&1 )"; code=$?
+attend "🔴 image déjà absente sous le conteneur : on le dit, sans mourir (code 0)" 0 "$code"
+contient "…le message le dit" "déjà absente" "$sortie"
+absent "…et aucun tag n'est tenté sur un fantôme" "$NOM_API" "$(trace)"
+contient "…les autres images sont nommées quand même" "$NOM_WEB" "$(trace)"
+
+reinitialiser; IMAGES_ABSENTES="$IMG_API"
+sortie="$( (etiqueter_repli) 2>&1 )"
+contient "…et le repère absent nomme désormais la cause (V42)" "une reconstruction de latest l'a renommée" "$sortie"
+
+reinitialiser; REPONSES_SANTE=("running restarting 1")
+sortie="$( (main) 2>&1 )"; code=$?
+attend "🔴 après un REPLI AUTOMATIQUE réussi, l'image revenue en service est nommée aussi (code 4)" 4 "$code"
+contient "…tag en-service présent après le repli" "$NOM_API" "$(trace)"
+
 echo "deploy.sh — le déroulé complet"
 
 reinitialiser
 sortie="$( (main) 2>&1 )"; code=$?
 attend "un déploiement ordinaire rend 0" 0 "$code"
-attend "⚠️ l'ORDRE : garde, repères, pull, builds prod/marketing, MIGRATION, GARDE À NOUVEAU, up prod/marketing, PUIS la démo" \
-  "psql|$REPERE_API|$REPERE_WEB|$REPERE_LP|git checkout -q main|git pull --ff-only origin main|build|build-lp|migrate|psql|up|up-lp|up-demo" "$(trace)"
+attend "⚠️ l'ORDRE : garde, repères, pull, builds prod/marketing, MIGRATION, GARDE À NOUVEAU, up prod/marketing, NOMS en service, PUIS la démo et SES noms" \
+  "psql|$REPERE_API|$REPERE_WEB|$REPERE_LP|git checkout -q main|git pull --ff-only origin main|build|build-lp|migrate|psql|up|up-lp|$NOM_API|$NOM_WEB|$NOM_LP|up-demo|$NOM_DEMO_API|$NOM_DEMO_WEB" "$(trace)"
 contient "…et le script ne dit « terminé » qu'avec l'API et le marketing sains" "API et site marketing sains" "$sortie"
 contient "…et il dit que la démo est à jour" "démo à jour et saine" "$sortie"
 ligne="$(tail -n 1 "$JOURNAL")"
@@ -345,7 +399,7 @@ reinitialiser
 sortie="$( (main --marketing-seul) 2>&1 )"; code=$?
 attend "--marketing-seul rend 0" 0 "$code"
 attend "…ne touche qu'à l'image et à la pile marketing, sans garde API ni migration ni démo" \
-  "$REPERE_LP|git checkout -q main|git pull --ff-only origin main|build-lp|up-lp" "$(trace)"
+  "$REPERE_LP|git checkout -q main|git pull --ff-only origin main|build-lp|up-lp|$NOM_LP" "$(trace)"
 absent "…ne recrée pas l'API/Web" "|up|" "$(trace)"
 absent "…ne joue aucune migration" "migrate" "$(trace)"
 absent "…ne touche pas à la démo (l'API n'a pas changé)" "up-demo" "$(trace)"
@@ -512,7 +566,7 @@ echo "deploy.sh — la démo suit la production (VPS-046, 2026-09-20)"
 
 reinitialiser
 sortie="$( (main) 2>&1 )"; code=$?
-contient "PAR DÉFAUT la démo suit, après la prod et le marketing — et après leur santé" "|up|up-lp|up-demo" "$(trace)"
+contient "PAR DÉFAUT la démo suit, après la prod et le marketing — et après leur santé" "|up|up-lp|$NOM_API|$NOM_WEB|$NOM_LP|up-demo" "$(trace)"
 contient "…le script attend la santé de l'API de démo" "tracky-demo-api est sain" "$sortie"
 
 reinitialiser
@@ -546,7 +600,7 @@ attend "--repli : rend 0" 0 "$code"
 absent "…sans pull" "git pull" "$(trace)"
 absent "…sans build" "build" "$(trace)"
 contient "…l'étiquette redevient latest, API, web et marketing" "tag tracky-api:avant-20260913-1130-a8f9575e tracky-api:latest|tag tracky-web:avant-20260913-1130-a8f9575e tracky-web:latest|tag tracky-lp:avant-20260913-1130-a8f9575e tracky-lp:latest" "$(trace)"
-contient "…puis la garde, puis les deux piles, puis la démo (mêmes images : elle suit le repli aussi)" "psql|up|up-lp|up-demo" "$(trace)"
+contient "…puis la garde, puis les deux piles, les noms en service, puis la démo (mêmes images : elle suit le repli aussi)" "psql|up|up-lp|$NOM_API|$NOM_WEB|$NOM_LP|up-demo" "$(trace)"
 contient "…et le journal dit que c'est un repli" '"repli":"avant-20260913-1130-a8f9575e"' "$(tail -n 1 "$JOURNAL")"
 
 reinitialiser
