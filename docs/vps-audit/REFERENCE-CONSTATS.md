@@ -632,6 +632,9 @@ cache jetable et une base de données.
 ## VPS-010 — Noyau non redémarré, 59 paquets en retard
 
 - **Domaine** : sécurité · **Gravité** : 2 · **Statut** : `APPLIQUE` — **V4 FAITE le 2026-09-20 16 h 17 UTC** : noyau **6.8.0-139** actif, `reboot-required` disparu, 38/38 revenus seuls en 60 s ; volet paquets désaggravé le 2026-08-12
+- 🟠 **Vu : 2026-09-28 — NON REDÉMARRÉ (139 actif, 142 installé), uptime 178 h, `dockerd` 1 153 Mo.** Canal : 2 correctifs de sécurité
+  (`dracut-install`, `python3-requests`) découverts 01:36, installateur 06:28 — pas un retard. ⚠️ Le redémarrage fermera aussi
+  l'écoute Teltonika (VPS-050, hors de toute unité) : trancher V41 avant.
 - 🟠 **Vu : 2026-09-25 — LE LEVIER 7 LE DIT SEUL, COMME ANNONCÉ : « noyau actif 6.8.0-139 → viser 6.8.0-142 : REDÉMARRAGE requis ».**
   `uname -r` 6.8.0-139, uptime 106 h, `reboot-required` présent (`linux-image-6.8.0-142-generic`, `linux-base`), 2 services sur une
   bibliothèque remplacée ; `dockerd` 1 126 Mo. Canal de sécurité : cache 01 h 43 → **4** correctifs découverts (78 en retard, 2ᵉ source
@@ -5311,6 +5314,9 @@ confondre les deux ferait accuser le mauvais coupable.
 ## VPS-037 — La copie hors-site des sauvegardes dépend du même poste de travail que l'audit, et elle a dépassé son seuil
 
 - **Domaine** : sauvegardes · **Gravité** : **2** (3 → 2 le 2026-09-16) · **Statut** : `A_TRAITER` — **volet SYMPTÔME refermé
+- 🟠 **Vu : 2026-09-28 — RÉVEIL REFUSÉ SUR BATTERIE, 2ᵉ MATIN.** `Vizyo-Reveil-Audits` : `LastRunTime` 27/09 08:48, `NumberOfMissedRuns = 1`,
+  prochaine 29/09 ; `Win32_Battery` 1 (42 %), `BatteryStatus` WMI `PowerOnline False`, `Discharging True`. Poste éveillé : audit +8 min.
+  Copie hors-site du 27/09 OK, 0 paire sans copie.
   le 2026-09-03, volet CAUSE intact — AGGRAVÉ le 2026-09-15 par VPS-043, et MESURÉ COMME PANNE COMMUNE le 2026-09-16**
 - 🟠 **Vu : 2026-09-27 — UN 2ᵉ MODE D'ÉCHEC DU RÉVEIL : REFUSÉ SUR BATTERIE.** `Vizyo-Reveil-Audits` (04 h 15 Paris) **n'est pas partie** : `LastRunTime` 26/09, `NumberOfMissedRuns = 1`, `DisallowStartIfOnBatteries = True` ; le poste était **sur batterie (75 %) et éveillé** depuis 01 h 40 Paris (Kernel-Power 506 / 507). Sans effet ce matin (audit à l'heure, +8 min), mais un poste endormi sur batterie ne serait pas réveillé non plus. La copie (06 h 30 Paris) accepte la batterie (`False`). Copie du 26/09 : OK, 0 paire sans copie. Geste inchangé : `powercfg /h /type full` + secteur la nuit.
 - 🟠 **Vu : 2026-09-26 — COPIE OK À 04 h 30 min 07 UTC ; 4ᵉ SONNERIE SUR UN POSTE DÉJÀ ÉVEILLÉ ; POSTE SUR BATTERIE.**
@@ -5455,6 +5461,9 @@ confondre les deux ferait accuser le mauvais coupable.
 ## VPS-038 — Six boîtiers se sont tus le dimanche en deux heures, tous dans la même flotte
 
 - **Domaine** : données · **Gravité** : **2** (montée à 1 le 2026-09-05 sur le seuil écrit le 09-03 ;
+- 🟠 **Vu : 2026-09-28 — 33 / 34 / 33, 2ᵉ MATIN, TOUJOURS UN SEUL BOÎTIER.** Le bloc VPS-M126 le nomme seul : `864035054756714`
+  **HM-769-GA**, dernière position 25/09 16:09 (**58 h**), dernière trame 28/09 02:31. Registre 11 / 45 (10 > 7 j, 1 jamais émis,
+  J+3,2). Seuil inchangé : deux boîtiers, ou un boîtier sans trame.
   **redescendue à 2 le 2026-09-13 sur le seuil écrit le 09-05**) · **Statut** : `A_TRAITER`
 - 🟠 **Vu : 2026-09-27 — 33 / 34 / 33 : LA PREMIÈRE DIVERGENCE EN TREIZE JOURS, PORTÉE PAR UN SEUL BOÎTIER.** `positions` 33, `wire_logs` 34, `position_sampling_decisions` 33. L'absent (marge, `timeout 20`) : **HM-769-GA** (`864035054756714`), dernière position **25/09 16 h 09 UTC** (34 h), dernière trame **27/09 02 h 33** — un boîtier vivant sans fix GPS, suivi par le centre d'alerte (T74). Pas une fuite de la chaîne. Le collecteur le nomme désormais seul (VPS-M126). Registre 11 / 45 : > 7 j **10**, **1 jamais émis** (…6672, déclaré le 24/09 21 h 14, J+2,2 — échéance du 01/10). Débit `positions` ×0,86 veille / ×0,92 J-7 (samedi).
 - ✅ **Vu : 2026-09-22 — LUNDI 09-21 COMPLET = 34, NEUVIÈME JOURNÉE ≥ 32 ; ×1,14 DU LUNDI J-7, ET LES TROIS ÉTAGES S'ACCORDENT.**
@@ -6527,7 +6536,13 @@ confondre les deux ferait accuser le mauvais coupable.
 
 ## VPS-046 — La démo n'est mise à jour que par une commande que le déploiement ne lance pas, et l'import hebdomadaire a échoué dessus
 
-- **Domaine** : docker · **Gravité** : 2 · **Statut** : `CORRECTIF_PROPOSE` — **V36 (a) FAITE le 2026-09-20 13 h 40 UTC** (démo recréée, migrations jouées, import réussi 13 h 47) ; **(b) CODÉE ET TESTÉE ~14 h 30** : dans `deploy.sh` la démo **suit par défaut** après la santé de la production (`--sans-demo` pour l'éviter, `"demo"` au journal, 131 contrôles verts) — **EN LIGNE sur le VPS depuis le 20/09 14 h 18 UTC** (même vérification que VPS-044, 21/09 03 h 05) ; `APPLIQUE` au premier import du dimanche réussi **après** un déploiement de production sans geste manuel
+- **Domaine** : docker · **Gravité** : 2 · **Statut** : `APPLIQUE` (2026-09-28 — import du 27/09 réussi sans geste après un déploiement par `deploy.sh`) — historique : — **V36 (a) FAITE le 2026-09-20 13 h 40 UTC** (démo recréée, migrations jouées, import réussi 13 h 47) ; **(b) CODÉE ET TESTÉE ~14 h 30** : dans `deploy.sh` la démo **suit par défaut** après la santé de la production (`--sans-demo` pour l'éviter, `"demo"` au journal, 131 contrôles verts) — **EN LIGNE sur le VPS depuis le 20/09 14 h 18 UTC** (même vérification que VPS-044, 21/09 03 h 05) ; `APPLIQUE` au premier import du dimanche réussi **après** un déploiement de production sans geste manuel
+- ☑ **Vu : 2026-09-28 — V36 FAITE : L'IMPORT DU DIMANCHE A RÉUSSI SANS GESTE.** `/var/log/tracky-demo-refresh.log` : *« Import réussi »*
+  **27/09 04:05:30Z**, *« API de démo redémarrée »* 04:05:31 ; `tracky-demo-refresh.service` `Result=success`, `ExecMainStatus=0`
+  (04:00:00 → 04:05:31). La démo avait été recréée par `deploy.sh` le 23/09 23:40 (même image que la production) : c'est exactement
+  le seuil écrit. Le déploiement du 27/09 18:16 porte à nouveau `demo=saine` au journal T33. ⚠️ Le soir même, la démo a été recréée
+  **hors script** (22:57:47) sur une **préversion** construite à 22:56 (`f4337b001e21`, mode opératoire de `0c4129fb`, déploiement
+  prévu lundi 28/09 10 h) : voulu, pas une régression.
 - ✅ **Vu : 2026-09-21 — LA DÉMO EST BIEN SUR LES IMAGES COURANTES, ET LE COLLECTEUR LE VOIT SEUL.** Section 4 :
   `tracky-demo-api` et `tracky-demo-web` **RECRÉÉS 2026-09-20 13:40:06** (hors journal T33 — geste V36 (a), pas un
   déploiement) ; `tracky-demo-api` `healthy`, `memlimit 512 Mo`, base `tracky_demo` **640 Mo** (581 hier : l'import a
@@ -6580,7 +6595,11 @@ confondre les deux ferait accuser le mauvais coupable.
 
 ## VPS-047 — Une session SSH par seconde pendant deux heures depuis le poste, 50 min après que l'hébergeur a levé sa limitation « en avertissant qu'elle peut revenir »
 
-- **Domaine** : ordonnancement / charge · **Gravité** : 2 · **Statut** : `CORRECTIF_PROPOSE` — **V37 (1) identifiée et (2) POSÉE le 2026-09-21 05 h 05 Paris** (section « 🛑 Une boucle du poste qui parle au VPS = UNE session, et un `sleep` qui dort » dans `CLAUDE.md`, après la règle V34 ; mémoire des agents `claude_monitor_tool_sleep_path.md`) ; (3) seuil au collecteur posé (VPS-M110) ; `SURVEILLANCE` après 7 jours sans heure > 600 sessions, `APPLIQUE` quand le premier `Monitor` suivant a été relu avec `/usr/bin/sleep`
+- **Domaine** : ordonnancement / charge · **Gravité** : 2 · **Statut** : `SURVEILLANCE` (2026-09-28 — 7 veilles sans heure > 600) — historique : `CORRECTIF_PROPOSE` — **V37 (1) identifiée et (2) POSÉE le 2026-09-21 05 h 05 Paris** (section « 🛑 Une boucle du poste qui parle au VPS = UNE session, et un `sleep` qui dort » dans `CLAUDE.md`, après la règle V34 ; mémoire des agents `claude_monitor_tool_sleep_path.md`) ; (3) seuil au collecteur posé (VPS-M110) ; `SURVEILLANCE` après 7 jours sans heure > 600 sessions, `APPLIQUE` quand le premier `Monitor` suivant a été relu avec `/usr/bin/sleep`
+- ☑ **Vu : 2026-09-28 — JOUR 7 / 7 : LA VEILLE A PORTÉ 612 SESSIONS, POINTE 12 H = 78 → `SURVEILLANCE`.** 494 root depuis le poste
+  (`82.67.153.51`), 99 root depuis `78.240.218.252` et 14 depuis `37.167.44.30` (clé `vizyo-vps-hostinger`, le poste en mobilité), 5
+  dépôts. Sept veilles sans heure > 600 (229 · 1 966 · 727 · 624 · 430 · 612, pointe max 404 le 23/09). La règle est écrite
+  (`CLAUDE.md`, V37). Reste pour `APPLIQUE` : un `Monitor` relu avec `/usr/bin/sleep`. Réescalade : une heure > 600.
 - ✅ **Vu : 2026-09-27 — JOUR 6 / 7 : LA VEILLE A PORTÉ 430 SESSIONS, POINTE 10 H = 59.** 335 root depuis le poste (`82.67.153.51`), **90 root depuis `78.240.154.38`** (clé `vizyo-vps-hostinger`, 🆕 IP — le poste en mobilité, comme `78.242.44.84` le 25/09), 5 dépôts (`dispocarbk` 2, `conductorbk` 2, `vaultbk` 1). 0 heure > 600.
 - ✅ **Vu : 2026-09-26 — JOUR 5 / 7 : LA VEILLE A PORTÉ 624 SESSIONS, POINTE 18 H = 77.** 474 root depuis le poste (`82.67.153.51`),
   🆕 **145 root depuis `78.242.44.84`** — clé `vizyo-vps-hostinger` (celle du poste), **17 h 48 → 18 h 59 UTC** (68 + 77, ~2 / min), jamais
@@ -6675,6 +6694,7 @@ confondre les deux ferait accuser le mauvais coupable.
 ## VPS-048 — Un site client est entré en production sans annonce, et sa dernière version n'existe que sur le VPS
 
 - **Domaine** : périmètre / sauvegardes · **Gravité** : 3 · **Statut** : `A_TRAITER`
+- 🟠 **Vu : 2026-09-28 — J+5, RIEN N'A BOUGÉ.** `Test-Path D:\www\vizyo-agency\cdef31-vizyoagency` = False ; `/opt/cdef31-vizyoagency` 20 Mo.
 - 🟠 **Vu : 2026-09-27 — J+4, RIEN N'A BOUGÉ.** `Test-Path D:wwwizyo-agencycdef31-vizyoagency` = False ; `cdef31-site` `memlimit=0`, sans sonde ; `/opt/cdef31-vizyoagency` 20 Mo.
 - 🟠 **Vu : 2026-09-25 — J+2, RIEN N'A BOUGÉ.** Aucun dossier `cdef31*` sous `D:\www\vizyo-agency\` ; `cdef31-site` `memlimit=0`, sans
   sonde ; `/opt/cdef31-vizyoagency` 20 Mo.
@@ -6752,7 +6772,66 @@ confondre les deux ferait accuser le mauvais coupable.
 ---
 
 
+## VPS-050 — Une écoute de test tourne en root sur l'hôte, hors de toute unité, sur un port ouvert à Internet, et son journal n'a pas de rotation
+
+- **Domaine** : sécurité / périmètre · **Gravité** : 3 · **Statut** : `A_TRAITER` — tâche **V41**
+- **Vu** : 2026-09-28 (1ᵉʳ passage ; le processus date du **27/09 12:05:12 UTC**) · **Mesure** (lecture seule : `ps`, `/proc`, `ss`,
+  `ls`, `ufw.log`, `auth.log`) :
+
+  | Grandeur | Valeur | Source |
+  |---|---|---|
+  | processus | `node /opt/ecoute-teltonika.mjs --port 5027`, **root**, pid 4030432, 5 Mo RSS, 1 s de CPU en 14 h | `ps` |
+  | lancement | `tmux new -d -s teltonika node … 2>&1 \| tee -a /opt/ecoute-teltonika.log`, 27/09 12:05:12 | `ps -o lstart` du parent |
+  | unité | **aucune** — cgroup `session-6560.scope` : ne revient pas après un redémarrage | `/proc/…/cgroup` |
+  | origine | session root de **11:41:14** depuis `78.240.218.252`, clé `vizyo-vps-hostinger` (le poste en mobilité) | `auth.log` |
+  | pare-feu | `allow 5027/tcp` posé à **12:04:48**, IPv4 **et** IPv6, commentaire « Teltonika FMC130 - ecoute terrain » | `/etc/ufw/user*.rules` |
+  | trafic | un boîtier (`46.114.215.195`, IMEI `860848082352…`) **12:04:07 → 12:19:48** (10 paquets rejetés avant l'ouverture) ; **0 connexion depuis** | `ufw.log`, fin du journal, `ss` |
+  | réponse | il **écrit sur la socket** (accusés Teltonika `0x01` et `accuse`) ; `import net` seul, ni `exec` ni `spawn` (563 lignes) | `grep` du script |
+  | disque | `/opt/ecoute-teltonika.log` **12 Mo, 115 180 lignes en 15 min** ; aucune stanza `logrotate`, hors `json-file` | `ls`, `wc` |
+
+- **QUOI — la cause** : une écoute de test d'un boîtier Teltonika FMC130 (dossier `docs/teltonika-fmc130/` apparu non suivi dans le dépôt),
+  lancée **à la main** dans un `tmux`, en root, avec un journal par `tee -a`. Rien d'anormal dans l'intention ; le défaut est l'addition de
+  quatre propriétés **sans échéance** : du root qui analyse des octets venus d'Internet (les écoutes GPS de production, 5023, passent par un
+  conteneur), aucune unité (le test s'arrêtera au premier redémarrage — V39 est à faire — sans que rien ne le dise), un journal sans rotation
+  (~50 Mo / h de session, ~1,2 Go / j si un boîtier se reconnecte en continu), un port qui reste ouvert 14 h après la dernière connexion.
+- **`pourquoiInvisible`** : le contrôle de périmètre (VPS-M92) compare des **conteneurs**, des **comptes** et des **dossiers de sauvegarde** ;
+  un processus de l'hôte n'est dans aucune liste. La section 6 **listait** `tcp 0.0.0.0:5027 "node"` sans la qualifier, et la liste `ufw` était
+  coupée à 14 lignes (règles IPv6 invisibles). Corrigé ce passage : **VPS-M127**.
+- **QUOI FAIRE — V41** : *si le test est fini* : rapatrier le journal (`scp root@72.62.26.240:/opt/ecoute-teltonika.log …`), puis
+  `tmux kill-session -t teltonika`, puis `ufw delete allow 5027/tcp` — gain : plus de root exposé ni de journal qui peut grossir ; risque nul
+  (0 connexion depuis 14 h) ; contrepartie : relancer l'écoute au prochain essai. *S'il continue* : une échéance écrite, un utilisateur non
+  root (5027 > 1024), un journal borné — le plus simple est un petit conteneur, qui hérite de `json-file` 10 Mo × 3 (`daemon.json`).
+- **`aNePasFaire`** : ❌ ne pas retirer la seule règle `ufw` en laissant le processus ; ❌ ne pas supprimer le journal sans l'avoir copié
+  (seule trace de la session du 27/09) ; ❌ ne pas tuer le pid depuis une commande de diagnostic : c'est le geste de quelqu'un d'autre, fermer la
+  session `tmux` le fait proprement ; ❌ ne pas redémarrer (V39) sans avoir tranché : on couperait un test peut-être voulu.
+- **Seuil de réescalade** : gravité 2 si le journal dépasse 500 Mo ou si des connexions arrivent d'adresses qui ne sont pas des boîtiers ;
+  gravité 1 si le processus exécute autre chose que l'analyse de trames. `APPLIQUE` quand le bloc VPS-M127 rend « ✅ aucune ».
+
+---
+
+
 ## Constats de méthode (sur l'audit lui-même)
+
+### VPS-M127 — Une écoute publique tenue par un processus de l'hôte était listée parmi les ports, sans un mot, pendant quatorze heures
+
+- **Domaine** : méthode · **Gravité** : 3 · **Statut** : `APPLIQUE` (2026-09-28 — bloc « Écoutes PUBLIQUES tenues par un processus de l'HÔTE », bancé)
+- **Vu** : 2026-09-28 · **Mesure** : §6 *« tcp 0.0.0.0:5027 "node",pid=4030432,fd=21)) »* au milieu de 12 autres lignes ; aucune ligne ne disait :
+  root, hors conteneur, hors unité systemd, port ouvert au pare-feu, journal de 12 Mo sans rotation (VPS-050). Et `ufw status verbose | head -14`
+  coupait la liste après « 80/tcp (v6) » : les règles IPv6 de 443, 5023 et 5027 n'apparaissaient pas.
+- **QUOI** : la section 6 **montrait** les écoutes sans les **comparer** à ce qui est attendu (`docker-proxy`, `sshd`) ; le contrôle de périmètre
+  (VPS-M92) ne connaît que des conteneurs, des comptes et des dossiers. Un processus de l'hôte tombe entre les deux.
+- **`pourquoiInvisible`** : jusqu'au 27/09, toutes les écoutes publiques étaient des `docker-proxy` ou `sshd` : la liste était vraie et
+  ennuyeuse, personne ne la lisait ligne à ligne.
+- **Correctif** : pour chaque écoute non locale **hors** `docker-proxy` / `sshd` / `systemd-resolved` : utilisateur, âge, ancêtres, **unité**
+  (cgroup ; 🔴 *« hors de toute unité : ne reviendra pas après un redémarrage »*), règles `ufw` ALLOW, fichiers écrits par la **session** du
+  processus (un `| tee -a` tient le fichier, pas le processus) et leur rotation, connexions établies. Lecture de `/proc` seule, 0 commande
+  `docker` ; `ufw` lu entier (borne 40). **Banc** (VPS, 465 ms) : la ligne 5027 ressort avec `session-6560.scope`, « OUVERT (1 règle ALLOW) »,
+  « ROOT », `/opt/ecoute-teltonika.log 12 Mo … AUCUNE rotation`, « 0 connexion ». `bash -n` du collecteur OK sur le VPS.
+- **`aNePasFaire`** : ❌ ne pas faire juger le bloc (« voulu / pas voulu ») : il **nomme**, l'humain tranche. ❌ Ne pas l'étendre aux écoutes
+  locales (127.0.0.1) : elles ne sont pas une surface d'attaque, et le bloc deviendrait une liste de plus qu'on ne lit pas.
+- **Reste ouvert** : comparer les écoutes d'un jour à l'autre (`portsEcouteListe` dans `chiffres`, même mécanique que VPS-M92) — un
+  `docker-proxy` neuf passerait encore (angle mort n° 1 du 28/09).
+
 
 ### VPS-M126 — « Un étage de la chaîne perd des émetteurs » sans nommer personne : le seul écart en treize jours était un boîtier vivant sans fix GPS
 
