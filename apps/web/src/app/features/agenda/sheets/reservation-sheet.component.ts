@@ -329,7 +329,8 @@ function toLocalInput(d: Date): string {
     .rs-hint--manque { color: var(--texte-attente); }
     .rs-sub-lbl { text-transform: none; letter-spacing: 0; }
     .rs-sub-lbl em { font-style: normal; font-weight: 400; color: var(--fg-tertiary); }
-    .rs-lbl-row lucide-icon { vertical-align: -2px; margin-right: 3px; }
+    /* L'icône et le libellé sur UNE ligne (l'icône est un bloc : sans ceci elle passe au-dessus). */
+    .rs-lbl-row > span { display: inline-flex; align-items: center; gap: 4px; }
     .rs-ai-card { text-align: left; padding: 11px; border-radius: 12px; background: var(--bg-tertiary); border: 1px solid var(--border-subtle); }
     .rs-ai-card--on { border-color: var(--tracky-light); box-shadow: 0 0 0 1px var(--tracky-light) inset; background: rgba(16,224,160,.06); }
     .rs-ai-top { display: flex; align-items: center; gap: 8px; }

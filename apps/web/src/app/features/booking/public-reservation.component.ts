@@ -141,7 +141,7 @@ import { ReservationBookingApiService } from '../../core/services/reservation-bo
                 <input type="number" min="0" max="50" inputmode="numeric" class="pr-in" [value]="childSeatsBaby()" (input)="childSeatsBaby.set($any($event.target).value)" placeholder="0">
               </label>
               <label class="pr-f">
-                <span><lucide-icon [img]="BabyIcon" [size]="12" /> Sièges enfant <em class="pr-ex">siège, rehausseur</em> @if (estDicte('childSeatsChild')) { <em class="pr-dit">déduit</em> }</span>
+                <span><lucide-icon [img]="BabyIcon" [size]="12" /> Sièges enfant <em class="pr-ex">rehausseur</em> @if (estDicte('childSeatsChild')) { <em class="pr-dit">déduit</em> }</span>
                 <input type="number" min="0" max="50" inputmode="numeric" class="pr-in" [value]="childSeatsChild()" (input)="childSeatsChild.set($any($event.target).value)" placeholder="0">
               </label>
             </div>
@@ -283,7 +283,9 @@ import { ReservationBookingApiService } from '../../core/services/reservation-bo
       background: color-mix(in srgb, var(--color-tracky-light) 14%, transparent); color: var(--texte-succes);
     }
     .pr-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-    .pr-ex { font-style: normal; font-weight: 400; font-size: 11px; color: var(--fg-secondary); opacity: .85; }
+    /* Le libellé tient sur UNE ligne (deux colonnes de ~230 px, plus la pastille « déduit ») :
+       l'exemple est court et l'ensemble ne se replie pas — sinon les deux champs se désalignent. */
+    .pr-ex { font-style: normal; font-weight: 400; font-size: 10.5px; color: var(--fg-secondary); opacity: .85; white-space: nowrap; }
     .pr-in {
       width: 100%; min-height: 44px; padding: 11px 12px; border-radius: 11px;
       background: var(--bg-primary); border: 1px solid var(--border-strong);
