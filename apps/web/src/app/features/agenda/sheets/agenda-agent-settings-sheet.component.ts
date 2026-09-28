@@ -94,8 +94,13 @@ import { BottomSheetComponent } from '../../../shared/ui/bottom-sheet/bottom-she
             <!-- Métier -->
             <div class="aas-row">
               <div><span class="aas-lbl">Métier de la flotte</span><span class="aas-sub">Oriente l'objectif de l'IA (ex. sécurité enfants).</span></div>
+              <!-- « [value] » sur le select est posé AVANT que les options existent (elles naissent
+                   dans la boucle) : le navigateur retombe alors sur la première, « Transport
+                   d'enfants », quel que soit le métier enregistré — et quand la valeur chargée est
+                   déjà celle du signal (GENERIC), rien ne le rattrape. Recette du 28/09 sur la démo.
+                   « [selected] » sur chaque option est la liaison que le DOM honore ici. -->
               <select class="aas-in" [value]="metier()" (change)="onMetierChange($any($event.target).value)">
-                @for (m of metiers; track m) { <option [value]="m">{{ metierLabel(m) }}</option> }
+                @for (m of metiers; track m) { <option [value]="m" [selected]="m === metier()">{{ metierLabel(m) }}</option> }
               </select>
             </div>
 
@@ -207,14 +212,18 @@ import { BottomSheetComponent } from '../../../shared/ui/bottom-sheet/bottom-she
             </span>
             @if (avisErreur(); as e) { <p class="aas-avis-err">{{ e }}</p> }
             @for (d of destinataires(); track d.userId) {
-              <label class="aas-avis" [class.aas-avis--off]="!d.notifie">
+              <!-- Pas un label : la ligne entière basculait l'avis, et chaque bascule PART au serveur
+                   (PUT) sans « Enregistrer ». Un clic égaré sur l'adresse a coupé l'avis d'un
+                   gestionnaire en recette (28/09). Seul l'interrupteur agit ; l'adresse est son nom. -->
+              <div class="aas-avis" [class.aas-avis--off]="!d.notifie">
                 <span class="aas-avis-main">
                   <span class="aas-link-url">{{ d.email }}</span>
                   <span class="aas-link-meta">{{ roleLisible(d.role) }}{{ d.notifie ? '' : ' · ne reçoit pas l’avis' }}</span>
                 </span>
                 <input type="checkbox" class="aas-avis-sw" [checked]="d.notifie" [disabled]="avisEnvoi()"
+                       [attr.aria-label]="'Prévenir ' + d.email + ' par e-mail'"
                        (change)="basculerAvis(d, $any($event.target).checked)">
-              </label>
+              </div>
             } @empty {
               <p class="aas-avis-err">
                 Personne ne peut valider dans cette société : ouvrez « Valider les réservations »
@@ -305,7 +314,10 @@ import { BottomSheetComponent } from '../../../shared/ui/bottom-sheet/bottom-she
     .aas-note, .aas-alert { margin: 12px 2px; padding: 12px; border-radius: 12px; background: rgba(56,189,248,.10); color: #38BDF8; font-size: 12.5px; }
     .aas-alert { background: color-mix(in srgb, var(--danger) 10%, transparent); color: var(--texte-alerte); }
     .aas-skel { height: 46px; border-radius: 12px; margin: 8px 2px; background: linear-gradient(90deg, var(--bg-tertiary), var(--bg-secondary), var(--bg-tertiary)); }
-    .aas-body { display: flex; flex-direction: column; gap: 12px; overflow-y: auto; max-height: 62vh; max-height: 62dvh; padding: 10px 2px 2px; }
+    /* Un seul ascenseur : celui de la feuille (.bs-content). Le corps avait le sien (62dvh) — deux
+       ascenseurs emboîtés, et la molette n'atteignait ni « Qui reçoit les demandes à valider » ni
+       les boutons du bas (recette du 28/09). Le pied reste visible par « position: sticky ». */
+    .aas-body { display: flex; flex-direction: column; gap: 12px; padding: 10px 2px 2px; }
     .aas-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
     .aas-row--col { flex-direction: column; align-items: stretch; gap: 6px; }
     .aas-row--switch { padding: 4px 0; }
@@ -341,7 +353,7 @@ import { BottomSheetComponent } from '../../../shared/ui/bottom-sheet/bottom-she
        Hauteur 44 px : ça s'actionne au doigt depuis un téléphone. */
     .aas-avis { display: flex; align-items: center; gap: 10px; padding: 9px 11px; min-height: 44px;
                 border-radius: 10px; background: var(--bg-tertiary);
-                border: 1px solid var(--border-subtle); cursor: pointer; }
+                border: 1px solid var(--border-subtle); }
     .aas-avis + .aas-avis { margin-top: 6px; }
     .aas-avis--off { opacity: .6; }
     .aas-avis-main { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
@@ -364,7 +376,7 @@ import { BottomSheetComponent } from '../../../shared/ui/bottom-sheet/bottom-she
     .aas-run-detail { font-size: 11px; color: var(--fg-tertiary); line-height: 1.4; }
     .aas-run-detail--err { color: var(--danger); }
     .aas-run-dur { flex: 0 0 auto; font-size: 10.5px; color: var(--fg-tertiary); font-family: var(--font-mono, monospace); }
-    .aas-foot { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; padding: 12px 0 max(6px, env(safe-area-inset-bottom)); margin-top: 2px; border-top: 1px solid var(--border-subtle); }
+    .aas-foot { position: sticky; bottom: 0; z-index: 1; background: var(--bg-secondary); display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; padding: 12px 0 max(6px, env(safe-area-inset-bottom)); margin-top: 2px; border-top: 1px solid var(--border-subtle); }
     /* Le motif d'un bouton grisé, sous les boutons, sur toute la largeur. */
     .aas-foot-note { flex-basis: 100%; font-size: 11.5px; line-height: 1.4; color: var(--fg-tertiary); text-align: right; }
     .aas-btn { display: inline-flex; align-items: center; gap: 6px; padding: 10px 18px; border-radius: 10px; font-size: 13px; font-weight: 700; background: var(--tracky, #10B981); color: #fff; }

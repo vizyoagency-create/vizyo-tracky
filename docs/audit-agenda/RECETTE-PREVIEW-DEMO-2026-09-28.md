@@ -1,10 +1,19 @@
-# Recette de l'agenda sur la démo — avant le déploiement du 28/09 à 10 h
+# Recette de l'agenda sur la démo — avant le déploiement du 28/09
 
 **Où :** <https://demo-tracky.vizyoagency.com> · **Quoi :** le code de `main` (`cd472914`) que la
 production **n'a pas encore** — les six derniers constats de l'audit, T83 et le rythme de l'arriéré ·
 **Pourquoi là :** une pile séparée sur le même VPS, la vraie flotte pseudonymisée (« Transports
 Méridien », 37 véhicules, 16 884 trajets du 15/04 au 27/09), **aucun port boîtier, aucune clé
 SMS / push / Stripe** — rien de ce qu'on y fait ne peut atteindre un client.
+
+> **Verdict du 28/09, 07 h – 09 h** : sections 0 à 4 et 7 exercées dans Chrome, requêtes réseau
+> lues à chaque geste. Tout ce qui est livré marche ; la recette a trouvé **neuf défauts** (deux
+> sérieux : « posées par l'agent » englobait les demandes publiques ; la grille s'arrêtait à 200
+> propositions), **tous corrigés le matin même** et rejoués sur la démo avant le déploiement.
+> Le détail : `SUIVI-REVUE-AGENDA-2026-09-24.md`, section du 28/09.
+>
+> Légende : `[x]` vu à l'écran et dans le réseau · `[~]` partiellement · `[ ]` non exercé (pourquoi
+> en marge) · **F-n** = constat, numéroté dans le suivi de revue.
 
 > ⚠️ **Ce que la démo ne contient pas, par construction** : `vehicle_events`, propositions, réglages
 > d'agent et liens publics sont **exclus de l'import** (décision du 07/09 : ce sont les tables qui
@@ -24,44 +33,50 @@ Compte : **`admin@vizyoagency.com`** (super-admin, mot de passe habituel — Viz
 `demo-gestionnaire@demo.vizyoagency.com` (mot de passe : `DEMO_ACCOUNTS_PASSWORD` de `.env.demo`
 sur le VPS). Bandeau société → **Transports Méridien**.
 
-- [ ] La page `/agenda` s'ouvre, trois compteurs à **0 / 0 / 0**, liste « À venir & en retard » vide, grille vide.
+- [x] La page `/agenda` s'ouvre, trois compteurs à **0 / 0 / 0**, liste « À venir & en retard » vide, grille vide.
 
 ## 1. Les compteurs et la liste disent la même chose *(compteur ≠ liste, P2-4)*
 
 Créer depuis « Évènement » :
-- [ ] une **maintenance** PLANNED datée **d'hier** → compteur « En retard » = 1, la ligne apparaît en rouge dans la liste ;
-- [ ] une **maintenance** PLANNED dans **10 jours** → « À venir (30j) » = 1, ligne dans la liste ;
-- [ ] un **incident** (OPEN) daté d'aujourd'hui → « Incidents ouverts » = 1 ; **il n'apparaît PAS** dans « En retard » tant que sa date n'est pas passée ;
-- [ ] passer la maintenance d'hier « En cours » depuis le panneau du jour → elle **sort** de la liste et du compteur « En retard » (elle est en cours, ni à venir ni en retard) ;
-- [ ] filtrer par **véhicule** dans la barre → les trois compteurs **suivent** le véhicule choisi (0 pour un véhicule sans évènement) ; retirer le filtre → ils reviennent ;
-- [ ] filtrer par **type** « Incident » → la liste ne montre que l'incident, **les compteurs ne changent pas** (voulu : chacun est typé par nature).
+- [x] une **maintenance** PLANNED datée **d'hier** → compteur « En retard » = 1, la ligne apparaît en rouge dans la liste ;
+- [x] une **maintenance** PLANNED dans **10 jours** → « À venir (30j) » = 1, ligne dans la liste ;
+- [x] un **incident** (OPEN) daté d'aujourd'hui → « Incidents ouverts » = 1 — **F1** : il passait aussi « EN RETARD » dans la seconde (règle du 27/09 : « OPEN à échéance passée »). Corrigé : un OPEN n'est **jamais** en retard, seul un PLANNED a une échéance ;
+- [x] passer la maintenance d'hier « En cours » depuis le panneau du jour → elle **sort** de la liste et du compteur « En retard » (elle est en cours, ni à venir ni en retard) ;
+- [x] filtrer par **véhicule** dans la barre → les trois compteurs **suivent** le véhicule choisi (`GET /agenda/summary?…&vehicleId=` à chaque changement) ; retirer le filtre → ils reviennent ;
+- [x] filtrer par **type** « Incident » → la liste ne montre que l'incident, **les compteurs ne changent pas** (voulu : chacun est typé par nature).
+- **F2** (style) : les badges ● / ~ de la cellule recouvraient la première pilule (« Vidange + filtres (recette — J… » sous « ● 13 / ~18 »). Corrigé : badges en ligne. **F3** (mineur, à reprendre) : ces badges ignorent les filtres véhicule / groupe.
 
 ## 2. Le glisser-déposer *(livré le 23-24/09, validé au doigt le 27/09)*
 
-- [ ] souris : glisser la maintenance de dans 10 jours sur un autre jour → heure et durée conservées, toast de confirmation ;
-- [ ] tenter de la glisser **dans le passé** → refusée, message ;
-- [ ] `/agenda` sur le téléphone : appui long sur la pastille → déplacement au doigt.
+- [x] souris : glisser la maintenance de dans 10 jours sur un autre jour → `PATCH` 200, heure et durée conservées, toast de confirmation ;
+- [x] tenter de la glisser **dans le passé** → refusée, message ;
+- [x] `/agenda` sur le téléphone : appui long sur la pastille → déplacement au doigt *(validé par le propriétaire le 27/09)*.
 
 ## 3. Les réservations, de bout en bout *(P0-1, R-1, R-2)*
 
-- [ ] **Réserver** depuis la barre : créneau demain 9 h–12 h, motif « Ramassage secteur nord », véhicule libre → la carte du jour affiche **le motif** (R-1) ;
-- [ ] Paramètres de l'agenda → **Liens publics** → créer un lien → **QR réservation** dans la barre → la carte imprimable montre le domaine **`demo-tracky.vizyoagency.com`** (R-6) ;
-- [ ] ouvrir le lien public dans un onglet privé → déposer une demande (nom « Test recette », **ton** e-mail) → l'avis « Demande de réservation à valider » arrive aux valideurs de la démo (`demo-admin@`, `demo-gestionnaire@`… et **toi**) ;
-- [ ] Paramètres de l'agenda → **Destinataires de l'avis** : décocher tout le monde sauf un → couper le **dernier** est **refusé** avec le motif ;
-- [ ] bouton **Demandes** → valider → le demandeur reçoit la confirmation ; dans l'activité système, une ligne **`reservation_validee`** avec ton nom (R-2) ;
-- [ ] déposer une seconde demande, la **refuser** → ligne `reservation_refusee` ;
-- [ ] mettre un véhicule **hors service** (fiche véhicule) puis déposer une demande sur un créneau où il est le seul libre → il est **écarté**, motif affiché ; ou « aucun véhicule » si c'était le seul.
+- [x] **Réserver** depuis la barre : créneau demain 9 h–12 h, motif « Ramassage secteur nord », véhicule libre → la carte du jour affiche **le motif** (R-1) — **F5** : deux fois (titre + ligne de détail). Corrigé ;
+- [x] Paramètres de l'agenda → **Liens publics** → créer un lien → **QR réservation** dans la barre → la carte imprimable montre le domaine **`demo-tracky.vizyoagency.com`** (R-6) ;
+- [x] ouvrir le lien public → déposer une demande (« Client test », 11 places → **deux** véhicules de 9 pré-retenus, même `bookingRef`) → `reservation_requested` au demandeur, `reservation_request_pending` aux deux valideurs cochés, `public_booking_submitted` dans l'activité — **F13** (à reprendre) : la file « À valider » montre les deux véhicules comme deux demandes indépendantes ;
+- [x] Paramètres de l'agenda → **Destinataires de l'avis** : couper le **dernier** est **refusé** (`PUT` 400) avec le motif — **F14** : la ligne entière était un `<label>`, un clic sur l'adresse basculait l'avis et le `PUT` partait aussitôt. Corrigé : seul l'interrupteur agit ;
+- [x] bouton **Demandes** → valider → `reservation_validee` + courriel `reservation_confirmed` au demandeur (R-2) — **F15** : la file était appelée sans le filtre société du bandeau. Corrigé. **F17** (convention du dépôt) : `actor: 'utilisateur'`, le nom en `meta` ;
+- [x] déposer une seconde demande, la **refuser** → ligne `reservation_refusee` — **F16** (à reprendre) : le demandeur n'est pas prévenu d'un refus ;
+- [ ] mettre un véhicule **hors service** (fiche véhicule) puis déposer une demande sur un créneau où il est le seul libre → il est **écarté** *— non exercé ce matin : même code que la prod (`computeSuggestions`), éprouvé en prod le 24/09.*
 
 ## 4. L'agent, sur les vrais trajets *(P0-3, 3a, 3b)*
 
-- [ ] Paramètres de l'agenda → **activer l'agent**, heure nocturne quelconque → **Lancer l'analyse** ;
-- [ ] le bilan du passage dit « N habitudes · **0 réservée** · N proposées · N ignorées (dont hors service…) » — **jamais une réservation ferme** ;
-- [ ] des **pastilles en pointillé** apparaissent sur la grille ; le panneau du jour porte « Proposé par l'agent » avec **Réserver / Écarter** ;
-- [ ] **Réserver** une proposition → elle devient ferme, disparaît des pointillés ; **Écarter** une autre → elle s'en va ;
-- [ ] onglet **Propositions IA** : la liste ne montre que des départs **à venir** ;
-- [ ] **Réorganiser** → 30 jours → posées par l'agent → **simulation** : le compte est juste (la réservation issue de la proposition), puis **appliquer** → annulée ; **elle n'encombre pas la grille** (R-5 : une annulation à venir est masquée).
+- [x] Paramètres de l'agenda → **activer l'agent**, heure nocturne quelconque → **Lancer l'analyse** (`PUT agent-settings` 200, `PATCH fleet-metier` 200) — **F6** : le sélecteur **Métier** affichait « Transport d'enfants » pour une flotte GENERIC (`[value]` posé avant les options du `@for`). Corrigé (`[selected]`). **F7** : deux ascenseurs emboîtés dans la feuille, la molette n'atteignait pas le bas. Corrigé ;
+- [x] le bilan du passage : « **453 proposition(s) préparée(s)** — l'avis de l'IA arrivera au prochain passage du poste », **0 réservation ferme** ;
+- [x] des **pastilles en pointillé** apparaissent sur la grille ; le panneau du jour porte « Proposé par l'agent » avec **Réserver / Écarter** — **F19** 🔴 : seules les **200** premières propositions étaient rendues (`take: 200`), plus rien après le 3 octobre, badge « 200 ». Corrigé : 1 000 + avertissement journalisé ;
+- [x] **Réserver** une proposition → `POST …/apply` 201, elle devient ferme, disparaît des pointillés (39 → 38) ; **Écarter** une autre → `POST …/dismiss` 201, elle s'en va ;
+- [x] onglet **Propositions IA** : la liste ne montre que des départs **à venir** (premier : lundi 08:39, il était 07:26) ;
+- [x] **Réorganiser** → 30 jours → posées par l'agent → **simulation** juste, puis **appliquer** → `POST /reservations/reorganiser` 200 × 2, **les deux annulations ont disparu de la grille** (R-5) — **F18** 🔴 : le lot contenait **ma demande publique validée**, étiquetée « agent » (`source: SYSTEM` des deux côtés). Corrigé : `origineReservation()` — agent / lien public / manuelle ; « posées par l'agent » ne prend plus que l'agent.
 
-## 5. La feuille Optimisation *(P1-4, P1-5)*
+## 5. La feuille Optimisation *(P1-4, P1-5)* — **non exerçable sur la démo**
+
+Le bouton « Optimisation » n'existe que si la fonctionnalité IA « capacité » est ouverte à la
+société (`aiStatus.can('capacity')`) — elle ne l'est pas sur la démo. Tenu par `ng build` (le seul
+à voir les gabarits) et les tests unitaires de la feuille. **À regarder en prod après déploiement,
+société cdef31.**
 
 - [ ] en super-admin, bandeau sur Transports Méridien → la feuille affiche **« Société : Transports Méridien »** (plus de sélecteur) ; bandeau sur « Toutes » → message « choisissez une société dans le bandeau », bouton Analyser grisé ;
 - [ ] le **métier** affiché est celui de la société ; le changer → toast, et la valeur **tient** à la réouverture ;
@@ -70,19 +85,22 @@ Créer depuis « Évènement » :
 - [ ] **Appliquer** une proposition → le bandeau « conservé » disparaît, la fiche véhicule porte les places ;
 - [ ] `/admin/ai-usage` : **une seule** analyse de capacité facturée, pas deux.
 
-## 6. Les missions *(P2-1, P2-2)*
+## 6. Les missions *(P2-1, P2-2)* — **non exerçable sur la démo** (aucun compte dépôt)
 
-- [ ] onglet **Missions** → créer une mission demain (véhicule libre, dépôt destinataire = `demo-…`) → son ombre apparaît sur la grille, libellée **« Mission »** avec l'icône camion (P2-2) ;
+Tenu par 3 tests API (refus de toucher une MISSION depuis l'agenda) et le gabarit vérifié à la
+construction.
+
+- [ ] onglet **Missions** → créer une mission demain → son ombre apparaît sur la grille, libellée **« Mission »** avec l'icône camion (P2-2) ;
 - [ ] panneau du jour sur cette mission → **aucun bouton** « En cours / Terminé / Supprimer », mention « Se pilote depuis l'onglet Missions » (P2-1) ;
 - [ ] onglet Missions → **Terminer** la mission → l'ombre passe « Terminé » sur la grille.
 
 ## 7. Ce qui se voit côté admin *(T83, rythme, P2-5)*
 
-- [ ] `/admin/background-tasks` → bloc **Arriéré** : le rythme affiché est « par jour » **hors trajets neufs** (sur la démo : petit, mais cohérent avec le restant) ;
-- [ ] l'entrée **« Agent nocturne d'optimisation d'agenda »** dit qu'à chaque heure il **expire** et **purge** ;
-- [ ] `/admin/errors` : aucune ligne `agents-locaux` ni `AGENDA_AGENT` née pendant la recette.
+- [~] `/admin/background-tasks` → la page rend le **rattrapage des récits** (9 à écrire, périmètre, cadence) sans erreur ; le chiffre « par jour » de l'arriéré vit sur l'écran « Voir l'écran → », non ouvert ce matin ;
+- [ ] l'entrée **« Agent nocturne d'optimisation d'agenda »** dit qu'à chaque heure il **expire** et **purge** *(texte non relu ce matin ; il est verrouillé par `catalogue-exhaustif.spec.ts`)* ;
+- [~] `/admin/errors` : **route super-admin, la démo renvoie à la connexion**. Remplacé par une lecture SQL de `error_logs` de la démo sur les 4 dernières heures — voir le suivi de revue.
 
-## 8. Les rôles *(D3, D5)*
+## 8. Les rôles *(D3, D5)* — **non exercé** : il faut se connecter avec les comptes `demo-*`, et je ne saisis jamais un mot de passe
 
 - [ ] `demo-gestionnaire@` : voit l'agenda, réserve, valide ; **pas** de Paramètres de l'agenda ;
 - [ ] `demo-veilleur@` : `/agenda` **refusé** (comme `emu@` chez cdef31) ;
@@ -96,14 +114,17 @@ Créer depuis « Évènement » :
 | L'e-mail vers `standard@` / `j.hendriks@` | on n'écrit jamais au client depuis une recette (faute du 24/09) — prouvé `DELIVERED` le 24/09 |
 | Le rapport hebdomadaire | cron du lundi 08:00 ; il part de la prod vers `j.hendriks@`, adresse prouvée |
 | La purge P2-5 | sur la prod elle n'efface **rien** avant le 07/10 (plus ancienne close : 09/07) — mesuré |
+| La feuille Optimisation, les missions, les rôles | voir §5, §6, §8 |
 
-## 10. Après la recette : le déploiement de 10 h
+## 10. Après la recette : le déploiement
 
 1. **Mesurer qui est en ligne** (sessions, activités, requêtes réelles) — si la veilleuse ou un compte
    client est actif, on attend.
 2. `bash /opt/vizyo-tracky/deploy/vps/deploy.sh --attendre` — jamais `compose up`. Il refuse de
    lui-même 05:30–09:00 et HH:42–46.
-3. Vérifier **les artefacts dans les conteneurs** (`purgerPropositions`, `MAX_EVENEMENTS_PAR_FENETRE`
-   côté API ; `op-fleet`, `estUneEcheance` côté web), la santé, le journal — pas `docker ps`.
-4. Ouvrir `/agenda` sur cdef31 : compteurs, liste, pointillés, panneau du jour. **Regarder l'écran.**
+3. Vérifier **les artefacts dans les conteneurs** (`purgerPropositions`, `PROPOSITIONS_LISTE_MAX`,
+   `origineReservation` côté API ; `op-fleet`, `estUneEcheance`, `ro-tag--public` côté web), la
+   santé, le journal — pas `docker ps`.
+4. Ouvrir `/agenda` sur cdef31 : compteurs, liste, pointillés, panneau du jour, **et la feuille
+   Optimisation** (§5, non vue sur la démo). **Regarder l'écran.**
 5. La démo suit d'elle-même (`deploy.sh` la recrée après que la prod est saine).

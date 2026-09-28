@@ -42,6 +42,16 @@ const KEEP_RUNS_PER_FLEET = 100;
 const RETENTION_PROPOSITIONS_CLOSES_MS = 90 * DAY_MS;
 /** P2-5 — par passage horaire : le reliquat s'écoule en plusieurs passages, jamais en un verrou. */
 const PURGE_LOT_MAX = 5_000;
+/**
+ * Plafond de la liste des propositions rendue à l'écran (grille en pointillé, onglet
+ * « Propositions IA », panneau du jour).
+ *
+ * Recette du 28/09 sur la démo : `take: 200` sur 453 propositions triées par départ — la grille
+ * s'arrêtait au 6ᵉ jour et le badge disait « 200 », **sans un mot**. Même famille que P2-3
+ * (`MAX_EVENEMENTS_PAR_FENETRE`). À ~35 propositions par jour sur une flotte de 37 véhicules, 1 000
+ * couvre un horizon d'un mois ; quand le plafond mord, le journal le dit avec la société.
+ */
+export const PROPOSITIONS_LISTE_MAX = 1_000;
 /** Anti-storm : au plus une (re)analyse ÉVÉNEMENTIELLE par flotte toutes les 5 min. */
 const EVENT_THROTTLE_MS = 5 * 60 * 1000;
 /** Type du travail de la file du poste qui porte le jugement de l'IA (design/C3 point 7). */
@@ -487,8 +497,14 @@ export class AgendaAgentRunnerService {
         ...(status === 'pending' ? { startAt: { gte: new Date() } } : {}),
       },
       orderBy: { startAt: 'asc' },
-      take: 200,
+      take: PROPOSITIONS_LISTE_MAX,
     })) as ProposalRow[];
+    if (rows.length === PROPOSITIONS_LISTE_MAX) {
+      this.logger.warn(
+        `Propositions tronquées à ${PROPOSITIONS_LISTE_MAX} pour la société ${id} (statut ${status}) : ` +
+          'la grille et le badge ne montrent pas les plus lointaines.',
+      );
+    }
     const vids = [...new Set(rows.map((r) => r.vehicleId))];
     const vehicles = vids.length
       ? await this.prisma.vehicle.findMany({ where: { id: { in: vids } }, select: { id: true, plate: true } })

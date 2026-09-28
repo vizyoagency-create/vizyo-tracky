@@ -374,7 +374,10 @@ describe('assertCodeUsableBy — le garde anti-transfert', () => {
 });
 
 describe('invitationState — ce que voit l\'admin', () => {
-  const base = { acceptedAt: null, openedAt: null, expiresAt: new Date(Date.now() + 1000) };
+  // Une minute, pas une seconde : `base` est calculé quand le `describe` s'évalue, et sous une suite
+  // complète chargée (271 fichiers, 28/09) plus d'une seconde s'écoulait avant « ouvert, puis
+  // envoyé » — l'invitation était EXPIRÉE, le test rouge sans rapport avec le code.
+  const base = { acceptedAt: null, openedAt: null, expiresAt: new Date(Date.now() + 60_000) };
 
   it('accepté l\'emporte sur tout le reste, même expiré', () => {
     // Une invitation acceptée puis expirée reste un consentement obtenu.

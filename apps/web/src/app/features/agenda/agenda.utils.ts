@@ -137,23 +137,26 @@ export function eventUrgency(ev: Pick<VehicleEventDto, 'status' | 'startAt'>, no
  * « À venir & en retard » — la règle UNIQUE qui décide si un évènement appartient à cette liste.
  *
  * Elle est le miroir exact des deux compteurs de l'en-tête (`GET /agenda/summary`) :
- *  - « En retard » = PLANNED ou OPEN dont l'échéance est passée ;
+ *  - « En retard » = PLANNED dont l'échéance est passée ;
  *  - « À venir »   = PLANNED dont l'échéance est encore devant.
  *
  * Audit du 24/09 (« compteur ≠ liste ») : le compteur ne comptait que les PLANNED, la liste
  * affichait aussi OPEN et IN_PROGRESS — on lisait « 1 en retard » au-dessus de trois lignes
  * rouges. Un IN_PROGRESS n'est ni à venir ni en retard : il est EN COURS, et c'est le panneau du
- * jour (et le compteur « Incidents ouverts ») qui le portent. Un OPEN à échéance future serait
- * une anomalie de saisie ; il ne compte nulle part, donc il ne s'affiche pas ici non plus.
+ * jour (et le compteur « Incidents ouverts ») qui le portent.
+ *
+ * Recette du 28/09 sur la démo : la première règle commune (« PLANNED, ou OPEN à échéance
+ * passée ») faisait pire — un incident déclaré à l'instant (OPEN, `startAt` = maintenant) passait
+ * « EN RETARD » dans la seconde. Un OPEN n'est pas en retard, il est OUVERT : même logement qu'un
+ * IN_PROGRESS (compteur « Incidents ouverts », pilule et panneau du jour). Seul un PLANNED a une
+ * échéance — à venir, ou dépassée — et la date ne décide plus de l'appartenance, seulement du tri
+ * et du badge (`eventUrgency`).
  *
  * Tout changement ici doit se refléter dans `vehicle-events.service.ts` (`summary`), et
  * inversement : deux règles qui divergent redonnent exactement le défaut d'origine.
  */
-export function estUneEcheance(ev: Pick<VehicleEventDto, 'status' | 'startAt'>, now = Date.now()): boolean {
-  if (ev.status === 'PLANNED') return true;
-  if (ev.status !== 'OPEN') return false;
-  const due = new Date(ev.startAt).getTime();
-  return !Number.isNaN(due) && due < now;
+export function estUneEcheance(ev: Pick<VehicleEventDto, 'status' | 'startAt'>): boolean {
+  return ev.status === 'PLANNED'; // la date (`startAt`) ne décide plus : voir ci-dessus
 }
 
 /** Couleur associée à une urgence (listes à venir / en retard) — mêmes règles que eventColor. */

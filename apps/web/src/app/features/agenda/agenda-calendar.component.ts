@@ -349,8 +349,12 @@ export function annulationSansObjet(
       color: var(--fg-tertiary);
       padding-left: 3px;
     }
-    /* Sprint 8 — badges coin haut-droit : activité réelle (bleu plein) + usage prévu (violet pointillé). */
-    .cal-badges { position: absolute; top: 5px; right: 5px; display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
+    /* Sprint 8 — badges coin haut-droit : activité réelle (bleu plein) + usage prévu (violet pointillé).
+       Recette du 28/09 : en COLONNE, le second badge descendait sur la première pilule, dont le texte
+       passait dessous (« Vidange + filtres (recette — J… » sous « ● 13 / ~18 »). En LIGNE, les deux
+       tiennent sur la rangée du numéro du jour (6 px de marge + 12 px), et les pilules commencent
+       en dessous. Ils sont masqués en mobile (media query plus bas) : la largeur ne se pose qu'au-delà. */
+    .cal-badges { position: absolute; top: 4px; right: 5px; display: flex; flex-direction: row; align-items: center; gap: 3px; }
     .cal-activity {
       display: inline-flex;
       align-items: center;

@@ -180,16 +180,20 @@ describe('VehicleEventsService — la garde MISSION (P2-1)', () => {
  * `overdue` ne comptait que les PLANNED alors que le contrat du DTO disait « PLANNED/OPEN » et
  * que la liste affichait les OPEN. Et filtrer par groupe ou véhicule ne changeait pas les
  * compteurs : l'écran suggérait un périmètre qu'il n'appliquait pas.
+ *
+ * Recette du 28/09 (démo) : compter les OPEN faisait passer un incident déclaré à l'instant pour
+ * « en retard ». Un OPEN est OUVERT (`openIncidents`) ; seul un PLANNED a une échéance à dépasser.
+ * Le contrat du DTO et la règle web (`estUneEcheance`) disent la même chose depuis ce jour.
  */
 describe('VehicleEventsService — summary : statuts et périmètre', () => {
   const countOf = (prisma: unknown) => (prisma as { vehicleEvent: { count: jest.Mock } }).vehicleEvent.count;
 
-  it('« En retard » compte PLANNED et OPEN dont l’échéance est passée — comme la liste', async () => {
+  it('« En retard » compte les seuls PLANNED dont l’échéance est passée — comme la liste ; un OPEN est ouvert, pas en retard', async () => {
     const prisma = makePrisma();
     const svc = new VehicleEventsService(prisma, access('ALL'));
     await svc.summary(makeUser());
     const enRetard = countOf(prisma).mock.calls[0][0].where;
-    expect(enRetard.status).toEqual({ in: ['PLANNED', 'OPEN'] });
+    expect(enRetard.status).toBe('PLANNED');
     expect(enRetard.startAt).toEqual({ lt: expect.any(Date) });
   });
 

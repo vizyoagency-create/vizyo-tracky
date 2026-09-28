@@ -438,6 +438,93 @@ vérification d'appareil**, et c'est ça le vrai problème, pas la notification.
 
 ---
 
+## 2026-09-28, 07 h – 09 h — la recette sur la démo, et ce qu'elle a trouvé
+
+Chrome piloté sur `demo-tracky.vizyoagency.com` (compte du propriétaire, bandeau « Transports
+Méridien »), plan `RECETTE-PREVIEW-DEMO-2026-09-28.md`, sections 0 à 4 et 7 exercées geste par
+geste, **requêtes réseau lues à chaque étape**. Le tactile avait été validé la veille au téléphone
+par le propriétaire. Les cases cochées et les verdicts sont dans le plan lui-même.
+
+### Ce qui marche, prouvé à l'écran et dans le réseau
+
+- **Compteurs et liste** suivent le même périmètre : `GET /agenda/summary?…&vehicleId=` part à
+  chaque changement de filtre (P2-4) ; le filtre de type laisse les compteurs en place.
+- **Glisser-déposer** à la souris : `PATCH` 200, heure et durée conservées ; vers le passé : refusé.
+- **Réservation** depuis la barre : le motif devient le titre (R-1) ; **carte QR** avec le domaine
+  de la démo (R-6) ; **lien public** → demande de 11 places → deux véhicules de 9 pré-retenus (même
+  `bookingRef`) ; `reservation_requested` au demandeur, `reservation_request_pending` aux deux
+  valideurs cochés, `public_booking_submitted` dans l'activité ; **valider** →
+  `reservation_validee` + courriel de confirmation ; **refuser** → `reservation_refusee` ; couper le
+  **dernier** destinataire → `PUT` 400 et toast (garde tenue).
+- **L'agent** sur les vrais trajets : activé, métier GENERIC enregistré (`PUT agent-settings` 200,
+  `PATCH fleet-metier` 200), « Lancer l'analyse » → **453 propositions, 0 réservation ferme**, en
+  pointillé sur la grille ; panneau du jour « Proposé par l'agent » → **Réserver** (`POST …/apply`
+  201 : pilule ferme, pointillé décrémenté) et **Écarter** (`POST …/dismiss` 201) ; la liste
+  « Propositions IA » ne montre que des départs à venir ; **Réorganiser** → 30 j → posées par
+  l'agent → simulation juste, appliquée (`POST /reservations/reorganiser` 200 × 2), et **les deux
+  annulations ont disparu de la grille** (R-5).
+- `/admin/background-tasks` : le catalogue rend le rattrapage des récits avec son rythme et son
+  périmètre, sans erreur de rendu.
+
+### Ce qu'elle a trouvé — neuf défauts corrigés le matin même, sur `main`
+
+| | Constat | Correctif |
+|---|---|---|
+| 🔴 **F18** | **« Posées par l'agent » englobait les demandes du lien public.** Le flux public écrit `source: SYSTEM` comme l'agent ; « Réorganiser → posées par l'agent → tout annuler » aurait annulé une demande de conducteur validée par le standard. Chez un client où l'agent ne réserve rien (cdef31, autonomie « suggestions »), **les SYSTEM sont même exclusivement ça**. Vu à l'écran : « GD-057-AG · agent » sur ma demande publique. | `origineReservation()` dans `reservations.service.ts` : `agent` / `public` (`metadata.public`) / `manuelle` ; le filtre `auto` ne prend plus que l'agent ; l'aperçu porte `origine` et l'écran étiquette « lien public ». Test ajouté. |
+| 🔴 **F19** | **La grille ne montrait que les 200 premières propositions** (`take: 200` dans `list()`, tri par départ) : 453 préparées, badge « 200 », et **plus rien après le 3 octobre** — sans un mot. Même famille que P2-3. | Plafond porté à 1 000, et le journal le dit quand il mord (`PROPOSITIONS_LISTE_MAX`). |
+| **F1** | **Un incident déclaré à l'instant passait « EN RETARD » dans la seconde** : la règle commune du 27/09 (« PLANNED, ou OPEN à échéance passée ») comptait un OPEN dont `startAt` = maintenant. Mon propre défaut, né en corrigeant « compteur ≠ liste ». | Seul un PLANNED est une échéance, des deux côtés (`estUneEcheance`, `summary`) ; le **contrat du DTO** est corrigé — c'est lui qui avait tort le 24/09, pas seulement le code. Un OPEN vit dans « Incidents ouverts », comme un IN_PROGRESS. Tests réécrits. |
+| **F2** | Les badges **● activité / ~ prévu**, empilés en colonne, recouvraient la première pilule : « Vidange + filtres (recette — J… » passait sous « ● 13 / ~18 ». | Badges en ligne, sur la rangée du numéro du jour (`agenda-calendar.component.ts`). |
+| **F5** | La carte du jour d'une réservation montrait **le motif deux fois** (il est devenu le titre le 24/09). | `reservationReason()` tait le motif quand il est le titre. |
+| **F6** | **Paramètres → Métier affichait « Transport d'enfants » pour une flotte GENERIC** : `[value]` sur le `<select>` est posé avant que les options existent (`@for`), le navigateur retombe sur la première. Rien n'était écrit à tort (le `PATCH` ne part qu'au changement), mais on lisait un réglage faux. | `[selected]` sur chaque option. |
+| **F7** | **Deux ascenseurs emboîtés** dans la feuille Paramètres (`.aas-body` 62 dvh dans `.bs-content`) : à la molette, « Qui reçoit les demandes à valider » et les boutons du bas restaient hors d'atteinte. | Un seul ascenseur (celui de la feuille), pied en `position: sticky`. |
+| **F14** | La ligne d'un destinataire était un `<label>` entier : **un clic sur l'adresse basculait l'avis, et le `PUT` partait aussitôt** — j'ai coupé l'avis d'un gestionnaire par un clic égaré (rétabli). | Seul l'interrupteur agit ; l'adresse est son `aria-label`. |
+| **F15** | La file « À valider » appelait `GET /reservations?status=REQUESTED` **sans le filtre société** du bandeau (super-admin) — « Demander » le portait, « À valider » l'avait oublié. | `fleetId` passé. |
+
+### Ce qui reste à reprendre — après la mise en service, rien de bloquant
+
+- **F3** — les badges ● / ~ des cellules ignorent les filtres véhicule / groupe (ils parlent de tout
+  le parc) ; à scoper, ou à dire.
+- **F13** — une demande publique de 11 places pré-retient **deux** véhicules de 9 : la file « À
+  valider » les montre comme deux demandes indépendantes (même `bookingRef`). À regrouper : une
+  carte, un choix, une décision.
+- **F16** — un **refus** ne prévient pas le demandeur (la validation, si).
+- **F17** — l'activité système note `actor: 'utilisateur'` sur une décision, le nom n'est qu'en
+  `meta.parUtilisateur` ; c'est la convention de tout le dépôt (`opérateur`, `conducteur`…) : à
+  changer d'un coup, ou pas.
+- **F20** — le lien « Agent IA — DÉCOUVRIR » de la barre latérale mène à `/agenda`, rien de plus.
+
+### Ce que la démo n'a pas pu éprouver, et pourquoi
+
+| | Pourquoi | Ce qui en tient lieu |
+|---|---|---|
+| **§5 Optimisation** (P1-4, P1-5) | le bouton n'existe que si la fonctionnalité IA « capacité » est ouverte à la société (`aiStatus.can('capacity')`), et elle ne l'est pas sur la démo | `ng build` + tests unitaires de la feuille ; **à regarder en prod après déploiement**, société cdef31 |
+| **§6 Missions** | la démo n'a aucun compte dépôt | 3 tests API (refus MISSION) + gabarit vérifié à la construction |
+| **§8 Rôles** | il faut se connecter avec les comptes `demo-*` — je ne saisis jamais un mot de passe | matrice des permissions relue le 22/09, inchangée |
+| **Hors service** (§3) | non exercé ce matin | même code que la prod (`computeSuggestions`), éprouvé en prod le 24/09 |
+| `/admin/errors` | route super-admin : sur la démo, le compte est renvoyé à la connexion | lecture directe de `error_logs` de la démo en SQL : voir le plan, § 7 |
+
+### Les demandes du propriétaire, à concevoir (28/09, en regardant la recette)
+
+> « Un véhicule en garage, ça peut prendre une semaine. » — et il faut « penser comme les users :
+> la page doit être pratique, pas une tâche ».
+
+- **F8 / F9 — des évènements et des réservations sur plusieurs jours.** Le modèle porte déjà
+  `startAt` / `endAt` ; ce sont les formulaires (une date) et la disponibilité du jour (qui ne regarde
+  que `startAt`) qu'il faut faire raisonner sur l'intervalle. Une maintenance du 5 au 12 doit
+  immobiliser le véhicule **tous les jours** de l'intervalle, dans le panneau du jour comme dans les
+  suggestions.
+- **F10 — celui qui valide doit pouvoir changer les dates** (une réservation validée reste éditable
+  côté API depuis le 24/09 — `update()` — et une maintenance aussi : c'est l'écran qui ne l'offre pas).
+- **F11 — « cette maintenance est-elle terminée ? »** : à l'ouverture de l'agenda, une liste des
+  maintenances en cours dont la fin est passée (ou sans fin depuis plus d'un jour), avec **Oui,
+  terminée** / **Non, nouvelle date de fin**. C'est ce qui fait de la page un outil et non une
+  corvée : la clôture vient à l'utilisateur, il ne va pas la chercher.
+
+Ces quatre points sont **un lot** — ils changent le même modèle de disponibilité — et ils ne se
+font pas la matinée d'une mise en service.
+
+---
+
 ## Ce qu'il ne faut pas défaire
 
 - **L'agent ne réserve plus fermement.** Le réglage `autonomy` est passé à `suggest` en base le
