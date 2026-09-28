@@ -64,13 +64,40 @@ export class ReservationBookingNotifier {
     if (!m || m['public'] !== true) return; // uniquement les demandes publiques
     const contact = typeof m['requesterContact'] === 'string' ? (m['requesterContact'] as string) : '';
     if (!contact.trim()) return;
+    const groupe = await this.etatDuGroupe(m);
+    if (groupe.attend) return; // un frère encore en attente : on écrira à la dernière décision
     const built = this.email.buildReservationConfirmedEmail({
       fleetName: await this.fleetNameOf(payload.fleetId),
       slotLabel: this.fmtSlot(payload.startAt, payload.endAt),
       destination: typeof m['destination'] === 'string' ? (m['destination'] as string) : null,
-      vehicle: payload.vehiclePlate,
+      vehicle: groupe.plaquesConfirmees.length > 1 ? groupe.plaquesConfirmees.join(', ') : payload.vehiclePlate,
     });
     await this.notify(contact, payload.fleetId, built, 'reservation_confirmed');
+  }
+
+  /**
+   * F13 (recette prod du 28/09) — une demande publique de 11 places tient sur DEUX véhicules, qui
+   * portent le même `bookingRef` : chaque décision émettait son événement, et le demandeur recevait
+   * DEUX courriels de refus pour une seule demande (mesuré : `reservation_refused` × 2 à 09:37:11).
+   * Un seul courriel par décision : on se tait tant qu'un frère est encore en attente, et l'on
+   * écrit à la dernière décision — la confirmation nomme alors tous les véhicules retenus.
+   * Sans `bookingRef` (demande à un seul véhicule, ou ancienne), rien ne change.
+   */
+  private async etatDuGroupe(m: Record<string, unknown>): Promise<{ attend: boolean; plaquesConfirmees: string[] }> {
+    const ref = typeof m['bookingRef'] === 'string' ? (m['bookingRef'] as string) : '';
+    if (!ref) return { attend: false, plaquesConfirmees: [] };
+    try {
+      const freres = await this.prisma.vehicleEvent.findMany({
+        where: { type: 'RESERVATION', metadata: { path: ['bookingRef'], equals: ref } },
+        select: { status: true, vehicle: { select: { plate: true } } },
+      });
+      return {
+        attend: freres.some((f) => f.status === 'REQUESTED'),
+        plaquesConfirmees: freres.filter((f) => f.status === 'CONFIRMED').map((f) => f.vehicle?.plate ?? '').filter(Boolean),
+      };
+    } catch {
+      return { attend: false, plaquesConfirmees: [] }; // un journal illisible ne doit pas taire le demandeur
+    }
   }
 
   /**
@@ -90,6 +117,7 @@ export class ReservationBookingNotifier {
     if (!m || m['public'] !== true) return; // uniquement les demandes publiques
     const contact = typeof m['requesterContact'] === 'string' ? (m['requesterContact'] as string) : '';
     if (!contact.trim()) return;
+    if ((await this.etatDuGroupe(m)).attend) return; // F13 : un seul courriel par demande, à la dernière décision
     const built = this.email.buildReservationRefusedEmail({
       fleetName: await this.fleetNameOf(payload.fleetId),
       slotLabel: this.fmtSlot(payload.startAt, payload.endAt),
