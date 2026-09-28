@@ -679,6 +679,63 @@ Le choix d'un véhicule **dormant** par un humain reste possible côté API (la 
 un véhicule sans boîtier ou garé pour un pont est bien là) ; l'agent, lui, ne l'engage jamais.
 Tests : +4 (API). Types, `ng build`, suites vertes.
 
+### Preview sur la démo (12:00 – 12:10, Transports Méridien) — tout vu à l'écran et dans le réseau
+
+`git pull` + `compose build` sur le VPS (rien recréé, les noms `en-service` posés par V42 ont
+tenu), puis `up -d` de la démo seule : migration `20260928120000_stock_sieges_auto_par_societe`
+appliquée au démarrage, API saine, les trois lignes d'erreur structurelles et rien d'autre.
+
+| Geste | Vu |
+|---|---|
+| Paramètres de l'agenda → « Sièges auto de la société » | bloc présent, 0 / 0 avec l'avertissement ; saisie 2 / 3 → `PUT /agenda/child-seats` 200, toast « 2 bébé · 3 enfant », avertissement disparu |
+| Réserver → champs Bébé / Enfant | `GET …/availability` 200 ; « Disponibles sur ce créneau : 2 bébé sur 2 · 3 enfant sur 3 » relu à chaque créneau |
+| Bébé = 3 | ligne orange « il en manque pour cette demande » ; Réserver → **409** « Sièges auto insuffisants sur ce créneau : il manque 1 siège(s) « Bébé » (2 disponible(s) sur 2). Les deux types ne se remplacent pas. » |
+| Bébé = 1, Enfant = 2 | **201**, réservation ferme 13:00 → 14:00 ; en base `criteria = {"childSeatsBaby":1,"childSeatsChild":2}` (propre) |
+| Panneau du jour | « 31 / 37 véhicules disponibles » avec, nommés : 3 × « Hors service · boîtier débranché », 1 × « Hors service · immobilisé durablement », 1 × « Immobilisé · Pare-brise fissuré », 1 × « Réservé · 13h → 14h » ; carte « Sièges auto à installer : 1 bébé · 2 enfant » |
+| Feuille de réservation, sélecteur | « 4 véhicule(s) grisé(s) : déclaré(s) hors service » |
+| Lien public, dictée « 6 places avec 2 sièges bébé et 1 rehausseur pour Albi demain matin » | Places 6, Bébé 2, Enfant 1, Albi, 29/09 09:00 → 12:00 — tous « déduit » ; « 2 sièges bébé » n'est plus lu comme 2 places |
+| Lien public, Bébé = 3 | **400** « Les sièges auto « Bébé » demandés ne sont pas tous disponibles sur ce créneau… » — sans chiffre |
+| Lien public, Bébé = 1 | **201** « Demande envoyée » ; `criteria = {"childSeatsBaby":1,"childSeatsChild":1}`, `seatsNeeded 6` ; courriels : accusé au demandeur + avis aux **trois valideurs de la démo** (adresses de démo, aucune @cdef31.org) |
+| File « À valider » | carte « Sièges auto à installer : 1 bébé · 1 enfant · 6 places demandées » ; Valider → **201** (le stock de demain suffit) |
+
+Deux retouches d'écran vues en passant, corrigées avant le déploiement (`d09aa605`) : l'icône du
+bloc « Sièges auto à installer » passait au-dessus du libellé ; sur la page publique le libellé
+« Sièges enfant · siège, rehausseur · déduit » se repliait et désalignait les deux champs.
+
+### 🚀 Déployé le 28/09 à 13:41 (Paris) — et le créneau de déploiement est plus étroit qu'on ne le croyait
+
+`deploy.sh --attendre` (`d09aa605`) : migration jouée dans un conteneur éphémère avant toute
+recréation, API saine en 10 s, noms `en-service` posés sur les trois images (V42), démo recréée et
+saine (16 s), journal écrit, artefacts vérifiés **dans les conteneurs** (`child-seats.controller.js`,
+chaîne « Enregistrer le stock » dans le chunk web, colonnes présentes en base, 0 erreur au journal
+API). Personne d'autre en ligne : la seule session était la mienne.
+
+⚠️ **Première tentative refusée, et c'est une mesure utile.** Lancé à 12:06, le script a attendu le
+passage d'automatisation de 11:45, puis celui de 12:45, et s'est arrêté à 13:11 sur sa borne des
+65 min (« un passage ne dure jamais autant »). Mesuré au journal : les passages de 10:45 et 11:45 ont
+duré **52 et 58 min** — ils finissent à HH:37–HH:43, et la garde refuse de recréer entre HH:42 et
+HH:46. **La fenêtre où un déploiement peut passer fait donc 0 à 5 minutes par heure**, et le script
+doit déjà être en attente, avec ses images **pré-construites**, quand elle s'ouvre. C'est ce qui a
+été fait pour la seconde tentative : `compose build` à l'avance (13:12–13:17), script relancé à
+13:17, recréation à 13:41:06. À garder en tête pour les prochains passages en journée.
+
+### Recette prod (13:44 – 13:58, société Client test, bandeau vérifié avant chaque geste)
+
+| Geste | Vu |
+|---|---|
+| Paramètres de l'agenda (Client test) | bloc « Sièges auto de la société » 0 / 0 → 2 / 3, `PUT` 200, toast |
+| Réserver, 14:00 → 15:00 | « Disponibles sur ce créneau : 2 bébé sur 2 · 3 enfant sur 3 » (`GET …/availability` 200) ; Bébé = 3 → **409** « il manque 1 siège(s) « Bébé » (2 disponible(s) sur 2) » ; 1 / 2 → **201**, `criteria` propres en base |
+| Panneau du jour | « 7 / 8 véhicule(s) disponible(s) », « TEST-004-XX · Réservé · 14h → 15h », carte « Sièges auto à installer · 1 bébé · 2 enfant » |
+| Lien public de **Client test** (jamais celui de cdef31) | en-tête « CLIENT TEST » ; dictée « 5 places avec 2 sièges bébé et un rehausseur pour Albi demain matin » → 5 / 2 / 1 / Albi, tous « déduit » (`parse` 201) ; Bébé = 3 → **400** « Les sièges auto « Bébé » demandés ne sont pas tous disponibles… » ; Bébé = 1 → **201** « Demande envoyée » ; journal : « 5 place(s), 1 siège(s) bébé, 1 siège(s) enfant → Albi » |
+| Courriels | **deux, tous deux à l'adresse du propriétaire** (accusé au demandeur, avis au valideur — le seul valideur de Client test), `DELIVERED` ; **aucune adresse @cdef31.org** sur toute la fenêtre |
+| File « À valider » | carte « Sièges auto à installer : 1 bébé · 1 enfant · 5 places demandées » ; Valider → **201** |
+| Format mobile | l'app rendue à 412 px (cadre dans la page, même session) : feuille de réservation empilée, ligne « Disponibles… : 1 bébé sur 2 · 1 enfant sur 3 » (la réservation de 14 h engage bien 1 bébé et 2 enfant), Paramètres de l'agenda lisibles ; page publique à 375 px dans le navigateur intégré : champs empilés, libellés sur une ligne |
+
+Ménage : les deux réservations de recette supprimées, le stock de Client test remis à 0 / 0 — la
+société est rendue comme trouvée. **Le stock de cdef31 est à 0 / 0** : à eux de le compter dans
+Paramètres de l'agenda avant de demander un siège ; jusque-là, une réservation avec siège est
+refusée en le disant.
+
 ---
 
 ## Ce qu'il ne faut pas défaire
