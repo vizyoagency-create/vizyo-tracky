@@ -123,18 +123,24 @@ construction.
 > (Paramètres de l'agenda → « Qui reçoit les demandes à valider ») ; le contact des demandes est
 > l'adresse du propriétaire. Aucune action d'écriture sous le bandeau cdef31.
 
-- [ ] bandeau → **Client test** ; Paramètres → « Qui reçoit » ne liste aucune adresse `@cdef31.org` ;
-- [ ] **F8** — Évènement → maintenance « Passage au garage (recette) », du **J+1 au J+7**, immobilise → la grille porte 7 pilules (la 1re pleine, les 6 suivantes en **suite** pointillée), le panneau du **J+3** dit « du … au … » et le véhicule **immobilisé**, la suite ne se glisse pas, la 1re oui ;
-- [ ] **F8** — fin avant début refusée (le dialogue le dit avant d'envoyer ; le serveur le refuse aussi) ;
-- [ ] **F10** — carte du jour → **Modifier** → « Jusqu'au » J+9 → la grille suit (9 pilules), toast « Événement modifié » ;
-- [ ] **F11** — Évènement → maintenance « Courroie (recette) » datée **d'hier**, jusqu'à **hier**, puis « En cours » → la section **« À clore »** apparaît en tête d'agenda avec « fin prévue le …, dépassée » → **Non — nouvelle date de fin** (J+2) → elle sort de la liste, la grille s'étale jusqu'à J+2 → carte du jour → « À clore » n'a plus rien → (remettre hier via Modifier) → **Oui, terminée** → statut Terminé, fin réelle = maintenant ;
-- [ ] **F11** — un incident OPEN daté d'hier sans fin → « en cours depuis le …, sans date de fin » → « Oui, réglé » ;
-- [ ] **F9** — Réserver : toucher J+1 puis J+2 dans le sélecteur → créneau sur deux jours, la carte du jour écrit « lun. … 09:00 → mar. … 12:00 » ;
-- [ ] **F3** — filtrer par un véhicule → les badges ● / ~ des cellules tombent au seul véhicule ; retirer → ils reviennent ;
-- [ ] **F13** — lien public de Client test → demande de **11 places** (contact : adresse du propriétaire) → « Demandes » montre **une** carte « 2 véhicules », plaques dessous → **Refuser les 2** → **F16** : le courriel « Votre demande n'a pas pu être retenue » arrive au propriétaire ; `email_logs` porte `reservation_refused` ;
-- [ ] **F13** — nouvelle demande de 4 places → une carte simple → Valider → confirmation reçue ;
-- [ ] `/admin/errors` : aucune ligne `AGENDA`, `RESERVATION_BOOKING` née pendant la recette ;
-- [ ] ménage : les objets « (recette) » de Client test supprimés / annulés à la fin.
+> **Joué le 28/09 de 09:28 à 09:40 sur la prod, société Client test, déploiement `9e8b57e6`** (Chrome,
+> requêtes lues à chaque geste). Un seul compte dans cette société — le propriétaire, prévenu :
+> `email_logs` ne porte que son adresse sur toute la fenêtre.
+
+- [x] bandeau → **Client test** ; Paramètres → « Qui reçoit » ne liste que `younesshaddou31@gmail.com` ;
+- [x] **F8** — « Passage au garage (recette) » du 29/09 au 05/10 sur TEST-006-XX, immobilise → `POST` 201, 7 pilules (la 1re pleine, 6 suites pointillées), panneau du 1er oct. : « 7 / 8 disponibles », TEST-006-XX **immobilisé**, carte « du 29 sept. au 5 oct. » ;
+- [x] **F8** — Modifier → « Jusqu'au » 28/09 (avant le début) → toast « La fin doit être après le début », aucun `PATCH` ;
+- [x] **F10** — Modifier → « Jusqu'au » 07/10 → `PATCH` 200, carte « du 29 sept. au 7 oct. », 9 pilules ;
+- [x] **F11** — « Courroie (recette) » datée du 27/09 jusqu'au 27/09 → « En cours » → **« À clore »** : « TEST-003-XX Courroie — fin prévue le dim. 27 sept., dépassée » → **Non — nouvelle date de fin** 30/09 → `PATCH` 200, toast « Fin repoussée jusqu'au mer. 30 sept. », la ligne sort, la grille s'étale du 27 au 30 ;
+- [x] **F11** — incident « Pneu crevé (recette) » daté du 27/09 sans fin → « en cours depuis le dim. 27 sept., sans date de fin » → **Oui, réglé** → `PATCH` 200, « Incidents ouverts » 1 → 0, la section disparaît ;
+- [x] **F9** — Réserver : 29 puis 30 dans le sélecteur → `POST /reservations/request` 201, pilule sur les deux jours, carte « mar. 29 sept. 10:00 → mer. 30 sept. 11:00 » (la ligne « du … au » en double a été retirée le même matin, `34694997`) ;
+- [~] **F3** — non observable sur Client test (véhicules fictifs : aucune activité, aucun usage prévu) ; tenu par le code (même filtre que le panneau du jour) ;
+- [x] **F13** — lien public → 11 places, Albi, 01/10 09:00 → 12:00, contact = propriétaire → `submit` 201, deux lignes REQUESTED (`bookingRef 29d341ae4b14b4de`), « Demandes » : **une** carte « 2 véhicules — TEST-007-XX TEST-001-XX · un seul demandeur, 2 véhicules pré-retenus », **Refuser les 2** → deux `cancel` 201, file vide ;
+- [x] **F16** — `reservation_refused` **DELIVERED** au propriétaire à 09:37:11 — 🔴 **deux fois** (un courriel par véhicule du groupe). Corrigé et redéployé le même matin (`34694997`) : le notifier n'écrit qu'à la dernière décision du groupe, et la confirmation nomme tous les véhicules retenus ;
+- [x] `/admin/background-tasks` et le journal de l'API : 0 erreur après déploiement ;
+- [x] **rejeu après `34694997` (10:40)** — nouvelle demande de 11 places → « Refuser les 2 » → deux `cancel` 201 et **un seul** `reservation_refused` (10:40:58) ;
+- [x] ménage : les 4 évènements « (recette) » et les 4 lignes de demandes publiques de test supprimés de Client test à 10:45 (`DELETE` ciblé sur la société, la date et le titre) — 0 ligne restante.
+- Vu en passant, sur cdef31 (lecture seule) : **« À clore » remonte une vraie maintenance ouverte depuis le 21 août sans date de fin** (DZ-034-CA, Garage Renault) — exactement le cas que la liste devait faire remonter ; c'est à cdef31 d'y répondre.
 
 ## 10. Après la recette : le déploiement
 

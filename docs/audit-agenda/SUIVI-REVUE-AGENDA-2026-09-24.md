@@ -595,7 +595,23 @@ est marquée comme telle.
 | **F16** | Le demandeur public apprenait la validation, jamais le refus : il attendait. | `cancel()` d'une demande émet `reservation.refused` ; le notifier envoie **`reservation_refused`** (« Votre demande n'a pas pu être retenue », créneau, destination, « redemandez sur un autre créneau ») — au catalogue, prévisualisable, politique « automatique ». |
 
 Tests ajoutés : fin après début (4, API), refus → événement (2), notifier refus (2), catalogue
-(1 clé), `joursCouverts` (7, web). Types, `ng build` et les deux suites : voir ci-dessous.
+(1 clé), `joursCouverts` (7, web). Types, `ng build`, suite API (4 341) et suite web (788) verts.
+
+**Déployé à 09:25** (`9e8b57e6`, `deploy.sh --attendre`, personne d'autre en ligne, aucune
+migration, API saine en 15 s — et cette fois les repères de repli posés sur les trois images :
+V42 tient). **Recette sur la prod, société Client test, de 09:28 à 09:40** — les cases sont dans
+`RECETTE-PREVIEW-DEMO-2026-09-28.md` § 11 : F8, F10, F11 (les deux réponses), F9, F13 validés à
+l'écran et dans le réseau ; F3 non observable sur des véhicules fictifs. **Un défaut trouvé** :
+une demande groupée (deux véhicules, même `bookingRef`) faisait partir **deux** courriels de refus
+au demandeur — et en aurait fait partir deux de confirmation. Corrigé le même matin
+(`34694997`, +3 tests) : le notifier n'écrit qu'à la dernière décision du groupe, la confirmation
+nomme tous les véhicules retenus. Redéployé dans la foulée (le script a patienté sur le passage
+d'automatisation de 09:45, comme prévu). Aucun courriel n'a quitté la société Client test :
+`email_logs` ne porte que l'adresse du propriétaire sur toute la fenêtre.
+
+Vu en passant, en lecture seule : sur cdef31, « À clore » remonte dès la première ouverture une
+**vraie maintenance ouverte depuis le 21 août sans date de fin** (DZ-034-CA, Garage Renault) —
+le cas exact que la liste devait faire remonter. C'est à cdef31 d'y répondre.
 
 ---
 
