@@ -2697,8 +2697,65 @@ section "6. SECURITE"
 # ─────────────────────────────────────────────────────────────────────────────────────────────
 sub "Ports en ecoute"
 ss -tulpn 2>/dev/null | grep -E "LISTEN|UNCONN" | awk '{print "  "$1, $5, $7}' | sed 's/users:((//' | sort -u
+# ⚠️ AJOUTE LE 2026-09-28 (VPS-M127, VPS-050) — UNE ECOUTE PUBLIQUE TENUE PAR UN PROCESSUS DE L HOTE.
+# Depuis le 27/09 12:05 UTC, la liste ci-dessus portait « tcp 0.0.0.0:5027 "node" » et rien n en
+# disait rien : un node en ROOT, hors conteneur, lance dans un tmux, sur un port que le pare-feu
+# avait ouvert 24 s plus tot, et un journal par `tee -a` qui a pris 12 Mo en 15 min, sans rotation.
+# Tout ce que la machine expose passe d ordinaire par docker-proxy (Traefik, GPS) ou sshd ; le
+# reste est l EXCEPTION, et une exception se nomme : qui, depuis quand, sous quelle unite (donc
+# reviendra-t-il apres un redemarrage ?), ouvert au pare-feu ou non, et ce qu il ecrit sur le disque.
+# COUT : lecture de /proc pour chaque ecoute hors liste (0 a 2 d ordinaire), 0 commande docker.
+sub "Ecoutes PUBLIQUES tenues par un processus de l HOTE (ni docker-proxy, ni sshd) — VPS-M127"
+_hl=$(ss -Htlnp 2>/dev/null | awk '$4 !~ /^(127\.|\[::1\]|\[::ffff:127\.)/' \
+      | grep -v -e '"docker-proxy"' -e '"sshd"' -e '"systemd-resolve"' -e '"systemd"')
+if [ -z "$_hl" ]; then
+  echo "  ✅ aucune : toute ecoute publique passe par docker-proxy ou sshd"
+else
+  _ufwst=$(ufw status 2>/dev/null)
+  printf '%s\n' "$_hl" | while read -r _st _rq _sq _loc _peer _proc; do
+    _pid=$(printf '%s' "$_proc" | grep -o 'pid=[0-9]*' | head -1 | cut -d= -f2)
+    _port=${_loc##*:}
+    if [ -z "$_pid" ] || [ ! -d "/proc/$_pid" ]; then echo "  🟠 $_loc : processus NON RESOLU — mesure NON FAITE"; continue; fi
+    _user=$(ps -o user= -p "$_pid" 2>/dev/null | tr -d ' ')
+    _age=$(ps -o etimes= -p "$_pid" 2>/dev/null | tr -d ' ')
+    _cmd=$(tr '\0' ' ' < "/proc/$_pid/cmdline" 2>/dev/null | cut -c1-90)
+    _cg=$(sed -n 's#^0::##p' "/proc/$_pid/cgroup" 2>/dev/null | awk -F/ '{print $NF}')
+    _anc=""; _p=$_pid
+    for _i in 1 2 3 4; do
+      _p=$(ps -o ppid= -p "$_p" 2>/dev/null | tr -d ' '); [ -n "$_p" ] && [ "$_p" -gt 1 ] 2>/dev/null || break
+      _anc="$_anc < $(ps -o comm= -p "$_p" 2>/dev/null)"
+    done
+    _fw=$(printf '%s\n' "$_ufwst" | awk -v p="$_port" '($1==p || $1==p"/tcp") && $2=="ALLOW" {n++} END{print n+0}')
+    printf '  🟠 %-16s %s (pid %s, %s, depuis %s h)%s\n' "$_loc" "$_cmd" "$_pid" "$_user" "$(( ${_age:-0} / 3600 ))" "$_anc"
+    case "$_cg" in
+      *.service) echo "       unite : $_cg — revient apres un redemarrage SI elle est activee (systemctl is-enabled ${_cg})" ;;
+      *)         echo "       🔴 HORS DE TOUTE UNITE systemd (cgroup : ${_cg:-inconnu}) : il NE REVIENDRA PAS apres un redemarrage (V39),"
+                 echo "          et aucun catalogue ne le connait — ni ordonnancement, ni compose, ni timer." ;;
+    esac
+    if [ "$_fw" -gt 0 ]; then echo "       pare-feu : port $_port OUVERT ($_fw regle(s) ALLOW) — joignable depuis Internet"
+    else echo "       pare-feu : aucune regle ALLOW pour $_port — ecoute sur 0.0.0.0 mais FILTREE par ufw"; fi
+    [ "$_user" = "root" ] && echo "       ⚠️ ROOT qui lit des octets venus d Internet : un defaut d analyse de trame = la machine."
+    # ce que la SESSION du processus ecrit (un `| tee -a fichier` tient le fichier, pas le processus)
+    _sid=$(ps -o sid= -p "$_pid" 2>/dev/null | tr -d ' ')
+    for _q in $(ps -eo pid=,sid= 2>/dev/null | awk -v s="$_sid" '$2==s {print $1}'); do
+      for _f in /proc/"$_q"/fd/*; do
+        _t=$(readlink "$_f" 2>/dev/null); case "$_t" in /dev/*|socket:*|pipe:*|anon_inode:*|"") continue ;; esac
+        [ -f "$_t" ] || continue
+        _sz=$(stat -c %s "$_t" 2>/dev/null); _mt=$(stat -c %y "$_t" 2>/dev/null | cut -c1-16)
+        _lr=$(grep -rlsF "$_t" /etc/logrotate.d /etc/logrotate.conf 2>/dev/null | head -1)
+        printf '       ecrit : %s  %s Mo (modifie %s)  %s\n' "$_t" "$(( ${_sz:-0} / 1048576 ))" "$_mt" \
+          "$( [ -n "$_lr" ] && echo "rotation : $_lr" || echo "🟠 AUCUNE rotation (ni logrotate, ni json-file)" )"
+      done
+    done | sort -u
+    echo "       connexions etablies maintenant : $(ss -Htn "sport = :$_port" 2>/dev/null | wc -l)"
+  done
+  echo "  ⚠️ PORTEE : ce bloc NOMME, il ne juge pas. Une ecoute de test peut etre voulue ; elle doit alors"
+  echo "     avoir une echeance ecrite, et etre refermee (processus ET regle ufw) quand le test est fini."
+fi
 sub "Pare-feu"
-ufw status verbose 2>/dev/null | head -14 || echo "  ufw absent"
+# VPS-M127 : head -14 coupait la liste apres « 80/tcp (v6) » — les regles v6 de 443, 5023 et 5027
+# n apparaissaient pas. La liste est courte : on la lit entiere (borne 40 lignes).
+ufw status verbose 2>/dev/null | head -40 || echo "  ufw absent"
 sub "SSH — durcissement"
 # permitrootlogin=yes ET passwordauthentication=yes = root attaquable au dictionnaire.
 sshd -T 2>/dev/null | grep -Ei "^port |permitrootlogin|passwordauthentication|pubkeyauthentication|maxauthtries|permitemptypasswords"
