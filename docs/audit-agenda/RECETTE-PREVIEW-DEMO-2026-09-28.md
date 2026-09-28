@@ -116,6 +116,26 @@ construction.
 | La purge P2-5 | sur la prod elle n'efface **rien** avant le 07/10 (plus ancienne close : 09/07) — mesuré |
 | La feuille Optimisation, les missions, les rôles | voir §5, §6, §8 |
 
+## 11. Le lot du 28/09 (multi-jours, « terminée ? », F3 / F13 / F16) — recette SUR LA PROD, société « Client test »
+
+> ⚠️ **Règle absolue : aucun courriel vers `@cdef31.org`.** Tout se fait sur la société
+> **Client test** (bandeau), dont les valideurs prévenus sont vérifiés AVANT toute demande
+> (Paramètres de l'agenda → « Qui reçoit les demandes à valider ») ; le contact des demandes est
+> l'adresse du propriétaire. Aucune action d'écriture sous le bandeau cdef31.
+
+- [ ] bandeau → **Client test** ; Paramètres → « Qui reçoit » ne liste aucune adresse `@cdef31.org` ;
+- [ ] **F8** — Évènement → maintenance « Passage au garage (recette) », du **J+1 au J+7**, immobilise → la grille porte 7 pilules (la 1re pleine, les 6 suivantes en **suite** pointillée), le panneau du **J+3** dit « du … au … » et le véhicule **immobilisé**, la suite ne se glisse pas, la 1re oui ;
+- [ ] **F8** — fin avant début refusée (le dialogue le dit avant d'envoyer ; le serveur le refuse aussi) ;
+- [ ] **F10** — carte du jour → **Modifier** → « Jusqu'au » J+9 → la grille suit (9 pilules), toast « Événement modifié » ;
+- [ ] **F11** — Évènement → maintenance « Courroie (recette) » datée **d'hier**, jusqu'à **hier**, puis « En cours » → la section **« À clore »** apparaît en tête d'agenda avec « fin prévue le …, dépassée » → **Non — nouvelle date de fin** (J+2) → elle sort de la liste, la grille s'étale jusqu'à J+2 → carte du jour → « À clore » n'a plus rien → (remettre hier via Modifier) → **Oui, terminée** → statut Terminé, fin réelle = maintenant ;
+- [ ] **F11** — un incident OPEN daté d'hier sans fin → « en cours depuis le …, sans date de fin » → « Oui, réglé » ;
+- [ ] **F9** — Réserver : toucher J+1 puis J+2 dans le sélecteur → créneau sur deux jours, la carte du jour écrit « lun. … 09:00 → mar. … 12:00 » ;
+- [ ] **F3** — filtrer par un véhicule → les badges ● / ~ des cellules tombent au seul véhicule ; retirer → ils reviennent ;
+- [ ] **F13** — lien public de Client test → demande de **11 places** (contact : adresse du propriétaire) → « Demandes » montre **une** carte « 2 véhicules », plaques dessous → **Refuser les 2** → **F16** : le courriel « Votre demande n'a pas pu être retenue » arrive au propriétaire ; `email_logs` porte `reservation_refused` ;
+- [ ] **F13** — nouvelle demande de 4 places → une carte simple → Valider → confirmation reçue ;
+- [ ] `/admin/errors` : aucune ligne `AGENDA`, `RESERVATION_BOOKING` née pendant la recette ;
+- [ ] ménage : les objets « (recette) » de Client test supprimés / annulés à la fin.
+
 ## 10. Après la recette : le déploiement
 
 1. **Mesurer qui est en ligne** (sessions, activités, requêtes réelles) — si la veilleuse ou un compte

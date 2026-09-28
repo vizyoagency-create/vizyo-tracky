@@ -50,6 +50,8 @@ export type EmailTemplateId =
   // base et personne n'en savait rien — mesure du 22/09 : aucun canal cote flotte.
   | 'reservation_request_pending'
   | 'reservation_confirmed'
+  // F16 (recette du 28/09) : le demandeur apprenait la validation, jamais le refus.
+  | 'reservation_refused'
   | 'ai_invoice_request'
   | 'partner_consent_invitation'
   // Espace dépôt (2026-08) — une mission vient d'être assignée à un compte dépôt.
@@ -1904,6 +1906,42 @@ Un imprévu ? Répondez à cet e-mail. À bientôt.
     return { subject, html, text };
   }
 
+  /**
+   * F16 (recette du 28/09) — refus d'une demande publique. Le demandeur recevait l'accusé de
+   * réception puis la confirmation ; un refus ne lui disait rien, et il attendait. Même gabarit
+   * que la confirmation, l'autre verbe, et une porte de sortie : redemander sur un autre créneau.
+   */
+  buildReservationRefusedEmail(opts: {
+    fleetName: string;
+    slotLabel: string;
+    destination?: string | null;
+  }): { subject: string; html: string; text: string } {
+    const subject = `Votre demande de réservation n'a pas pu être retenue`;
+    const rows = [
+      this.kvRow('Créneau demandé', opts.slotLabel),
+      opts.destination ? this.kvRow('Destination', opts.destination) : '',
+    ].filter(Boolean);
+    const body = `
+        <tr><td style="padding:28px 36px 0;">
+          <h1 class="m-title" style="margin:0 0 12px;font-family:${EMAIL_FONT};font-size:25px;line-height:1.15;font-weight:800;letter-spacing:-0.025em;color:#0A1311;">Votre demande n'a pas pu être retenue</h1>
+          <p class="m-text" style="margin:0 0 20px;font-family:${EMAIL_FONT};font-size:15px;line-height:1.65;color:#56635E;">Bonjour, <span style="color:${EMAIL_ACCENT_TEXTE};font-weight:600;">${escapeHtml(opts.fleetName)}</span> n'a pas pu retenir votre demande de véhicule sur ce créneau. Voici le rappel de ce que vous aviez demandé :</p>
+          <table class="m-panel" role="presentation" width="100%" style="background:#F6F9F7;border:1px solid rgba(255,255,255,.07);border-radius:12px;border-collapse:separate;">
+            ${rows.join('')}
+          </table>
+          <p class="m-text" style="margin:20px 0 0;font-family:${EMAIL_FONT};font-size:13px;line-height:1.6;color:${EMAIL_TEXTE_SECOND};">Vous pouvez déposer une nouvelle demande sur un autre créneau depuis le même lien. Répondez à cet e-mail pour joindre la société.</p>
+        </td></tr>`;
+    const html = this.shell({ eyebrow: 'Réservation · Non retenue',
+      preheader: 'Votre demande de véhicule n\'a pas pu être retenue sur ce créneau.', footer: 'VIZYO TRACKY · RÉSERVATION DE VÉHICULES · E-mail automatique, ne pas répondre.', body });
+    const text = `Bonjour,
+
+${opts.fleetName} n'a pas pu retenir votre demande de véhicule.
+Créneau demandé : ${opts.slotLabel}${opts.destination ? `\nDestination : ${opts.destination}` : ''}
+
+Vous pouvez déposer une nouvelle demande sur un autre créneau depuis le même lien.
+— L'équipe Vizyo`;
+    return { subject, html, text };
+  }
+
   /** Facturation — un fleet-admin demande une FACTURE PHYSIQUE pour l'option IA (→ contact@vizyoagency.com). */
   buildAiInvoiceRequestEmail(opts: {
     fleetName: string;
@@ -2294,6 +2332,12 @@ ${this.commercialSignatureText()}`;
           slotLabel: 'mar. 8 juil., 09:00 → 17:00',
           destination: 'Carcassonne',
           vehicle: 'TE-001-ST',
+        });
+      case 'reservation_refused':
+        return this.buildReservationRefusedEmail({
+          fleetName,
+          slotLabel: 'mar. 8 juil., 09:00 → 17:00',
+          destination: 'Carcassonne',
         });
       case 'ai_invoice_request':
         return this.buildAiInvoiceRequestEmail({

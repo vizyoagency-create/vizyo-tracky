@@ -11,6 +11,26 @@ import {
 } from './agenda.utils';
 
 /** Pilule d'événement affichée dans une cellule (couleur + libellé court). */
+/**
+ * Lot multi-jours (28/09) — les jours civils (ISO locaux) qu'un évènement occupe : son premier
+ * jour, puis, s'il porte une fin sur un autre jour, chaque jour jusqu'à elle. Borné : la grille
+ * n'en montre jamais plus de 42, 62 laisse la marge d'une fin hors du mois. Sans fin, fin illisible
+ * ou fin avant le début : le seul premier jour — jamais de trou, jamais d'invention.
+ */
+export function joursCouverts(ev: Pick<VehicleEventDto, 'startAt' | 'endAt'>, maxJours = 62): string[] {
+  const d = new Date(ev.startAt);
+  if (Number.isNaN(d.getTime())) return [];
+  const jours = [localIso(d)];
+  const fin = ev.endAt ? new Date(ev.endAt) : null;
+  if (!fin || Number.isNaN(fin.getTime()) || fin.getTime() <= d.getTime()) return jours;
+  const curseur = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1);
+  while (curseur.getTime() <= fin.getTime() && jours.length < maxJours) {
+    jours.push(localIso(curseur));
+    curseur.setDate(curseur.getDate() + 1);
+  }
+  return jours;
+}
+
 interface CalendarPill {
   id: string;
   color: string;
@@ -25,6 +45,11 @@ interface CalendarPill {
    * déplacerait un engagement pris avec quelqu'un d'autre.
    */
   deplacable: boolean;
+  /**
+   * Lot multi-jours (28/09) : ce jour n'est pas le premier de l'évènement — la pilule est une
+   * « suite ». Jamais saisissable : c'est le DÉBUT qu'on déplace, depuis sa propre pilule.
+   */
+  suite: boolean;
 }
 
 /** Cellule du calendrier (un jour). */
@@ -144,10 +169,11 @@ export function annulationSansObjet(
               @for (p of c.pills; track p.id) {
                 <span class="cal-pill"
                       [class.cal-pill--muted]="p.muted"
+                      [class.cal-pill--suite]="p.suite"
                       [class.cal-pill--saisissable]="p.deplacable"
                       [class.cal-pill--prise]="enDeplacement() === p.id"
                       [style.--pill]="p.color"
-                      [title]="p.deplacable ? p.label + ' — glissez-la sur un autre jour pour la déplacer' : p.label"
+                      [title]="p.suite ? p.label + ' (suite — se déplace depuis son premier jour)' : p.deplacable ? p.label + ' — glissez-la sur un autre jour pour la déplacer' : p.label"
                       (pointerdown)="debuterSaisie($event, p, c.iso)">
                   <span class="cal-pill-text">{{ p.label }}</span>
                 </span>
@@ -337,6 +363,12 @@ export function annulationSansObjet(
       border-left-color: var(--fg-tertiary);
       text-decoration: line-through;
       text-decoration-thickness: 1px;
+    }
+    /* Lot multi-jours (28/09) — la SUITE d'un évènement commencé un jour précédent : même
+       encre, bord gauche en pointillé, un peu en retrait. Elle se lit comme « ça continue ». */
+    .cal-pill--suite {
+      border-left-style: dashed;
+      opacity: .82;
     }
     .cal-pill-text {
       overflow: hidden;
@@ -600,18 +632,26 @@ export class AgendaCalendarComponent {
     this.dayClick.emit(iso);
   }
 
-  /** Regroupe les événements par jour (clé ISO locale de leur startAt). */
+  /**
+   * Regroupe les événements par jour (clé ISO locale).
+   *
+   * Lot multi-jours (28/09) — « un véhicule en garage, ça peut prendre une semaine » : un
+   * évènement dont la fin tombe un autre jour occupe CHAQUE jour de l'intervalle, en « suite »
+   * après le premier. Avant, seule la journée de début portait une pilule, et une maintenance du
+   * 5 au 12 disparaissait de la grille dès le 6 alors que le panneau du jour la disait immobilisante.
+   * Borné à 62 jours : la grille n'en montre jamais plus de 42.
+   */
   private readonly eventsByDay = computed(() => {
-    const map = new Map<string, VehicleEventDto[]>();
+    const map = new Map<string, { ev: VehicleEventDto; suite: boolean }[]>();
     const maintenant = Date.now();
-    for (const ev of this.events()) {
-      const d = new Date(ev.startAt);
-      if (Number.isNaN(d.getTime())) continue;
-      if (annulationSansObjet(ev, maintenant)) continue;
-      const key = localIso(d);
+    const ajouter = (key: string, ev: VehicleEventDto, suite: boolean) => {
       const list = map.get(key);
-      if (list) list.push(ev);
-      else map.set(key, [ev]);
+      if (list) list.push({ ev, suite });
+      else map.set(key, [{ ev, suite }]);
+    };
+    for (const ev of this.events()) {
+      if (annulationSansObjet(ev, maintenant)) continue;
+      joursCouverts(ev).forEach((jour, i) => ajouter(jour, ev, i > 0));
     }
     return map;
   });
@@ -631,18 +671,19 @@ export class AgendaCalendarComponent {
       const iso = localIso(d);
       const dayEvents = byDay.get(iso) ?? [];
       // Tri : non clôturés d'abord, puis par heure de début.
-      const sorted = [...dayEvents].sort((a, b) => {
+      const sorted = [...dayEvents].sort(({ ev: a }, { ev: b }) => {
         const aDone = a.status === 'DONE' || a.status === 'CANCELLED' ? 1 : 0;
         const bDone = b.status === 'DONE' || b.status === 'CANCELLED' ? 1 : 0;
         if (aDone !== bDone) return aDone - bDone;
         return new Date(a.startAt).getTime() - new Date(b.startAt).getTime();
       });
-      const pills: CalendarPill[] = sorted.slice(0, MAX_PILLS).map((ev) => ({
+      const pills: CalendarPill[] = sorted.slice(0, MAX_PILLS).map(({ ev, suite }) => ({
         id: ev.id,
         color: eventColor(ev),
         label: ev.title || ev.vehiclePlate || '—',
         muted: ev.status === 'DONE' || ev.status === 'CANCELLED',
-        deplacable: this.estDeplacable(ev),
+        deplacable: !suite && this.estDeplacable(ev),
+        suite,
       }));
       return {
         iso,

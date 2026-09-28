@@ -74,6 +74,31 @@ export class ReservationBookingNotifier {
   }
 
   /**
+   * F16 (recette du 28/09) — REFUS d'une demande publique. Le demandeur recevait l'accusé de
+   * réception puis la confirmation ; un refus ne lui disait rien, et il attendait un véhicule qui
+   * ne viendrait pas. Même garde que la confirmation : demande publique, avec un contact.
+   */
+  @OnEvent('reservation.refused', { async: true })
+  async onRefused(payload: {
+    fleetId: string;
+    vehiclePlate: string | null;
+    startAt: string;
+    endAt: string | null;
+    metadata: Record<string, unknown> | null;
+  }): Promise<void> {
+    const m = payload?.metadata;
+    if (!m || m['public'] !== true) return; // uniquement les demandes publiques
+    const contact = typeof m['requesterContact'] === 'string' ? (m['requesterContact'] as string) : '';
+    if (!contact.trim()) return;
+    const built = this.email.buildReservationRefusedEmail({
+      fleetName: await this.fleetNameOf(payload.fleetId),
+      slotLabel: this.fmtSlot(payload.startAt, payload.endAt),
+      destination: typeof m['destination'] === 'string' ? (m['destination'] as string) : null,
+    });
+    await this.notify(contact, payload.fleetId, built, 'reservation_refused');
+  }
+
+  /**
    * P0-1 (2026-09-23) — PRÉVENIR CEUX QUI PEUVENT VALIDER.
    *
    * ┌─ LE TROU QUE CETTE MÉTHODE BOUCHE ────────────────────────────────────────┐

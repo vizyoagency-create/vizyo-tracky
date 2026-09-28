@@ -554,6 +554,51 @@ font pas la matinée d'une mise en service.
 
 ---
 
+## 2026-09-28, matinée — le lot produit, les trois petits points, et le ménage d'images
+
+Demandé par le propriétaire juste après la mise en service de 08:22 : « regarde le ménage
+d'images, il faut garder l'image du conteneur en service », puis « le lot produit (multi-jours,
+dates éditables par le valideur, liste « maintenance terminée ? ») et les petits points
+F3 / F13 / F16 — redéploie, et teste tout en preview sur Chrome, sur la prod directement, sans
+envoyer de mails au @cdef31.org ».
+
+### 🔴 V42 — l'image disparaissait sous son conteneur : ce n'était pas le ménage
+
+Une sonde sur le VPS (Docker 29.1.3, magasin d'images containerd) a tranché en trois builds :
+**reconstruire `x:latest` pendant qu'un conteneur tourne sur l'ancien `latest` fait disparaître
+l'ancienne image comme objet** — `docker image inspect <id>` répond « No such image », aucune
+image « dangling » n'apparaît, le conteneur continue sur son instantané. Le ménage nocturne
+(`docker image prune -af --filter until=72h`) épargne toute image utilisée par un conteneur, et
+72 h n'étaient pas passées : il n'y était pour rien. C'est la construction elle-même — celle de
+`deploy.sh` comme celle d'une preview sur la démo entre deux déploiements (23/09 13:36 et 28/09
+08:17 : « aucun repère posable », repli automatique impossible). **Une image qui porte un second
+nom survit** : mesuré avec la même sonde.
+
+`deploy.sh` nomme donc l'image de chaque conteneur en service après chaque santé —
+`tracky-api:en-service`, `tracky-web:en-service`, `tracky-lp:en-service`, `demo-en-service` pour la
+démo — après un déploiement, après un repli automatique, après la démo. Le nom suit le conteneur ;
+les repères `avant-*` ont toujours une image sous eux. Treize contrôles de plus au harnais (170
+verts), les noms posés à la main sur la prod et la démo en attendant le passage suivant
+(`10e6c663`). La procédure historique de `docs/DEPLOYMENT-VPS.md.md` (compose à la main + prune)
+est marquée comme telle.
+
+### Le lot produit
+
+| | Ce qui manquait | Ce qui est fait |
+|---|---|---|
+| **F8** multi-jours | Le formulaire « Évènement » n'avait qu'une date ; une maintenance « du 5 au 12 » n'existait pas, et la grille ne posait une pilule que sur le jour de début. | Champ **« Jusqu'au »** (+ heure de fin hors journée entière) ; le serveur refuse une fin avant le début (création et modification) ; la grille pose une **« suite »** en pointillé sur chaque jour de l'intervalle (`joursCouverts`, borné à 62 j, la suite n'est pas saisissable — c'est le début qu'on déplace) ; la carte du jour dit « du 5 au 12 ». |
+| **F9** réservation multi-jours | Le sélecteur savait déjà faire (deuxième clic sur un jour ultérieur), personne ne le trouvait ; la file « À valider » n'écrivait que l'heure de fin. | Une ligne sous le champ le dit ; la file et la carte du jour écrivent la date quand la fin change de jour. |
+| **F10** dates éditables | Une réservation validée s'éditait ; une maintenance ou un incident, non — seulement « en cours / terminé / supprimer ». | Bouton **Modifier** sur la carte du jour : même dialogue que la création, pré-rempli (dates, fin, titre, catégorie, sévérité, immobilisation, km, description) ; véhicule et type figés. |
+| **F11** « terminée ? » | Une maintenance en cours dont la date de retour était passée restait « en cours » tant que personne n'ouvrait sa carte de jour. | Section **« À clore »** en tête d'agenda, pour qui gère : chaque maintenance ou incident encore ouvert dont la fin prévue est passée (ou sans fin, commencé avant aujourd'hui), avec **« Oui, terminée »** (clos à l'instant, fin réelle = maintenant) et **« Non — nouvelle date de fin »** (date, et il disparaît jusque-là). Elle revient chaque jour jusqu'à la réponse. |
+| **F3** | Les badges ● / ~ des cellules ignoraient les filtres véhicule / groupe. | Ils suivent le même périmètre que la grille et le panneau du jour. |
+| **F13** | Une demande de 11 places pré-retient 2 véhicules : deux cartes indépendantes dans « À valider », qu'on pouvait valider à moitié. | Une carte par `bookingRef`, les plaques dessous, **« Valider les 2 » / « Refuser les 2 »** ; une validation à moitié faite se dit. |
+| **F16** | Le demandeur public apprenait la validation, jamais le refus : il attendait. | `cancel()` d'une demande émet `reservation.refused` ; le notifier envoie **`reservation_refused`** (« Votre demande n'a pas pu être retenue », créneau, destination, « redemandez sur un autre créneau ») — au catalogue, prévisualisable, politique « automatique ». |
+
+Tests ajoutés : fin après début (4, API), refus → événement (2), notifier refus (2), catalogue
+(1 clé), `joursCouverts` (7, web). Types, `ng build` et les deux suites : voir ci-dessous.
+
+---
+
 ## Ce qu'il ne faut pas défaire
 
 - **L'agent ne réserve plus fermement.** Le réglage `autonomy` est passé à `suggest` en base le

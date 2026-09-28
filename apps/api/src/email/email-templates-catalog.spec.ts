@@ -37,6 +37,7 @@ const EVERY_TEMPLATE: Record<EmailTemplateId, true> = {
   reservation_requested: true,
   reservation_request_pending: true,
   reservation_confirmed: true,
+  reservation_refused: true,
   ai_invoice_request: true,
   partner_consent_invitation: true,
   mission_assigned: true,

@@ -55,6 +55,7 @@ const POLITIQUE: Record<EmailTemplateId, Politique> = {
   // on y repond en ouvrant l'agenda, pas en repondant au courriel.
   reservation_request_pending: 'automatique',
   reservation_confirmed: 'automatique',
+  reservation_refused: 'automatique',
 
   // ── Conversations : une réponse est la suite normale ──
   // Vers l'extérieur : un prospect, un client.

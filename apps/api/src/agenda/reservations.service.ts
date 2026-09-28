@@ -671,6 +671,18 @@ export class ReservationsService {
     // demande en attente n'a pas le même sens qu'annuler une réservation déjà ferme. Le journal
     // doit les distinguer, sinon il raconte une histoire fausse.
     this.tracerDecision(etait === VehicleEventStatus.REQUESTED ? 'refusee' : 'annulee', user, row);
+    // F16 (recette du 28/09) : le demandeur d'une demande PUBLIQUE apprenait la validation, jamais
+    // le refus — il attendait un véhicule qui ne viendrait pas. Même événement que la confirmation,
+    // l'autre verbe ; le notifier ne réagit qu'aux demandes publiques avec un contact.
+    if (etait === VehicleEventStatus.REQUESTED) {
+      this.emitter?.emit('reservation.refused', {
+        fleetId: row.fleetId,
+        vehiclePlate: row.vehicle?.plate ?? null,
+        startAt: row.startAt.toISOString(),
+        endAt: row.endAt ? row.endAt.toISOString() : null,
+        metadata: (row.metadata as Record<string, unknown> | null) ?? null,
+      });
+    }
     return this.toDto(row);
   }
 

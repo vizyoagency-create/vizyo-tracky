@@ -1,4 +1,46 @@
-import { annulationSansObjet, peutEtreDeplace } from './agenda-calendar.component';
+import { annulationSansObjet, joursCouverts, peutEtreDeplace } from './agenda-calendar.component';
+
+/**
+ * LOT MULTI-JOURS (28/09) — « un véhicule en garage, ça peut prendre une semaine ».
+ *
+ * La grille ne portait une pilule que sur le jour de DÉBUT : une maintenance du 5 au 12
+ * disparaissait dès le 6, alors que le panneau du jour la disait immobilisante. Ce prédicat rend
+ * les jours qu'un évènement occupe ; la grille pose une « suite » sur chacun après le premier.
+ */
+describe('joursCouverts', () => {
+  it('sans fin : le seul jour de début', () => {
+    expect(joursCouverts({ startAt: '2026-10-05T08:00:00', endAt: null })).toEqual(['2026-10-05']);
+  });
+
+  it('une fin le même jour : toujours un seul jour', () => {
+    expect(joursCouverts({ startAt: '2026-10-05T08:00:00', endAt: '2026-10-05T18:00:00' })).toEqual(['2026-10-05']);
+  });
+
+  it('du 5 au 12 : huit jours, le premier compris, le dernier aussi', () => {
+    const jours = joursCouverts({ startAt: '2026-10-05T08:00:00', endAt: '2026-10-12T18:00:00' });
+    expect(jours.length).toBe(8);
+    expect(jours[0]).toBe('2026-10-05');
+    expect(jours[7]).toBe('2026-10-12');
+  });
+
+  it('une fin à minuit pile le lendemain occupe le lendemain (le véhicule y est encore immobilisé)', () => {
+    expect(joursCouverts({ startAt: '2026-10-05T08:00:00', endAt: '2026-10-06T00:00:00' })).toEqual(['2026-10-05', '2026-10-06']);
+  });
+
+  it('une fin AVANT le début, ou illisible : on ne raconte rien de plus que le début', () => {
+    expect(joursCouverts({ startAt: '2026-10-05T08:00:00', endAt: '2026-10-04T18:00:00' })).toEqual(['2026-10-05']);
+    expect(joursCouverts({ startAt: '2026-10-05T08:00:00', endAt: 'pas une date' })).toEqual(['2026-10-05']);
+  });
+
+  it('un début illisible ne produit aucun jour', () => {
+    expect(joursCouverts({ startAt: 'pas une date', endAt: '2026-10-12T18:00:00' })).toEqual([]);
+  });
+
+  it('⚠️ borné : un incident « jusqu’à nouvel ordre » daté d’un an ne fabrique pas 365 pilules', () => {
+    expect(joursCouverts({ startAt: '2026-10-05T08:00:00', endAt: '2027-10-05T08:00:00' }).length).toBe(62);
+    expect(joursCouverts({ startAt: '2026-10-05T08:00:00', endAt: '2027-10-05T08:00:00' }, 10).length).toBe(10);
+  });
+});
 
 /**
  * LA REPRISE EN MASSE LAISSAIT AUTANT DE LIGNES BARRÉES QU'ELLE ANNULAIT DE RÉSERVATIONS.
