@@ -1,7 +1,7 @@
 {
   "_comment": "Ce que le POSTE DE COMMANDE montre en plus des tâches. Les tâches, elles, viennent de docs/centre-alerte/app/taches.json et ne se recopient JAMAIS ici — voir generer.mjs. Ce fichier ne porte que ce qu'aucune tâche ne décrit : les mesures de tête, les mécaniques qui tournent seules, les décisions posées au propriétaire, et ce qui est prouvé.",
   "version": 1,
-  "releve": "27 septembre 2026, 03h15 Paris",
+  "releve": "28 septembre 2026, 03h14 Paris",
   "machines": [
     {
       "nom": "Rattrapage du recalage des tracés",
@@ -20,23 +20,23 @@
       "pied2": "s’éteint seule"
     },
     {
-      "nom": "Coupe-circuit automatique — 12 nuits sur le chantier : nuits 25→26 et 26→27 à l’heure, mais HM-787-GA sans reprise",
-      "texte": "Les deux dernières nuits sont les plus propres depuis la mise en service : le S21 n’a pas décroché une seule fois en 48 h, aucune coupe retenue, 57 coupes parties à l’heure (MH Cars à 20:00, CDEF31 de 22:00 à 22:06) et toutes acquittées, 57 reprises émises et acquittées (une par le secours SMS en 40 s), preuve SMS 6 sur 6. Mais HM-787-GA (CDEF31) est resté coupé environ 23 h, toute sa journée de samedi, sans aucune alerte : le veilleur de nuit l’a rallumé puis recoupé à 23:38 le 25/09, et une coupe du veilleur tient « sans échéance » — le planificateur n’a donc pas émis sa reprise de 07:00. Il a refait le même geste à 22:44 le 26/09 : la reprise de ce dimanche 07:00 ne partira pas non plus (TRK-098, T84). HM-733-GA rallumé à la main pour la 11ᵉ nuit sur 12, GS-187-NY deux soirs de suite.",
+      "nom": "Coupe-circuit automatique — 13 nuits sur le chantier : nuit 27→28 à l’heure ; HM-787-GA a manqué sa reprise du dimanche, rallumé à la main",
+      "texte": "Douzième nuit propre sur les trois dernières : le S21 n’a pas décroché depuis le 24/09, aucune coupe retenue, 29 coupes à l’heure (MH Cars à 20:00, CDEF31 de 22:00 à 22:06) toutes acquittées, 28 reprises émises dimanche matin et toutes acquittées (3 par le secours SMS, dont BP-434-RD : sa SIM répond de nouveau), preuve SMS 3 sur 3. Comme annoncé, HM-787-GA n’a pas été repris dimanche à 07:00 (coupe du veilleur « sans échéance », TRK-098) : il est resté coupé environ 21 h, jusqu’à ta remise en route à 19:36. Le soir, le veilleur l’a rallumé sans le recouper : ce matin, plus aucun véhicule n’est sous coupe sans échéance. Déploiement a3a8be21 à 20:16, entre les deux vagues de coupe, sans rien interrompre.",
       "fait": null,
       "total": null,
-      "pied": "36 plannings actifs sur 38 (31 CDEF31 + 5 MH Cars) — 12 nuits : 9 probantes, 1 retenue par l’interlock (15/09), 2 retardées par le téléphone (22/09, 24/09) ; 1 véhicule sans reprise le 26/09 (HM-787-GA, coupe veilleur)",
-      "pied2": "prévenir CDEF31 pour HM-787-GA ce matin (T84) ; les adresses de cdef31 avant lundi 28/09 06:05 (T80) ; le téléphone (T55) ; T82 + T79 + T76 ensemble ; T83 (petit) ; décider l’élargissement (T38)"
+      "pied": "31 plannings actifs sur 37 mesurés (26 CDEF31 + 5 MH Cars) — 13 nuits : 10 probantes, 1 retenue par l’interlock (15/09), 2 retardées par le téléphone (22/09, 24/09) ; 2 reprises perdues pour HM-787-GA (26 et 27/09, coupe veilleur)",
+      "pied2": "vérifier le rapport hebdo cdef31 de 06:05 (T80) ; écrire T84 et trancher l’échéance d’une coupe veilleur ; le téléphone (T55) ; T82 + T79 + T76 ensemble ; T83 (petit) ; décider l’élargissement (T38)"
     }
   ],
   "chiffres": [
     {
-      "v": "1",
-      "t": "véhicule resté coupé toute une journée sans une alerte : HM-787-GA, sans reprise le 26/09 à 07:00 (coupe du veilleur « sans échéance ») — et pas de reprise ce dimanche non plus ; pour le reste, 48 h sans silence du téléphone, 57 coupes et 57 reprises à l’heure, 155 CRITICAL actives (+2), 2 signatures nouvelles",
+      "v": "0",
+      "t": "véhicule sous coupe sans échéance ce matin — HM-787-GA a manqué sa reprise de dimanche (TRK-098) et tu l’as rallumé à 19:36 ; nuit 27→28 propre : 29 coupes et 28 reprises acquittées, preuve 3/3, 147 CRITICAL actives (−8 : email-bloque et file archivées), 0 signature nouvelle ; ⚠️ aucun courriel journalisé depuis le 24/09 (86 h)",
       "alerte": true
     },
     {
-      "v": "660/660",
-      "t": "trajets des 23, 24 et 25/09 recalés dans les 2 h suivant leur création — trois journées figées (T28) ; le 26/09 est à 200/200, fenêtre encore ouverte"
+      "v": "647/647",
+      "t": "trajets des 24, 25 et 26/09 recalés dans les 2 h suivant leur création — trois journées figées (T28) ; le 27/09 est à 79/79, fenêtre encore ouverte"
     },
     {
       "v": "auto",
