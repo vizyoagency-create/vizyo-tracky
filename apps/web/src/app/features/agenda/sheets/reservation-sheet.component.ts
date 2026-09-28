@@ -90,6 +90,8 @@ function toLocalInput(d: Date): string {
             <div class="rs-f">
               <span>Créneau</span>
               <app-datetime-range [start]="startAt()" [end]="endAt()" [minDay]="retroactive() ? '' : todayIso()" (startChange)="startAt.set($event)" (endChange)="endAt.set($event)"></app-datetime-range>
+              <!-- F9 (28/09) : la plage multi-jours existait, personne ne la trouvait. On le dit. -->
+              <span class="rs-ai-hint">Un jour, ou plusieurs : touche le premier jour, puis le dernier.</span>
             </div>
             <!-- Consignation rétroactive : autorise un créneau passé pour enregistrer une sortie DÉJÀ faite. -->
             <label class="rs-retro" [class.rs-retro--on]="retroactive()">
@@ -200,14 +202,29 @@ function toLocalInput(d: Date): string {
             } @else if (pending().length === 0) {
               <div class="rs-empty"><lucide-icon [img]="InboxIcon" [size]="36" class="rs-empty-ic"></lucide-icon><p>Aucune demande en attente.</p></div>
             } @else {
-              @for (r of pending(); track r.id) {
-                <div class="rs-q">
+              <!--
+                F13 (recette du 28/09) — UNE demande, UNE carte, UNE décision. Une demande publique de
+                11 places pré-retient deux véhicules de 9 : ils portent le même « bookingRef » et
+                s'affichaient comme deux demandes indépendantes, qu'on pouvait valider à moitié.
+              -->
+              @for (g of groupes(); track g.cle) {
+                <div class="rs-q" [class.rs-q--groupe]="g.items.length > 1">
                   <div class="rs-q-top">
-                    <span class="rs-plate">{{ r.vehiclePlate || '—' }}</span>
-                    <span class="rs-q-when">{{ r.startAt | date:'dd MMM HH:mm' }} → {{ r.endAt | date:'HH:mm' }}</span>
+                    @if (g.items.length > 1) {
+                      <span class="rs-plate">{{ g.items.length }} véhicules</span>
+                    } @else {
+                      <span class="rs-plate">{{ g.chef.vehiclePlate || '—' }}</span>
+                    }
+                    <span class="rs-q-when">{{ g.chef.startAt | date:'dd MMM HH:mm' }} → {{ g.chef.endAt | date:(memeJour(g.chef) ? 'HH:mm' : 'dd MMM HH:mm') }}</span>
                   </div>
-                  <p class="rs-q-title">{{ r.title }}</p>
-                  @if (publicInfo(r); as pi) {
+                  <p class="rs-q-title">{{ g.chef.title }}</p>
+                  @if (g.items.length > 1) {
+                    <p class="rs-q-req">
+                      @for (r of g.items; track r.id) { <span class="rs-plate">{{ r.vehiclePlate || '—' }}</span> }
+                      · un seul demandeur, {{ g.items.length }} véhicules pré-retenus
+                    </p>
+                  }
+                  @if (publicInfo(g.chef); as pi) {
                     <p class="rs-q-req">
                       <lucide-icon [img]="UserIcon" [size]="12"></lucide-icon> {{ pi.requester }}
                       @if (pi.contact) { · <span class="rs-q-contact">{{ pi.contact }}</span> }
@@ -220,16 +237,19 @@ function toLocalInput(d: Date): string {
                     qu'une proposition de l'agent retenait sur ce créneau. Valider écarte cette
                     proposition : ça se dit AVANT le clic, pas après.
                   -->
-                  @if (deplacements(r); as dep) {
-                    <p class="rs-q-deplace">
-                      <lucide-icon [img]="AlertIcon" [size]="12"></lucide-icon>
-                      Valider écartera {{ dep.length }} proposition{{ dep.length > 1 ? 's' : '' }} de l'agent
-                      sur ce créneau ({{ dep.join(', ') }}). Le véhicule revient à ce demandeur.
-                    </p>
+                  @for (r of g.items; track r.id) {
+                    @if (deplacements(r); as dep) {
+                      <p class="rs-q-deplace">
+                        <lucide-icon [img]="AlertIcon" [size]="12"></lucide-icon>
+                        @if (g.items.length > 1) { {{ r.vehiclePlate }} : }
+                        Valider écartera {{ dep.length }} proposition{{ dep.length > 1 ? 's' : '' }} de l'agent
+                        sur ce créneau ({{ dep.join(', ') }}). Le véhicule revient à ce demandeur.
+                      </p>
+                    }
                   }
                   <div class="rs-q-actions">
-                    <button type="button" class="rs-btn rs-btn--ok" [disabled]="busyId() === r.id" (click)="confirm(r)"><lucide-icon [img]="CheckIcon" [size]="13"></lucide-icon> Valider</button>
-                    <button type="button" class="rs-btn rs-btn--no" [disabled]="busyId() === r.id" (click)="reject(r)">Refuser</button>
+                    <button type="button" class="rs-btn rs-btn--ok" [disabled]="busyId() === g.cle" (click)="confirmGroupe(g)"><lucide-icon [img]="CheckIcon" [size]="13"></lucide-icon> Valider@if (g.items.length > 1) { les {{ g.items.length }} }</button>
+                    <button type="button" class="rs-btn rs-btn--no" [disabled]="busyId() === g.cle" (click)="rejectGroupe(g)">Refuser@if (g.items.length > 1) { les {{ g.items.length }} }</button>
                   </div>
                 </div>
               }
@@ -302,6 +322,8 @@ function toLocalInput(d: Date): string {
     .rs-btn--no { background: var(--bg-tertiary); color: var(--fg-secondary); border: 1px solid var(--border-subtle); }
     .rs-btn:disabled { opacity: .55; }
     .rs-q { padding: 11px; border-radius: 12px; background: var(--bg-secondary); border: 1px solid var(--border-subtle); }
+    /* F13 : une demande groupée (plusieurs véhicules) se distingue d'un trait plus appuyé. */
+    .rs-q--groupe { border-left: 3px solid var(--tracky-light); }
     .rs-q-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
     .rs-q-when { font-size: 11.5px; color: var(--fg-tertiary); }
     .rs-q-title { font-size: 13px; font-weight: 600; color: var(--fg-primary); margin: 6px 0 0; }
@@ -502,6 +524,77 @@ export class ReservationSheetComponent {
   }
 
   /** Infos du demandeur PUBLIC (P4) si la demande vient d'un lien public, sinon null. */
+  /**
+   * F13 (recette du 28/09) — les véhicules d'une même demande publique (même `bookingRef`) forment
+   * UNE carte, validée ou refusée d'un seul geste. Une demande interne, ou sans référence, reste seule.
+   */
+  protected readonly groupes = computed(() => {
+    const parCle = new Map<string, VehicleEventDto[]>();
+    for (const r of this.pending()) {
+      const ref = (r.metadata as { bookingRef?: unknown } | null)?.bookingRef;
+      const cle = typeof ref === 'string' && ref ? `ref:${ref}` : `id:${r.id}`;
+      const l = parCle.get(cle);
+      if (l) l.push(r);
+      else parCle.set(cle, [r]);
+    }
+    return [...parCle.entries()].map(([cle, items]) => ({ cle, items, chef: items[0] }));
+  });
+
+  /** La fin tombe-t-elle le même jour que le début ? Sinon la file écrit la date de fin (F9). */
+  protected memeJour(r: VehicleEventDto): boolean {
+    if (!r.endAt) return true;
+    const a = new Date(r.startAt);
+    const b = new Date(r.endAt);
+    return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+  }
+
+  protected async confirmGroupe(g: { cle: string; items: VehicleEventDto[] }): Promise<void> {
+    this.busyId.set(g.cle);
+    let faits = 0;
+    try {
+      for (const r of g.items) {
+        await firstValueFrom(this.api.confirmReservation(r.id));
+        faits++;
+        this.pending.update((l) => l.filter((x) => x.id !== r.id));
+      }
+      this.toast.success(
+        g.items.length > 1 ? `${faits} véhicules validés` : 'Réservation validée',
+        g.items.map((r) => r.vehiclePlate ?? '').filter(Boolean).join(', '),
+      );
+      this.created.emit();
+    } catch (e) {
+      swallow('reservation-sheet:confirmGroupe', e);
+      // Une validation à moitié faite se DIT : ce qui est validé l'est, le reste attend encore.
+      this.toast.error(faits > 0 ? `Validé ${faits} sur ${g.items.length}` : 'Échec', this.errMsg(e));
+      if (faits > 0) this.created.emit();
+    } finally {
+      this.busyId.set(null);
+    }
+  }
+
+  protected async rejectGroupe(g: { cle: string; items: VehicleEventDto[] }): Promise<void> {
+    this.busyId.set(g.cle);
+    let faits = 0;
+    try {
+      for (const r of g.items) {
+        await firstValueFrom(this.api.cancelReservation(r.id));
+        faits++;
+        this.pending.update((l) => l.filter((x) => x.id !== r.id));
+      }
+      this.toast.success(
+        g.items.length > 1 ? `${faits} véhicules refusés` : 'Demande refusée',
+        g.items.map((r) => r.vehiclePlate ?? '').filter(Boolean).join(', '),
+      );
+      this.created.emit();
+    } catch (e) {
+      swallow('reservation-sheet:rejectGroupe', e);
+      this.toast.error(faits > 0 ? `Refusé ${faits} sur ${g.items.length}` : 'Échec', this.errMsg(e));
+      if (faits > 0) this.created.emit();
+    } finally {
+      this.busyId.set(null);
+    }
+  }
+
   protected publicInfo(r: VehicleEventDto): { requester: string; contact: string; seats: number | null } | null {
     const m = r.metadata as Record<string, unknown> | null;
     if (!m || m['public'] !== true) return null;

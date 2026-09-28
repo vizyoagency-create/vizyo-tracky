@@ -975,6 +975,28 @@ describe('ReservationsService — la décision laisse une trace', () => {
     );
   });
 
+  /** F16 (28/09) : le demandeur d'une demande publique apprenait la validation, jamais le refus. */
+  it('un REFUS émet reservation.refused — le notifier prévient le demandeur public', async () => {
+    const emitter = { emit: jest.fn() };
+    const svc = new ReservationsService(
+      prismaAvec('REQUESTED'), access('ALL'), makeEvents(), makePerms(true), emitter as never, journal() as never,
+    );
+    await svc.cancel(makeUser(), 'r1');
+    expect(emitter.emit).toHaveBeenCalledWith(
+      'reservation.refused',
+      expect.objectContaining({ fleetId: 'f1', vehiclePlate: 'AA-123-BB', startAt: '2026-10-01T08:00:00.000Z' }),
+    );
+  });
+
+  it('…mais l\'ANNULATION d\'une réservation ferme n\'est pas un refus : rien n\'est émis', async () => {
+    const emitter = { emit: jest.fn() };
+    const svc = new ReservationsService(
+      prismaAvec('CONFIRMED'), access('ALL'), makeEvents(), makePerms(true), emitter as never, journal() as never,
+    );
+    await svc.cancel(makeUser(), 'r1');
+    expect(emitter.emit).not.toHaveBeenCalledWith('reservation.refused', expect.anything());
+  });
+
   it('nomme QUI a décidé — sans ça la trace ne sert à rien', async () => {
     const j = journal();
     const svc = new ReservationsService(

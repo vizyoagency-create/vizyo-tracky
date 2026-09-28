@@ -214,6 +214,12 @@ export class VehicleEventsService {
     const fleetId = await this.assertVehicleAccess(user, dto.vehicleId);
     const startAt = this.parseDate(dto.startAt, 'startAt');
     const endAt = dto.endAt ? this.parseDate(dto.endAt, 'endAt') : null;
+    // Lot multi-jours (28/09) : une maintenance « du 5 au 12 » se saisit avec sa fin. Elle doit
+    // rester après le début — sinon l'immobilisation calculée depuis `effectiveBlockingEndMs`
+    // serait vide, et le véhicule « libre » pendant son passage au garage.
+    if (endAt && endAt.getTime() <= startAt.getTime()) {
+      throw new BadRequestException('La fin doit être après le début.');
+    }
     const row = await this.prisma.vehicleEvent.create({
       data: {
         fleetId,
@@ -286,6 +292,13 @@ export class VehicleEventsService {
     if (dto.description !== undefined) data.description = dto.description;
     if (dto.startAt !== undefined) data.startAt = this.parseDate(dto.startAt, 'startAt');
     if (dto.endAt !== undefined) data.endAt = dto.endAt ? this.parseDate(dto.endAt, 'endAt') : null;
+    // Lot multi-jours (28/09) : que le début, la fin ou les deux changent, la fin reste après
+    // le début — c'est ce que l'écran « cette maintenance est-elle terminée ? » réécrit.
+    const debut = data.startAt instanceof Date ? data.startAt : existing.startAt;
+    const fin = dto.endAt !== undefined ? (data.endAt instanceof Date ? data.endAt : null) : existing.endAt;
+    if (fin && fin.getTime() <= debut.getTime()) {
+      throw new BadRequestException('La fin doit être après le début.');
+    }
     if (dto.allDay !== undefined) data.allDay = dto.allDay;
     if (dto.blocksVehicle !== undefined) data.blocksVehicle = dto.blocksVehicle;
     if (dto.odometerKm !== undefined) data.odometerKm = dto.odometerKm;
@@ -361,11 +374,16 @@ export class VehicleEventsService {
   }
 
   /** Charge un événement en garantissant qu'il est dans le périmètre de l'user. */
-  private async loadScoped(user: AuthUser, id: string): Promise<{ vehicleId: string; type: VehicleEventType }> {
+  private async loadScoped(
+    user: AuthUser,
+    id: string,
+  ): Promise<{ vehicleId: string; type: VehicleEventType; startAt: Date; endAt: Date | null }> {
     const where = await this.scopedWhere(user);
     const ev = await this.prisma.vehicleEvent.findFirst({
       where: { ...where, id },
-      select: { id: true, vehicleId: true, type: true },
+      // `startAt` / `endAt` : la garde « fin après début » de update() (lot multi-jours) doit
+      // raisonner sur les valeurs en base quand le patch n'en change qu'une.
+      select: { id: true, vehicleId: true, type: true, startAt: true, endAt: true },
     });
     if (!ev) throw new NotFoundException('Événement introuvable');
     return ev;

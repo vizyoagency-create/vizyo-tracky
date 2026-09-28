@@ -131,6 +131,62 @@ describe('VehicleEventsService — scoping tenant (Sprint 7, anti-IDOR)', () => 
  * véhicule pendant une mission qui existait toujours. Dormant chez cdef31 (0 mission), actif chez
  * mh cars (7).
  */
+/**
+ * Lot multi-jours (28/09) : « un véhicule en garage, ça peut prendre une semaine ». La fin se
+ * saisit désormais ; elle doit rester après le début, à la création comme à la modification —
+ * sinon l'immobilisation calculée serait vide et le véhicule « libre » pendant son passage au garage.
+ */
+describe('VehicleEventsService — la fin après le début (multi-jours)', () => {
+  const admin = () => makeUser({ role: UserRole.FLEET_ADMIN });
+  const ligne = (endAt: Date | null) => ({
+    id: 'e1', fleetId: 'f1', vehicleId: 'v1', vehicle: { plate: 'AA-1' }, type: 'MAINTENANCE', status: 'IN_PROGRESS',
+    severity: null, title: 'Garage', description: null, startAt: new Date('2026-10-05T08:00:00Z'), endAt, allDay: true,
+    blocksVehicle: true, odometerKm: null, planId: null, linkedEventId: null, resolvedAt: null, metadata: null,
+    source: 'MANUAL', createdAt: new Date(), updatedAt: new Date(),
+  });
+
+  it('create : une fin avant (ou égale à) le début est refusée, rien n\'est écrit', async () => {
+    const prisma = makePrisma();
+    const p = prisma as { vehicle: { findUnique: jest.Mock }; vehicleEvent: { create: jest.Mock } };
+    p.vehicle.findUnique.mockResolvedValue({ id: 'v1', fleetId: 'f1', lastOdometerAt: null });
+    const svc = new VehicleEventsService(prisma, access('ALL'));
+    await expect(
+      svc.create(admin(), { vehicleId: 'v1', type: 'MAINTENANCE', title: 'Garage', startAt: '2026-10-05T08:00:00Z', endAt: '2026-10-05T08:00:00Z' }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(p.vehicleEvent.create).not.toHaveBeenCalled();
+  });
+
+  it('create : du 5 au 12, la fin est écrite telle quelle', async () => {
+    const prisma = makePrisma();
+    const p = prisma as { vehicle: { findUnique: jest.Mock }; vehicleEvent: { create: jest.Mock } };
+    p.vehicle.findUnique.mockResolvedValue({ id: 'v1', fleetId: 'f1', lastOdometerAt: null });
+    p.vehicleEvent.create.mockResolvedValue(ligne(new Date('2026-10-12T18:00:00Z')));
+    const svc = new VehicleEventsService(prisma, access('ALL'));
+    await svc.create(admin(), { vehicleId: 'v1', type: 'MAINTENANCE', title: 'Garage', startAt: '2026-10-05T08:00:00Z', endAt: '2026-10-12T18:00:00Z' });
+    expect(p.vehicleEvent.create.mock.calls[0][0].data.endAt).toEqual(new Date('2026-10-12T18:00:00Z'));
+  });
+
+  it('update : reculer la fin avant le début est refusé — même sans toucher au début', async () => {
+    const prisma = makePrisma();
+    const p = prisma as { vehicleEvent: { findFirst: jest.Mock; update: jest.Mock } };
+    p.vehicleEvent.findFirst.mockResolvedValue({ id: 'e1', vehicleId: 'v1', type: 'MAINTENANCE', startAt: new Date('2026-10-05T08:00:00Z'), endAt: new Date('2026-10-12T18:00:00Z') });
+    const svc = new VehicleEventsService(prisma, access('ALL'));
+    await expect(svc.update(admin(), 'e1', { endAt: '2026-10-04T18:00:00Z' })).rejects.toBeInstanceOf(BadRequestException);
+    expect(p.vehicleEvent.update).not.toHaveBeenCalled();
+  });
+
+  it('update : « terminée ? Non, jusqu\'au 20 » repousse la fin — c\'est la réponse de l\'écran « À clore »', async () => {
+    const prisma = makePrisma();
+    const p = prisma as { vehicleEvent: { findFirst: jest.Mock; update: jest.Mock } };
+    p.vehicleEvent.findFirst.mockResolvedValue({ id: 'e1', vehicleId: 'v1', type: 'MAINTENANCE', startAt: new Date('2026-10-05T08:00:00Z'), endAt: new Date('2026-10-12T18:00:00Z') });
+    p.vehicleEvent.update.mockResolvedValue(ligne(new Date('2026-10-20T18:00:00Z')));
+    const svc = new VehicleEventsService(prisma, access('ALL'));
+    const dto = await svc.update(admin(), 'e1', { endAt: '2026-10-20T18:00:00Z' });
+    expect(p.vehicleEvent.update.mock.calls[0][0].data.endAt).toEqual(new Date('2026-10-20T18:00:00Z'));
+    expect(dto.endAt).toBe('2026-10-20T18:00:00.000Z');
+  });
+});
+
 describe('VehicleEventsService — la garde MISSION (P2-1)', () => {
   function prismaAvec(type: string) {
     const prisma = makePrisma();

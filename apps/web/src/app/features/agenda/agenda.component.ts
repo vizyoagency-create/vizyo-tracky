@@ -12,7 +12,7 @@ import {
 import { PlanUpsellComponent } from '../../shared/ui/plan-upsell/plan-upsell.component';
 import { MissionsPanelComponent } from './missions-panel.component';
 import { ScrollLockService } from '../../core/services/scroll-lock.service';
-import { DatePipe } from '@angular/common';
+import { DatePipe, formatDate } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { apiErrorMessage } from '../../core/error/api-error';
 import {
@@ -26,6 +26,7 @@ import type {
   AiCapacityResultDto,
   CreateVehicleEventDto,
   ForecastSlotDto,
+  UpdateVehicleEventDto,
   VehicleActivitySlotDto,
   VehicleEventDto,
   VehicleEventStatus,
@@ -196,6 +197,49 @@ interface GroupOption {
         </div>
         }
       </header>
+
+      <!-- ── « Cette maintenance est-elle terminée ? » (lot du 28/09) ────────────────────────
+           Une maintenance ou un incident encore ouvert dont la fin prévue est passée — ou sans fin,
+           commencé avant aujourd'hui — revient ici CHAQUE jour jusqu'à ce qu'on réponde. Oui : il
+           est clos à l'instant. Non : on donne la nouvelle date de retour, et il disparaît jusque-là.
+           La clôture vient à l'utilisateur ; il ne va pas la chercher dans une carte de jour. -->
+      @if (canManage() && aClore().length > 0) {
+        <section class="ag-clore" aria-label="Maintenances et incidents à clore">
+          <div class="ag-clore-head">
+            <span class="ag-clore-titre"><lucide-icon [img]="ListChecksIcon" [size]="14"></lucide-icon> À clore</span>
+            <span class="ag-clore-sub">{{ aClore().length }} véhicule{{ aClore().length > 1 ? 's' : '' }} dont la fin prévue est passée — terminé, ou pas encore ?</span>
+          </div>
+          @for (c of aClore(); track c.ev.id) {
+            <div class="ag-clore-row" [style.--pill]="eventColor(c.ev)">
+              <div class="ag-clore-main">
+                <span class="ag-clore-plate" [vehicleLink]="c.ev.vehicleId">{{ c.ev.vehiclePlate || '—' }}</span>
+                <span class="ag-clore-title">{{ c.ev.title }}</span>
+                <span class="ag-clore-meta">{{ eventTypeLabel(c.ev.type) }} · {{ c.libelle }}</span>
+              </div>
+              @if (cloreEdit()[c.ev.id]; as d) {
+                <div class="ag-clore-edit">
+                  <label class="ag-clore-lbl" [attr.for]="'ag-clore-' + c.ev.id">Nouvelle fin</label>
+                  <input [id]="'ag-clore-' + c.ev.id" type="date" class="ag-input ag-input--sm" [value]="d" [min]="todayIso()"
+                         (input)="setCloreDate(c.ev.id, $any($event.target).value)" />
+                  <button type="button" class="ag-act ag-act--done" [disabled]="busyId() === c.ev.id" (click)="repousserFin(c.ev)">
+                    <lucide-icon [img]="CheckIcon" [size]="12"></lucide-icon> Enregistrer
+                  </button>
+                  <button type="button" class="ag-act" (click)="annulerCloreEdit(c.ev.id)">Annuler</button>
+                </div>
+              } @else {
+                <div class="ag-clore-actions">
+                  <button type="button" class="ag-act ag-act--done" [disabled]="busyId() === c.ev.id" (click)="cloturer(c.ev)">
+                    <lucide-icon [img]="CheckIcon" [size]="12"></lucide-icon> Oui, {{ c.ev.type === 'INCIDENT' ? 'réglé' : 'terminée' }}
+                  </button>
+                  <button type="button" class="ag-act ag-act--start" [disabled]="busyId() === c.ev.id" (click)="ouvrirCloreEdit(c.ev)">
+                    <lucide-icon [img]="CalendarClockIcon" [size]="12"></lucide-icon> Non — nouvelle date de fin
+                  </button>
+                </div>
+              }
+            </div>
+          }
+        </section>
+      }
 
       <!-- Barre de filtres — groupe, véhicule, type et mois ne pilotent QUE la grille du
            calendrier. Sans la permission agenda_view il n'y a pas de grille : le tableau
@@ -536,8 +580,11 @@ interface GroupOption {
                   <p class="ag-day-card-title">{{ ev.title }}</p>
                   <p class="ag-day-card-meta">
                     @if (ev.vehiclePlate) { <span class="ag-day-card-plate" [vehicleLink]="ev.vehicleId" [attr.title]="'Voir ' + ev.vehiclePlate">{{ ev.vehiclePlate }}</span> }
+                    @if (dureeEnJours(ev) > 1) {
+                      · du {{ ev.startAt | date:'d MMM' }} au {{ ev.endAt | date:'d MMM' }}
+                    }
                     @if (ev.type === 'RESERVATION' && !ev.allDay) {
-                      · {{ ev.startAt | date:'HH:mm' }}@if (ev.endAt) { → {{ ev.endAt | date:'HH:mm' }} }
+                      · {{ plageHoraire(ev) }}
                     } @else if (!ev.allDay) { · {{ ev.startAt | date:'HH:mm' }} }
                     @if (ev.odometerKm != null) { · {{ ev.odometerKm }} km }
                   </p>
@@ -550,6 +597,13 @@ interface GroupOption {
                     <p class="ag-day-card-desc">Se pilote depuis l'onglet Missions.</p>
                   } @else if (canManage() && ev.type !== 'RESERVATION') {
                     <div class="ag-day-card-actions">
+                      <!-- F10 (28/09) : celui qui gère change les dates (le retour du garage a glissé). -->
+                      @if (ev.status !== 'DONE' && ev.status !== 'CANCELLED') {
+                        <button type="button" (click)="openEdit(ev)" [disabled]="busyId() === ev.id"
+                                class="ag-act" aria-label="Modifier les dates et le détail">
+                          <lucide-icon [img]="PencilIcon" [size]="12"></lucide-icon> Modifier
+                        </button>
+                      }
                       @if (ev.status !== 'IN_PROGRESS' && ev.status !== 'DONE' && ev.status !== 'CANCELLED') {
                         <button type="button" (click)="setStatus(ev, 'IN_PROGRESS')" [disabled]="busyId() === ev.id"
                                 class="ag-act ag-act--start">
@@ -599,9 +653,9 @@ interface GroupOption {
     <!-- ─── Modal de création d'événement ─── -->
     @if (createOpen()) {
       <div class="ag-modal-root" (click)="createOpen.set(false)">
-        <div class="ag-modal" (click)="$event.stopPropagation()" role="dialog" aria-label="Nouvel événement">
+        <div class="ag-modal" (click)="$event.stopPropagation()" role="dialog" [attr.aria-label]="editingEvent() ? 'Modifier l\\'événement' : 'Nouvel événement'">
           <header class="ag-sheet-head">
-            <h3 class="ag-sheet-title">Nouvel événement</h3>
+            <h3 class="ag-sheet-title">{{ editingEvent() ? 'Modifier l\\'événement' : 'Nouvel événement' }}</h3>
             <button type="button" (click)="createOpen.set(false)" aria-label="Fermer" class="ag-icon-btn">
               <lucide-icon [img]="XIcon" [size]="18"></lucide-icon>
             </button>
@@ -611,16 +665,16 @@ interface GroupOption {
             <div class="ag-field">
               <label>Type</label>
               <div class="ag-seg ag-seg--full">
-                <button type="button" (click)="setFormType('MAINTENANCE')"
+                <button type="button" (click)="setFormType('MAINTENANCE')" [disabled]="!!editingEvent()"
                         class="ag-seg-btn" [class.ag-seg-btn--active]="form.type === 'MAINTENANCE'">Maintenance</button>
-                <button type="button" (click)="setFormType('INCIDENT')"
+                <button type="button" (click)="setFormType('INCIDENT')" [disabled]="!!editingEvent()"
                         class="ag-seg-btn" [class.ag-seg-btn--active]="form.type === 'INCIDENT'">Incident</button>
               </div>
             </div>
             <!-- Véhicule -->
             <div class="ag-field">
               <label for="ag-f-veh">Véhicule</label>
-              <select id="ag-f-veh" class="ag-input" [(ngModel)]="form.vehicleId" (ngModelChange)="onCreateVehicleChange($event)">
+              <select id="ag-f-veh" class="ag-input" [(ngModel)]="form.vehicleId" (ngModelChange)="onCreateVehicleChange($event)" [disabled]="!!editingEvent()">
                 <option value="" disabled>Sélectionner…</option>
                 <!--
                   ⚠️ On itère « scopedVehicles », et NON « vehicles ». La liste brute contient le parc de
@@ -680,6 +734,27 @@ interface GroupOption {
                 <input id="ag-f-time" type="time" class="ag-input" [(ngModel)]="form.time" />
               </div>
             }
+            <!-- Lot multi-jours (28/09) — « un véhicule en garage, ça peut prendre une semaine ».
+                 Une fin facultative : vide, c'est la journée (maintenance) ou jusqu'à résolution
+                 (incident), comme avant. Renseignée, le véhicule est immobilisé chaque jour de
+                 l'intervalle, et la grille le montre en « suite » sur chacun. -->
+            <div class="ag-field-row">
+              <div class="ag-field">
+                <label for="ag-f-end">Jusqu'au <span class="ag-field-hint">optionnel</span></label>
+                <input id="ag-f-end" type="date" class="ag-input" [(ngModel)]="form.endDate" [min]="form.date" />
+              </div>
+              @if (!form.allDay && form.endDate) {
+                <div class="ag-field">
+                  <label for="ag-f-end-time">Heure de fin</label>
+                  <input id="ag-f-end-time" type="time" class="ag-input" [(ngModel)]="form.endTime" />
+                </div>
+              }
+            </div>
+            <p class="ag-field-note">
+              Laisse vide pour une seule journée. Un passage au garage d'une semaine : mets la date de retour —
+              le véhicule reste indisponible chaque jour de l'intervalle, et l'agenda te demandera
+              « terminée ? » quand cette date sera passée.
+            </p>
             <!-- Immobilisation : rend le véhicule indisponible (réservations + IA) -->
             <div class="ag-field">
               <label class="ag-check">
@@ -711,7 +786,7 @@ interface GroupOption {
             <button type="button" (click)="createOpen.set(false)" class="ag-btn-ghost">Annuler</button>
             <button type="button" (click)="submitCreate()" [disabled]="!canSubmitCreate() || saving()"
                     class="ag-btn-primary">
-              {{ saving() ? 'Création…' : 'Créer l\\'événement' }}
+              {{ saving() ? 'Enregistrement…' : (editingEvent() ? 'Enregistrer' : 'Créer l\\'événement') }}
             </button>
           </footer>
         </div>
@@ -1092,6 +1167,30 @@ interface GroupOption {
     .ag-act--del { margin-left: auto; }
     .ag-act--del:hover:not(:disabled) { color: var(--danger); border-color: rgba(239,68,68,.3); background: rgba(239,68,68,.06); }
 
+    /* ─── « À clore » (lot du 28/09) — la question vient à l'utilisateur ─── */
+    .ag-clore {
+      display: flex; flex-direction: column; gap: 8px;
+      padding: 12px 14px; margin-top: 12px;
+      background: color-mix(in srgb, var(--warning) 7%, var(--bg-secondary));
+      border: 1px solid color-mix(in srgb, var(--warning) 28%, transparent);
+      border-radius: var(--radius-card);
+    }
+    .ag-clore-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; }
+    .ag-clore-titre { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 700; color: var(--fg-primary); }
+    .ag-clore-sub { font-size: 12px; color: var(--fg-tertiary); }
+    .ag-clore-row {
+      display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px;
+      padding: 8px 10px; border-radius: 10px;
+      background: var(--bg-primary); border-left: 3px solid var(--pill, var(--warning));
+    }
+    .ag-clore-main { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; min-width: 0; }
+    .ag-clore-plate { font-family: var(--font-mono, monospace); font-size: 12px; font-weight: 700; color: var(--fg-primary); cursor: pointer; }
+    .ag-clore-title { font-size: 13px; font-weight: 600; color: var(--fg-primary); }
+    .ag-clore-meta { font-size: 11.5px; color: var(--fg-tertiary); }
+    .ag-clore-actions, .ag-clore-edit { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+    .ag-clore-lbl { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .03em; color: var(--fg-tertiary); }
+    .ag-input--sm { width: auto; padding: 6px 8px; font-size: 13px; }
+
     /* ─── Formulaire de création ─── */
     .ag-modal-body { padding: 14px 16px; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; }
     .ag-modal-foot {
@@ -1355,10 +1454,16 @@ export class AgendaComponent implements OnInit {
     date: string;
     time: string;
     allDay: boolean;
+    /** Lot multi-jours (28/09) : fin facultative — vide = la journée (maintenance) ou jusqu'à résolution (incident). */
+    endDate: string;
+    endTime: string;
     blocksVehicle: boolean;
     odometerKm: number | null;
     description: string;
   } = this.blankForm();
+
+  /** F10 (28/09) — l'évènement en cours de modification dans le même dialogue ; null = création. */
+  protected readonly editingEvent = signal<VehicleEventDto | null>(null);
 
   protected readonly typeOptions: { value: '' | VehicleEventType; label: string }[] = [
     { value: '', label: 'Tous' },
@@ -1533,7 +1638,13 @@ export class AgendaComponent implements OnInit {
   /** Nb de véhicules DISTINCTS ayant roulé par jour (badge bleu « ● N » du calendrier). */
   protected readonly activityByDay = computed<Map<string, number>>(() => {
     const perDay = new Map<string, Set<string>>();
+    // F3 (recette du 28/09) : les badges suivent le véhicule / le groupe choisis, comme la grille
+    // et le panneau du jour — avant, ils parlaient de tout le parc sous un filtre qui disait le contraire.
+    const vid = this.selectedVehicleId();
+    const gids = this.groupVehicleIdSet();
     for (const slot of this.activitySlots()) {
+      if (vid && slot.vehicleId !== vid) continue;
+      if (gids && !gids.has(slot.vehicleId)) continue;
       const start = new Date(slot.startAt);
       if (Number.isNaN(start.getTime())) continue;
       const end = slot.endAt ? new Date(slot.endAt) : start;
@@ -1604,7 +1715,11 @@ export class AgendaComponent implements OnInit {
   /** Nb de véhicules DISTINCTS dont l'usage est PRÉVU par jour (badge violet « ~N »). */
   protected readonly forecastByDay = computed<Map<string, number>>(() => {
     const perDay = new Map<string, Set<string>>();
+    const vid = this.selectedVehicleId(); // F3 : même périmètre que la grille
+    const gids = this.groupVehicleIdSet();
     for (const slot of this.forecastSlots()) {
+      if (vid && slot.vehicleId !== vid) continue;
+      if (gids && !gids.has(slot.vehicleId)) continue;
       const start = new Date(slot.startAt);
       if (Number.isNaN(start.getTime())) continue;
       const key = localIso(start);
@@ -2182,6 +2297,8 @@ export class AgendaComponent implements OnInit {
       date: today,
       time: '09:00',
       allDay: true,
+      endDate: '',
+      endTime: '18:00',
       blocksVehicle: false, // défaut MAINTENANCE ; setFormType() le passe à true pour un incident
       odometerKm: null as number | null,
       description: '',
@@ -2208,11 +2325,173 @@ export class AgendaComponent implements OnInit {
   }
 
   protected openCreate(): void {
+    this.editingEvent.set(null);
     this.form = this.blankForm();
     this.odometerHint.set('');
     this.createOpen.set(true);
     // Pré-remplit l'odomètre si un véhicule est déjà sélectionné via le filtre.
     if (this.form.vehicleId) void this.prefillOdometer(this.form.vehicleId);
+  }
+
+  /**
+   * F10 (28/09) — celui qui gère peut changer les dates (et le reste) d'une maintenance ou d'un
+   * incident : le retour du garage a glissé, la panne s'est révélée plus longue. Même dialogue que
+   * la création, pré-rempli ; le véhicule et le type ne changent pas (ce serait un autre évènement).
+   */
+  protected openEdit(ev: VehicleEventDto): void {
+    if (!this.canManage() || (ev.type !== 'MAINTENANCE' && ev.type !== 'INCIDENT')) return;
+    const start = new Date(ev.startAt);
+    const end = ev.endAt ? new Date(ev.endAt) : null;
+    this.form = {
+      ...this.blankForm(),
+      type: ev.type,
+      vehicleId: ev.vehicleId,
+      title: ev.title,
+      category: ev.category ?? '',
+      severity: ev.severity === 'LOW' || ev.severity === 'HIGH' ? ev.severity : 'MEDIUM',
+      date: localIso(start),
+      time: this.hhmm(start),
+      allDay: ev.allDay,
+      endDate: end ? localIso(end) : '',
+      endTime: end ? this.hhmm(end) : '18:00',
+      blocksVehicle: ev.blocksVehicle,
+      odometerKm: ev.odometerKm ?? null,
+      description: ev.description ?? '',
+    };
+    this.editingEvent.set(ev);
+    this.odometerHint.set('');
+    this.createOpen.set(true);
+  }
+
+  /** « HH:mm » local, le format qu'attend un `<input type="time">` (hm() rend « 7h30 », pour l'affichage). */
+  private hhmm(d: Date): string {
+    return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  }
+
+  /** Nombre de jours civils couverts (1 = une journée) — la carte du jour dit « du 5 au 12 » au-delà. */
+  protected dureeEnJours(ev: VehicleEventDto): number {
+    if (!ev.endAt) return 1;
+    const a = startOfDay(new Date(ev.startAt)).getTime();
+    const b = startOfDay(new Date(ev.endAt)).getTime();
+    if (Number.isNaN(a) || Number.isNaN(b) || b < a) return 1;
+    return Math.round((b - a) / 86400000) + 1;
+  }
+
+  /** « 09:00 → 12:00 », ou « lun. 5 oct. 09:00 → jeu. 8 oct. 12:00 » quand la réservation change de jour. */
+  protected plageHoraire(ev: VehicleEventDto): string {
+    const s = new Date(ev.startAt);
+    if (Number.isNaN(s.getTime())) return '';
+    if (!ev.endAt) return formatDate(s, 'HH:mm', 'fr');
+    const e = new Date(ev.endAt);
+    if (Number.isNaN(e.getTime())) return formatDate(s, 'HH:mm', 'fr');
+    return this.dureeEnJours(ev) > 1
+      ? `${formatDate(s, 'EEE d MMM HH:mm', 'fr')} → ${formatDate(e, 'EEE d MMM HH:mm', 'fr')}`
+      : `${formatDate(s, 'HH:mm', 'fr')} → ${formatDate(e, 'HH:mm', 'fr')}`;
+  }
+
+  protected todayIso(): string {
+    return localIso(new Date());
+  }
+
+  /** Remplace un évènement dans la grille ET dans la fenêtre des échéances (même objet, deux listes). */
+  private remplacerEvenement(updated: VehicleEventDto): void {
+    this.events.update((list) => list.map((e) => (e.id === updated.id ? updated : e)));
+    this.echeances.update((list) => list.map((e) => (e.id === updated.id ? updated : e)));
+  }
+
+  // ─── « Cette maintenance est-elle terminée ? » (lot du 28/09) ───────────────
+  /**
+   * Maintenances et incidents encore ouverts dont la fin prévue est passée — ou, sans fin, commencés
+   * avant aujourd'hui. La liste revient chaque jour jusqu'à la réponse. Périmètre : la société du
+   * bandeau (les échéances comme le mois), sans le filtre véhicule / groupe : c'est une liste de
+   * choses à faire, pas une vue.
+   */
+  protected readonly aClore = computed(() => {
+    if (!this.canManage()) return [];
+    const now = Date.now();
+    const debutJour = startOfDay(new Date()).getTime();
+    const vus = new Set<string>();
+    const out: { ev: VehicleEventDto; libelle: string }[] = [];
+    for (const ev of [...this.echeances(), ...this.events()]) {
+      if (vus.has(ev.id)) continue;
+      vus.add(ev.id);
+      if (ev.type !== 'MAINTENANCE' && ev.type !== 'INCIDENT') continue;
+      if (ev.status !== 'OPEN' && ev.status !== 'IN_PROGRESS') continue;
+      const debut = new Date(ev.startAt).getTime();
+      if (Number.isNaN(debut)) continue;
+      const fin = ev.endAt ? new Date(ev.endAt).getTime() : null;
+      const echu = fin != null && !Number.isNaN(fin) ? fin < now : debut < debutJour;
+      if (!echu) continue;
+      const libelle = fin != null && !Number.isNaN(fin)
+        ? `fin prévue le ${formatDate(fin, 'EEE d MMM', 'fr')}, dépassée`
+        : `en cours depuis le ${formatDate(debut, 'EEE d MMM', 'fr')}, sans date de fin`;
+      out.push({ ev, libelle });
+    }
+    return out.sort((a, b) => new Date(a.ev.startAt).getTime() - new Date(b.ev.startAt).getTime());
+  });
+
+  /** id → date saisie (YYYY-MM-DD) pendant qu'on répond « non, jusqu'au… ». */
+  protected readonly cloreEdit = signal<Record<string, string>>({});
+
+  protected ouvrirCloreEdit(ev: VehicleEventDto): void {
+    const demain = new Date();
+    demain.setDate(demain.getDate() + 1);
+    this.cloreEdit.update((m) => ({ ...m, [ev.id]: localIso(demain) }));
+  }
+
+  protected setCloreDate(id: string, value: string): void {
+    this.cloreEdit.update((m) => ({ ...m, [id]: value }));
+  }
+
+  protected annulerCloreEdit(id: string): void {
+    this.cloreEdit.update((m) => {
+      const { [id]: _retire, ...reste } = m;
+      return reste;
+    });
+  }
+
+  /** « Oui, terminée » : clos à l'instant — la fin réelle est maintenant, pas la fin prévue. */
+  protected async cloturer(ev: VehicleEventDto): Promise<void> {
+    if (!this.canManage()) return;
+    this.busyId.set(ev.id);
+    try {
+      const updated = await firstValueFrom(this.api.updateEvent(ev.id, { status: 'DONE', endAt: new Date().toISOString() }));
+      this.remplacerEvenement(updated);
+      this.toast.success(ev.type === 'INCIDENT' ? 'Incident réglé' : 'Maintenance terminée', ev.vehiclePlate ?? '');
+      void this.loadSummary();
+    } catch (err) {
+      swallow('agenda:cloturer', err);
+      this.toast.error('Échec', apiErrorMessage(err, 'Clôture impossible.'));
+    } finally {
+      this.busyId.set(null);
+    }
+  }
+
+  /** « Non, jusqu'au … » : la fin prévue est repoussée ; l'évènement sort de la liste jusque-là. */
+  protected async repousserFin(ev: VehicleEventDto): Promise<void> {
+    if (!this.canManage()) return;
+    const jour = this.cloreEdit()[ev.id];
+    if (!jour) return;
+    // Toute la journée : jusqu'au soir de ce jour ; sinon la même heure de fin que celle qu'on avait.
+    const heure = ev.allDay ? '23:59:59' : `${ev.endAt ? this.hhmm(new Date(ev.endAt)) : '18:00'}:00`;
+    const endAt = new Date(`${jour}T${heure}`);
+    if (Number.isNaN(endAt.getTime()) || endAt.getTime() <= new Date(ev.startAt).getTime()) {
+      this.toast.error('Date', 'La nouvelle fin doit être après le début.');
+      return;
+    }
+    this.busyId.set(ev.id);
+    try {
+      const updated = await firstValueFrom(this.api.updateEvent(ev.id, { endAt: endAt.toISOString() }));
+      this.remplacerEvenement(updated);
+      this.annulerCloreEdit(ev.id);
+      this.toast.success('Fin repoussée', `jusqu'au ${formatDate(endAt, 'EEE d MMM', 'fr')}`);
+      void this.loadSummary();
+    } catch (err) {
+      swallow('agenda:repousserFin', err);
+      this.toast.error('Échec', apiErrorMessage(err, 'Modification impossible.'));
+    } finally {
+      this.busyId.set(null);
+    }
   }
 
   protected onCreateVehicleChange(vehicleId: string): void {
@@ -2245,6 +2524,48 @@ export class AgendaComponent implements OnInit {
     const startAt = f.allDay
       ? new Date(`${f.date}T00:00:00`).toISOString()
       : new Date(`${f.date}T${f.time || '00:00'}:00`).toISOString();
+    // Lot multi-jours (28/09) : la fin, si elle est donnée — toute la journée = jusqu'au soir de
+    // ce jour, sinon la date et l'heure de fin saisies. Le serveur revérifie « fin après début ».
+    const endAt = f.endDate
+      ? (f.allDay
+          ? new Date(`${f.endDate}T23:59:59`).toISOString()
+          : new Date(`${f.endDate}T${f.endTime || '18:00'}:00`).toISOString())
+      : null;
+    if (endAt && new Date(endAt).getTime() <= new Date(startAt).getTime()) {
+      this.toast.error('Dates', 'La fin doit être après le début.');
+      return;
+    }
+
+    // F10 : le même dialogue modifie un évènement existant — dates, titre, détail.
+    const editing = this.editingEvent();
+    if (editing) {
+      const patch: UpdateVehicleEventDto = {
+        title: f.title.trim(),
+        category: f.category.trim(),
+        description: f.description.trim(),
+        startAt,
+        endAt,
+        allDay: f.allDay,
+        blocksVehicle: f.blocksVehicle,
+      };
+      if (f.type === 'INCIDENT') patch.severity = f.severity;
+      if (f.odometerKm != null && !Number.isNaN(f.odometerKm)) patch.odometerKm = Number(f.odometerKm);
+      this.saving.set(true);
+      try {
+        const updated = await firstValueFrom(this.api.updateEvent(editing.id, patch));
+        this.remplacerEvenement(updated);
+        this.toast.success('Événement modifié', updated.title);
+        this.createOpen.set(false);
+        this.editingEvent.set(null);
+        void this.loadSummary();
+      } catch (err) {
+        swallow('agenda:submitEdit', err);
+        this.toast.error('Échec', apiErrorMessage(err, 'Modification impossible.'));
+      } finally {
+        this.saving.set(false);
+      }
+      return;
+    }
 
     const payload: CreateVehicleEventDto = {
       vehicleId: f.vehicleId,
@@ -2255,6 +2576,7 @@ export class AgendaComponent implements OnInit {
       blocksVehicle: f.blocksVehicle,
       status: f.type === 'INCIDENT' ? 'OPEN' : 'PLANNED',
     };
+    if (endAt) payload.endAt = endAt;
     if (f.category.trim()) payload.category = f.category.trim();
     if (f.description.trim()) payload.description = f.description.trim();
     if (f.type === 'INCIDENT') payload.severity = f.severity;

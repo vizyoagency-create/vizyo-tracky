@@ -5,6 +5,7 @@ const makeEmail = (ok = true) => ({
   send: jest.fn().mockResolvedValue({ ok }),
   buildReservationRequestedEmail: jest.fn().mockReturnValue(built),
   buildReservationConfirmedEmail: jest.fn().mockReturnValue(built),
+  buildReservationRefusedEmail: jest.fn().mockReturnValue(built),
 } as never);
 const makeSms = (ok = true) => ({ send: jest.fn().mockResolvedValue({ ok }) } as never);
 const makeErrors = () => ({ record: jest.fn().mockResolvedValue('log-1') } as never);
@@ -46,6 +47,28 @@ describe('ReservationBookingNotifier (P4 — notifications demandeur)', () => {
     const email = makeEmail(); const sms = makeSms();
     const n = new ReservationBookingNotifier(email, sms, makeErrors(), makePrisma(), makeDestinataires());
     await n.onConfirmed(payload({ public: false, requesterContact: 'ecole@test.fr' }));
+    expect((email as unknown as { send: jest.Mock }).send).not.toHaveBeenCalled();
+    expect((sms as unknown as { send: jest.Mock }).send).not.toHaveBeenCalled();
+  });
+
+  /**
+   * F16 (recette du 28/09) : le demandeur apprenait la validation, jamais le refus — il attendait
+   * un véhicule qui ne viendrait pas. Le refus prévient, sous son propre modèle.
+   */
+  it('REFUS d\'une demande publique : le demandeur est prévenu sous le modèle reservation_refused', async () => {
+    const email = makeEmail(); const sms = makeSms();
+    const n = new ReservationBookingNotifier(email, sms, makeErrors(), makePrisma(), makeDestinataires());
+    await n.onRefused(payload({ public: true, requesterContact: 'ecole@test.fr', destination: 'Albi' }));
+    const send = (email as unknown as { send: jest.Mock }).send;
+    expect(send).toHaveBeenCalledWith(expect.objectContaining({ to: 'ecole@test.fr', template: 'reservation_refused' }));
+    expect((email as unknown as { buildReservationRefusedEmail: jest.Mock }).buildReservationRefusedEmail)
+      .toHaveBeenCalledWith(expect.objectContaining({ destination: 'Albi' }));
+  });
+
+  it('REFUS d\'une réservation NON publique (saisie interne) : personne à prévenir', async () => {
+    const email = makeEmail(); const sms = makeSms();
+    const n = new ReservationBookingNotifier(email, sms, makeErrors(), makePrisma(), makeDestinataires());
+    await n.onRefused(payload({ public: false, requesterContact: 'ecole@test.fr' }));
     expect((email as unknown as { send: jest.Mock }).send).not.toHaveBeenCalled();
     expect((sms as unknown as { send: jest.Mock }).send).not.toHaveBeenCalled();
   });
