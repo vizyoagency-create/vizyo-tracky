@@ -48,7 +48,7 @@ import { VehiclesApiService, type VehicleDetailDto } from '../../core/services/v
 import { ToastService } from '../../shared/ui/toast/toast.service';
 import { GroupBadgeComponent } from '../../shared/ui/group-badge/group-badge.component';
 import { AgendaCalendarComponent, annulationSansObjet } from './agenda-calendar.component';
-import { horsServiceLabel, ReservationSheetComponent } from './sheets/reservation-sheet.component';
+import { horsServiceLabel, ReservationSheetComponent, siegesLabel } from './sheets/reservation-sheet.component';
 import { OptimizationSheetComponent } from './sheets/optimization-sheet.component';
 import { AgendaAgentSettingsSheetComponent } from './sheets/agenda-agent-settings-sheet.component';
 import { AgendaAgentProposalsSheetComponent } from './sheets/agenda-agent-proposals-sheet.component';
@@ -597,8 +597,8 @@ interface GroupOption {
                   </p>
                   @if (ev.description) { <p class="ag-day-card-desc">{{ ev.description }}</p> }
                   @if (reservationReason(ev)) { <p class="ag-day-card-desc">{{ reservationReason(ev) }}</p> }
-                  <!-- Sièges auto à installer (stock de la société) : celui qui prépare la voiture le lit ici. -->
-                  @if (siegesAuto(ev); as sa) { <p class="ag-day-card-desc">Sièges auto à installer : {{ sa }}</p> }
+                  <!-- Sièges auto : ce qui est déjà à bord et ce qu'il faut sortir du stock — celui qui prépare la voiture le lit ici. -->
+                  @if (siegesAuto(ev); as sa) { <p class="ag-day-card-desc">Sièges auto : {{ sa }}</p> }
                   <!-- P2-1 : une MISSION n'a pas de boutons ici. Son ombre d'agenda se met à jour
                        depuis l'onglet Missions ; « Terminé » ou « Supprimer » depuis cette carte
                        libérait le véhicule pendant une mission qui existait toujours. -->
@@ -2301,16 +2301,23 @@ export class AgendaComponent implements OnInit {
   }
 
   /**
-   * « 1 bébé · 2 enfant » — sièges auto qu'une réservation demande (pris sur le stock de la
-   * société, réglé dans « Paramètres de l'agenda »), sinon null. Deux types, jamais interchangeables.
+   * « 1 bébé · 2 enfant (1 bébé à bord · 2 enfant du stock) » — sièges auto qu'une réservation
+   * demande, et ce que son véhicule a déjà à bord : celui qui prépare la voiture sait quoi sortir
+   * du stock. Deux types, jamais interchangeables. Sans besoin : null.
    */
   protected siegesAuto(ev: VehicleEventDto): string | null {
     if (ev.type !== 'RESERVATION') return null;
     const c = (ev.metadata as { criteria?: { childSeatsBaby?: unknown; childSeatsChild?: unknown } } | null)?.criteria;
     if (!c) return null;
     const n = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : 0);
-    const parts = [n(c.childSeatsBaby) ? `${n(c.childSeatsBaby)} bébé` : '', n(c.childSeatsChild) ? `${n(c.childSeatsChild)} enfant` : ''].filter(Boolean);
-    return parts.length > 0 ? parts.join(' · ') : null;
+    const need = { baby: n(c.childSeatsBaby), child: n(c.childSeatsChild) };
+    const besoin = siegesLabel(need);
+    if (!besoin) return null;
+    const v = this.vehicles().find((x) => x.id === ev.vehicleId);
+    const aBord = { baby: Math.min(need.baby, v?.childSeatsBaby ?? 0), child: Math.min(need.child, v?.childSeatsChild ?? 0) };
+    const duStock = { baby: need.baby - aBord.baby, child: need.child - aBord.child };
+    const detail = [siegesLabel(aBord) ? `${siegesLabel(aBord)} à bord` : '', siegesLabel(duStock) ? `${siegesLabel(duStock)} du stock` : ''].filter(Boolean);
+    return detail.length > 0 ? `${besoin} (${detail.join(' · ')})` : besoin;
   }
 
   /** Met à jour le statut d'un événement (En cours / Terminé) — optimiste. */

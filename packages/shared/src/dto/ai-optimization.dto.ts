@@ -7,7 +7,7 @@
  * placement → flux de réservation S8 (request → confirm, gardes EXCLUDE/scoping).
  */
 
-import type { ChildSeatAvailabilityDto, ReservationCriteria } from './reservation.dto';
+import type { ChildSeatAvailabilityDto, ChildSeatCounts, ReservationCriteria } from './reservation.dto';
 
 /** Métier d'une flotte — conditionne l'objectif d'optimisation de l'IA. */
 export type FleetMetier = 'CHILDREN_TRANSPORT' | 'PARCELS' | 'RENTAL' | 'GENERIC';
@@ -111,6 +111,10 @@ export interface AiPlacementCandidateInput {
   costPerKm?: number | null;
   /** Une maintenance est prévue peu après le créneau (à éviter si une alternative existe). */
   upcomingMaintenance?: boolean;
+  /** Sièges auto déjà À BORD (2026-09-28) — prêts, rien à installer. */
+  childSeatsInstalled?: ChildSeatCounts;
+  /** Ce que le STOCK devrait fournir pour ce candidat (besoin − à bord). Zéro = tout est à bord. */
+  childSeatsFromStock?: ChildSeatCounts;
 }
 
 export interface AiPlacementRequestInput {
@@ -138,10 +142,10 @@ export interface AiPlacementInputDto {
   scopeNote?: string;
   request: AiPlacementRequestInput;
   /**
-   * Sièges auto (2026-09-28) : ce que le STOCK de la société laisse de disponible sur le créneau,
-   * type par type. Le besoin est dans `request.criteria.childSeatsBaby` / `childSeatsChild`. Ce
-   * n'est PAS une caractéristique des candidats : un siège s'installe dans le véhicule retenu, et
-   * les deux types ne se remplacent jamais. Absent quand la société est inconnue.
+   * Sièges auto (2026-09-28) : la politique de la société et ce que le STOCK laisse de disponible
+   * sur le créneau, type par type. Le besoin est dans `request.criteria.childSeatsBaby` /
+   * `childSeatsChild` ; chaque candidat porte ce qu'il a déjà à bord et ce que le stock devrait
+   * lui fournir. Les deux types ne se remplacent jamais. Absent quand la société est inconnue.
    */
   childSeats?: ChildSeatAvailabilityDto | null;
   candidates: AiPlacementCandidateInput[];
@@ -194,6 +198,8 @@ export interface AiPlacementResultDto {
    * participation à CETTE proposition cesse — et il y revient seul dès la première trame reçue.
    */
   excludedDormant?: number;
+  /** Transparence : véhicules libres écartés car le besoin de sièges auto ne peut pas être couvert avec eux. */
+  excludedChildSeats?: number;
   /** Coût € estimé de CET appel IA (transparence ; le budget mensuel vit côté admin). */
   aiCostEur?: number | null;
 }

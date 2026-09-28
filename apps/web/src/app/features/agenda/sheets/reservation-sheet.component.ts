@@ -51,6 +51,16 @@ export interface ReservationSheetVehicle {
    * Le serveur refuse de réserver un tel véhicule (409) : autant ne pas le laisser choisir.
    */
   outOfServiceReason?: string | null;
+  /** Sièges auto INSTALLÉS à bord (2026-09-28) : ils couvrent le besoin avant le stock. */
+  childSeatsBaby?: number | null;
+  childSeatsChild?: number | null;
+}
+
+/** « 1 bébé · 2 enfant », ou null quand tout est à zéro. */
+export function siegesLabel(c: { baby: number; child: number } | null | undefined): string | null {
+  if (!c) return null;
+  const parts = [c.baby > 0 ? `${c.baby} bébé` : '', c.child > 0 ? `${c.child} enfant` : ''].filter(Boolean);
+  return parts.length > 0 ? parts.join(' · ') : null;
 }
 
 /** Libellé court d'un motif de mise hors service (même vocabulaire que la fiche véhicule). */
@@ -132,12 +142,21 @@ function toLocalInput(d: Date): string {
                 <label class="rs-f rs-f--sm"><span class="rs-sub-lbl">Enfant <em>siège, rehausseur</em></span><input type="number" min="0" max="50" inputmode="numeric" class="rs-in" [value]="childSeatsChild()" (input)="childSeatsChild.set($any($event.target).value)" placeholder="0"></label>
               </div>
               @if (seatsAvail(); as a) {
-                @if (a.stock.baby === 0 && a.stock.child === 0) {
-                  <span class="rs-hint">Aucun stock de sièges auto renseigné pour cette société — à compter dans « Paramètres de l'agenda ». Une réservation qui en demande sera refusée.</span>
+                @if (a.total.baby === 0 && a.total.child === 0) {
+                  <span class="rs-hint">Aucun siège auto renseigné pour cette société — à compter dans « Paramètres de l'agenda ». Une réservation qui en demande sera refusée.</span>
                 } @else {
+                  <!-- Ce que le véhicule choisi a À BORD, puis ce que le stock peut encore donner sur
+                       ce créneau — ou, sous « installés seulement », le rappel que le stock n'est pas promis. -->
                   <span class="rs-hint" [class.rs-hint--manque]="seatsManque()">
-                    Disponibles sur ce créneau : <strong>{{ a.available.baby }}</strong> bébé sur {{ a.stock.baby }} · <strong>{{ a.available.child }}</strong> enfant sur {{ a.stock.child }}
-                    @if (seatsManque()) { — il en manque pour cette demande. }
+                    @if (vehicleId() && a.vehicleInstalled) {
+                      À bord de {{ a.vehiclePlate || 'ce véhicule' }} : <strong>{{ a.vehicleInstalled.baby }}</strong> bébé · <strong>{{ a.vehicleInstalled.child }}</strong> enfant —
+                    }
+                    @if (a.policy === 'INSTALLED_ONLY') {
+                      sièges installés seulement (réglage de la société : le stock n'est pas promis)
+                    } @else {
+                      stock disponible sur ce créneau : <strong>{{ a.available.baby }}</strong> bébé sur {{ a.stock.baby }} · <strong>{{ a.available.child }}</strong> enfant sur {{ a.stock.child }}
+                    }
+                    @if (seatsManqueTexte(); as m) { — {{ m }} }
                   </span>
                 }
               }
@@ -161,7 +180,7 @@ function toLocalInput(d: Date): string {
               <select class="rs-in" [value]="vehicleId()" (change)="vehicleId.set($any($event.target).value)">
                 <option value="">Auto (le 1er disponible conforme)</option>
                 @for (v of vehicleOptions(); track v.id) {
-                  <option [value]="v.id" [disabled]="v.disabled">{{ v.label }}@if (v.horsService) { — hors service ({{ v.horsService }}) } @else if (v.silence) { — boîtier muet depuis {{ v.silence }} }</option>
+                  <option [value]="v.id" [disabled]="v.disabled">{{ v.label }}@if (v.aBord) { · à bord : {{ v.aBord }} }@if (v.horsService) { — hors service ({{ v.horsService }}) } @else if (v.silence) { — boîtier muet depuis {{ v.silence }} }</option>
                 }
               </select>
               @if (horsServiceCount() > 0) {
@@ -271,10 +290,11 @@ function toLocalInput(d: Date): string {
                       @if (pi.seats) { · {{ pi.seats }} places demandées }
                     </p>
                   }
-                  <!-- Sièges auto à installer : le valideur doit le voir AVANT de dire oui — c'est lui
-                       qui sort le matériel du stock, et la validation refuse (409) s'il n'en reste pas. -->
+                  <!-- Sièges auto : le valideur doit voir AVANT de dire oui ce qui est déjà à bord du
+                       véhicule pré-retenu et ce qu'il faudra sortir du stock — la validation refuse (409)
+                       s'il n'en reste pas. -->
                   @if (besoinSieges(g.chef); as bs) {
-                    <p class="rs-q-req"><lucide-icon [img]="BabyIcon" [size]="12"></lucide-icon> Sièges auto à installer : {{ bs }}</p>
+                    <p class="rs-q-req"><lucide-icon [img]="BabyIcon" [size]="12"></lucide-icon> Sièges auto : {{ bs }}</p>
                   }
                   <!--
                     Lot 3b — CE QUE LA VALIDATION VA DÉPLACER.
@@ -449,15 +469,30 @@ export class ReservationSheetComponent {
   /** Sièges auto demandés, par type (stock de la société — pas une capacité du véhicule). */
   protected readonly childSeatsBaby = signal('');
   protected readonly childSeatsChild = signal('');
-  /** Ce qu'il reste de sièges sur le créneau saisi (rechargé à chaque changement de créneau). */
+  /** Ce que le créneau permet (stock, politique, sièges à bord du véhicule choisi) — rechargé à chaque changement. */
   protected readonly seatsAvail = signal<ChildSeatAvailabilityDto | null>(null);
-  /** Le besoin saisi dépasse-t-il ce qui reste ? Dit sous les champs, avant l'envoi. */
-  protected readonly seatsManque = computed(() => {
+  /**
+   * Le besoin saisi tient-il ? Avec un véhicule choisi : ses sièges à bord d'abord, le stock pour le
+   * reste (ou rien, sous « installés seulement »). Sans véhicule (« Auto ») : on ne juge que le stock —
+   * le serveur choisira un véhicule équipé s'il en existe un.
+   */
+  protected readonly seatsManqueTexte = computed<string | null>(() => {
     const a = this.seatsAvail();
-    if (!a) return false;
+    if (!a) return null;
     const need = this.besoin();
-    return need.baby > a.available.baby || need.child > a.available.child;
+    if (need.baby <= 0 && need.child <= 0) return null;
+    const vehicule = !!this.vehicleId() && !!a.vehicleInstalled;
+    const aBord = vehicule ? a.vehicleInstalled! : { baby: 0, child: 0 };
+    const reste = { baby: Math.max(0, need.baby - aBord.baby), child: Math.max(0, need.child - aBord.child) };
+    if (a.policy === 'INSTALLED_ONLY') {
+      if (!vehicule) return reste.baby > 0 || reste.child > 0 ? 'il faudra un véhicule qui a déjà ces sièges à bord.' : null;
+      return reste.baby > 0 || reste.child > 0 ? 'il en manque à bord de ce véhicule.' : null;
+    }
+    const manque = reste.baby > a.available.baby || reste.child > a.available.child;
+    if (!manque) return null;
+    return vehicule ? 'il en manque pour cette demande.' : 'le stock seul ne suffit pas : il faudra un véhicule déjà équipé.';
   });
+  protected readonly seatsManque = computed(() => this.seatsManqueTexte() !== null);
   protected readonly reason = signal('');
   protected readonly vehicleId = signal('');
   protected readonly submitting = signal(false);
@@ -509,6 +544,8 @@ export class ReservationSheetComponent {
         id: v.id,
         label: `${v.plate || '—'}${brand}`,
         horsService,
+        // Sièges auto déjà installés : celui qui choisit le véhicule voit ce qu'il n'aura pas à installer.
+        aBord: siegesLabel({ baby: v.childSeatsBaby ?? 0, child: v.childSeatsChild ?? 0 }),
         // On DATE le silence au lieu de dire « indisponible » : l'exploitant sait quoi faire.
         silence: dormant ? formatSilenceLabel(tracker?.lastSeenAt, now) : null,
         disabled: (!!horsService && v.id !== selected && !retro) || (dormant && v.id !== selected && !retro),
@@ -584,17 +621,18 @@ export class ReservationSheetComponent {
       const e = this.endAt();
       const fleetId = this.fleetFilter.selectedFleetId() ?? undefined;
       const edit = this.editReservation();
+      const vehicleId = this.vehicleId() || undefined; // ses sièges à bord entrent dans le compte
       if (!ouvert || mode === 'validate' || !s || !e) { this.seatsAvail.set(null); return; }
       const si = new Date(s); const ei = new Date(e);
       if (Number.isNaN(si.getTime()) || Number.isNaN(ei.getTime()) || ei.getTime() <= si.getTime()) { this.seatsAvail.set(null); return; }
       if (this.needsFleet()) { this.seatsAvail.set(null); return; }
-      void this.chargerSieges({ startAt: si.toISOString(), endAt: ei.toISOString(), fleetId, excludeId: mode === 'edit' ? edit?.id : undefined });
+      void this.chargerSieges({ startAt: si.toISOString(), endAt: ei.toISOString(), fleetId, excludeId: mode === 'edit' ? edit?.id : undefined, vehicleId });
     });
   }
 
   /** Numéro de la dernière lecture partie : une réponse en retard ne doit pas écraser la dernière. */
   private siegesLecture = 0;
-  private async chargerSieges(q: { startAt: string; endAt: string; fleetId?: string; excludeId?: string }): Promise<void> {
+  private async chargerSieges(q: { startAt: string; endAt: string; fleetId?: string; excludeId?: string; vehicleId?: string }): Promise<void> {
     const n = ++this.siegesLecture;
     try {
       const a = await firstValueFrom(this.api.childSeatAvailability(q));
@@ -611,15 +649,20 @@ export class ReservationSheetComponent {
     return { baby: lire(this.childSeatsBaby()), child: lire(this.childSeatsChild()) };
   }
 
-  /** « 1 bébé · 2 enfant » — sièges auto portés par une demande (critères), sinon null. */
+  /**
+   * « 1 bébé · 2 enfant (1 bébé à bord · 1 enfant du stock) » — le besoin d'une demande, et ce que
+   * son véhicule pré-retenu a déjà à bord. Sans besoin : null.
+   */
   protected besoinSieges(r: VehicleEventDto): string | null {
     const c = (r.metadata as { criteria?: ReservationCriteria } | null)?.criteria;
-    if (!c) return null;
-    const parts = [
-      c.childSeatsBaby && c.childSeatsBaby > 0 ? `${c.childSeatsBaby} bébé` : '',
-      c.childSeatsChild && c.childSeatsChild > 0 ? `${c.childSeatsChild} enfant` : '',
-    ].filter(Boolean);
-    return parts.length > 0 ? parts.join(' · ') : null;
+    const need = { baby: c?.childSeatsBaby ?? 0, child: c?.childSeatsChild ?? 0 };
+    const besoin = siegesLabel(need);
+    if (!besoin) return null;
+    const v = this.vehicles().find((x) => x.id === r.vehicleId);
+    const aBord = { baby: Math.min(need.baby, v?.childSeatsBaby ?? 0), child: Math.min(need.child, v?.childSeatsChild ?? 0) };
+    const duStock = { baby: need.baby - aBord.baby, child: need.child - aBord.child };
+    const detail = [siegesLabel(aBord) ? `${siegesLabel(aBord)} à bord` : '', siegesLabel(duStock) ? `${siegesLabel(duStock)} du stock` : ''].filter(Boolean);
+    return detail.length > 0 ? `${besoin} (${detail.join(' · ')})` : besoin;
   }
 
   protected valOf(n: number | null): string { return n === null || n === undefined ? '—' : String(n); }

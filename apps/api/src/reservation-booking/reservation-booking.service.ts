@@ -271,27 +271,22 @@ export class ReservationBookingService {
     // #5 — Entrée publique non authentifiée : borne la destination comme requester(120)/contact(160)/freeText(500).
     const destination = ((dto?.destination?.trim() || this.extractDestination(dto?.freeText)) ?? null)?.slice(0, 120) ?? null;
 
-    // Sièges auto : le besoin (champs du formulaire, sinon la phrase dictée) contre le STOCK de la
-    // société sur le créneau — demandes en attente comprises, comme pour les véhicules. Vérifié
-    // AVANT de chercher un véhicule : c'est une seule requête, et un refus ici n'a pas à classer
-    // le parc. Message sans chiffre (anti-sondage du stock via le lien public), mais qui nomme le
-    // TYPE qui manque : c'est ce que le demandeur peut corriger.
+    // Sièges auto (2026-09-28) : le besoin vient des champs du formulaire, sinon de la phrase
+    // dictée. Il entre dans les CRITÈRES du vivier : un véhicule sans les sièges à bord n'y reste
+    // que si le stock du créneau (demandes en attente comprises) peut compléter — selon la
+    // politique de la société. Le message de refus reste SANS chiffre (anti-sondage via le lien
+    // public) mais nomme le TYPE qui manque : c'est ce que le demandeur peut corriger.
     const sieges = this.resolveChildSeats(dto);
-    if ((sieges.baby > 0 || sieges.child > 0) && this.childSeats) {
-      const avail = await this.childSeats.availability(link.fleetId, start, end, { includeRequested: true });
-      const manquent: string[] = [];
-      if (sieges.baby > avail.available.baby) manquent.push(`« ${CHILD_SEAT_LABELS.BABY} »`);
-      if (sieges.child > avail.available.child) manquent.push(`« ${CHILD_SEAT_LABELS.CHILD} »`);
-      if (manquent.length > 0) {
-        throw new BadRequestException(
-          `Les sièges auto ${manquent.join(' et ')} demandés ne sont pas tous disponibles sur ce créneau. ` +
-            "Essayez un autre horaire, ou contactez directement l'organisation.",
-        );
-      }
-    }
-    const { combination, freeCount, withSeatsCount, deplacements } = await this.pickCombination(link.fleetId, slot, seatsNeeded);
+    const aBesoinSieges = sieges.baby > 0 || sieges.child > 0;
+    const { combination, freeCount, withSeatsCount, deplacements, excludedChildSeats } = await this.pickCombination(link.fleetId, slot, seatsNeeded, sieges);
     const totalSeats = combination.reduce((s, v) => s + (v.seats ?? 0), 0);
     if (combination.length === 0 || totalSeats < seatsNeeded) {
+      // Des véhicules étaient libres mais aucun ne peut recevoir les sièges demandés : dire les
+      // sièges, pas le créneau — sinon le demandeur change d'horaire pour rien.
+      if (aBesoinSieges && excludedChildSeats > 0 && this.childSeats) {
+        const avail = await this.childSeats.availability(link.fleetId, start, end, { includeRequested: true });
+        throw new BadRequestException(this.refusSieges(this.siegesIndisponibles(avail, sieges, { baby: 0, child: 0 })));
+      }
       // Messages SANS chiffre (anti-sondage capacité) + cause juste : si des véhicules sont libres mais
       // qu'aucun n'a de nombre de places renseigné, ce n'est pas le créneau qui est en cause.
       if (withSeatsCount === 0 && freeCount > 0) {
@@ -302,6 +297,19 @@ export class ReservationBookingService {
       throw new BadRequestException(
         "Aucun véhicule n'est disponible pour ce besoin sur ce créneau. Essayez un autre horaire.",
       );
+    }
+
+    // Une demande GROUPÉE (plusieurs véhicules) porte UN besoin de sièges : ce que ses véhicules ont
+    // à bord s'additionne, le stock fournit le reste. Le vivier a jugé chaque véhicule seul ; ici
+    // on juge la combinaison — c'est elle qui sera validée d'un seul geste.
+    if (aBesoinSieges && this.childSeats) {
+      const aBord = combination.reduce(
+        (acc, v) => ({ baby: acc.baby + (v.childSeatsInstalled?.baby ?? 0), child: acc.child + (v.childSeatsInstalled?.child ?? 0) }),
+        { baby: 0, child: 0 },
+      );
+      const avail = await this.childSeats.availability(link.fleetId, start, end, { includeRequested: true, installed: aBord });
+      const indisponibles = this.siegesIndisponibles(avail, sieges, aBord);
+      if (indisponibles.length > 0) throw new BadRequestException(this.refusSieges(indisponibles));
     }
 
     const requester = (dto?.requesterName || '').trim().slice(0, 120) || 'Demande publique';
@@ -470,13 +478,21 @@ export class ReservationBookingService {
       ...resaAilleurs.map((e) => e.vehicleId),
     ]);
 
+    // À rang égal (2026-09-28) : d'abord le véhicule qui a déjà les sièges auto À BORD (rien à
+    // installer, stock préservé), puis le plus grand nombre de places.
+    const duStock = (v: SuggestedVehicleDto) => (v.childSeatsFromStock?.baby ?? 0) + (v.childSeatsFromStock?.child ?? 0);
     return vehicles
       .map((v) => {
         const propositionDeplacee = deplaceePar.get(v.vehicleId) ?? null;
         const rang: 1 | 2 | 3 = propositionDeplacee ? 3 : engageAilleurs.has(v.vehicleId) ? 2 : 1;
         return { vehicule: v, rang, propositionDeplacee };
       })
-      .sort((a, b) => a.rang - b.rang || (b.vehicule.seats ?? 0) - (a.vehicule.seats ?? 0));
+      .sort(
+        (a, b) =>
+          a.rang - b.rang ||
+          duStock(a.vehicule) - duStock(b.vehicule) ||
+          (b.vehicule.seats ?? 0) - (a.vehicule.seats ?? 0),
+      );
   }
 
   /**
@@ -488,14 +504,23 @@ export class ReservationBookingService {
     fleetId: string,
     slot: { startAt: string; endAt: string },
     seatsNeeded: number,
+    sieges: ChildSeatCounts,
   ): Promise<{
     combination: SuggestedVehicleDto[];
     freeCount: number;
     withSeatsCount: number;
     /** Propositions de l'agent que cette attribution déplace (rang 3). Vide dans le cas normal. */
     deplacements: { proposalId: string; plate: string | null }[];
+    /** Véhicules libres écartés parce que les sièges auto demandés ne peuvent pas être couverts avec eux. */
+    excludedChildSeats: number;
   }> {
-    const avail = await this.reservations.availableForFleet(fleetId, slot.startAt, slot.endAt, undefined, { excludeRequested: true });
+    // Le besoin de sièges entre dans les critères : le vivier écarte (et compte) les véhicules qui
+    // ne peuvent pas le couvrir — sièges à bord, puis stock selon la politique de la société.
+    const criteria =
+      sieges.baby > 0 || sieges.child > 0
+        ? { ...(sieges.baby > 0 ? { childSeatsBaby: sieges.baby } : {}), ...(sieges.child > 0 ? { childSeatsChild: sieges.child } : {}) }
+        : undefined;
+    const avail = await this.reservations.availableForFleet(fleetId, slot.startAt, slot.endAt, criteria, { excludeRequested: true });
     // Lot 3b : on CLASSE (rang 1 → 3) au lieu d'exclure. `classerParEngagement` rend déjà la liste
     // triée par rang puis par places — `greedy` n'a plus qu'à cumuler dans cet ordre.
     const classes = await this.classerParEngagement(fleetId, slot.startAt, slot.endAt, avail.vehicles);
@@ -513,7 +538,32 @@ export class ReservationBookingService {
         .map((v) => rangDe.get(v.vehicleId))
         .filter((c): c is NonNullable<typeof c> => !!c && c.rang === 3)
         .map((c) => ({ proposalId: c.propositionDeplacee as string, plate: c.vehicule.vehiclePlate ?? null })),
+      excludedChildSeats: avail.excludedChildSeats ?? 0,
     };
+  }
+
+  /**
+   * Les TYPES de sièges que le créneau ne peut pas fournir, pour un besoin `sieges` avec `aBord`
+   * déjà installés (somme des véhicules retenus). Sous « installés seulement », tout ce qui n'est
+   * pas à bord manque ; sinon, ce qui dépasse le stock disponible.
+   */
+  private siegesIndisponibles(
+    avail: { policy: string; available: ChildSeatCounts },
+    sieges: ChildSeatCounts,
+    aBord: ChildSeatCounts,
+  ): string[] {
+    const reste = ChildSeatsService.fromStock(sieges, aBord);
+    const out: string[] = [];
+    const manque = (t: 'baby' | 'child') => (avail.policy === 'INSTALLED_ONLY' ? reste[t] > 0 : reste[t] > avail.available[t]);
+    if (manque('baby')) out.push(`« ${CHILD_SEAT_LABELS.BABY} »`);
+    if (manque('child')) out.push(`« ${CHILD_SEAT_LABELS.CHILD} »`);
+    return out;
+  }
+
+  /** Message public de refus pour des sièges : sans chiffre, mais avec le type. */
+  private refusSieges(types: string[]): string {
+    const quoi = types.length > 0 ? `Les sièges auto ${types.join(' et ')} demandés` : 'Les sièges auto demandés';
+    return `${quoi} ne sont pas tous disponibles sur ce créneau. Essayez un autre horaire, ou contactez directement l'organisation.`;
   }
 
   /** Couvre le besoin avec le MOINS de véhicules : d'abord un seul qui suffit, sinon cumul décroissant. */

@@ -50,8 +50,12 @@ export interface VehicleCapacityRowDto {
   model: string | null;
   energy: InstallationEnergy | null;
   seats: number | null;
-  // Plus de `childSeats` ici (2026-09-28) : les sièges auto sont un STOCK de la société
-  // (Paramètres de l'agenda), pas une capacité du véhicule.
+  /**
+   * Sièges auto INSTALLÉS à bord (2026-09-28), par type. Lecture seule ici : ils se règlent dans
+   * « Paramètres de l'agenda », avec le total possédé et le stock — une seule règle, un seul endroit.
+   */
+  childSeatsBaby: number;
+  childSeatsChild: number;
   features: string[];
   group: { id: string; name: string } | null;
   /** Tâche d'installation liée (la plus récente), si elle existe. */

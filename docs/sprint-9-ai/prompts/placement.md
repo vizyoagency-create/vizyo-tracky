@@ -34,21 +34,27 @@ CONTEXTE MÉTIER = {{METIER}}.
   alternative équivalente existe.
 - GENERIC : optimise mutualisation + adéquation simple.
 
-SIÈGES AUTO — règle à part, valable pour tous les métiers. Les sièges auto ne sont PAS une
-caractéristique des candidats : la société possède un STOCK de sièges, en DEUX types JAMAIS
-interchangeables — « bébé » (coque, cosy, nacelle) et « enfant » (siège, rehausseur). Un bébé ne
-va pas dans un siège enfant, ni l'inverse : aucune substitution, dans aucun sens. Le stock
-s'installe dans le véhicule retenu, quel qu'il soit.
+SIÈGES AUTO — règle à part, valable pour tous les métiers. La société POSSÈDE des sièges auto en
+DEUX types JAMAIS interchangeables — « bébé » (coque, cosy, nacelle) et « enfant » (siège,
+rehausseur). Un bébé ne va pas dans un siège enfant, ni l'inverse : aucune substitution, dans aucun
+sens. Chaque siège est soit INSTALLÉ à bord d'un véhicule (prêt), soit dans le STOCK (mobile, à
+installer dans le véhicule retenu avant le départ).
 - Le besoin est dans "request.criteria.childSeatsBaby" / "childSeatsChild" (absent = 0).
-- "childSeats" (au niveau du payload) donne, pour ce créneau : "stock", "engaged" (déjà pris par
-  d'autres réservations) et "available", type par type.
-- Si le besoin dépasse "available" pour l'un des deux types, AUCUN véhicule ne peut couvrir la
-  demande, même libre et même grand : mets "noGoodMatch"=true et écris dans "notes" ce qui manque
-  (« il manque 1 siège bébé sur ce créneau : 2 demandés, 1 disponible »). Ne propose pas de
-  compenser par l'autre type.
-- Si le besoin tient dans "available", les sièges n'influencent pas le classement : dis simplement
-  dans "reasoning" qu'ils seront installés (« + 2 sièges enfant du stock »), et vérifie que le
-  véhicule a assez de PLACES pour les enfants qui les occuperont.
+- "childSeats" (au niveau du payload) donne la "policy" de la société et, pour ce créneau : "total"
+  (possédés), "installed" (à bord de véhicules), "stock", "engaged" (déjà pris par d'autres
+  réservations) et "available" (stock encore libre), type par type.
+- Chaque candidat porte "childSeatsInstalled" (ce qu'il a DÉJÀ à bord) et "childSeatsFromStock"
+  (ce que le stock devrait lui fournir = besoin − à bord). Zéro partout = tout est à bord, rien à
+  installer.
+- policy "STOCK_OR_INSTALLED" : un candidat couvre le besoin si "childSeatsFromStock" ≤ "available",
+  type par type. policy "INSTALLED_ONLY" : seuls les sièges à bord comptent — un candidat dont
+  "childSeatsFromStock" n'est pas nul NE COUVRE PAS le besoin.
+- À adéquation et dimensionnement comparables, PRÉFÈRE le candidat qui a déjà ses sièges à bord
+  (aucune installation avant le départ, et le stock reste libre pour une autre course), et dis-le
+  dans "reasoning" (« 2 sièges enfant déjà à bord » / « + 1 siège bébé à prendre au stock »).
+- Vérifie que le véhicule a assez de PLACES pour les enfants qui occuperont ces sièges. Ne compense
+  jamais un type par l'autre. Si AUCUN candidat ne couvre le besoin, "noGoodMatch"=true et dis dans
+  "notes" ce qui manque (« il manque 1 siège bébé : 0 à bord, 0 en stock disponible »).
 
 Chaque candidat porte aussi son énergie ("energy"), un coût/km estimé ("costPerKm", en €, plus bas =
 moins cher à faire rouler) et un signal "upcomingMaintenance" (une maintenance est prévue peu après).
@@ -127,14 +133,17 @@ Renvoie UNIQUEMENT le JSON conforme au schéma. Aucun texte hors du JSON.
   "childSeats": {
     "startAt": "2026-07-06T06:00:00.000Z",
     "endAt":   "2026-07-06T07:00:00.000Z",
+    "policy":    "STOCK_OR_INSTALLED",
+    "total":     { "baby": 3, "child": 7 },
+    "installed": { "baby": 1, "child": 2 },
     "stock":     { "baby": 2, "child": 5 },
     "engaged":   { "baby": 1, "child": 2 },
     "available": { "baby": 1, "child": 3 }
   },
   "candidates": [
-    { "vehicleId": "v3", "plate": "GA-103-CD", "seats": 9, "features": ["porte latérale coulissante"], "utilizationRatio": 0.06, "underutilized": true,  "forecastBusy": false },
-    { "vehicleId": "v5", "plate": "GA-105-CD", "seats": 9, "features": ["climatisation"],             "utilizationRatio": 0.41, "underutilized": false, "forecastBusy": true  },
-    { "vehicleId": "v1", "plate": "GA-101-CD", "seats": 5, "features": [],                            "utilizationRatio": 0.10, "underutilized": true,  "forecastBusy": false }
+    { "vehicleId": "v3", "plate": "GA-103-CD", "seats": 9, "features": ["porte latérale coulissante"], "utilizationRatio": 0.06, "underutilized": true,  "forecastBusy": false, "childSeatsInstalled": { "baby": 1, "child": 2 }, "childSeatsFromStock": { "baby": 0, "child": 0 } },
+    { "vehicleId": "v5", "plate": "GA-105-CD", "seats": 9, "features": ["climatisation"],             "utilizationRatio": 0.41, "underutilized": false, "forecastBusy": true,  "childSeatsInstalled": { "baby": 0, "child": 0 }, "childSeatsFromStock": { "baby": 1, "child": 2 } },
+    { "vehicleId": "v1", "plate": "GA-101-CD", "seats": 5, "features": [],                            "utilizationRatio": 0.10, "underutilized": true,  "forecastBusy": false, "childSeatsInstalled": { "baby": 0, "child": 0 }, "childSeatsFromStock": { "baby": 1, "child": 2 } }
   ],
   "fleetSummary": { "totalVehicles": 6, "underutilizedCount": 3, "avgUtilization": 0.22 }
 }
@@ -145,19 +154,22 @@ Renvoie UNIQUEMENT le JSON conforme au schéma. Aucun texte hors du JSON.
 ```json
 {
   "proposals": [
-    { "vehicleId": "v3", "score": 0.95, "reasoning": "9 places (besoin 8), sous-utilisé (6 %) → idéal et favorise la mutualisation ; + 1 siège bébé et 2 sièges enfant du stock." },
-    { "vehicleId": "v5", "score": 0.7,  "reasoning": "9 places, couvre le besoin, mais déjà bien utilisé et usage récurrent prévu sur ce créneau." }
+    { "vehicleId": "v3", "score": 0.95, "reasoning": "9 places (besoin 8), sous-utilisé (6 %), 1 siège bébé et 2 sièges enfant déjà à bord → rien à installer, idéal." },
+    { "vehicleId": "v5", "score": 0.6,  "reasoning": "9 places, couvre le besoin avec + 1 siège bébé et 2 sièges enfant à prendre au stock, mais déjà bien utilisé et usage récurrent prévu sur ce créneau." }
   ],
   "noGoodMatch": false,
   "notes": "v1 (5 places) écarté : ne couvre pas les 8 places demandées."
 }
 ```
 
-L'IA doit **écarter v1** (sous-dimensionné) et **préférer v3** (juste + sous-utilisé) à v5
-(suffisant mais déjà sollicité). C'est la mutualisation + le bon dimensionnement attendus.
+L'IA doit **écarter v1** (sous-dimensionné) et **préférer v3** (juste + sous-utilisé + **déjà
+équipé**) à v5 (suffisant mais déjà sollicité, et qui devrait prendre 3 sièges au stock). C'est la
+mutualisation + le bon dimensionnement + le stock préservé.
 
-> **Sièges auto (2026-09-28).** Avec `"criteria": { "childSeatsBaby": 2 }` sur le même payload
-> (`available.baby` = 1), la seule réponse juste est `"noGoodMatch": true` et une note « il manque
-> 1 siège bébé » — même si les 3 sièges enfant sont libres : les deux types ne se remplacent pas.
-> Côté application, `AiOptimizationService.suggestPlacement` tranche ce cas **avant** l'appel
-> (aucun jeton dépensé) ; le prompt le sait pour les cas limites et pour la phrase de `reasoning`.
+> **Sièges auto (2026-09-28).** Avec `"policy": "INSTALLED_ONLY"` sur le même payload, v5 et v1
+> ne couvrent plus le besoin (rien à bord) : seul v3 reste proposable. Et avec `"criteria":
+> { "childSeatsBaby": 3 }` (`available.baby` = 1, v3 en a 1 à bord → il lui en faudrait 2 du stock),
+> la seule réponse juste est `"noGoodMatch": true` avec une note « il manque 1 siège bébé » — même
+> si des sièges enfant sont libres : les deux types ne se remplacent pas. Côté application, le
+> vivier écarte déjà ces candidats **avant** l'appel (aucun jeton dépensé quand la réponse est
+> certaine) ; le prompt le sait pour les cas limites et pour la phrase de `reasoning`.

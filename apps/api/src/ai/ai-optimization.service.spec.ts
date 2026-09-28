@@ -256,14 +256,13 @@ describe('AiOptimizationService — Sprint 9 (copilote IA)', () => {
 
   // ─── Sièges auto (2026-09-28) : un STOCK société, deux types non substituables ───────────
 
-  it('suggestPlacement : besoin de sièges au-delà du stock → noGoodMatch SANS appeler l\'IA, en nommant le type', async () => {
+  it('suggestPlacement : tous les véhicules libres écartés faute de sièges → noGoodMatch SANS appeler l\'IA, en le disant', async () => {
+    // Le vivier a jugé (sièges à bord, puis stock selon la politique) : plus aucun candidat, 2 écartés.
     const reservations = makeReservations({
       suggest: jest.fn().mockResolvedValue({
-        startAt: SLOT.startAt, endAt: SLOT.endAt,
-        vehicles: [{ vehicleId: 'v1', vehiclePlate: 'AA', seats: 9, features: [], utilizationRatio: 0.05, underutilized: true }],
-        // 4 sièges enfant libres ne compensent JAMAIS le siège bébé qui manque.
-        childSeats: { startAt: SLOT.startAt, endAt: SLOT.endAt, stock: { baby: 1, child: 4 }, engaged: { baby: 1, child: 0 }, available: { baby: 0, child: 4 } },
-        excludedUnknownCapacity: 0, excludedImmobilized: 0, excludedDormant: 0,
+        startAt: SLOT.startAt, endAt: SLOT.endAt, vehicles: [],
+        childSeats: { startAt: SLOT.startAt, endAt: SLOT.endAt, policy: 'STOCK_OR_INSTALLED', total: { baby: 1, child: 4 }, installed: { baby: 0, child: 0 }, stock: { baby: 1, child: 4 }, engaged: { baby: 1, child: 0 }, available: { baby: 0, child: 4 } },
+        excludedChildSeats: 2, excludedUnknownCapacity: 0, excludedImmobilized: 0, excludedDormant: 0,
       }),
     });
     const anthropic = makeAnthropic({ proposals: [{ vehicleId: 'v1', score: 0.9, reasoning: 'ok' }], noGoodMatch: false, notes: null });
@@ -272,21 +271,25 @@ describe('AiOptimizationService — Sprint 9 (copilote IA)', () => {
     const res = await svc.suggestPlacement(makeUser(), { ...SLOT, criteria: { childSeatsBaby: 1, childSeatsChild: 2 } });
     expect(res.noGoodMatch).toBe(true);
     expect(res.proposals).toEqual([]);
-    expect(res.notes).toMatch(/1 siège\(s\) « Bébé »/);
+    expect(res.excludedChildSeats).toBe(2);
+    expect(res.notes).toMatch(/sièges auto demandés.*2 véhicule\(s\) écarté\(s\)/);
     expect((anthropic as unknown as { completeJson: jest.Mock }).completeJson).not.toHaveBeenCalled();
   });
 
-  it('suggestPlacement : besoin couvert → l\'IA est appelée et lit la disponibilité des sièges dans le payload', async () => {
-    const dispo = { startAt: SLOT.startAt, endAt: SLOT.endAt, stock: { baby: 2, child: 4 }, engaged: { baby: 1, child: 0 }, available: { baby: 1, child: 4 } };
+  it('suggestPlacement : besoin couvert → l\'IA lit la politique, le stock du créneau, et par candidat l\'à-bord et le reste à prendre au stock', async () => {
+    const dispo = { startAt: SLOT.startAt, endAt: SLOT.endAt, policy: 'STOCK_OR_INSTALLED', total: { baby: 2, child: 4 }, installed: { baby: 1, child: 2 }, stock: { baby: 1, child: 2 }, engaged: { baby: 0, child: 0 }, available: { baby: 1, child: 2 } };
     const reservations = makeReservations({
       suggest: jest.fn().mockResolvedValue({
         startAt: SLOT.startAt, endAt: SLOT.endAt,
-        vehicles: [{ vehicleId: 'v1', vehiclePlate: 'AA', seats: 9, features: [], utilizationRatio: 0.05, underutilized: true }],
+        vehicles: [{
+          vehicleId: 'v1', vehiclePlate: 'AA', seats: 9, features: [], utilizationRatio: 0.05, underutilized: true,
+          childSeatsInstalled: { baby: 1, child: 2 }, childSeatsFromStock: { baby: 0, child: 0 },
+        }],
         childSeats: dispo,
-        excludedUnknownCapacity: 0, excludedImmobilized: 0, excludedDormant: 0,
+        excludedChildSeats: 0, excludedUnknownCapacity: 0, excludedImmobilized: 0, excludedDormant: 0,
       }),
     });
-    const anthropic = makeAnthropic({ proposals: [{ vehicleId: 'v1', score: 0.9, reasoning: 'ok' }], noGoodMatch: false, notes: null });
+    const anthropic = makeAnthropic({ proposals: [{ vehicleId: 'v1', score: 0.9, reasoning: 'déjà équipé' }], noGoodMatch: false, notes: null });
     const svc = build({ reservations, anthropic });
 
     const res = await svc.suggestPlacement(makeUser(), { ...SLOT, criteria: { childSeatsBaby: 1, childSeatsChild: 2 } });
@@ -295,6 +298,7 @@ describe('AiOptimizationService — Sprint 9 (copilote IA)', () => {
     const payload = (anthropic as unknown as { completeJson: jest.Mock }).completeJson.mock.calls[0][0].userPayload;
     expect(payload.childSeats).toEqual(dispo);
     expect(payload.request.criteria).toEqual({ childSeatsBaby: 1, childSeatsChild: 2 });
+    expect(payload.candidates[0]).toMatchObject({ childSeatsInstalled: { baby: 1, child: 2 }, childSeatsFromStock: { baby: 0, child: 0 } });
     expect(payload.candidates[0]).not.toHaveProperty('childSeats');
   });
 

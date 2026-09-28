@@ -14,7 +14,12 @@ import { apiErrorMessage } from '../../../core/error/api-error';
 import { RouterLink } from '@angular/router';
 import { LucideAngularModule, Settings, X, Loader, Zap, ExternalLink, Link2, Copy, Plus, Power, History, Mail, Baby } from 'lucide-angular';
 import {
+  CHILD_SEAT_POLICY_LABELS,
   FLEET_METIER_LABELS,
+  type ChildSeatCounts,
+  type ChildSeatPolicy,
+  type ChildSeatStockDto,
+  type VehicleChildSeatsDto,
   type AgendaAgentAutonomy,
   type AgendaAgentFrequency,
   type AgendaAgentRunDto,
@@ -106,33 +111,69 @@ import { BottomSheetComponent } from '../../../shared/ui/bottom-sheet/bottom-she
             </div>
 
             <!--
-              SIÈGES AUTO — LE STOCK DE LA SOCIÉTÉ (2026-09-28).
-              Un siège n'est pas une caractéristique du véhicule : c'est du matériel mobile qu'on
-              installe dans la voiture retenue. Deux types, jamais interchangeables — un bébé ne va
-              pas dans un siège enfant, ni l'inverse. Ce stock borne les réservations qui en
-              demandent, et l'IA de placement le lit.
+              SIÈGES AUTO (2026-09-28). La société POSSÈDE des sièges ; chacun est soit INSTALLÉ
+              dans un véhicule (à bord, prêt), soit dans le STOCK (mobile, à installer dans le
+              véhicule réservé). Deux types, jamais interchangeables — un bébé ne va pas dans un
+              siège enfant, ni l'inverse. Le réglage dit si le stock peut compléter un véhicule
+              qui n'a pas les sièges à bord. Les réservations et l'IA de placement lisent tout ça.
             -->
             <div class="aas-sieges">
               <div class="aas-links-head">
                 <span class="aas-lbl"><lucide-icon [img]="BabyIcon" [size]="13"></lucide-icon> Sièges auto de la société</span>
                 <button type="button" class="aas-mini aas-mini--accent" [disabled]="seatsSaving() || !seatsDirty()" (click)="saveSeats()">
-                  @if (seatsSaving()) { <lucide-icon [img]="LoaderIcon" [size]="12" class="aas-spin"></lucide-icon> } Enregistrer le stock
+                  @if (seatsSaving()) { <lucide-icon [img]="LoaderIcon" [size]="12" class="aas-spin"></lucide-icon> } Enregistrer
                 </button>
               </div>
               <span class="aas-sub">
-                Le nombre de sièges que {{ fleetName() || 'la société' }} possède, par type. Ils s'installent dans le
-                véhicule réservé ; sur un créneau, on ne peut pas en promettre plus qu'il n'en reste.
-                <strong>Un siège « Bébé » ne remplace jamais un siège « Enfant », ni l'inverse.</strong>
+                Ce que {{ fleetName() || 'la société' }} <strong>possède</strong>, par type. Un siège est soit
+                <strong>installé dans un véhicule</strong> (à bord, prêt), soit <strong>en stock</strong> (mobile, à
+                installer dans le véhicule réservé). <strong>Un siège « Bébé » ne remplace jamais un siège « Enfant », ni l'inverse.</strong>
               </span>
               <div class="aas-grid">
-                <label class="aas-row aas-row--col"><span class="aas-lbl">Bébé <span class="aas-sieges-ex">coque, cosy, nacelle</span></span>
+                <label class="aas-row aas-row--col"><span class="aas-lbl">Bébé possédés <span class="aas-sieges-ex">coque, cosy, nacelle</span></span>
                   <input type="number" min="0" max="500" inputmode="numeric" class="aas-in" [value]="seatsBaby()" (input)="seatsBaby.set(clampStock($any($event.target).value))"></label>
-                <label class="aas-row aas-row--col"><span class="aas-lbl">Enfant <span class="aas-sieges-ex">siège, rehausseur</span></span>
+                <label class="aas-row aas-row--col"><span class="aas-lbl">Enfant possédés <span class="aas-sieges-ex">siège, rehausseur</span></span>
                   <input type="number" min="0" max="500" inputmode="numeric" class="aas-in" [value]="seatsChild()" (input)="seatsChild.set(clampStock($any($event.target).value))"></label>
               </div>
+              <span class="aas-sub aas-sieges-etat">
+                Installés dans des véhicules : <strong>{{ seatsInstalled().baby }}</strong> bébé · <strong>{{ seatsInstalled().child }}</strong> enfant
+                — en stock : <strong>{{ seatsStock().baby }}</strong> bébé · <strong>{{ seatsStock().child }}</strong> enfant
+              </span>
+              <label class="aas-row aas-row--col">
+                <span class="aas-lbl">Si le véhicule choisi n'a pas les sièges à bord</span>
+                <select class="aas-in" [value]="seatsPolicy()" (change)="seatsPolicy.set($any($event.target).value)">
+                  @for (p of seatPolicies; track p) { <option [value]="p" [selected]="p === seatsPolicy()">{{ seatPolicyLabel(p) }}</option> }
+                </select>
+                <span class="aas-sub">{{ seatPolicyHelp() }}</span>
+              </label>
               @if (seatsError(); as e) { <p class="aas-avis-err">{{ e }}</p> }
               @else if (seatsBaby() === 0 && seatsChild() === 0) {
-                <span class="aas-sub">Aucun stock renseigné : toute réservation qui demande un siège auto sera refusée tant que ce n'est pas compté.</span>
+                <span class="aas-sub">Aucun siège renseigné : toute réservation qui demande un siège auto sera refusée tant que ce n'est pas compté.</span>
+              }
+
+              <!-- Sièges À BORD, véhicule par véhicule : équipés d'abord, puis « Équiper un véhicule… ». -->
+              <div class="aas-links-head aas-sieges-vehs">
+                <span class="aas-lbl">À bord des véhicules</span>
+              </div>
+              @for (v of seatsEquipes(); track v.vehicleId) {
+                <div class="aas-veh" [class.aas-link--off]="v.outOfService">
+                  <span class="aas-veh-plate">{{ v.plate || '—' }}@if (v.outOfService) { <span class="aas-link-meta"> · hors service</span> }</span>
+                  <label class="aas-veh-f"><span>Bébé</span>
+                    <input type="number" min="0" max="20" inputmode="numeric" class="aas-in aas-in--xs" [value]="vehDraft(v.vehicleId).baby" (input)="setVehDraft(v.vehicleId, 'baby', $any($event.target).value)"></label>
+                  <label class="aas-veh-f"><span>Enfant</span>
+                    <input type="number" min="0" max="20" inputmode="numeric" class="aas-in aas-in--xs" [value]="vehDraft(v.vehicleId).child" (input)="setVehDraft(v.vehicleId, 'child', $any($event.target).value)"></label>
+                  <button type="button" class="aas-mini aas-mini--accent" [disabled]="vehSaving() === v.vehicleId || !vehDirty(v)" (click)="saveVehicleSeats(v)" title="Enregistrer les sièges à bord">
+                    @if (vehSaving() === v.vehicleId) { <lucide-icon [img]="LoaderIcon" [size]="12" class="aas-spin"></lucide-icon> } @else { OK }
+                  </button>
+                </div>
+              } @empty {
+                <span class="aas-sub">Aucun véhicule équipé : tous les sièges possédés sont en stock.</span>
+              }
+              @if (seatsNonEquipes().length > 0) {
+                <select class="aas-in" (change)="ajouterVehiculeEquipe($any($event.target))">
+                  <option value="" selected>Équiper un véhicule…</option>
+                  @for (v of seatsNonEquipes(); track v.vehicleId) { <option [value]="v.vehicleId">{{ v.plate || v.vehicleId }}</option> }
+                </select>
               }
             </div>
 
@@ -382,6 +423,13 @@ import { BottomSheetComponent } from '../../../shared/ui/bottom-sheet/bottom-she
     .aas-sieges { display: flex; flex-direction: column; gap: 8px; padding: 12px; border-radius: 12px; background: var(--bg-tertiary); border: 1px solid var(--border-subtle); }
     .aas-sieges .aas-in { min-width: 0; width: 100%; }
     .aas-sieges-ex { font-weight: 400; font-size: 11px; color: var(--fg-tertiary); }
+    .aas-sieges-etat { color: var(--fg-secondary); }
+    .aas-sieges-vehs { margin-top: 4px; }
+    /* Une ligne par véhicule équipé : plaque, deux petits compteurs, un bouton. Ça s'actionne au doigt. */
+    .aas-veh { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 7px 9px; border-radius: 10px; background: var(--bg-secondary); border: 1px solid var(--border-subtle); }
+    .aas-veh-plate { flex: 1 1 90px; min-width: 0; font-family: var(--font-mono, monospace); font-weight: 700; font-size: 12px; color: var(--fg-primary); }
+    .aas-veh-f { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; color: var(--fg-tertiary); }
+    .aas-sieges .aas-in--xs { width: 64px; padding: 6px 8px; font-size: 14px; }
     .aas-links-head { display: flex; align-items: center; justify-content: space-between; }
     .aas-mini { display: inline-flex; align-items: center; gap: 4px; padding: 6px 8px; border-radius: 8px; font-size: 11.5px; font-weight: 700; background: var(--bg-tertiary); border: 1px solid var(--border-subtle); color: var(--fg-secondary); flex: 0 0 auto; }
     .aas-mini--accent { background: rgba(16,224,160,.12); color: var(--tracky-light); border-color: rgba(16,224,160,.25); }
@@ -454,15 +502,41 @@ export class AgendaAgentSettingsSheetComponent {
   protected readonly BabyIcon = Baby;
   protected readonly metiers = Object.keys(FLEET_METIER_LABELS) as FleetMetier[];
 
-  // Sièges auto — le stock de la société (bébé / enfant), et ce qui est enregistré en base.
+  // Sièges auto — possédés (édités), politique, installés / en stock (lus), véhicules équipés.
+  protected readonly seatPolicies: ChildSeatPolicy[] = ['STOCK_OR_INSTALLED', 'INSTALLED_ONLY'];
   protected readonly seatsBaby = signal(0);
   protected readonly seatsChild = signal(0);
-  protected readonly seatsSaved = signal<{ baby: number; child: number }>({ baby: 0, child: 0 });
+  protected readonly seatsPolicy = signal<ChildSeatPolicy>('STOCK_OR_INSTALLED');
+  protected readonly seatsSaved = signal<{ baby: number; child: number; policy: ChildSeatPolicy }>({ baby: 0, child: 0, policy: 'STOCK_OR_INSTALLED' });
+  protected readonly seatsInstalled = signal<ChildSeatCounts>({ baby: 0, child: 0 });
+  protected readonly seatsStock = signal<ChildSeatCounts>({ baby: 0, child: 0 });
+  protected readonly seatsVehicles = signal<VehicleChildSeatsDto[]>([]);
   protected readonly seatsSaving = signal(false);
   protected readonly seatsError = signal<string | null>(null);
   protected readonly seatsDirty = computed(
-    () => this.seatsBaby() !== this.seatsSaved().baby || this.seatsChild() !== this.seatsSaved().child,
+    () =>
+      this.seatsBaby() !== this.seatsSaved().baby ||
+      this.seatsChild() !== this.seatsSaved().child ||
+      this.seatsPolicy() !== this.seatsSaved().policy,
   );
+  protected readonly seatPolicyHelp = computed(() =>
+    this.seatsPolicy() === 'INSTALLED_ONLY'
+      ? "Seuls les sièges déjà installés dans le véhicule comptent : le stock n'est jamais promis. À choisir si personne ne peut installer un siège avant le départ."
+      : "Les sièges à bord comptent d'abord ; le stock complète ce qui manque, sans jamais promettre plus qu'il n'en reste sur le créneau. Un véhicule déjà équipé est proposé en premier.",
+  );
+  /** Brouillons des sièges à bord, par véhicule (vehicleId → compte saisi, pas encore enregistré). */
+  protected readonly vehDrafts = signal<Record<string, ChildSeatCounts>>({});
+  /** Véhicules qu'on a choisi d'équiper (ligne ouverte à 0 / 0) mais pas encore enregistrés. */
+  protected readonly vehAjoutes = signal<string[]>([]);
+  protected readonly vehSaving = signal<string | null>(null);
+  protected readonly seatsEquipes = computed(() => {
+    const ajoutes = new Set(this.vehAjoutes());
+    return this.seatsVehicles().filter((v) => v.installed.baby > 0 || v.installed.child > 0 || ajoutes.has(v.vehicleId));
+  });
+  protected readonly seatsNonEquipes = computed(() => {
+    const equipes = new Set(this.seatsEquipes().map((v) => v.vehicleId));
+    return this.seatsVehicles().filter((v) => !equipes.has(v.vehicleId));
+  });
 
   protected readonly loading = signal(false);
   protected readonly saving = signal(false);
@@ -584,7 +658,41 @@ export class AgendaAgentSettingsSheetComponent {
     return Number.isFinite(n) ? Math.max(0, Math.min(500, n)) : 0;
   }
 
-  /** Enregistre le stock de sièges auto — un PUT à part : ce n'est pas un réglage de l'agent. */
+  protected seatPolicyLabel(p: ChildSeatPolicy): string { return CHILD_SEAT_POLICY_LABELS[p]; }
+
+  /** Ce que l'écran affiche pour un véhicule : le brouillon s'il existe, sinon ce qui est enregistré. */
+  protected vehDraft(vehicleId: string): ChildSeatCounts {
+    return this.vehDrafts()[vehicleId] ?? this.seatsVehicles().find((v) => v.vehicleId === vehicleId)?.installed ?? { baby: 0, child: 0 };
+  }
+  protected setVehDraft(vehicleId: string, key: 'baby' | 'child', value: string): void {
+    const n = Math.trunc(Number(value));
+    const propre = Number.isFinite(n) ? Math.max(0, Math.min(20, n)) : 0;
+    this.vehDrafts.update((d) => ({ ...d, [vehicleId]: { ...this.vehDraft(vehicleId), [key]: propre } }));
+  }
+  protected vehDirty(v: VehicleChildSeatsDto): boolean {
+    const d = this.vehDraft(v.vehicleId);
+    return d.baby !== v.installed.baby || d.child !== v.installed.child;
+  }
+  /** Ouvre une ligne (0 / 0) pour un véhicule pas encore équipé ; le select revient sur son intitulé. */
+  protected ajouterVehiculeEquipe(target: HTMLSelectElement): void {
+    const id = target.value;
+    target.value = '';
+    if (!id) return;
+    this.vehAjoutes.update((l) => (l.includes(id) ? l : [...l, id]));
+  }
+
+  /** L'état complet renvoyé par le serveur devient l'état de l'écran — une seule source. */
+  private appliquerEtatSieges(s: ChildSeatStockDto): void {
+    this.seatsSaved.set({ baby: s.total.baby, child: s.total.child, policy: s.policy });
+    this.seatsBaby.set(s.total.baby);
+    this.seatsChild.set(s.total.child);
+    this.seatsPolicy.set(s.policy);
+    this.seatsInstalled.set(s.installed);
+    this.seatsStock.set(s.stock);
+    this.seatsVehicles.set(s.vehicles);
+  }
+
+  /** Enregistre possédés + politique — un PUT à part : ce n'est pas un réglage de l'agent. */
   protected async saveSeats(): Promise<void> {
     if (this.seatsSaving()) return;
     this.seatsSaving.set(true);
@@ -594,16 +702,41 @@ export class AgendaAgentSettingsSheetComponent {
         fleetId: this.currentFleetId(),
         baby: this.seatsBaby(),
         child: this.seatsChild(),
+        policy: this.seatsPolicy(),
       }));
-      this.seatsSaved.set({ baby: r.stock.baby, child: r.stock.child });
-      this.seatsBaby.set(r.stock.baby);
-      this.seatsChild.set(r.stock.child);
-      this.toast.success('Stock de sièges enregistré', `${r.stock.baby} bébé · ${r.stock.child} enfant`);
+      this.appliquerEtatSieges(r);
+      this.toast.success(
+        'Sièges auto enregistrés',
+        `${r.total.baby} bébé · ${r.total.child} enfant possédés — ${r.stock.baby} / ${r.stock.child} en stock · ${this.seatPolicyLabel(r.policy)}`,
+      );
     } catch (e) {
       swallow('agenda-agent-settings-sheet:saveSeats', e);
-      this.seatsError.set(apiErrorMessage(e, "Le stock n'a pas pu être enregistré."));
+      this.seatsError.set(apiErrorMessage(e, "Les sièges n'ont pas pu être enregistrés."));
     } finally {
       this.seatsSaving.set(false);
+    }
+  }
+
+  /** Enregistre les sièges à bord d'UN véhicule ; le serveur relève le total possédé s'il le faut. */
+  protected async saveVehicleSeats(v: VehicleChildSeatsDto): Promise<void> {
+    if (this.vehSaving()) return;
+    const draft = this.vehDraft(v.vehicleId);
+    this.vehSaving.set(v.vehicleId);
+    this.seatsError.set(null);
+    try {
+      const r = await firstValueFrom(this.agendaApi.setVehicleChildSeats(v.vehicleId, { baby: draft.baby, child: draft.child }));
+      this.appliquerEtatSieges(r);
+      this.vehDrafts.update((d) => { const c = { ...d }; delete c[v.vehicleId]; return c; });
+      this.vehAjoutes.update((l) => l.filter((x) => x !== v.vehicleId));
+      this.toast.success(
+        `${v.plate || 'Véhicule'} : sièges à bord enregistrés`,
+        `${draft.baby} bébé · ${draft.child} enfant — reste en stock : ${r.stock.baby} bébé · ${r.stock.child} enfant`,
+      );
+    } catch (e) {
+      swallow('agenda-agent-settings-sheet:saveVehicleSeats', e);
+      this.seatsError.set(apiErrorMessage(e, "Les sièges à bord n'ont pas pu être enregistrés."));
+    } finally {
+      this.vehSaving.set(null);
     }
   }
 
@@ -662,13 +795,12 @@ export class AgendaAgentSettingsSheetComponent {
       swallow('agenda-agent-settings-sheet:load', err);
       this.links.set([]);
     }
-    // Stock de sièges auto (best-effort, mais DIT : un stock illisible n'est pas un stock vide).
+    // Sièges auto (best-effort, mais DIT : un état illisible n'est pas un stock vide).
     this.seatsError.set(null);
+    this.vehDrafts.set({});
+    this.vehAjoutes.set([]);
     try {
-      const s = await firstValueFrom(this.agendaApi.childSeatStock(fleetId));
-      this.seatsSaved.set({ baby: s.stock.baby, child: s.stock.child });
-      this.seatsBaby.set(s.stock.baby);
-      this.seatsChild.set(s.stock.child);
+      this.appliquerEtatSieges(await firstValueFrom(this.agendaApi.childSeatStock(fleetId)));
     } catch (err) {
       swallow('agenda-agent-settings-sheet:childSeats', err);
       this.seatsError.set(apiErrorMessage(err, "Le stock de sièges auto n'a pas pu être lu."));
