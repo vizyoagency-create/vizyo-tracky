@@ -580,7 +580,7 @@ interface GroupOption {
                   <p class="ag-day-card-title">{{ ev.title }}</p>
                   <p class="ag-day-card-meta">
                     @if (ev.vehiclePlate) { <span class="ag-day-card-plate" [vehicleLink]="ev.vehicleId" [attr.title]="'Voir ' + ev.vehiclePlate">{{ ev.vehiclePlate }}</span> }
-                    @if (dureeEnJours(ev) > 1) {
+                    @if (ev.type !== 'RESERVATION' && dureeEnJours(ev) > 1) {
                       · du {{ ev.startAt | date:'d MMM' }} au {{ ev.endAt | date:'d MMM' }}
                     }
                     @if (ev.type === 'RESERVATION' && !ev.allDay) {

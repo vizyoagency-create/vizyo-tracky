@@ -9,7 +9,10 @@ const makeEmail = (ok = true) => ({
 } as never);
 const makeSms = (ok = true) => ({ send: jest.fn().mockResolvedValue({ ok }) } as never);
 const makeErrors = () => ({ record: jest.fn().mockResolvedValue('log-1') } as never);
-const makePrisma = () => ({ fleet: { findUnique: jest.fn().mockResolvedValue({ name: 'CDEF' }) } } as never);
+const makePrisma = (freres: { status: string; vehicle?: { plate: string } }[] = []) => ({
+  fleet: { findUnique: jest.fn().mockResolvedValue({ name: 'CDEF' }) },
+  vehicleEvent: { findMany: jest.fn().mockResolvedValue(freres) },
+} as never);
 /**
  * Qui peut valider / qui est prevenu. INERTE ici : ces tests portent sur la notification AU
  * DEMANDEUR (accuse de reception, confirmation), pas sur l'avis aux valideurs. Une liste vide
@@ -63,6 +66,37 @@ describe('ReservationBookingNotifier (P4 — notifications demandeur)', () => {
     expect(send).toHaveBeenCalledWith(expect.objectContaining({ to: 'ecole@test.fr', template: 'reservation_refused' }));
     expect((email as unknown as { buildReservationRefusedEmail: jest.Mock }).buildReservationRefusedEmail)
       .toHaveBeenCalledWith(expect.objectContaining({ destination: 'Albi' }));
+  });
+
+  /**
+   * F13 (recette prod du 28/09) : une demande de 11 places tient sur deux véhicules (même
+   * bookingRef) — le demandeur recevait DEUX refus. Un seul courriel, à la dernière décision.
+   */
+  it('groupe : tant qu\'un frère est encore EN ATTENTE, ni refus ni confirmation ne partent', async () => {
+    const email = makeEmail(); const sms = makeSms();
+    const prisma = makePrisma([{ status: 'CANCELLED' }, { status: 'REQUESTED' }]);
+    const n = new ReservationBookingNotifier(email, sms, makeErrors(), prisma, makeDestinataires());
+    await n.onRefused(payload({ public: true, requesterContact: 'ecole@test.fr', bookingRef: 'abc' }));
+    await n.onConfirmed(payload({ public: true, requesterContact: 'ecole@test.fr', bookingRef: 'abc' }));
+    expect((email as unknown as { send: jest.Mock }).send).not.toHaveBeenCalled();
+  });
+
+  it('groupe : à la DERNIÈRE décision, un seul courriel — la confirmation nomme tous les véhicules retenus', async () => {
+    const email = makeEmail(); const sms = makeSms();
+    const prisma = makePrisma([{ status: 'CONFIRMED', vehicle: { plate: 'AA-1' } }, { status: 'CONFIRMED', vehicle: { plate: 'BB-2' } }]);
+    const n = new ReservationBookingNotifier(email, sms, makeErrors(), prisma, makeDestinataires());
+    await n.onConfirmed(payload({ public: true, requesterContact: 'ecole@test.fr', bookingRef: 'abc' }));
+    expect((email as unknown as { send: jest.Mock }).send).toHaveBeenCalledTimes(1);
+    expect((email as unknown as { buildReservationConfirmedEmail: jest.Mock }).buildReservationConfirmedEmail)
+      .toHaveBeenCalledWith(expect.objectContaining({ vehicle: 'AA-1, BB-2' }));
+  });
+
+  it('groupe : tous refusés → un seul refus part', async () => {
+    const email = makeEmail(); const sms = makeSms();
+    const prisma = makePrisma([{ status: 'CANCELLED' }, { status: 'CANCELLED' }]);
+    const n = new ReservationBookingNotifier(email, sms, makeErrors(), prisma, makeDestinataires());
+    await n.onRefused(payload({ public: true, requesterContact: 'ecole@test.fr', bookingRef: 'abc' }));
+    expect((email as unknown as { send: jest.Mock }).send).toHaveBeenCalledTimes(1);
   });
 
   it('REFUS d\'une réservation NON publique (saisie interne) : personne à prévenir', async () => {
