@@ -1138,7 +1138,10 @@ function groupeReservationId(ev: VehicleEventDto): string | null {
     .ag-vue--on { background: var(--bg-primary); color: var(--texte-succes); box-shadow: 0 1px 2px rgba(0,0,0,.12); }
     .ag-vue--on lucide-icon { color: var(--tracky-light); }
     .ag-badge--violet { background: color-mix(in srgb, var(--violet) 18%, transparent); color: var(--texte-violet); }
-    .ag-dd-menu--right { left: auto; right: 0; }
+    /* Deux classes, pas une : la règle de base .ag-dd-menu (left: 0) est déclarée PLUS BAS dans
+       cette feuille et, à spécificité égale, l'emportait — le menu « ⋯ » s'ouvrait vers la droite
+       depuis le bouton et sortait de l'écran (retour du propriétaire, 29/09). */
+    .ag-dd-menu.ag-dd-menu--right { left: auto; right: 0; max-width: min(320px, calc(100vw - 32px)); }
     .ag-dd-item-row { display: inline-flex; align-items: center; gap: 9px; }
     .ag-dd-item-row lucide-icon { color: var(--tracky-light); }
     .ag-icon-btn--plus { border: 1px solid var(--border-subtle); background: var(--bg-secondary); width: 36px; height: 36px; border-radius: 10px; }
