@@ -8,6 +8,7 @@ import {
   input,
   output,
   signal,
+  untracked,
 } from '@angular/core';
 import { DatePipe, DecimalPipe, NgClass } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
@@ -17,7 +18,9 @@ import {
 } from 'lucide-angular';
 import {
   DORMANT_STOP_COUNTING_MS,
+  effectiveBlockingEndMs,
   formatSilenceLabel,
+  isImmobilizingEvent,
   isVehicleDormant,
   type ChildSeatAvailabilityDto,
   type ReservationCriteria,
@@ -34,6 +37,7 @@ import { PermissionsService } from '../../../core/services/permissions.service';
 import { ToastService } from '../../../shared/ui/toast/toast.service';
 import { BottomSheetComponent } from '../../../shared/ui/bottom-sheet/bottom-sheet.component';
 import { DateTimeRangePickerComponent } from '../../../shared/ui/datetime-range/datetime-range-picker.component';
+import { placesMaxLibres, type CapaciteLibres } from '../agenda.utils';
 
 export interface ReservationSheetVehicle {
   id: string;
@@ -64,6 +68,12 @@ export interface ReservationSheetVehicle {
    * `VehicleDetailDto` le porte déjà : l'agenda n'a rien à changer.
    */
   fleetId?: string;
+  /**
+   * Places du véhicule, conducteur compris (29/09, « 12 places »). Affichées dans la liste et
+   * comparées à « Places min. » AVANT l'envoi : on sait tout de suite qu'aucun véhicule n'est assez
+   * grand, au lieu de lire « aucun véhicule libre » après coup. `VehicleDetailDto` le porte déjà.
+   */
+  seats?: number | null;
 }
 
 /** Valeur du sélecteur de groupe quand l'utilisateur veut saisir un nom qui n'est pas un groupe de la société. */
@@ -130,6 +140,139 @@ export function horsServiceLabel(reason: string | null | undefined): string | nu
   }
 }
 
+/**
+ * Places d'un véhicule non renseignées : absentes, nulles, négatives ou non finies. MÊME notion que
+ * `placesMaxLibres` (agenda.utils.ts) et que `excludedUnknownCapacity` côté serveur.
+ */
+export function placesInconnues(seats: number | null | undefined): boolean {
+  return typeof seats !== 'number' || !Number.isFinite(seats) || seats <= 0;
+}
+
+/**
+ * Places PASSAGERS d'un véhicule : ses places moins celle de SON conducteur (revue r5 du 29/09, C7).
+ * « Places min. » se lit « conducteur compris » : un groupe de 13 = 12 passagers + 1 conducteur. Réparti
+ * sur deux véhicules, il lui faut DEUX conducteurs — le second n'est pas pris sur le groupe (cdef31
+ * transporte des enfants : un adulte de plus, pas un passager de moins).
+ */
+export function placesPassagers(seats: number): number {
+  return Math.max(0, seats - 1);
+}
+
+/**
+ * « 12 places » (29/09) — la plus petite combinaison de véhicules qui transporte `passagers` passagers,
+ * CHAQUE véhicule emportant son conducteur (revue r5, C7) : un 9 places offre 8 places passagers. La
+ * version d'avant sommait les places conducteur compris — « Places min. 13 » (12 passagers) donnait
+ * 9 + 4 = « 13 places », soit 8 + 3 = 11 places passagers une fois les DEUX conducteurs assis : il
+ * manquait un siège. Ici : 12 passagers → 9 + 5 (8 + 4) ; 11 → 9 + 4 (8 + 3) ; 17 → 9 + 9 + 4.
+ *
+ * Les plus grands d'abord — le moins de véhicules possible —, puis le DERNIER est remplacé par le plus
+ * petit véhicule restant qui suffit encore. Un véhicule d'une place (le conducteur seul) n'apporte
+ * rien : écarté. Null si les véhicules fournis, tous ensemble, n'y suffisent pas. L'ordre d'entrée
+ * départage les égalités (le trier par plaque).
+ */
+export function combinaisonMinimale<T extends { seats: number }>(libres: readonly T[], passagers: number): T[] | null {
+  if (!(passagers > 0)) return null;
+  const cap = (v: T) => placesPassagers(v.seats);
+  const tries = libres.filter((v) => cap(v) > 0).sort((a, b) => cap(b) - cap(a));
+  const pris: T[] = [];
+  let somme = 0;
+  for (const v of tries) {
+    if (somme >= passagers) break;
+    pris.push(v);
+    somme += cap(v);
+  }
+  if (somme < passagers || pris.length === 0) return null;
+  const avant = pris.slice(0, -1);
+  const reste = passagers - avant.reduce((t, v) => t + cap(v), 0);
+  const plusPetit = tries
+    .filter((v) => !avant.includes(v) && cap(v) >= reste)
+    .sort((a, b) => cap(a) - cap(b))[0];
+  return plusPetit ? [...avant, plusPetit] : pris;
+}
+
+/**
+ * Le toast d'une répartition envoyée sans refus, bâti sur les statuts CUMULÉS de tout le groupe (envoi
+ * précédent compris) — revue r5 du 29/09, C10. Le serveur tranche le statut VÉHICULE PAR VÉHICULE
+ * (`reservations_manage` résolu par véhicule, groupe, puis ALL) : une même répartition peut rendre une
+ * réservation ferme ET une demande. Un seul booléen « au moins une demande » annonçait alors
+ * « 2 demandes déposées — à valider » pour une réservation déjà placée dans l'agenda.
+ */
+export function toastRepartition(
+  creees: readonly { plate: string; statut: string }[],
+  complement: boolean,
+): { titre: string; corps: string } {
+  const fermes = creees.filter((c) => c.statut === 'CONFIRMED').map((c) => c.plate);
+  const attente = creees.filter((c) => c.statut !== 'CONFIRMED').map((c) => c.plate);
+  const f = fermes.length;
+  const a = attente.length;
+  const titre = complement
+    ? 'Groupe complété'
+    : a === 0
+      ? `${f} réservation${f > 1 ? 's' : ''} créée${f > 1 ? 's' : ''}`
+      : f === 0
+        ? `${a} demande${a > 1 ? 's' : ''} déposée${a > 1 ? 's' : ''}`
+        : `${f} réservée${f > 1 ? 's' : ''}, ${a} demande${a > 1 ? 's' : ''} à valider`;
+  const corps =
+    a === 0
+      ? `${fermes.join(' + ')} — ${f > 1 ? 'placées' : 'placée'} dans l'agenda.`
+      : f === 0
+        ? `${attente.join(' + ')} — à valider par un gestionnaire.`
+        : `${fermes.join(' + ')} — ${f > 1 ? 'placées' : 'placée'} dans l'agenda · ${attente.join(' + ')} — à valider par un gestionnaire.`;
+  return { titre, corps };
+}
+
+/** Un véhicule d'une répartition proposée, dans l'ordre d'envoi. */
+interface VehiculeReparti {
+  id: string;
+  plate: string;
+  seats: number;
+}
+
+/** La proposition de répartition d'un groupe trop grand pour un seul véhicule. */
+interface Repartition {
+  /** Véhicules à réserver, dans l'ordre d'envoi (celui qui porte les sièges auto d'abord). Vide = pas de répartition. */
+  vehicules: VehiculeReparti[];
+  total: number;
+  /** « Répartir le groupe : A (9 pl.) + B (5 pl.) = 14 places, dont 2 conducteurs : 12 places passagers pour 12 passagers », ou null. */
+  texte: string | null;
+  /** Pourquoi aucune répartition n'est proposée, ou null. */
+  raison: string | null;
+  /** Où partent les sièges auto demandés (ou pourquoi ils risquent d'être refusés), ou null. */
+  avisSieges: string | null;
+  /** Vrai quand la proposition COMPLÈTE un groupe déjà en partie retenu ({@link RepartitionEntamee}). */
+  complement: boolean;
+}
+
+/** Bilan d'une répartition envoyée : ce qui a été créé, ce qui a été refusé (motif du serveur tel quel). */
+interface BilanRepartition {
+  creees: { plate: string; statut: string }[];
+  refusees: { plate: string; motif: string }[];
+}
+
+/**
+ * Revue du 29/09 — une répartition envoyée en partie seulement (une ligne créée, l'autre refusée) sur
+ * CE créneau et pour CETTE société. La proposition suivante ne porte plus que sur le RESTE : sans cela,
+ * elle repartait du groupe entier — un second clic réservait un second 9 places pour un groupe de 12
+ * (gestionnaire), ou redéposait une demande REQUESTED sur le même véhicule, que le vivier (CONFIRMED et
+ * IN_PROGRESS seulement) laissait « libre » (demandeur).
+ */
+interface RepartitionEntamee {
+  /** Créneau + société ({@link ReservationSheetComponent.cleRepartition}) : un autre créneau repart de zéro. */
+  cle: string;
+  /** Véhicules déjà tentés — créés (quel que soit leur statut) OU refusés : ils sortent de la proposition. */
+  pris: string[];
+  /**
+   * Places PASSAGERS des véhicules créés (places − 1 : chacun emporte son conducteur — revue r5, C7) :
+   * la proposition vise les passagers du groupe MOINS ceux-ci. Compter toutes leurs places retirait
+   * aussi le siège conducteur du besoin, et le complément sous-estimait le reste d'un passager.
+   */
+  passagersRetenus: number;
+  /** Réservations créées, dans l'ordre, AVEC leur statut : le toast final dit ce qui est ferme et ce qui attend (C10). */
+  creees: { plate: string; statut: string }[];
+  /** Les sièges auto sont partis avec une demande créée : le complément ne les redemande pas. */
+  siegesPlaces: boolean;
+}
+
 function toLocalInput(d: Date): string {
   const p = (n: number) => (n < 10 ? `0${n}` : String(n));
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
@@ -186,7 +329,56 @@ function toLocalInput(d: Date): string {
                 <span class="rs-retro-s">Coche si la sortie a <strong>déjà eu lieu</strong> : elle sera enregistrée à sa date réelle (passée). Sinon, les dates passées sont bloquées.</span>
               </span>
             </label>
-            <label class="rs-f rs-f--sm"><span>Places min.</span><input type="number" min="0" inputmode="numeric" class="rs-in" [value]="minSeats()" (input)="minSeats.set($any($event.target).value)"></label>
+            <label class="rs-f rs-f--sm"><span>Places min. (conducteur compris)</span><input type="number" min="0" inputmode="numeric" class="rs-in" [value]="minSeats()" (input)="minSeats.set($any($event.target).value)"></label>
+            <!--
+              « 12 PLACES » (29/09) — la taille se dit AVANT l'envoi. Une demande de 12 places sur un parc
+              dont le plus grand véhicule en a 9 recevait « aucun véhicule libre » : on cherchait un conflit
+              d'horaire qui n'existait pas. Quand aucun véhicule n'est assez grand, la feuille propose de
+              RÉPARTIR le groupe sur les véhicules libres du créneau (une réservation interne par véhicule).
+            -->
+            @if (avisPlaces(); as avis) {
+              <span class="rs-hint rs-hint--manque" role="status">{{ avis }}</span>
+            }
+            @if (mode() === 'request' && aucunAssezGrand() && !retroactive()) {
+              <div class="rs-split">
+                @if (libresEtat() === 'chargement') {
+                  <span class="rs-hint"><lucide-icon [img]="LoaderIcon" [size]="12" class="rs-spin"></lucide-icon> Recherche des véhicules libres sur ce créneau…</span>
+                } @else if (libresEtat() === 'erreur') {
+                  <span class="rs-hint rs-hint--manque">{{ libresErreur() }}</span>
+                } @else if (libresEtat() === 'creneau') {
+                  <span class="rs-hint">Renseignez un créneau à venir pour voir comment répartir le groupe.</span>
+                } @else if (libresEtat() === 'droit') {
+                  <span class="rs-hint">Répartition indisponible : votre accès ne permet pas de voir les véhicules libres de ce créneau. Demandez à un gestionnaire de répartir le groupe.</span>
+                } @else if (repartition(); as rp) {
+                  @if (rp.texte) {
+                    <p class="rs-split-t"><lucide-icon [img]="UsersIcon" [size]="13"></lucide-icon> {{ rp.texte }}</p>
+                    @if (rp.avisSieges) { <span class="rs-hint">{{ rp.avisSieges }}</span> }
+                    <span class="rs-hint">Une réservation par véhicule, sur ce créneau, avec ce motif et ce groupe. Aucun courriel n'est envoyé.</span>
+                    <button type="button" class="rs-btn rs-btn--ok rs-split-btn" [disabled]="repartitionEnCours() || submitting() || needsFleet()" (click)="reserverRepartition()">
+                      @if (repartitionEnCours()) { <lucide-icon [img]="LoaderIcon" [size]="13" class="rs-spin"></lucide-icon> } @else { <lucide-icon [img]="CheckIcon" [size]="13"></lucide-icon> }
+                      {{ repartitionEnCours() ? 'Envoi…' : libelleRepartition(rp) }}
+                    </button>
+                  } @else if (rp.raison) {
+                    <span class="rs-hint rs-hint--manque">{{ rp.raison }}</span>
+                  }
+                }
+                @if (bilanRepartition(); as b) {
+                  <div class="rs-split-bilan" role="status">
+                    @for (c of b.creees; track c.plate) {
+                      <span class="rs-split-ok"><lucide-icon [img]="CheckIcon" [size]="12"></lucide-icon> <span class="rs-plate">{{ c.plate }}</span> : {{ c.statut === 'CONFIRMED' ? 'réservé' : 'demande déposée, à valider' }}</span>
+                    }
+                    @for (r of b.refusees; track r.plate) {
+                      <span class="rs-split-ko"><lucide-icon [img]="AlertIcon" [size]="12"></lucide-icon> <span class="rs-plate">{{ r.plate }}</span> : refusé — {{ r.motif }}</span>
+                    }
+                    @if (b.creees.length > 0) {
+                      <span class="rs-hint">{{ b.creees.length > 1 ? 'Les réservations créées sont conservées' : 'La réservation créée est conservée' }} (rien n'a été supprimé) : complétez le groupe avec un autre véhicule ou un autre créneau, ou annulez-la depuis l'agenda.</span>
+                    } @else {
+                      <span class="rs-hint">Aucune réservation n'a été créée.</span>
+                    }
+                  </div>
+                }
+              </div>
+            }
             <!--
               SIÈGES AUTO (2026-09-28) — pris sur le STOCK de la société, pas sur le véhicule. Deux
               types, jamais interchangeables : un bébé ne va pas dans un siège enfant, ni l'inverse.
@@ -368,7 +560,7 @@ function toLocalInput(d: Date): string {
                 {{ submitting() ? 'Enregistrement…' : 'Enregistrer' }}
               </button>
             } @else {
-              <button type="button" class="rs-btn rs-btn--primary" [disabled]="submitting() || needsFleet()" (click)="submit()">
+              <button type="button" class="rs-btn rs-btn--primary" [disabled]="submitting() || needsFleet() || repartitionEnCours()" (click)="submit()">
                 @if (submitting()) { <lucide-icon [img]="LoaderIcon" [size]="15" class="rs-spin"></lucide-icon> }
                 {{ submitting() ? 'Envoi…' : (canManage() ? 'Réserver' : 'Déposer la demande') }}
               </button>
@@ -480,6 +672,17 @@ function toLocalInput(d: Date): string {
     .rs-body { display: flex; flex-direction: column; gap: 10px; overflow-y: auto; max-height: 58vh; max-height: 58dvh; padding: 2px; }
     .rs-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
     .rs-alert--foot { margin-top: 8px; }
+    /* « 12 places » : la proposition de répartition, sous le champ Places. */
+    .rs-split { display: flex; flex-direction: column; gap: 6px; padding: 10px 11px; border-radius: 10px; background: var(--bg-secondary); border: 1px dashed color-mix(in srgb, var(--tracky-light) 45%, var(--border-subtle)); }
+    .rs-split-t { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin: 0; font-size: 12.5px; font-weight: 700; color: var(--fg-primary); }
+    .rs-split-t lucide-icon { color: var(--tracky-light); }
+    .rs-split-btn { align-self: flex-start; }
+    .rs-split-btn:disabled { opacity: .55; }
+    .rs-split-bilan { display: flex; flex-direction: column; gap: 4px; padding-top: 6px; border-top: 1px solid var(--border-subtle); }
+    .rs-split-ok, .rs-split-ko { display: flex; align-items: flex-start; gap: 5px; font-size: 12px; line-height: 1.4; }
+    .rs-split-ok { color: var(--texte-succes, var(--tracky-light)); }
+    .rs-split-ko { color: var(--texte-alerte); }
+    .rs-split-ok lucide-icon, .rs-split-ko lucide-icon { flex-shrink: 0; margin-top: 2px; }
     .rs-f { display: flex; flex-direction: column; gap: 4px; font-size: 11.5px; color: var(--fg-tertiary); }
     .rs-f > span:first-child, .rs-lbl-row { font-weight: 600; text-transform: uppercase; letter-spacing: .03em; }
     .rs-lbl-row { display: flex; align-items: center; justify-content: space-between; }
@@ -912,12 +1115,14 @@ export class ReservationSheetComponent {
         DORMANT_STOP_COUNTING_MS,
       );
       const brand = v.brand ? ` · ${v.brand} ${v.model ?? ''}`.trimEnd() : '';
+      // « 12 places » (29/09) : les places de chaque véhicule, conducteur compris — rien si inconnues.
+      const places = typeof v.seats === 'number' && v.seats > 0 ? ` · ${v.seats} pl.` : '';
       // Hors service DÉCLARÉ : grisé même en édition (le serveur refuserait la réaffectation),
       // sauf s'il est déjà le véhicule de la réservation — sinon la feuille devient inenregistrable.
       const horsService = horsServiceLabel(v.outOfServiceReason);
       return {
         id: v.id,
-        label: `${v.plate || '—'}${brand}`,
+        label: `${v.plate || '—'}${places}${brand}`,
         horsService,
         // Sièges auto déjà installés : celui qui choisit le véhicule voit ce qu'il n'aura pas à installer.
         aBord: siegesLabel({ baby: v.childSeatsBaby ?? 0, child: v.childSeatsChild ?? 0 }),
@@ -950,6 +1155,284 @@ export class ReservationSheetComponent {
     () => this.vehicleOptions().filter((o) => o.disabled && !!o.horsService).length,
   );
 
+  // ─── « 12 places » (29/09) — la taille du groupe, dite avant l'envoi ────────────────────────
+  //
+  // Le 29/09 à 05:10, sur Client test (3 véhicules de 9 places, 4 de 5, 1 de 4), une demande de
+  // 12 places a reçu trois fois « aucun véhicule libre » pendant que le panneau du jour affichait
+  // 7 véhicules libres sur 8. Le refus était juste — aucun véhicule n'a 12 places —, mais rien ne le
+  // disait. La feuille le dit maintenant sous le champ, et propose de RÉPARTIR le groupe.
+
+  /** Places demandées (« Places min. », conducteur compris), ou null. */
+  protected readonly placesDemandees = computed<number | null>(() => {
+    const n = parseInt(this.minSeats(), 10);
+    return Number.isFinite(n) && n > 0 ? n : null;
+  });
+
+  /** Les véhicules de la société de la demande (celle du véhicule choisi, du bandeau, ou du compte). */
+  private readonly vehiculesSociete = computed(() => {
+    const f = this.societeDemande();
+    return this.vehicles().filter((v) => !f || !v.fleetId || v.fleetId === f);
+  });
+
+  /**
+   * La capacité du parc EN SERVICE de la société affichée — occupés ou non, comme le serveur
+   * (`largestSeats`) : le plus grand nombre de places CONNU, et combien de véhicules n'en ont pas de
+   * renseigné (revue r5 du 29/09, C9). Même fonction que le panneau du jour (`placesMaxLibres`) : un
+   * minibus jamais saisi n'est plus sauté en silence sous une borne « le plus grand en a 9 ».
+   */
+  private readonly capaciteParc = computed<CapaciteLibres>(() =>
+    placesMaxLibres(this.vehiculesSociete().filter((v) => !v.outOfServiceReason), new Set<string>()),
+  );
+
+  /** Le plus grand nombre de places CONNU parmi les véhicules en service de la société. Null si aucun n'est renseigné. */
+  protected readonly plusGrandEnService = computed<number | null>(() => this.capaciteParc().max);
+
+  /** Le véhicule choisi dans la liste, ou null (« Auto »). */
+  private readonly vehiculeChoisi = computed<ReservationSheetVehicle | null>(() => {
+    const id = this.vehicleId();
+    return id ? (this.vehicles().find((x) => x.id === id) ?? null) : null;
+  });
+
+  /**
+   * Aucun véhicule en service de la société n'a autant de places que demandé — sauf si le véhicule
+   * CHOISI n'a pas de places renseignées (C9) : le serveur l'accepte (il ne refuse pas sur une donnée
+   * absente, `assertAssezDePlaces`), on ne propose donc pas de répartir à côté d'un choix valable.
+   */
+  protected readonly aucunAssezGrand = computed(() => {
+    const n = this.placesDemandees();
+    const g = this.plusGrandEnService();
+    if (n === null || g === null || n <= g) return false;
+    const v = this.vehiculeChoisi();
+    return !(v && placesInconnues(v.seats));
+  });
+
+  /**
+   * L'avertissement sous « Places min. » : aucun véhicule assez grand (« Aucun véhicule n'a 12 places :
+   * le plus grand en a 9. »), sinon le véhicule CHOISI trop petit (« TEST-004-XX a 5 places, moins que
+   * les 12 demandées. » — le serveur refuse ce couple). Null s'il n'y a rien à dire.
+   *
+   * Revue r5 (C9) — des places NON RENSEIGNÉES ne permettent pas d'affirmer : un véhicule en service
+   * sans places saisies qualifie l'avis (« Aucun véhicule renseigné… ; 1 véhicule sans nombre de places
+   * renseigné n'a pas été compté »), comme le serveur (`messageAucunVehicule`) et le panneau du jour
+   * (`libelleVehiculesLibres`) ; et le véhicule CHOISI sans places renseignées reçoit son propre avis au
+   * lieu d'un « aucun véhicule n'a 12 places » écrit sous lui.
+   */
+  protected readonly avisPlaces = computed<string | null>(() => {
+    const n = this.placesDemandees();
+    if (n === null) return null;
+    const { max: g, inconnus } = this.capaciteParc();
+    if (g === null && inconnus > 0) {
+      return 'Aucun véhicule de la société n\'a de nombre de places renseigné : complétez-le dans la vue Parc de l\'agenda.';
+    }
+    const v = this.vehiculeChoisi();
+    if (v && placesInconnues(v.seats)) {
+      return `Le nombre de places de ${v.plate || 'ce véhicule'} n'est pas renseigné : vérifiez qu'il accueille ${n > 1 ? `les ${n} personnes` : 'la personne'} (conducteur compris), ou complétez-le dans la vue Parc de l'agenda.`;
+    }
+    if (g !== null && n > g) {
+      if (inconnus === 0) return `Aucun véhicule n'a ${n} places : le plus grand en a ${g}.`;
+      const nonComptes = inconnus > 1
+        ? `${inconnus} véhicules sans nombre de places renseigné n'ont pas été comptés : complétez-les`
+        : '1 véhicule sans nombre de places renseigné n\'a pas été compté : complétez-le';
+      return `Aucun véhicule renseigné n'a ${n} places : le plus grand en a ${g} (${nonComptes} dans la vue Parc de l'agenda).`;
+    }
+    if (v && typeof v.seats === 'number' && v.seats > 0 && v.seats < n) {
+      return `${v.plate || 'Ce véhicule'} a ${v.seats} places, moins que les ${n} demandées.`;
+    }
+    return null;
+  });
+
+  /**
+   * Les évènements du créneau (réservations, immobilisations) de la société, lus SANS plancher de
+   * places pour proposer une répartition. La route de suggestion `GET /reservations/suggest` n'existe
+   * plus (retirée le 22/09, P2-6) : on relit `GET /agenda/events` sur le créneau — la lecture du
+   * panneau du jour — et l'on applique les MÊMES règles que le vivier du serveur (voir `repartition`).
+   * `cle` = créneau + société + génération : changer les places ne relit rien.
+   */
+  private readonly libresCreneau = signal<{ cle: string; from: string; to: string; events: VehicleEventDto[] } | null>(null);
+  /**
+   * 'repos' (rien à proposer), 'creneau' (créneau incomplet ou passé), 'droit' (lecture de l'agenda non
+   * permise), 'chargement', 'pret', 'erreur'.
+   */
+  protected readonly libresEtat = signal<'repos' | 'creneau' | 'droit' | 'chargement' | 'pret' | 'erreur'>('repos');
+  protected readonly libresErreur = signal<string | null>(null);
+  /**
+   * La lecture des évènements du créneau (`GET /agenda/events`) exige `agenda_view` ; la feuille, elle,
+   * s'ouvre à `reservations_request` (revue du 29/09). Sans ce droit, rien n'est lu : un 403 « Permission
+   * requise : agenda_view » sortait en toast rouge et dans le cadre, et la fonction ne servait jamais.
+   */
+  private readonly peutLireLibres = computed(() => this.perms.can('agenda_view'));
+  /** Incrémenté après une répartition envoyée : les véhicules libres se relisent. */
+  private readonly generationLibres = signal(0);
+  private lectureLibres = 0;
+  protected readonly repartitionEnCours = signal(false);
+  protected readonly bilanRepartition = signal<BilanRepartition | null>(null);
+  /**
+   * Créneau + société d'une répartition. Les PLACES n'y entrent pas, volontairement : les changer après
+   * un envoi partiel redimensionne le MÊME groupe (la proposition vise le nouveau total moins ce qui est
+   * déjà retenu) ; remettre à zéro reproposerait le groupe entier — la sur-réservation que
+   * {@link RepartitionEntamee} empêche. Un autre créneau, une autre société, ou la réouverture de la
+   * feuille repartent de zéro.
+   */
+  private readonly cleRepartition = computed(() => `${this.startAt()}|${this.endAt()}|${this.societeBandeau() ?? ''}`);
+  private readonly repartitionEntamee = signal<RepartitionEntamee | null>(null);
+  /** La répartition entamée, si elle porte sur le créneau et la société affichés ; sinon null. */
+  protected readonly entameeCourante = computed<RepartitionEntamee | null>(() => {
+    const e = this.repartitionEntamee();
+    return e && e.cle === this.cleRepartition() ? e : null;
+  });
+
+  /**
+   * La répartition proposée : la plus petite combinaison des véhicules LIBRES du créneau qui transporte
+   * les PASSAGERS du groupe, un conducteur par véhicule ({@link combinaisonMinimale} — revue r5, C7 :
+   * « Places min. 13 (conducteur compris) » = 12 passagers, et chaque véhicule de plus emporte son propre
+   * conducteur). « Libre » suit le vivier du serveur (`computeSuggestions`) et le panneau du jour : en
+   * service, boîtier non muet depuis 7 j, places renseignées, ni réservation ferme (CONFIRMED,
+   * IN_PROGRESS) ni immobilisation sur le créneau (même fin effective que le serveur,
+   * `effectiveBlockingEndMs`). Seuls les trajets en cours échappent à cette lecture : le serveur refuse
+   * alors la ligne (« roule déjà »), et le bilan le dit.
+   *
+   * Libres SANS places renseignées (revue r5, C9) : ils n'entrent pas dans la combinaison (on ne compte
+   * pas sur une donnée absente), mais ils sont COMPTÉS et dits dans le texte — « hors 1 libre sans
+   * nombre de places renseigné » —, et ils interdisent de conclure « même en répartissant… n'offrent
+   * que X places » : le minibus jamais saisi est peut-être la réponse.
+   *
+   * Sièges auto : ils partent sur UNE demande, la première — celle du premier véhicule de la
+   * combinaison qui peut les recevoir (à bord, puis stock du créneau selon le réglage de la société).
+   *
+   * Après un envoi PARTIEL (revue du 29/09, {@link RepartitionEntamee}) : la proposition ne couvre plus
+   * que le RESTE (passagers du groupe moins les places passagers des véhicules créés), sans aucun des
+   * véhicules déjà tentés — créés, quel que soit leur statut (une demande REQUESTED n'occupe pas le
+   * vivier, et aurait été redéposée sur le même véhicule), ou refusés (le même refus reviendrait). Les
+   * sièges auto partis avec une demande créée ne sont pas redemandés.
+   */
+  protected readonly repartition = computed<Repartition | null>(() => {
+    const lu = this.libresCreneau();
+    const demandees = this.placesDemandees();
+    if (!lu || demandees === null || !this.aucunAssezGrand()) return null;
+    const entamee = this.entameeCourante();
+    const retenus = entamee?.passagersRetenus ?? 0;
+    // « Conducteur compris » : le groupe = demandées − 1 passagers ; chaque véhicule ajoute SON conducteur.
+    const passagers = demandees - 1 - retenus;
+    if (passagers <= 0) return null; // déjà couvert par ce qui a été retenu
+    const dejaTentes = new Set(entamee?.pris ?? []);
+    const debut = Date.parse(lu.from);
+    const fin = Date.parse(lu.to);
+    const occupes = new Set<string>();
+    for (const ev of lu.events) {
+      if (ev.status === 'DONE' || ev.status === 'CANCELLED') continue;
+      const st = Date.parse(ev.startAt);
+      if (Number.isNaN(st)) continue;
+      const finEffective = effectiveBlockingEndMs(ev.type, st, ev.endAt ? Date.parse(ev.endAt) : null);
+      if (!(st < fin && finEffective > debut)) continue;
+      if (ev.type === 'RESERVATION') {
+        if (ev.status === 'CONFIRMED' || ev.status === 'IN_PROGRESS') occupes.add(ev.vehicleId);
+      } else if (isImmobilizingEvent(ev)) {
+        occupes.add(ev.vehicleId);
+      }
+    }
+    const now = Date.now();
+    const candidats = this.vehiculesSociete().filter(
+      (v) =>
+        !v.outOfServiceReason &&
+        !occupes.has(v.id) &&
+        !dejaTentes.has(v.id) &&
+        !isVehicleDormant({ trackerId: v.tracker?.id ?? null, lastSeenAt: v.tracker?.lastSeenAt ?? null }, now, DORMANT_STOP_COUNTING_MS),
+    );
+    // Libres dont on ne connaît pas les places (C9) : comptés et dits, jamais combinés.
+    const inconnus = candidats.filter((v) => placesInconnues(v.seats)).length;
+    const libres = candidats
+      .filter((v) => !placesInconnues(v.seats))
+      .map((v) => ({ id: v.id, plate: v.plate || '—', seats: v.seats as number, source: v }))
+      .sort((a, b) => a.plate.localeCompare(b.plate));
+    const combo = combinaisonMinimale(libres, passagers);
+    // Tout refusé au premier envoi : rien n'est retenu, on « répartit » encore (sans les refusés).
+    const complement = (entamee?.creees.length ?? 0) > 0;
+    const pl = (k: number, un: string, plusieurs: string) => (k > 1 ? plusieurs : un);
+    const aPlacer = `${passagers} passager${pl(passagers, '', 's')}`;
+    const nonComptes = inconnus > 1
+      ? `${inconnus} libres sans nombre de places renseigné n'ont pas été comptés : complétez-les dans la vue Parc de l'agenda`
+      : '1 libre sans nombre de places renseigné n\'a pas été compté : complétez-le dans la vue Parc de l\'agenda';
+    if (!combo) {
+      const offertes = libres.reduce((t, v) => t + placesPassagers(v.seats), 0);
+      const offre = `${offertes} place${pl(offertes, '', 's')} passager${pl(offertes, '', 's')} (un conducteur par véhicule)`;
+      let raison: string;
+      if (libres.length === 0 && inconnus > 0) {
+        raison =
+          `Aucun ${complement ? 'autre ' : ''}véhicule libre de ce créneau n'a de nombre de places renseigné (${inconnus}) : ` +
+          `complétez-le dans la vue Parc de l'agenda pour ${complement ? `placer les ${aPlacer} restants` : 'répartir le groupe'}.`;
+      } else if (complement) {
+        raison = libres.length === 0
+          ? `Aucun autre véhicule n'est libre sur ce créneau : il reste ${aPlacer} à placer.`
+          : `Les véhicules encore libres${inconnus > 0 ? ' dont les places sont renseignées' : ''} sur ce créneau n'offrent que ${offre} : il reste ${aPlacer} à placer${inconnus > 0 ? ` ; ${nonComptes}` : ''}.`;
+      } else if (libres.length === 0) {
+        raison = 'Aucun véhicule n\'est libre sur ce créneau, quelle que soit sa taille : impossible de répartir le groupe.';
+      } else {
+        const verbe = pl(libres.length, 'offre', 'offrent');
+        raison = inconnus > 0
+          ? `${libres.length > 1 ? `Les ${libres.length} véhicules libres` : 'Le seul véhicule libre'} dont les places sont renseignées n'${verbe} que ${offre} pour ${aPlacer} ; ${nonComptes}.`
+          : `Même en répartissant, ${libres.length > 1 ? `les ${libres.length} véhicules libres` : 'le seul véhicule libre'} sur ce créneau n'${verbe} que ${offre} pour ${aPlacer}.`;
+      }
+      return { vehicules: [], total: 0, texte: null, avisSieges: null, raison, complement };
+    }
+    let ordre = combo;
+    let avisSieges: string | null = null;
+    const need = entamee?.siegesPlaces ? { baby: 0, child: 0 } : this.besoin();
+    if (need.baby > 0 || need.child > 0) {
+      const a = this.seatsAvail();
+      const i = combo.findIndex((x) => this.couvreSieges(x.source, need, a) !== false);
+      if (i > 0) ordre = [combo[i], ...combo.filter((_, j) => j !== i)];
+      avisSieges =
+        i < 0
+          ? `Les sièges auto (${siegesLabel(need)}) ne tiennent sur aucun de ces véhicules sur ce créneau : la demande qui les porte risque d'être refusée.`
+          : `Sièges auto (${siegesLabel(need)}) demandés avec ${ordre[0].plate}.`;
+    }
+    const total = ordre.reduce((t, v) => t + v.seats, 0);
+    const offerts = ordre.reduce((t, v) => t + placesPassagers(v.seats), 0);
+    const k = ordre.length;
+    // Le compte réel, dit en clair (C7) : l'exploitant voit que chaque véhicule emporte son conducteur.
+    const detail =
+      `${ordre.map((v) => `${v.plate} (${v.seats} pl.)`).join(' + ')} = ${total} place${pl(total, '', 's')}, ` +
+      `dont ${k} conducteur${pl(k, '', 's')} : ${offerts} place${pl(offerts, '', 's')} passager${pl(offerts, '', 's')} pour ${aPlacer}`;
+    const hors = inconnus > 0 ? ` (${nonComptes})` : '';
+    return {
+      vehicules: ordre.map((v) => ({ id: v.id, plate: v.plate, seats: v.seats })),
+      total,
+      texte: complement
+        ? `Compléter le groupe (${retenus} passager${pl(retenus, '', 's')} déjà couvert${pl(retenus, '', 's')}, il en reste ${passagers}) : ${detail}${hors}`
+        : `Répartir le groupe : ${detail}${hors}`,
+      raison: null,
+      avisSieges,
+      complement,
+    };
+  });
+
+  /** Libellé du bouton de répartition : « Réserver ces 2 véhicules », « Compléter le groupe : demander ce véhicule »… */
+  protected libelleRepartition(rp: Repartition): string {
+    const verbe = this.canManage() ? 'réserver' : 'demander';
+    const quoi = rp.vehicules.length > 1 ? `ces ${rp.vehicules.length} véhicules` : 'ce véhicule';
+    return rp.complement ? `Compléter le groupe : ${verbe} ${quoi}` : `${verbe === 'réserver' ? 'Réserver' : 'Demander'} ${quoi}`;
+  }
+
+  /**
+   * Ce véhicule peut-il recevoir les sièges auto demandés sur le créneau ? Sièges à bord d'abord, le
+   * stock du créneau pour le reste — ou rien sous « installés seulement ». Null : on ne sait pas (la
+   * disponibilité n'est pas lue) ; le serveur tranchera.
+   */
+  private couvreSieges(
+    v: ReservationSheetVehicle,
+    need: { baby: number; child: number },
+    a: ChildSeatAvailabilityDto | null,
+  ): boolean | null {
+    if (need.baby <= 0 && need.child <= 0) return true;
+    if (!a) return null;
+    const reste = {
+      baby: Math.max(0, need.baby - (v.childSeatsBaby ?? 0)),
+      child: Math.max(0, need.child - (v.childSeatsChild ?? 0)),
+    };
+    if (a.policy === 'INSTALLED_ONLY') return reste.baby === 0 && reste.child === 0;
+    return reste.baby <= a.available.baby && reste.child <= a.available.child;
+  }
+
   // IA placement
   protected readonly aiLoading = signal(false);
   protected readonly aiError = signal<string | null>(null);
@@ -975,6 +1458,8 @@ export class ReservationSheetComponent {
       const edit = this.editReservation();
       this.resetAi();
       this.reqError.set(null);
+      this.bilanRepartition.set(null);
+      this.repartitionEntamee.set(null); // une réouverture = un nouveau groupe
       if (edit) {
         const meta = (edit.metadata ?? {}) as { reason?: string; retroactive?: boolean; criteria?: ReservationCriteria };
         const debut = toLocalInput(new Date(edit.startAt));
@@ -1067,6 +1552,65 @@ export class ReservationSheetComponent {
         debutLu > si.getTime(),
       );
     });
+    // « 12 places » (29/09) — dès qu'aucun véhicule n'est assez grand, en DEMANDE, sur un créneau à
+    // venir : les évènements du créneau sont relus (une seule fois par créneau et par société ;
+    // changer les places ne relit rien) pour proposer une répartition. Hors de ce cas, rien n'est lu.
+    effect(() => {
+      const actif =
+        this.open() && this.mode() === 'request' && this.aucunAssezGrand() && !this.retroactive() && !this.needsFleet();
+      const s = this.startAt();
+      const e = this.endAt();
+      const fleetId = this.societeBandeau() ?? undefined;
+      const generation = this.generationLibres();
+      const peutLire = this.peutLireLibres();
+      untracked(() => {
+        if (!actif) {
+          this.lectureLibres++;
+          this.libresCreneau.set(null);
+          this.libresEtat.set('repos');
+          return;
+        }
+        if (!peutLire) {
+          // Sans `agenda_view`, `GET /agenda/events` répond 403 : on ne l'appelle pas (revue du 29/09).
+          this.lectureLibres++;
+          this.libresCreneau.set(null);
+          this.libresEtat.set('droit');
+          return;
+        }
+        const si = new Date(s);
+        const ei = new Date(e);
+        if (!s || !e || Number.isNaN(si.getTime()) || Number.isNaN(ei.getTime()) || ei.getTime() <= si.getTime() || si.getTime() < Date.now()) {
+          this.lectureLibres++;
+          this.libresCreneau.set(null);
+          this.libresEtat.set('creneau');
+          return;
+        }
+        const from = si.toISOString();
+        const to = ei.toISOString();
+        const cle = `${from}|${to}|${fleetId ?? ''}|${generation}`;
+        if (this.libresCreneau()?.cle === cle && this.libresEtat() === 'pret') return;
+        void this.chargerLibres(cle, from, to, fleetId);
+      });
+    });
+  }
+
+  /** Lit les évènements du créneau pour la répartition ; une réponse en retard n'écrase pas la dernière. */
+  private async chargerLibres(cle: string, from: string, to: string, fleetId: string | undefined): Promise<void> {
+    const n = ++this.lectureLibres;
+    this.libresEtat.set('chargement');
+    this.libresErreur.set(null);
+    try {
+      const events = await firstValueFrom(this.api.listEvents({ from, to, fleetId }));
+      if (n !== this.lectureLibres) return;
+      this.libresCreneau.set({ cle, from, to, events });
+      this.libresEtat.set('pret');
+    } catch (e) {
+      swallow('reservation-sheet:libresCreneau', e);
+      if (n !== this.lectureLibres) return;
+      this.libresCreneau.set(null);
+      this.libresEtat.set('erreur');
+      this.libresErreur.set(apiErrorMessage(e, 'Les véhicules libres de ce créneau n\'ont pas pu être lus : impossible de proposer une répartition.'));
+    }
   }
 
   /** Numéro de la dernière lecture partie : une réponse en retard ne doit pas écraser la dernière. */
@@ -1411,7 +1955,9 @@ export class ReservationSheetComponent {
   }
 
   protected async submit(): Promise<void> {
+    if (this.repartitionEnCours()) return;
     this.reqError.set(null);
+    this.bilanRepartition.set(null);
     if (this.needsFleet()) { this.reqError.set('Choisis une société dans le sélecteur en haut de page avant de réserver.'); return; }
     const slot = this.slot();
     if (!slot) return;
@@ -1446,6 +1992,110 @@ export class ReservationSheetComponent {
       this.reqError.set(this.errMsg(e));
     } finally {
       this.submitting.set(false);
+    }
+  }
+
+  /**
+   * « 12 places » (29/09) — réserver la répartition proposée : UNE demande par véhicule, envoyées
+   * l'une après l'autre, chacune avec son `vehicleId`, SANS plancher de places (le serveur refuse un
+   * véhicule choisi plus petit que `minSeats` : c'est la répartition qui couvre le groupe), avec le
+   * même créneau, le même groupe et le même motif suffixé « (1/2) », « (2/2) ». Les sièges auto sont
+   * demandés sur la première seulement (un groupe = un besoin de sièges). Réservations INTERNES par la
+   * route habituelle (`POST /reservations/request`) : ni lien public, ni courriel au demandeur.
+   *
+   * Un refus n'arrête pas les suivantes, et ne défait RIEN : ce qui a été créé reste créé, et le bilan
+   * le dit (créées, refusées avec le motif du serveur tel quel). Tout réussi : la feuille se referme,
+   * comme une réservation simple.
+   *
+   * Revue du 29/09 — un envoi partiel est MÉMORISÉ ({@link RepartitionEntamee}) : la proposition
+   * suivante ne complète que le reste, sans les véhicules déjà tentés, et le bilan s'y cumule. Un
+   * complément numérote ses motifs « (complément 1/1) » : les numéros du premier envoi sont déjà pris.
+   */
+  protected async reserverRepartition(): Promise<void> {
+    const rp = this.repartition();
+    if (!rp || rp.vehicules.length === 0 || this.repartitionEnCours() || this.submitting()) return;
+    const entamee = this.entameeCourante();
+    const bilanPrecedent = entamee ? this.bilanRepartition() : null;
+    this.reqError.set(null);
+    if (this.needsFleet()) { this.reqError.set('Choisis une société dans le sélecteur en haut de page avant de réserver.'); return; }
+    if (this.retroactive()) return; // une sortie déjà effectuée se consigne véhicule par véhicule
+    const slot = this.slot();
+    if (!slot) return;
+    this.bilanRepartition.set(null);
+    const cle = this.cleRepartition();
+    const besoin = this.placesDemandees();
+    // Les sièges auto déjà partis avec une demande créée ne sont pas redemandés par un complément.
+    const need = entamee?.siegesPlaces ? { baby: 0, child: 0 } : this.besoin();
+    const avecSieges = need.baby > 0 || need.child > 0;
+    const motif = this.reason().trim() || `Groupe de ${besoin ?? rp.total} places réparti`;
+    const groupe = this.champGroupe();
+    const fleetId = this.societeBandeau() ?? undefined;
+    const n = rp.vehicules.length;
+    const complement = rp.complement; // une partie du groupe est déjà retenue sur ce créneau
+    const creees: BilanRepartition['creees'] = [];
+    const refusees: BilanRepartition['refusees'] = [];
+    let passagersCrees = 0;
+    let siegesPlaces = entamee?.siegesPlaces ?? false;
+    this.repartitionEnCours.set(true);
+    try {
+      for (const [i, v] of rp.vehicules.entries()) {
+        const criteria: ReservationCriteria =
+          i === 0
+            ? {
+                ...(need.baby > 0 ? { childSeatsBaby: need.baby } : {}),
+                ...(need.child > 0 ? { childSeatsChild: need.child } : {}),
+              }
+            : {};
+        try {
+          const res = await firstValueFrom(
+            this.api.requestReservation({
+              vehicleId: v.id,
+              fleetId,
+              startAt: slot.startAt,
+              endAt: slot.endAt,
+              reason: complement ? `${motif} (complément ${i + 1}/${n})` : `${motif} (${i + 1}/${n})`,
+              criteria,
+              ...groupe,
+            }),
+          );
+          creees.push({ plate: v.plate, statut: res.status });
+          passagersCrees += placesPassagers(v.seats); // son conducteur est assis : il ne couvre pas un passager (C7)
+          if (i === 0 && avecSieges) siegesPlaces = true;
+        } catch (e) {
+          swallow('reservation-sheet:repartition', e);
+          refusees.push({ plate: v.plate, motif: this.errMsg(e) });
+        }
+      }
+    } finally {
+      this.repartitionEnCours.set(false);
+    }
+    // Chaque véhicule tenté — créé (quel que soit son statut) ou refusé — sort des propositions suivantes.
+    const suite: RepartitionEntamee = {
+      cle,
+      pris: [...(entamee?.pris ?? []), ...rp.vehicules.map((v) => v.id)],
+      passagersRetenus: (entamee?.passagersRetenus ?? 0) + passagersCrees,
+      creees: [...(entamee?.creees ?? []), ...creees],
+      siegesPlaces,
+    };
+    this.repartitionEntamee.set(suite);
+    if (creees.length > 0) this.created.emit();
+    if (refusees.length === 0) {
+      // Revue r5 (C10) : le toast se bâtit sur les statuts CUMULÉS du groupe — ce qui est ferme d'un
+      // côté, ce qui attend un gestionnaire de l'autre —, jamais sur « au moins une demande ».
+      const { titre, corps } = toastRepartition(suite.creees, complement);
+      this.toast.success(titre, corps);
+      this.closed.emit();
+      return;
+    }
+    // Refus : la feuille reste ouverte sur le bilan (cumulé avec celui de l'envoi précédent), et les
+    // véhicules libres se relisent ; la proposition suivante ne complète que le reste.
+    this.bilanRepartition.set({
+      creees: [...(bilanPrecedent?.creees ?? []), ...creees],
+      refusees: [...(bilanPrecedent?.refusees ?? []), ...refusees],
+    });
+    this.generationLibres.update((g) => g + 1);
+    if (creees.length > 0) {
+      this.toast.error(`Répartition incomplète : ${creees.length} sur ${n}`, 'Ce qui a été créé est conservé — voir le bilan dans la feuille.');
     }
   }
 

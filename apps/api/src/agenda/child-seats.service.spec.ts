@@ -214,3 +214,72 @@ describe('ChildSeatsService — possédés, installés, stock, politique', () =>
     expect(ChildSeatsService.criteresPropres({ minSeats: undefined })).toBeNull();
   });
 });
+
+/**
+ * ── JOURNAL MÉTIER (29/09) ───────────────────────────────────────────────────────────────────
+ *
+ * Régler le stock, la politique ou les sièges à bord d'un véhicule laisse une ligne
+ * `sieges_modifies` (catégorie AGENDA), « avant → après » type par type. La société est celle
+ * RÉGLÉE (ou celle du véhicule) — jamais celle de l'utilisateur ; rien n'est écrit si rien ne
+ * change ; un journal absent ou en panne ne fait jamais échouer le réglage.
+ */
+describe('ChildSeatsService — journal métier (29/09)', () => {
+  const superAdmin = () => makeUser({ id: 'u-sa', role: UserRole.SUPER_ADMIN, fleetId: null });
+
+  it('setStock : « possédés « Bébé » 3 → 2 », réglage avant → après, société RÉGLÉE, auteur réel', async () => {
+    const journal = { record: jest.fn() };
+    const svc = new ChildSeatsService(makePrisma({ total: { baby: 3, child: 4 } }), journal as never);
+
+    await svc.setStock(superAdmin(), { fleetId: 'f1', baby: 2, child: 4, policy: 'INSTALLED_ONLY' });
+
+    expect(journal.record).toHaveBeenCalledTimes(1);
+    const l = journal.record.mock.calls[0][0];
+    expect(l).toEqual(expect.objectContaining({
+      category: 'AGENDA', action: 'sieges_modifies', actor: 'utilisateur', fleetId: 'f1', triggeredByUserId: 'u-sa', target: null,
+    }));
+    expect(l.detail).toContain('possédés « Bébé » 3 → 2');
+    expect(l.detail).not.toContain('« Enfant »'); // inchangé : pas dit
+    expect(l.detail).toContain('« Sièges installés + stock » → « Sièges installés seulement »');
+    expect(l.meta).toEqual(expect.objectContaining({
+      avant: { total: { baby: 3, child: 4 }, policy: 'STOCK_OR_INSTALLED' },
+      apres: { total: { baby: 2, child: 4 }, policy: 'INSTALLED_ONLY' },
+    }));
+  });
+
+  it('setStock sans changement : aucune ligne', async () => {
+    const journal = { record: jest.fn() };
+    const svc = new ChildSeatsService(makePrisma({ total: { baby: 3, child: 4 } }), journal as never);
+
+    await svc.setStock(makeUser(), { baby: 3, child: 4, policy: 'STOCK_OR_INSTALLED' });
+    expect(journal.record).not.toHaveBeenCalled();
+  });
+
+  it('setVehicleSeats : plaque, « à bord » avant → après, le total RELEVÉ dit aussi ; société du VÉHICULE', async () => {
+    const journal = { record: jest.fn() };
+    const prisma = makePrisma({ total: { baby: 0, child: 1 }, vehicles: [{ id: 'v1', childSeatsBaby: 0, childSeatsChild: 0 }] });
+    const svc = new ChildSeatsService(prisma, journal as never);
+
+    await svc.setVehicleSeats(superAdmin(), 'v1', { baby: 2, child: 1 });
+
+    const l = journal.record.mock.calls[0][0];
+    expect(l).toEqual(expect.objectContaining({ action: 'sieges_modifies', fleetId: 'f1', triggeredByUserId: 'u-sa', target: 'V1' }));
+    expect(l.detail).toContain('Sièges auto à bord de V1');
+    expect(l.detail).toContain('à bord « Bébé » 0 → 2');
+    expect(l.detail).toContain('à bord « Enfant » 0 → 1');
+    expect(l.detail).toContain('possédés (relevé) « Bébé » 0 → 2');
+    expect(l.meta).toEqual(expect.objectContaining({ scope: 'vehicule', vehicleId: 'v1' }));
+  });
+
+  it('journal EN PANNE (record lève) ou ABSENT : les réglages passent', async () => {
+    const enPanne = { record: jest.fn(() => { throw new Error('journal HS'); }) };
+    for (const journal of [enPanne, undefined]) {
+      const svc = new ChildSeatsService(
+        makePrisma({ total: { baby: 3, child: 4 }, vehicles: [{ id: 'v1', childSeatsBaby: 0, childSeatsChild: 0 }] }),
+        journal as never,
+      );
+      await expect(svc.setStock(makeUser(), { baby: 5, child: 5 })).resolves.toMatchObject({ total: { baby: 5, child: 5 } });
+      await expect(svc.setVehicleSeats(makeUser(), 'v1', { baby: 1, child: 0 })).resolves.toMatchObject({ installed: { baby: 1, child: 0 } });
+    }
+    expect(enPanne.record).toHaveBeenCalledTimes(2);
+  });
+});

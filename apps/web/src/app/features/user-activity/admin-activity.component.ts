@@ -1,5 +1,5 @@
 import { DatePipe, NgTemplateOutlet } from '@angular/common';
-import { Component, computed, inject, OnDestroy, OnInit, signal } from '@angular/core';
+import { Component, computed, effect, inject, OnDestroy, OnInit, signal, untracked } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import type {
@@ -11,7 +11,8 @@ import type {
   PresenceStatus,
   SystemActivityDto,
 } from '@vizyo/tracky-shared';
-import { SYSTEM_ACTIVITY_CATEGORY_LABELS } from '@vizyo/tracky-shared';
+import { AGENDA_ACTIVITY_ACTION_LABELS, SYSTEM_ACTIVITY_CATEGORY_LABELS, statutActionAgenda } from '@vizyo/tracky-shared';
+import type { StatutActionAgenda } from '@vizyo/tracky-shared';
 import {
   Activity,
   ArrowLeft,
@@ -44,10 +45,14 @@ import {
   RotateCcw,
   Send,
   Users,
+  CalendarCheck,
   CalendarClock,
+  CalendarDays,
 } from 'lucide-angular';
 import { apiErrorMessage } from '../../core/error/api-error';
 import { AudioMonitoringService } from '../../core/services/audio-monitoring.service';
+import { FleetCacheService } from '../../core/services/fleet-cache.service';
+import { FleetFilterService } from '../../core/services/fleet-filter.service';
 import { UsersApiService } from '../../core/services/users.service';
 import { relativeTime } from '../../shared/utils/relative-time';
 import { UserActivityApiService, type SourceActivite } from './user-activity-api.service';
@@ -524,8 +529,31 @@ type Period = '24h' | '7d' | '30d';
           <span>
             Actions <strong class="text-fg-secondary">automatiques / en arrière-plan</strong> de l'application :
             e-mails, SMS, notifications push, commandes moteur, purges de rétention, rapports IA planifiés.
+            Et les <strong class="text-fg-secondary">gestes d'agenda</strong> (réservations, maintenances, incidents,
+            propositions de l'agent), avec leur auteur.
             Distinct de l'activité <em>manuelle</em> des utilisateurs (onglets Live / Historique).
           </span>
+        </div>
+
+        <!-- Société : le MÊME filtre que le sélecteur du bandeau (FleetFilterService). Un second
+             réglage, propre à cet onglet, aurait pu dire « CDEF 31 » ici et « Toutes » là-haut :
+             deux vérités sur un même écran. La société filtrée est celle de la RESSOURCE touchée
+             (réservation, véhicule, événement), pas celle de l'auteur — un super-admin n'en a pas. -->
+        <div class="flex flex-wrap items-end gap-x-3 gap-y-1">
+          <div class="flex flex-col gap-1 w-full sm:w-auto min-w-0">
+            <label for="sys-societe" class="text-xs text-fg-tertiary">Société</label>
+            <select id="sys-societe" #selSociete (change)="setSystemFleet(selSociete.value)"
+                    class="w-full sm:w-72 max-w-full bg-bg-secondary border border-border-subtle rounded-lg px-3 py-2 text-sm text-fg-primary">
+              <option value="" [selected]="!systemFleetId()">Toutes les sociétés</option>
+              @if (systemFleetId() && !societeConnue()) {
+                <option [value]="systemFleetId() ?? ''" [selected]="true">Société choisie dans le bandeau</option>
+              }
+              @for (f of societes(); track f.id) {
+                <option [value]="f.id" [selected]="f.id === systemFleetId()">{{ f.name }}</option>
+              }
+            </select>
+          </div>
+          <p class="text-[11px] text-fg-tertiary sm:pb-2.5">Même filtre que le sélecteur de société du bandeau.</p>
         </div>
 
         <!-- Filtre par catégorie -->
@@ -552,7 +580,7 @@ type Period = '24h' | '7d' | '30d';
         <!-- Filtre statut : « lister uniquement les échecs » = cas d'usage n°1 du journal. -->
         <div class="flex flex-wrap items-center gap-1.5">
           @for (s of systemStatuses; track s.id) {
-            <button (click)="setSystemStatus(s.id)"
+            <button (click)="setSystemStatus(s.id)" [attr.title]="s.title ?? null"
                     class="px-3 py-1 text-xs font-medium rounded-full border transition-colors"
                     [class]="systemStatus() === s.id
                       ? 'border-tracky text-fg-primary bg-tracky/10'
@@ -578,14 +606,23 @@ type Period = '24h' | '7d' | '30d';
                       <span class="text-[10px] font-bold px-1.5 py-0.5 rounded-md" [class]="b.cls">{{ b.label }}</span>
                     }
                     @if (a.triggeredByName) {
-                      <span class="text-[10px] font-medium px-1.5 py-0.5 rounded-md bg-sky-500/15 text-sky-400">déclenché par {{ a.triggeredByName }}</span>
+                      <!-- Un geste d'agenda EST l'acte de cette personne : « par », pas « déclenché par »
+                           (qui décrit un envoi automatique découlant d'un acte). -->
+                      <span class="text-[10px] font-medium px-1.5 py-0.5 rounded-md bg-sky-500/15 text-sky-400">{{ estGeste(a.category) ? 'par' : 'déclenché par' }} {{ a.triggeredByName }}</span>
+                    } @else if (a.triggeredByUserId) {
+                      <!-- Un auteur connu dont le compte n'existe plus : le dire, plutôt qu'afficher « utilisateur ». -->
+                      <span class="text-[10px] font-medium px-1.5 py-0.5 rounded-md bg-bg-tertiary text-fg-tertiary">par un compte introuvable</span>
                     } @else {
                       <span class="text-[10px] font-medium px-1.5 py-0.5 rounded-md bg-bg-tertiary text-fg-tertiary uppercase tracking-wide">{{ a.actor ?? 'système' }}</span>
                     }
-                    <span class="inline-flex items-center gap-1 text-[11px]" [style.color]="sysStatusColor(a.status)">
-                      <span class="w-1.5 h-1.5 rounded-full" [style.background]="sysStatusColor(a.status)"></span>
-                      {{ sysStatusLabel(a.status) }}
-                    </span>
+                    <!-- Statut lu AVEC l'action pour un geste d'agenda : une réorganisation en partie
+                         refusée dit « avec refus », comme sur la page du client — pas « ignoré ». -->
+                    @if (sysStatut(a); as st) {
+                      <span class="inline-flex items-center gap-1 text-[11px]" [style.color]="st.couleur">
+                        <span class="w-1.5 h-1.5 rounded-full" [style.background]="st.couleur"></span>
+                        {{ st.libelle }}
+                      </span>
+                    }
                   </div>
                   @if (a.target || a.detail) {
                     <p class="text-xs text-fg-secondary truncate mt-0.5"
@@ -618,7 +655,19 @@ type Period = '24h' | '7d' | '30d';
           <div class="flex flex-col items-center justify-center h-40 rounded-[--radius-card]
                       bg-bg-secondary border border-border-subtle text-fg-tertiary gap-2">
             <lucide-icon [img]="Server" [size]="40" class="opacity-30"></lucide-icon>
-            <p class="text-sm">Aucune action système enregistrée.</p>
+            @if (systemChargement()) {
+              <!-- Tant que la réponse du DERNIER appel n'est pas là, on ne sait rien : « aucune
+                   action » serait un faux constat (société changée, puce cliquée, onglet ouvert). -->
+              <p class="text-sm" role="status">Chargement du journal…</p>
+            } @else if (systemErreur(); as msg) {
+              <!-- Une panne n'est pas un journal vide : « aucune action » serait un faux constat. -->
+              <p class="text-sm text-center px-4" style="color: var(--texte-alerte);">{{ msg }}</p>
+              <button (click)="reload()" class="text-xs text-fg-secondary underline">Réessayer</button>
+            } @else if (systemCategory() || systemStatus() || systemFleetId()) {
+              <p class="text-sm text-center px-4">Aucune action pour ces filtres.</p>
+            } @else {
+              <p class="text-sm">Aucune action système enregistrée.</p>
+            }
           </div>
         }
       }
@@ -733,6 +782,8 @@ export class AdminActivityComponent implements OnInit, OnDestroy {
   private readonly usersApi = inject(UsersApiService);
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
+  private readonly fleetFilter = inject(FleetFilterService);
+  private readonly fleetCache = inject(FleetCacheService);
 
   protected readonly ArrowLeft = ArrowLeft;
   protected readonly RefreshCw = RefreshCw;
@@ -754,6 +805,9 @@ export class AdminActivityComponent implements OnInit, OnDestroy {
   ];
   /** Catégories du journal des actions système (chips de filtre). */
   readonly systemCategories: { id: string; label: string }[] = [
+    // 29/09 — les gestes d'agenda, en tête : c'est ce qu'on vient y chercher (« qui a validé ? »).
+    { id: 'RESERVATION', label: 'Réservations' },
+    { id: 'AGENDA', label: 'Agenda' },
     { id: 'MUTATION', label: 'Actions API' },
     { id: 'EMAIL', label: 'E-mails' },
     { id: 'SMS', label: 'SMS' },
@@ -771,11 +825,17 @@ export class AdminActivityComponent implements OnInit, OnDestroy {
     { id: 'PRIVACY', label: 'Vie privée' },
     { id: 'INTERNAL', label: 'Interne' },
   ];
-  readonly systemStatuses: { id: string; label: string }[] = [
+  readonly systemStatuses: { id: string; label: string; title?: string }[] = [
     { id: '', label: 'Tous statuts' },
     { id: 'SUCCESS', label: 'Succès' },
     { id: 'FAILURE', label: 'Échecs' },
-    { id: 'SKIPPED', label: 'Ignorés' },
+    // SKIPPED ne veut pas dire la même chose partout : une réorganisation l'écrit dès qu'une
+    // ligne du lot est refusée, alors que les autres ONT été reprises. La puce le dit au survol.
+    {
+      id: 'SKIPPED',
+      label: 'Ignorés',
+      title: "Envois ignorés, gestes d'agenda sans effet, et réorganisations appliquées avec refus (les autres lignes du lot ont été reprises)",
+    },
   ];
   readonly periods: { id: Period; label: string }[] = [
     { id: '24h', label: '24h' },
@@ -804,6 +864,55 @@ export class AdminActivityComponent implements OnInit, OnDestroy {
   readonly systemActs = signal<SystemActivityDto[]>([]);
   readonly systemCategory = signal('');
   readonly systemStatus = signal('');
+  /** Pourquoi le journal ne répond pas — affiché à la place d'un « aucune action » trompeur. */
+  readonly systemErreur = signal<string | null>(null);
+  /**
+   * Un chargement du journal est-il en cours ? Revue du 29/09 : sans cet état, la liste vidée
+   * avant l'appel tombait aussitôt dans la branche vide — « Aucune action pour ces filtres » le
+   * temps de la réponse, un faux constat sur le client qu'on vient de choisir. Ne repasse à false
+   * qu'à la réponse (ou à l'échec) du DERNIER appel : c'est `agendaCharge` de fleet-activity.
+   */
+  readonly systemChargement = signal(false);
+  /**
+   * Numéro du dernier chargement du journal. Une société changée (ou une puce cliquée) pendant
+   * un appel : la réponse la plus lente arrivait en dernier et affichait le journal d'un client
+   * sous le nom d'un autre. Seule la réponse du dernier appel est gardée.
+   */
+  private systemSeq = 0;
+
+  /** Société filtrée — LE filtre global du bandeau, pas une copie locale. null = toutes. */
+  readonly systemFleetId = this.fleetFilter.selectedFleetId;
+  readonly societes = computed(() =>
+    Array.from(this.fleetCache.fleets().entries())
+      .map(([id, name]) => ({ id, name }))
+      .sort((a, b) => a.name.localeCompare(b.name, 'fr')),
+  );
+  /** La société filtrée figure-t-elle dans la liste ? (société supprimée, cache pas encore chargé) */
+  readonly societeConnue = computed(() => {
+    const id = this.systemFleetId();
+    return !id || this.fleetCache.fleets().has(id);
+  });
+  /** Dernière société pour laquelle le journal a été lu — `undefined` avant le premier passage. */
+  private systemFleetVu: string | null | undefined = undefined;
+
+  constructor() {
+    // La société change — ici ou dans le bandeau : on vide AVANT de recharger, sinon le journal
+    // de l'ancienne société reste à l'écran sous le nom de la nouvelle le temps de l'appel.
+    // loadSystem() vide lui-même ; hors de l'onglet, on vide et on périme l'appel en vol (sa
+    // réponse, de l'ANCIENNE société, ne doit pas remplir la liste au retour sur l'onglet).
+    effect(() => {
+      const societe = this.systemFleetId();
+      if (this.systemFleetVu === undefined) { this.systemFleetVu = societe; return; }
+      if (societe === this.systemFleetVu) return;
+      this.systemFleetVu = societe;
+      untracked(() => {
+        if (this.tab() === 'system') { this.loadSystem(); return; }
+        this.systemSeq++;
+        this.systemActs.set([]);
+        this.systemChargement.set(false);
+      });
+    });
+  }
 
   /**
    * Source du flux : la production, ou l'environnement de DÉMONSTRATION.
@@ -866,6 +975,9 @@ export class AdminActivityComponent implements OnInit, OnDestroy {
   private pollHandle: ReturnType<typeof setInterval> | null = null;
 
   ngOnInit(): void {
+    // Liste des sociétés du sélecteur de l'onglet Système (idempotent : le bandeau l'a
+    // généralement déjà chargée).
+    void this.fleetCache.loadIfNeeded();
     // Deep-link ?tab= (et cohérence PAGE_VIEW du tracker : « Admin · Activité · Système »).
     const tab = this.route.snapshot.queryParamMap.get('tab');
     if (tab && this.tabs.some((t) => t.id === tab)) this.tab.set(tab as Tab);
@@ -1023,19 +1135,45 @@ export class AdminActivityComponent implements OnInit, OnDestroy {
     this.loadSystem();
   }
 
+  /** Écrit dans le filtre GLOBAL : le bandeau suit, et l'effet du constructeur recharge. */
+  setSystemFleet(v: string): void {
+    this.fleetFilter.set(v || null);
+  }
+
   private loadSystem(): void {
+    const seq = ++this.systemSeq;
+    this.systemErreur.set(null);
+    // On vide AVANT l'appel, pour TOUS les chemins (onglet ouvert, puce Catégorie/Statut,
+    // société, Réessayer) : les lignes à l'écran appartiennent aux filtres PRÉCÉDENTS, les
+    // laisser sous les nouveaux le temps de la réponse ferait lire un autre périmètre.
+    this.systemActs.set([]);
+    this.systemChargement.set(true);
     this.api
       .systemFeed({
         limit: 60,
         category: this.systemCategory() || undefined,
         status: this.systemStatus() || undefined,
+        fleetId: this.systemFleetId(),
       })
-      .subscribe({ next: (l) => this.systemActs.set(l), error: () => undefined });
+      .subscribe({
+        next: (l) => {
+          if (seq !== this.systemSeq) return;
+          this.systemActs.set(l);
+          this.systemChargement.set(false);
+        },
+        error: (e: unknown) => {
+          if (seq !== this.systemSeq) return;
+          this.systemActs.set([]);
+          this.systemChargement.set(false);
+          this.systemErreur.set(apiErrorMessage(e, "Le journal n'a pas répondu."));
+        },
+      });
   }
 
   loadMoreSystem(): void {
     const last = this.systemActs()[this.systemActs().length - 1];
     if (!last) return;
+    const seq = this.systemSeq;
     this.loadingMore.set(true);
     this.api
       .systemFeed({
@@ -1044,10 +1182,12 @@ export class AdminActivityComponent implements OnInit, OnDestroy {
         beforeId: last.id,
         category: this.systemCategory() || undefined,
         status: this.systemStatus() || undefined,
+        fleetId: this.systemFleetId(),
       })
       .subscribe({
         next: (items) => {
-          this.systemActs.update((l) => [...l, ...items]);
+          // Filtres changés entre-temps : cette page appartient à une autre liste.
+          if (seq === this.systemSeq) this.systemActs.update((l) => [...l, ...items]);
           this.loadingMore.set(false);
         },
         error: () => this.loadingMore.set(false),
@@ -1204,6 +1344,8 @@ export class AdminActivityComponent implements OnInit, OnDestroy {
       case 'PRIVACY': return ShieldOff;
       case 'INTERNAL': return Building2;
       case 'MUTATION': return Pencil;
+      case 'RESERVATION': return CalendarCheck;
+      case 'AGENDA': return CalendarDays;
       default: return Server;
     }
   }
@@ -1225,7 +1367,46 @@ export class AdminActivityComponent implements OnInit, OnDestroy {
       case 'PRIVACY': return 'bg-sky-500/15 text-sky-400';
       case 'INTERNAL': return 'bg-slate-500/15 text-slate-400';
       case 'MUTATION': return 'bg-lime-500/15 text-lime-400';
+      case 'RESERVATION': return 'bg-blue-500/15 text-blue-400';
+      case 'AGENDA': return 'bg-yellow-500/15 text-yellow-400';
       default: return 'bg-bg-tertiary text-fg-tertiary';
+    }
+  }
+
+  /** Catégories dont chaque ligne est l'ACTE d'une personne (pas un envoi qui en découle). */
+  protected estGeste(category: string): boolean {
+    return category === 'RESERVATION' || category === 'AGENDA';
+  }
+
+  /**
+   * Couleur d'un badge d'action d'agenda — même lecture que le fil client (fleet-activity) :
+   * vert = acte, rouge = refus ou incident, ambre = en attente d'une décision, fuchsia = l'agent,
+   * gris = retrait sans gravité, bleu = modification.
+   */
+  private agendaBadgeCls(action: string): string {
+    switch (action) {
+      case 'reservation_creee':
+      case 'reservation_consignee':
+      case 'reservation_validee':
+      case 'proposition_reservee':
+      case 'evenement_clos':
+        return 'bg-emerald-500/15 text-emerald-400';
+      case 'reservation_refusee':
+      case 'incident_signale':
+        return 'bg-rose-500/15 text-rose-400';
+      case 'reservation_demandee':
+      case 'public_booking_submitted':
+        return 'bg-amber-500/15 text-amber-400';
+      case 'agenda_agent_run':
+        return 'bg-fuchsia-500/15 text-fuchsia-400';
+      case 'reservation_annulee':
+      // Demande retiree par son auteur : un retrait, gris comme sur le fil client (tonAction).
+      case 'reservation_retiree':
+      case 'evenement_supprime':
+      case 'proposition_ecartee':
+        return 'bg-bg-tertiary text-fg-tertiary';
+      default:
+        return 'bg-sky-500/15 text-sky-400';
     }
   }
 
@@ -1246,7 +1427,16 @@ export class AdminActivityComponent implements OnInit, OnDestroy {
       // ordinaires, alors qu'un numero qui entre ou sort est un evenement d'acces.
       case 'allowlist_synced': return { label: 'Allowlist', cls: 'bg-violet-500/15 text-violet-400' };
       case 'tracker_sim_recalee': return { label: 'SIM recalée', cls: 'bg-amber-500/15 text-amber-400' };
-      default:
+      default: {
+        // 29/09 — gestes d'agenda : la catégorie seule (« Réservation ») ne dit pas CE qui a
+        // été fait ; le badge porte l'acte (« Réservation validée », « Incident signalé »…).
+        const agenda = AGENDA_ACTIVITY_ACTION_LABELS[a.action];
+        if (agenda) return { label: agenda, cls: this.agendaBadgeCls(a.action) };
+        // Code d'une catégorie d'agenda que la table ne connaît pas encore : on le montre
+        // lisiblement plutôt que de le taire — c'est la seule information de la ligne.
+        if (this.estGeste(a.category)) {
+          return { label: a.action.replace(/_/g, ' '), cls: 'bg-bg-tertiary text-fg-tertiary' };
+        }
         if (a.action.startsWith('sms_') && a.action !== 'sms_sent') {
           return { label: a.action.slice(4).replace(/-/g, ' '), cls: 'bg-violet-500/15 text-violet-400' };
         }
@@ -1254,15 +1444,40 @@ export class AdminActivityComponent implements OnInit, OnDestroy {
           return { label: a.action.slice(5).toUpperCase(), cls: 'bg-lime-500/15 text-lime-400' };
         }
         return null;
+      }
     }
   }
   protected sysCategoryLabel(category: string): string {
     return SYSTEM_ACTIVITY_CATEGORY_LABELS[category] ?? category;
   }
-  protected sysStatusColor(s: string): string {
+  /**
+   * Statut d'une ligne du journal, prêt à afficher.
+   *
+   * Revue du 29/09 : une réorganisation est écrite SKIPPED dès qu'UNE ligne du lot est refusée —
+   * les autres ONT été reprises (« 3 reprise(s) sur 5, 2 refus »). Ici elle se lisait « ignoré »,
+   * à côté du badge « Réorganisation appliquée », quand la page du client disait « Avec refus ».
+   * Les gestes d'agenda passent donc par la MÊME fonction que le fil client (`statutActionAgenda`,
+   * packages/shared) ; le reste du journal (envois, purges, commandes…) garde ses mots.
+   */
+  protected sysStatut(a: SystemActivityDto): { libelle: string; couleur: string } {
+    if (this.estGeste(a.category)) {
+      const s = statutActionAgenda(String(a.status), a.action);
+      if (s) return { libelle: s.mot.toLocaleLowerCase('fr-FR'), couleur: this.couleurTonAgenda(s.ton) };
+    }
+    return { libelle: this.sysStatusLabel(a.status), couleur: this.sysStatusColor(a.status) };
+  }
+  /** Mêmes couleurs que le reste du journal : rouge = échec, ambre = à regarder, gris = rien écrit. */
+  private couleurTonAgenda(ton: StatutActionAgenda['ton']): string {
+    switch (ton) {
+      case 'alerte': return '#f87171';
+      case 'attente': return '#fbbf24';
+      default: return 'var(--texte-inactif)';
+    }
+  }
+  private sysStatusColor(s: string): string {
     return s === 'SUCCESS' ? '#34d399' : s === 'FAILURE' ? '#f87171' : '#fbbf24';
   }
-  protected sysStatusLabel(s: string): string {
+  private sysStatusLabel(s: string): string {
     return s === 'SUCCESS' ? 'ok' : s === 'FAILURE' ? 'échec' : s === 'SKIPPED' ? 'ignoré' : s.toLowerCase();
   }
 

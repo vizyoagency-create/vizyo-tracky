@@ -1,5 +1,6 @@
 import { BadRequestException, ConflictException, ForbiddenException } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
+import * as aucunVehicule from './aucun-vehicule.message';
 import { ReservationsService } from './reservations.service';
 
 function makeUser(over: Record<string, unknown> = {}) {
@@ -637,7 +638,8 @@ describe('ReservationsService — dormance (vivier, seuil 7 j)', () => {
     const svc = new ReservationsService(prisma, access('ALL'), makeEvents(), makePerms());
 
     // Sans la mention, l'exploitant croit son agenda plein et cherche un conflit inexistant.
-    await expect(svc.request(makeUser(), { ...SLOT })).rejects.toThrow(/2 véhicule\(s\) écarté\(s\).*muet/);
+    // (29/09 : message construit par `messageAucunVehicule`, « N écarté(s) : boîtier muet ».)
+    await expect(svc.request(makeUser(), { ...SLOT })).rejects.toThrow(/2 écarté\(s\).*muet/);
   });
 
   it('request « ouverte » : aucun dormant -> le message d\'origine reste INCHANGÉ (pas de bruit inventé)', async () => {
@@ -1500,8 +1502,9 @@ describe('ReservationsService.reorganiser — réaffecter un lot, et les comptes
     });
     expect(reaffecter).toHaveBeenCalledTimes(2);
     // Coupe au début de la fenêtre (R2), écriture silencieuse : la réorganisation prévient elle-même (R3).
+    // 29/09 : l'identifiant du lot voyage aussi, pour relier chaque ligne du journal à son résumé.
     expect(reaffecter).toHaveBeenCalledWith(
-      expect.anything(), 'e1', { versVehicleId: 'auto', aPartirDe: expect.any(String) }, { silencieux: true },
+      expect.anything(), 'e1', { versVehicleId: 'auto', aPartirDe: expect.any(String) }, { silencieux: true, lot: expect.any(String) },
     );
     expect(r.appliquees).toBe(1);
     expect(r.refusees).toEqual([expect.objectContaining({ motif: 'Aucun autre véhicule libre et conforme sur ce créneau.' })]);
@@ -1660,7 +1663,38 @@ describe('ReservationsService — revue du 29/09', () => {
     it('aucun remplaçant : le 409 dit le plancher et les véhicules écartés faute de places renseignées', async () => {
       const { svc } = monter({ row: futur({ metadata: { public: true, seatsNeeded: 8 } }), seats: 9 });
       jest.spyOn(svc, 'suggest').mockResolvedValue(vivier([], { excludedUnknownCapacity: 2 }) as never);
-      await expect(svc.reaffecter(makeUser(), 'r1', {})).rejects.toThrow(/au moins 8 places.*2 écarté\(s\) faute de nombre de places/);
+      // 29/09 : même constructeur que la demande (`messageAucunVehicule`, « autre » véhicule).
+      await expect(svc.reaffecter(makeUser(), 'r1', {})).rejects.toThrow(/Aucun autre véhicule.*au moins 8 places.*2 véhicules sans nombre de places renseigné/);
+    });
+
+    /**
+     * Relecture du 29/09 — le plancher d'origine (5 places) rend « trop petit » tout véhicule plus petit
+     * d'un parc mixte : le 4 places comptait, et le constructeur disait « Aucun autre véhicule d'au
+     * moins 5 places n'est libre sur ce créneau » alors que le 9 et le 5 places étaient libres — il leur
+     * manquait un siège bébé. La mention des sièges (le motif d'avant la listait) avait disparu.
+     */
+    it('aucun remplaçant, plancher d’origine + sièges auto : ce sont les SIÈGES qui sont dits, pas la taille', async () => {
+      const childSeats = {
+        availability: jest.fn().mockResolvedValue({
+          startAt: '', endAt: '', policy: 'STOCK_OR_INSTALLED', total: { baby: 0, child: 0 }, installed: { baby: 0, child: 0 },
+          stock: { baby: 0, child: 0 }, engaged: { baby: 0, child: 0 }, available: { baby: 0, child: 0 },
+        }),
+        assertAvailable: jest.fn().mockResolvedValue(undefined),
+      };
+      const { svc, prisma, update } = monter({ row: futur({ metadata: { criteria: { childSeatsBaby: 1 } } }), seats: 5, childSeats });
+      (prisma['vehicle'] as { findMany: jest.Mock }).findMany.mockResolvedValue([
+        { id: 'v2', plate: 'BB-2', seats: 4, childSeatsBaby: 0, childSeatsChild: 0, features: [], tracker: null }, // trop petit
+        { id: 'v3', plate: 'CC-3', seats: 9, childSeatsBaby: 0, childSeatsChild: 0, features: [], tracker: null },
+        { id: 'v4', plate: 'DD-4', seats: 5, childSeatsBaby: 0, childSeatsChild: 0, features: [], tracker: null },
+      ]);
+      const err = await svc.reaffecter(makeUser(), 'r1', {}).catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(ConflictException);
+      expect((err as Error).message).toBe(
+        'Aucun autre véhicule libre ne peut recevoir les sièges auto demandés sur ce créneau ' +
+          '(2 véhicule(s) écarté(s) : pas assez de sièges à bord, et le stock ne complète pas ou ne suffit plus). ' +
+          'Choisissez un véhicule équipé, installez un siège, ou changez le réglage dans la vue Parc.',
+      );
+      expect(update).not.toHaveBeenCalled();
     });
   });
 
@@ -1964,6 +1998,28 @@ describe('ReservationsService — revue du 29/09', () => {
     });
 
     /**
+     * Relecture du 29/09 — les libres hors droits ont passé le plancher ET les sièges auto : « aucun
+     * autre véhicule libre ne peut recevoir les sièges auto » serait faux. Le refus dit les droits ; les
+     * écartés pour leurs sièges restent nommés en complément.
+     */
+    it('auto, libres hors droits ET écartés pour leurs sièges : le 409 ne dit pas que les sièges manquent partout', async () => {
+      const { svc } = monter({ row: futur({ metadata: { criteria: { minSeats: 4, childSeatsBaby: 1 } } }), perms: perms((v) => v === 'v1') });
+      jest.spyOn(svc, 'suggest').mockResolvedValue(
+        vivier(['v2', 'v3'], { excludedChildSeats: 3, excludedTooSmall: 1, largestSeats: 9 }) as never,
+      );
+      const err = await svc.reaffecter(makeUser({ role: UserRole.FLEET_MANAGER }), 'r1', {}).catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(ConflictException);
+      const m = (err as Error).message;
+      expect(m).toBe(
+        'Aucun autre véhicule libre ne correspond aux critères sur ce créneau (au moins 4 places). ' +
+          'Hors de vos droits : 2 véhicule(s) libre(s) dont vous ne gérez pas les réservations. ' +
+          '(3 autre(s) écarté(s) : sièges auto insuffisants.)',
+      );
+      expect(m).not.toContain('ne peut recevoir les sièges auto');
+      expect(m).not.toContain("n'est libre sur ce créneau");
+    });
+
+    /**
      * Contre-revue du 29/09 (R1) — la porte d'à côté. `reaffecter` refusait, mais la feuille d'édition
      * (PATCH) changeait la plaque avec le seul garde du contrôleur (union des droits) : un gestionnaire
      * de Nord, simple demandeur sur Sud, posait une réservation FERME sur Sud — et, depuis la scission,
@@ -2051,6 +2107,8 @@ describe('ReservationsService — revue du 29/09', () => {
         const retrait = monter({ row: futur({ status: 'REQUESTED', metadata: { requesterId: 'u1' } }), perms: perms(() => false) });
         await retrait.svc.cancel(gestionnaire(), 'r1');
         expect(retrait.update.mock.calls[0][0].data.status).toBe('CANCELLED');
+        // C4 : un retrait n'est pas un refus — rien à annoncer.
+        expect(retrait.emitter.emit).not.toHaveBeenCalledWith('reservation.refused', expect.anything());
         // … mais pas celle d'un autre.
         const autre = monter({ row: futur({ status: 'REQUESTED', metadata: { requesterId: 'u-autre' } }), perms: perms(() => false) });
         await expect(autre.svc.cancel(gestionnaire(), 'r1')).rejects.toBeInstanceOf(ForbiddenException);
@@ -2241,7 +2299,7 @@ describe('ReservationsService — revue du 29/09', () => {
       expect(reaffecter.mock.calls.map((c) => c[1])).toEqual(['lundi-vendredi', 'vendredi']);
       for (const c of reaffecter.mock.calls) {
         expect(c[2]).toEqual({ versVehicleId: 'auto', aPartirDe: f.from });
-        expect(c[3]).toEqual({ silencieux: true });
+        expect(c[3]).toEqual({ silencieux: true, lot: expect.any(String) });
       }
     });
 
@@ -2547,8 +2605,10 @@ describe('ReservationsService — revue du 29/09', () => {
           })),
       );
       const emitter = { emit: jest.fn() };
-      const svc = new ReservationsService(prisma, access('ALL'), makeEvents({ list }), makePerms(true), emitter as never);
-      return { svc, parc, update, emitter };
+      const events = makeEvents({ list }) as unknown as { assertVehicleAccess: jest.Mock; list: jest.Mock };
+      const perms = makePerms(true) as unknown as { canOnVehicle: jest.Mock };
+      const svc = new ReservationsService(prisma, access('ALL'), events as never, perms as never, emitter as never);
+      return { svc, parc, update, emitter, prisma: prisma as unknown as { vehicle: { findUnique: jest.Mock } }, events, perms };
     }
     /** Dans trois jours, à h:m (UTC) — toujours à venir. */
     const jour = (h: number, m = 0) => {
@@ -2704,6 +2764,75 @@ describe('ReservationsService — revue du 29/09', () => {
       expect(res.refusees).toEqual(sim.refusees);
     });
 
+    /**
+     * Relecture du 29/09 (C8 × T4) — « Réaffecter vers un véhicule choisi » trop petit : CT-001 (9 places)
+     * part au garage, cible V8 (4 places). La simulation disait « 2 seront reprises », l'application en
+     * refusait une (« V8 a 4 places, moins que les 8 demandées ») : lot à moitié appliqué.
+     */
+    describe('C8 × T4 — une cible CHOISIE trop petite est annoncée refusée dès la simulation', () => {
+      const PLACES: Record<string, number | null> = { v1: 9, v8: 4, vx: null };
+      const monterCible = (rows: Record<string, unknown>[]) => {
+        const m = monterParc(rows);
+        m.prisma.vehicle.findUnique.mockImplementation(async ({ where }: { where: { id: string } }) => ({
+          outOfServiceReason: null, plate: where.id.toUpperCase(), seats: PLACES[where.id] ?? null, tracker: { id: 't1', lastSeenAt: new Date() },
+        }));
+        return m;
+      };
+      const huit = ferme('huit', jour(8), jour(9), { metadata: { criteria: { minSeats: 8 } } });
+      const sansPlancher = ferme('libre', jour(10), jour(11));
+      const corps = (versVehicleId: string) => ({
+        ...semaine(), action: 'reaffecter' as const, origine: 'toutes' as const, vehicleId: 'v1', versVehicleId,
+      });
+      const TROP_PETIT = /^V8 a 4 places, moins que les 8 demandées \(conducteur compris\)\./;
+
+      it('simulation : la ligne « 8 places min. » est refusée avec le motif de `reaffecter()` ; application : même refus, rien d’écrit sur elle', async () => {
+        const { svc, parc, update } = monterCible([huit, sansPlancher]);
+        const sim = await svc.reorganiser(makeUser(), corps('v8'));
+        expect(sim.concernees).toBe(2); // le lot entier : contrat d'`attendu`
+        expect(sim.refusees).toEqual([{ plate: 'AA-1', startAt: jour(8).toISOString(), motif: expect.stringMatching(TROP_PETIT) }]);
+        // Le motif annoncé est mot pour mot celui que `reaffecter()` lève.
+        await expect(svc.reaffecter(makeUser(), 'huit', { versVehicleId: 'v8' })).rejects.toThrow(sim.refusees[0].motif);
+        expect(update).not.toHaveBeenCalled();
+
+        // Application (vraie `reaffecter()`, parc en mémoire) : la ligne sans plancher part sur V8, l'autre
+        // reste sur V1, le refus est celui annoncé.
+        const res = await svc.reorganiser(makeUser(), { ...corps('v8'), simulation: false, attendu: sim.concernees, ids: sim.lotIds });
+        expect(res.appliquees).toBe(1);
+        expect(res.refusees).toEqual(sim.refusees);
+        expect(parc.get('libre')!['vehicleId']).toBe('v8');
+        expect(parc.get('huit')!['vehicleId']).toBe('v1');
+        expect(update.mock.calls.map((c) => c[0].where.id)).toEqual(['libre']);
+      });
+
+      it('…et seulement quand ce refus serait le PREMIER de `reaffecter()` : ni plancher tenu, ni rétroactif, ni « auto », ni places inconnues, ni cible non gérée, hors périmètre ou d’une autre société', async () => {
+        const refus = async (m: ReturnType<typeof monterCible>, vers: string) => (await m.svc.reorganiser(makeUser(), corps(vers))).refusees;
+        // Plancher égal aux places, ou consignation rétroactive : rien, même vers V8.
+        const assez = ferme('assez', jour(12), jour(13), { metadata: { criteria: { minSeats: 4 } } });
+        const retro = ferme('retro', jour(14), jour(15), { metadata: { criteria: { minSeats: 8 }, retroactive: true } });
+        expect(await refus(monterCible([assez, retro]), 'v8')).toEqual([]);
+        // « auto » : le plancher dérivé borne la recherche, il n'interdit rien ; aucune cible n'est lue.
+        const auto = monterCible([huit]);
+        expect(await refus(auto, 'auto')).toEqual([]);
+        expect(auto.events.assertVehicleAccess).not.toHaveBeenCalled();
+        // Places inconnues : on ne refuse pas sur une donnée absente.
+        expect(await refus(monterCible([huit]), 'vx')).toEqual([]);
+        // Cible hors périmètre (403) ou d'une autre société : `reaffecter()` refuse d'abord pour ça.
+        const horsPerimetre = monterCible([huit]);
+        horsPerimetre.events.assertVehicleAccess.mockRejectedValue(new ForbiddenException('Véhicule hors de votre flotte'));
+        expect(await refus(horsPerimetre, 'v8')).toEqual([]);
+        const autreSociete = monterCible([huit]);
+        autreSociete.events.assertVehicleAccess.mockResolvedValue('f2');
+        expect(await refus(autreSociete, 'v8')).toEqual([]);
+        // Cible non gérée : on ne parle pas de ses places — l'application garde le refus de `reaffecter()`.
+        const nonGeree = monterCible([huit]);
+        nonGeree.perms.canOnVehicle.mockImplementation(async (_u: unknown, v: string) => v !== 'v8');
+        expect(await refus(nonGeree, 'v8')).toEqual([]);
+        const res = await nonGeree.svc.reorganiser(makeUser(), { ...corps('v8'), simulation: false });
+        expect(res.refusees.map((r) => r.motif)).toEqual([expect.stringMatching(/^Vous ne gérez pas les réservations du véhicule visé/)]);
+        expect(nonGeree.update).not.toHaveBeenCalled();
+      });
+    });
+
     it('T4 — « annuler » et « décaler » n’annoncent aucun refus de ce genre : une demande s’y annule ou s’y décale', async () => {
       const { svc } = monterParc([evRow({ id: 'demande', status: 'REQUESTED', startAt: jour(8), endAt: jour(12) })]);
       const sim = await svc.reorganiser(makeUser(), { ...semaine(), action: 'annuler', origine: 'toutes' });
@@ -2751,5 +2880,883 @@ describe('ReservationsService — revue du 29/09', () => {
       expect(update.mock.calls[0][0].data.title).toBe('Sortie piscine');
       expect(create.mock.calls[0][0].data.title).toBe('Sortie piscine');
     });
+
+    // ─── C4 (revue du 29/09) — retirer SA demande n'est pas la refuser ─────────────────────────
+    it('C4 — Réorganiser → Annuler : SA propre demande retirée n’annonce aucun refus ; celle d’un autre, si', async () => {
+      const { svc, emitter } = monterParc([
+        evRow({ id: 'mienne', status: 'REQUESTED', startAt: jour(8), endAt: jour(9), metadata: { requesterId: 'u1' } }),
+        evRow({ id: 'sienne', vehicleId: 'v2', status: 'REQUESTED', startAt: jour(10), endAt: jour(11), metadata: { requesterId: 'u-autre' } }),
+      ]);
+      const res = await svc.reorganiser(makeUser(), { ...semaine(), action: 'annuler', origine: 'toutes', simulation: false, attendu: 2 });
+      expect(res.appliquees).toBe(2);
+      const refus = emis(emitter, 'reservation.refused');
+      expect(refus).toHaveLength(1);
+      expect((refus[0][1] as { metadata: { requesterId: string } }).metadata.requesterId).toBe('u-autre');
+    });
+  });
+
+  /**
+   * ── C8 (revue du 29/09) — « véhicule trop petit » ailleurs que dans `request()` ──────────────────
+   *
+   * Réservation ferme « 8 places min. » sur un 9 places ; à l'édition, on choisissait un 4 places : 200,
+   * la réservation annonçait 8 places dans une voiture de 4. Même trou en montant « Places min. », à la
+   * validation qui déplace, et à la réaffectation vers un véhicule choisi (scission comprise).
+   */
+  describe('C8 — le plancher de places saisi tient aussi à l’édition, à la validation et à la réaffectation choisie', () => {
+    const PLACES: Record<string, number | null> = { v1: 9, v2: 5, v8: 4, vx: null };
+    /** `monter`, avec les places PAR véhicule (le `findUnique` de base rend les mêmes pour tous). */
+    const monterPlaces = (row: Record<string, unknown>) => {
+      const m = monter({ row });
+      (m.prisma['vehicle'] as { findUnique: jest.Mock }).findUnique.mockImplementation(async ({ where }: { where: { id: string } }) => ({
+        outOfServiceReason: null, plate: where.id.toUpperCase(), seats: PLACES[where.id] ?? null, tracker: { id: 't1', lastSeenAt: new Date() },
+      }));
+      return m;
+    };
+    const huit = (over: Record<string, unknown> = {}) => futur({ metadata: { criteria: { minSeats: 8 } }, ...over });
+    const commencee = (over: Record<string, unknown> = {}) =>
+      huit({ startAt: new Date(Date.now() - 2 * H), endAt: new Date(Date.now() + 2 * H), ...over });
+    const TROP_PETIT = /^V8 a 4 places, moins que les 8 demandées \(conducteur compris\)\./;
+
+    it('édition : changer pour un véhicule trop petit -> 400 qui nomme la plaque, rien n’est écrit', async () => {
+      const { svc, update } = monterPlaces(huit());
+      const err = await svc.update(makeUser(), 'r1', { vehicleId: 'v8', criteria: { minSeats: 8 } }).catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(BadRequestException);
+      expect((err as Error).message).toMatch(TROP_PETIT);
+      expect(update).not.toHaveBeenCalled();
+    });
+
+    it('édition : monter « Places min. » au-dessus des places du véhicule -> 400 ; dans ses places -> passe', async () => {
+      const { svc, update } = monterPlaces(huit());
+      await expect(svc.update(makeUser(), 'r1', { criteria: { minSeats: 12 } })).rejects.toThrow(
+        /^V1 a 9 places, moins que les 12 demandées/,
+      );
+      expect(update).not.toHaveBeenCalled();
+      await svc.update(makeUser(), 'r1', { criteria: { minSeats: 9 } });
+      expect(update).toHaveBeenCalledTimes(1);
+    });
+
+    it('édition d’une réservation COMMENCÉE vers un véhicule trop petit : 400 AVANT la scission', async () => {
+      const { svc, update, create, prisma } = monterPlaces(commencee());
+      await expect(svc.update(makeUser(), 'r1', { vehicleId: 'v8' })).rejects.toThrow(TROP_PETIT);
+      expect(prisma['$transaction']).not.toHaveBeenCalled();
+      expect(create).not.toHaveBeenCalled();
+      expect(update).not.toHaveBeenCalled();
+    });
+
+    it('…ne casse rien de légitime : réservation ancienne incohérente (plancher inchangé), rétroactif, places inconnues, plancher retiré', async () => {
+      // 12 places sur un 9 places, posée avant le garde : motif, créneau et critères renvoyés tels quels passent.
+      const ancienne = monterPlaces(futur({ metadata: { criteria: { minSeats: 12 } } }));
+      await ancienne.svc.update(makeUser(), 'r1', { reason: 'Sortie', criteria: { minSeats: 12 } });
+      await ancienne.svc.update(makeUser(), 'r1', {
+        startAt: new Date(Date.now() + 49 * H).toISOString(), endAt: new Date(Date.now() + 51 * H).toISOString(),
+      });
+      expect(ancienne.update).toHaveBeenCalledTimes(2);
+      // Plancher retiré : plus rien à tenir.
+      const retire = monterPlaces(huit());
+      await retire.svc.update(makeUser(), 'r1', { vehicleId: 'v8', criteria: {} });
+      expect(retire.update.mock.calls[0][0].data.vehicleId).toBe('v8');
+      // Places non renseignées : on ne refuse pas sur une donnée absente.
+      const inconnu = monterPlaces(huit());
+      await inconnu.svc.update(makeUser(), 'r1', { vehicleId: 'vx' });
+      expect(inconnu.update.mock.calls[0][0].data.vehicleId).toBe('vx');
+      // Consignation rétroactive : on consigne ce qui a roulé.
+      const retro = monterPlaces(huit({ metadata: { criteria: { minSeats: 8 }, retroactive: true } }));
+      await retro.svc.update(makeUser(), 'r1', { vehicleId: 'v8' });
+      expect(retro.update.mock.calls[0][0].data.vehicleId).toBe('v8');
+    });
+
+    it('validation qui DÉPLACE vers un véhicule trop petit -> 400 ; valider sur place une demande ancienne incohérente passe', async () => {
+      const deplace = monterPlaces(huit({ status: 'REQUESTED' }));
+      await expect(deplace.svc.confirm(makeUser(), 'r1', { vehicleId: 'v8' })).rejects.toThrow(TROP_PETIT);
+      expect(deplace.update).not.toHaveBeenCalled();
+
+      const surPlace = monterPlaces(futur({ status: 'REQUESTED', metadata: { criteria: { minSeats: 12 } } }));
+      await surPlace.svc.confirm(makeUser(), 'r1', {});
+      expect(surPlace.update.mock.calls[0][0].data.status).toBe('CONFIRMED');
+    });
+
+    it('réaffecter vers un véhicule CHOISI trop petit -> 400, à venir comme commencée (scission) ; rien n’est écrit', async () => {
+      for (const row of [huit(), commencee()]) {
+        const { svc, update, create, prisma } = monterPlaces(row);
+        await expect(svc.reaffecter(makeUser(), 'r1', { versVehicleId: 'v8' })).rejects.toThrow(TROP_PETIT);
+        expect(prisma['$transaction']).not.toHaveBeenCalled();
+        expect(create).not.toHaveBeenCalled();
+        expect(update).not.toHaveBeenCalled();
+      }
+    });
+
+    it('réaffecter vers un véhicule choisi SANS « Places min. » saisi : le plancher dérivé (places d’origine) n’interdit pas le choix humain', async () => {
+      const { svc, update } = monterPlaces(futur({ metadata: { reason: 'Trois élèves' } })); // sur v1, 9 places
+      await svc.reaffecter(makeUser(), 'r1', { versVehicleId: 'v2' }); // 5 places
+      expect(update.mock.calls[0][0].data.vehicleId).toBe('v2');
+    });
+  });
+});
+
+/**
+ * ── JOURNAL MÉTIER DES RÉSERVATIONS (29/09) ─────────────────────────────────────────────────────
+ *
+ * Toutes les lignes passent par un seul journaliseur. Ce que ces tests verrouillent :
+ *  - `fleetId` = la société de la RESSOURCE, même quand un super-admin agit sur un client ;
+ *  - `triggeredByUserId` = la personne réelle, `actor` = 'utilisateur' (jamais un nom) ;
+ *  - le détail en heure de Paris (le 01/07/2030 08:00 UTC s'écrit « 01/07/2030 10:00 »), jamais d'ISO ;
+ *  - une écriture qui ne change rien n'écrit rien ; réaffecter écrit « réaffectée », une seule fois ;
+ *  - réorganiser : un résumé PAR SOCIÉTÉ, relié à ses lignes unitaires par `meta.lot` ;
+ *  - aucun courriel de plus pour une réservation interne ; un journal cassé ne casse rien.
+ */
+describe('ReservationsService — journal métier des réservations (29/09)', () => {
+  const H = 3_600_000;
+  /** Le 01/07/2030 de 10:00 à 12:00 heure de Paris (UTC+2) : lointain, donc toujours à venir. */
+  const DEBUT = new Date('2030-07-01T08:00:00Z');
+  const FIN = new Date('2030-07-01T10:00:00Z');
+  const ISO = /\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/;
+  const PLAQUES: Record<string, string> = { v1: 'AA-123-BB', v2: 'BB-456-CC' };
+  /** Un super-admin rattaché à SA société (celle de la plateforme) : elle ne doit jamais apparaître. */
+  const superAdmin = () => makeUser({ id: 'sa-1', role: UserRole.SUPER_ADMIN, fleetId: 'f-tracky' });
+  const gestionnaire = () => makeUser({ id: 'gest-7', role: UserRole.FLEET_ADMIN, fleetId: 'f-client' });
+
+  type Ligne = {
+    category: string; action: string; status: string; actor: string; target: string | null;
+    detail: string; fleetId: string | null; triggeredByUserId: string | null; meta: Record<string, unknown>;
+  };
+  const lignes = (j: { record: jest.Mock }, action?: string): Ligne[] =>
+    j.record.mock.calls.map((c) => c[0] as Ligne).filter((l) => !action || l.action === action);
+  const courriels = (emitter: { emit: jest.Mock }) => emitter.emit.mock.calls.filter((c) => String(c[0]).startsWith('reservation.'));
+
+  /** Une réservation de la société CLIENTE, sur v1. */
+  const resaClient = (over: Record<string, unknown> = {}) =>
+    evRow({
+      fleetId: 'f-client', vehicleId: 'v1', vehicle: { plate: 'AA-123-BB' }, status: 'CONFIRMED', title: 'Sortie',
+      startAt: DEBUT, endAt: FIN, metadata: { reason: 'Sortie' }, ...over,
+    });
+
+  function monter(opts: { row?: Record<string, unknown>; perms?: boolean; journal?: { record: jest.Mock } } = {}) {
+    const j = opts.journal ?? { record: jest.fn() };
+    const plaque = (vehicleId: unknown) => PLAQUES[String(vehicleId)] ?? null;
+    const update = jest.fn().mockImplementation(async (args: { data: Record<string, unknown> }) => ({
+      ...opts.row, ...args.data, vehicle: { plate: plaque(args.data['vehicleId'] ?? opts.row?.['vehicleId']) },
+    }));
+    const create = jest.fn().mockImplementation(async (args: { data: Record<string, unknown> }) => ({
+      ...evRow(), id: 'r-neuve', ...args.data, vehicle: { plate: plaque(args.data['vehicleId']) },
+    }));
+    const prisma = makePrisma({
+      vehicleEvent: { findUnique: jest.fn().mockResolvedValue(opts.row ?? null), findMany: jest.fn().mockResolvedValue([]), create, update },
+    }) as Record<string, unknown>;
+    prisma['$transaction'] = jest.fn(async (fn: (tx: unknown) => unknown) => fn(prisma));
+    const emitter = { emit: jest.fn() };
+    // Le véhicule appartient au CLIENT, quel que soit l'appelant.
+    const events = makeEvents({ assertVehicleAccess: jest.fn().mockResolvedValue('f-client') });
+    const svc = new ReservationsService(
+      prisma as never, access('ALL'), events, makePerms(opts.perms ?? true), emitter as never, j as never,
+    );
+    return { svc, j, update, create, emitter, prisma };
+  }
+
+  it('request par un SUPER-ADMIN sur un véhicule client : `reservation_creee`, société du CLIENT, auteur réel, heure de Paris', async () => {
+    const { svc, j, emitter } = monter();
+    await svc.request(superAdmin(), { vehicleId: 'v1', startAt: DEBUT.toISOString(), endAt: FIN.toISOString(), reason: 'Sortie piscine' });
+    expect(j.record).toHaveBeenCalledTimes(1);
+    const [l] = lignes(j);
+    expect(l).toEqual(expect.objectContaining({
+      category: 'RESERVATION', action: 'reservation_creee', status: 'SUCCESS', actor: 'utilisateur',
+      target: 'AA-123-BB', fleetId: 'f-client', triggeredByUserId: 'sa-1',
+    }));
+    expect(l.detail).toBe('Réservation créée — AA-123-BB, 01/07/2030 10:00 → 12:00 · « Sortie piscine »');
+    expect(l.detail).not.toMatch(ISO);
+    expect(l.meta).toEqual(expect.objectContaining({ reservationId: 'r-neuve', vehicleId: 'v1', statut: 'CONFIRMED', attribueAuto: false }));
+    // Réservation interne : aucun événement `reservation.*` de plus (les courriels ne changent pas).
+    expect(courriels(emitter)).toHaveLength(0);
+  });
+
+  it('request : `reservation_demandee` sans droit de gérer ; `reservation_consignee` en rétroactif', async () => {
+    const demande = monter({ perms: false });
+    await demande.svc.request(gestionnaire(), { vehicleId: 'v1', startAt: DEBUT.toISOString(), endAt: FIN.toISOString() });
+    expect(lignes(demande.j).map((l) => l.action)).toEqual(['reservation_demandee']);
+    expect(lignes(demande.j)[0].detail).toBe('Demande de réservation — AA-123-BB, 01/07/2030 10:00 → 12:00');
+    expect(lignes(demande.j)[0].triggeredByUserId).toBe('gest-7');
+
+    const retro = monter({ perms: true });
+    const passe = new Date(Date.now() - 3 * 24 * H);
+    await retro.svc.request(gestionnaire(), {
+      vehicleId: 'v1', startAt: passe.toISOString(), endAt: new Date(passe.getTime() + 2 * H).toISOString(), retroactive: true,
+    });
+    expect(lignes(retro.j).map((l) => l.action)).toEqual(['reservation_consignee']);
+    expect(lignes(retro.j)[0].fleetId).toBe('f-client');
+  });
+
+  it('request « ouverte » : la ligne dit que le véhicule a été attribué automatiquement', async () => {
+    const { svc, j, prisma } = monter();
+    (prisma['vehicle'] as { findMany: jest.Mock }).findMany.mockResolvedValue([
+      { id: 'v1', plate: 'AA-123-BB', seats: 5, features: [], tracker: null },
+    ]);
+    await svc.request(superAdmin(), { fleetId: 'f-client', startAt: DEBUT.toISOString(), endAt: FIN.toISOString() });
+    const [l] = lignes(j);
+    expect(l.detail).toBe('Réservation créée — AA-123-BB, 01/07/2030 10:00 → 12:00 (véhicule attribué automatiquement)');
+    expect(l.meta).toEqual(expect.objectContaining({ attribueAuto: true }));
+    expect(l.fleetId).toBe('f-client');
+  });
+
+  it('confirm par un SUPER-ADMIN : `reservation_validee` dans la société de la RÉSERVATION, heure de Paris, jamais d’ISO', async () => {
+    const { svc, j } = monter({ row: resaClient({ status: 'REQUESTED' }) });
+    await svc.confirm(superAdmin(), 'r1', {});
+    const [l] = lignes(j, 'reservation_validee');
+    expect(l).toEqual(expect.objectContaining({ fleetId: 'f-client', triggeredByUserId: 'sa-1', target: 'AA-123-BB', actor: 'utilisateur' }));
+    expect(l.detail).toBe('Réservation validée — AA-123-BB, 01/07/2030 10:00 → 12:00');
+    expect(l.detail).not.toMatch(ISO);
+    expect(l.detail).not.toContain('Z');
+    expect(l.meta).toEqual(expect.objectContaining({ reservationId: 'r1', parUtilisateur: 'sa-1' }));
+
+    // Valider EN DÉPLAÇANT : le déplacement est dit.
+    const deplace = monter({ row: resaClient({ status: 'REQUESTED' }) });
+    await deplace.svc.confirm(superAdmin(), 'r1', { vehicleId: 'v2' });
+    expect(lignes(deplace.j, 'reservation_validee')[0].detail).toBe(
+      'Réservation validée — BB-456-CC, 01/07/2030 10:00 → 12:00 (véhicule AA-123-BB → BB-456-CC)',
+    );
+  });
+
+  it('cancel d’une demande : « Demande refusée », auteur réel, société de la réservation', async () => {
+    const { svc, j } = monter({ row: resaClient({ status: 'REQUESTED' }) });
+    await svc.cancel(superAdmin(), 'r1');
+    const [l] = lignes(j);
+    expect(l).toEqual(expect.objectContaining({ action: 'reservation_refusee', fleetId: 'f-client', triggeredByUserId: 'sa-1', target: 'AA-123-BB' }));
+    expect(l.detail).toBe('Demande refusée — AA-123-BB, 01/07/2030 10:00 → 12:00');
+  });
+
+  /**
+   * Revue du 29/09 (C4) — un gestionnaire de Nord, simple demandeur sur Sud, retire SA demande déposée
+   * sur Sud : le fil de Sud lisait « Demande refusée », en rouge, attribuée à quelqu'un qui ne gère pas
+   * Sud. Un retrait n'est pas un refus : action dédiée, et aucun `reservation.refused`.
+   */
+  it('cancel de SA PROPRE demande en attente : `reservation_retiree`, « Demande retirée par son auteur », aucun refus annoncé', async () => {
+    const { svc, j, emitter, update } = monter({
+      row: resaClient({ status: 'REQUESTED', metadata: { reason: 'Sortie', requesterId: 'gest-7' } }),
+      perms: false, // il ne gère pas ce véhicule : il ne pouvait que demander
+    });
+    await svc.cancel(gestionnaire(), 'r1');
+    expect(update.mock.calls[0][0].data.status).toBe('CANCELLED');
+    const [l] = lignes(j);
+    expect(lignes(j)).toHaveLength(1);
+    expect(l).toEqual(expect.objectContaining({
+      action: 'reservation_retiree', fleetId: 'f-client', triggeredByUserId: 'gest-7', target: 'AA-123-BB', status: 'SUCCESS',
+    }));
+    expect(l.detail).toBe('Demande retirée par son auteur — AA-123-BB, 01/07/2030 10:00 → 12:00');
+    expect(courriels(emitter)).toHaveLength(0);
+
+    // La demande d'un AUTRE, refusée par un gestionnaire : toujours « refusée », et toujours annoncée.
+    const autre = monter({ row: resaClient({ status: 'REQUESTED', metadata: { requesterId: 'u-autre' } }), perms: true });
+    await autre.svc.cancel(gestionnaire(), 'r1');
+    expect(lignes(autre.j).map((x) => x.action)).toEqual(['reservation_refusee']);
+    expect(courriels(autre.emitter).map((c) => c[0])).toEqual(['reservation.refused']);
+
+    // Une réservation FERME qu'il a lui-même demandée puis vue validée : c'est une annulation.
+    const ferme = monter({ row: resaClient({ status: 'CONFIRMED', metadata: { requesterId: 'gest-7' } }), perms: true });
+    await ferme.svc.cancel(gestionnaire(), 'r1');
+    expect(lignes(ferme.j).map((x) => x.action)).toEqual(['reservation_annulee']);
+  });
+
+  it('update qui ne change RIEN (la feuille renvoie tout) : l’écriture a lieu, aucune ligne', async () => {
+    const row = resaClient({ metadata: { reason: 'Sortie', criteria: { minSeats: 4 }, group: { id: null, name: 'Nord' } } });
+    const { svc, j, update } = monter({ row });
+    await svc.update(gestionnaire(), 'r1', {
+      startAt: DEBUT.toISOString(), endAt: FIN.toISOString(), reason: 'Sortie', criteria: { minSeats: 4 }, group: { id: null, name: 'Nord' },
+    });
+    expect(update).toHaveBeenCalledTimes(1);
+    expect(j.record).not.toHaveBeenCalled();
+  });
+
+  it('update : UNE ligne `reservation_modifiee`, avant → après champ par champ, heure de Paris', async () => {
+    const row = resaClient({ metadata: { reason: 'Sortie', group: { id: null, name: 'Nord' } } });
+    const { svc, j, emitter } = monter({ row });
+    await svc.update(superAdmin(), 'r1', {
+      startAt: new Date(DEBUT.getTime() + H).toISOString(), endAt: new Date(FIN.getTime() + H).toISOString(),
+      reason: 'Piscine', group: null,
+    });
+    const tout = lignes(j);
+    expect(tout).toHaveLength(1);
+    const [l] = tout;
+    expect(l).toEqual(expect.objectContaining({ action: 'reservation_modifiee', fleetId: 'f-client', triggeredByUserId: 'sa-1', target: 'AA-123-BB' }));
+    // Le titre suit le motif (T13) : il n'est pas dit deux fois.
+    expect(l.detail).toBe(
+      'Réservation modifiée — AA-123-BB : créneau 01/07/2030 10:00 → 12:00 devient 01/07/2030 11:00 → 13:00 ; motif « Sortie » → « Piscine » ; groupe Nord → aucun',
+    );
+    expect(l.meta).toEqual(expect.objectContaining({
+      reservationId: 'r1',
+      champs: expect.arrayContaining(['creneau', 'titre', 'motif', 'groupe']),
+      avant: expect.objectContaining({ reason: 'Sortie', startAt: DEBUT.toISOString(), group: { id: null, name: 'Nord' } }),
+      apres: expect.objectContaining({ reason: 'Piscine', startAt: new Date(DEBUT.getTime() + H).toISOString(), group: null }),
+    }));
+    expect(courriels(emitter)).toHaveLength(0);
+  });
+
+  it('update des critères seulement : dit ce qui change, lisiblement', async () => {
+    const { svc, j } = monter({ row: resaClient({ metadata: { reason: 'Sortie', criteria: { minSeats: 4 } } }) });
+    await svc.update(gestionnaire(), 'r1', { criteria: { minSeats: 7, childSeatsBaby: 1 } });
+    expect(lignes(j)[0].detail).toBe(
+      'Réservation modifiée — AA-123-BB, 01/07/2030 10:00 → 12:00 : critères 4 places min. → 7 places min., 1 siège(s) bébé',
+    );
+  });
+
+  it('reaffecter : EXACTEMENT une ligne `reservation_reaffectee` (véhicule A → B), jamais un « modifiée » en plus', async () => {
+    const { svc, j } = monter({ row: resaClient() });
+    await svc.reaffecter(superAdmin(), 'r1', { versVehicleId: 'v2' });
+    const tout = lignes(j);
+    expect(tout.map((l) => l.action)).toEqual(['reservation_reaffectee']);
+    expect(tout[0]).toEqual(expect.objectContaining({ fleetId: 'f-client', triggeredByUserId: 'sa-1', target: 'BB-456-CC' }));
+    expect(tout[0].detail).toBe('Réservation réaffectée — BB-456-CC, 01/07/2030 10:00 → 12:00 : véhicule AA-123-BB → BB-456-CC');
+    expect(tout[0].meta).toEqual(expect.objectContaining({
+      avant: expect.objectContaining({ vehicleId: 'v1', plaque: 'AA-123-BB' }),
+      apres: expect.objectContaining({ vehicleId: 'v2', plaque: 'BB-456-CC' }),
+    }));
+  });
+
+  it('scinder (réservation commencée) : `reservation_scindee` seule, avec l’auteur, la plaque, l’heure de Paris', async () => {
+    const row = resaClient({ startAt: new Date(Date.now() - 2 * H), endAt: new Date(Date.now() + 2 * H) });
+    const { svc, j } = monter({ row });
+    await svc.reaffecter(superAdmin(), 'r1', { versVehicleId: 'v2' });
+    const tout = lignes(j);
+    expect(tout.map((l) => l.action)).toEqual(['reservation_scindee']);
+    expect(tout[0]).toEqual(expect.objectContaining({ fleetId: 'f-client', triggeredByUserId: 'sa-1', target: 'AA-123-BB' }));
+    expect(tout[0].detail).toMatch(/^Réservation scindée — AA-123-BB garde \d{2}\/\d{2}\/\d{4} \d{2}:\d{2} → .+, la suite part sur BB-456-CC \(/);
+    expect(tout[0].detail).not.toMatch(ISO);
+    expect(tout[0].meta).toEqual(expect.objectContaining({ reservationId: 'r1', suiteId: 'r-neuve', versVehicleId: 'v2', parUtilisateur: 'sa-1' }));
+  });
+
+  it('un journal qui JETTE ne fait échouer aucun geste (création, validation, modification)', async () => {
+    const casse = { record: jest.fn(() => { throw new Error('journal HS'); }) };
+    const a = monter({ journal: casse });
+    await expect(a.svc.request(gestionnaire(), { vehicleId: 'v1', startAt: DEBUT.toISOString(), endAt: FIN.toISOString() })).resolves.toBeDefined();
+    const b = monter({ row: resaClient({ status: 'REQUESTED' }), journal: casse });
+    await expect(b.svc.confirm(gestionnaire(), 'r1', {})).resolves.toMatchObject({ status: 'CONFIRMED' });
+    const c = monter({ row: resaClient(), journal: casse });
+    await expect(c.svc.update(gestionnaire(), 'r1', { reason: 'autre' })).resolves.toBeDefined();
+    expect(casse.record).toHaveBeenCalledTimes(3);
+  });
+
+  describe('réorganiser — un résumé PAR SOCIÉTÉ, relié à ses lignes par `meta.lot`', () => {
+    /** Un lot en mémoire : `absentes` disparaissent de la base entre la liste et l'écriture (→ refus). */
+    function monterLot(rows: Record<string, unknown>[], absentes: string[] = []) {
+      const parId = new Map(rows.filter((r) => !absentes.includes(r['id'] as string)).map((r) => [r['id'] as string, { ...r }]));
+      const j = { record: jest.fn() };
+      const prisma = makePrisma({
+        vehicleEvent: {
+          findUnique: jest.fn().mockImplementation(async ({ where }: { where: { id: string } }) => parId.get(where.id) ?? null),
+          findMany: jest.fn().mockResolvedValue([]),
+          create: jest.fn(),
+          update: jest.fn().mockImplementation(async ({ where, data }: { where: { id: string }; data: Record<string, unknown> }) => {
+            const ligne = { ...parId.get(where.id)!, ...data };
+            parId.set(where.id, ligne);
+            return ligne;
+          }),
+        },
+      });
+      const dtos = rows.map((r) => ({
+        id: r['id'], fleetId: r['fleetId'], vehicleId: r['vehicleId'], vehiclePlate: (r['vehicle'] as { plate: string }).plate,
+        type: 'RESERVATION', status: r['status'], source: r['source'],
+        startAt: (r['startAt'] as Date).toISOString(), endAt: (r['endAt'] as Date).toISOString(), metadata: r['metadata'],
+      }));
+      const svc = new ReservationsService(
+        prisma, access('ALL'), makeEvents({ list: jest.fn().mockResolvedValue(dtos) }), makePerms(true), { emit: jest.fn() } as never, j as never,
+      );
+      return { svc, j };
+    }
+    const plus = (d: Date, h: number) => new Date(d.getTime() + h * H);
+    const corps = () => ({ from: new Date().toISOString(), to: new Date('2030-12-31T00:00:00Z').toISOString(), origine: 'toutes' as const });
+
+    it('super-admin sur deux sociétés : deux résumés, chacun sur SES chiffres ; rien en simulation', async () => {
+      const b = { fleetId: 'f-b', vehicleId: 'v2', vehicle: { plate: 'BB-456-CC' } };
+      const { svc, j } = monterLot(
+        [
+          resaClient({ id: 'a1', fleetId: 'f-a' }),
+          resaClient({ id: 'a2', fleetId: 'f-a', startAt: plus(DEBUT, 3), endAt: plus(FIN, 3) }),
+          resaClient({ id: 'b1', ...b }),
+          resaClient({ id: 'b2', ...b, startAt: plus(DEBUT, 3), endAt: plus(FIN, 3) }),
+        ],
+        ['b2'], // disparue entre la liste et l'écriture : refusée
+      );
+      const geste = { ...corps(), action: 'annuler' as const };
+      const sim = await svc.reorganiser(superAdmin(), geste);
+      expect(sim.concernees).toBe(4);
+      expect(j.record).not.toHaveBeenCalled(); // rien en simulation
+
+      const res = await svc.reorganiser(superAdmin(), { ...geste, simulation: false, attendu: sim.concernees, ids: sim.lotIds });
+      expect(res.appliquees).toBe(3);
+      const resumes = lignes(j, 'reservations_reorganisees');
+      // Jamais la société de l'appelant (f-tracky), jamais une ligne sans société.
+      expect(resumes.map((l) => l.fleetId).sort()).toEqual(['f-a', 'f-b']);
+      const de = new Map(resumes.map((l) => [l.fleetId, l]));
+      expect(de.get('f-a')).toEqual(expect.objectContaining({
+        status: 'SUCCESS', actor: 'utilisateur', triggeredByUserId: 'sa-1', target: 'AA-123-BB',
+        meta: expect.objectContaining({ concernees: 2, appliquees: 2, refusees: 0 }),
+      }));
+      expect(de.get('f-b')).toEqual(expect.objectContaining({
+        status: 'SKIPPED', target: 'BB-456-CC', meta: expect.objectContaining({ concernees: 2, appliquees: 1, refusees: 1 }),
+      }));
+      expect(de.get('f-a')!.detail).toMatch(/^Réorganisation appliquée \(annulation, origine toutes, fenêtre .+\) : 2 reprise\(s\) sur 2, 0 refus\.$/);
+      expect(de.get('f-a')!.detail).not.toMatch(ISO);
+
+      // Les lignes unitaires : la société de CHAQUE réservation, et le même lot que les résumés.
+      const unitaires = lignes(j, 'reservation_annulee');
+      expect(unitaires.map((l) => l.fleetId).sort()).toEqual(['f-a', 'f-a', 'f-b']);
+      const lot = resumes[0].meta['lot'];
+      expect(typeof lot).toBe('string');
+      for (const l of [...resumes, ...unitaires]) expect(l.meta['lot']).toBe(lot);
+      for (const l of unitaires) expect(l.triggeredByUserId).toBe('sa-1');
+    });
+
+    it('Décaler : chaque ligne est « décalée » (pas « modifiée »), avec son créneau avant → après et le lot', async () => {
+      const { svc, j } = monterLot([resaClient({ id: 'a1' }), resaClient({ id: 'a2', startAt: plus(DEBUT, 3), endAt: plus(FIN, 3) })]);
+      await svc.reorganiser(gestionnaire(), { ...corps(), action: 'decaler', decalageMinutes: 30, simulation: false, attendu: 2 });
+      const decalees = lignes(j, 'reservation_decalee');
+      expect(decalees).toHaveLength(2);
+      expect(lignes(j, 'reservation_modifiee')).toHaveLength(0);
+      expect(decalees.map((l) => l.detail)).toContain(
+        'Réservation décalée — AA-123-BB : créneau 01/07/2030 10:00 → 12:00 devient 01/07/2030 10:30 → 12:30',
+      );
+      const [resume] = lignes(j, 'reservations_reorganisees');
+      expect(resume.fleetId).toBe('f-client');
+      expect(resume.detail).toContain('décalage de +30 min');
+      for (const l of decalees) expect(l.meta['lot']).toBe(resume.meta['lot']);
+    });
+
+    it('un lot vide appliqué n’écrit rien — pas même un résumé', async () => {
+      const { svc, j } = monterLot([]);
+      const res = await svc.reorganiser(gestionnaire(), { ...corps(), action: 'annuler', simulation: false });
+      expect(res.concernees).toBe(0);
+      expect(j.record).not.toHaveBeenCalled();
+    });
+  });
+});
+
+/**
+ * ── « 12 PLACES » (29/09, 05:10, Client test) ──────────────────────────────────────────────────
+ *
+ * Parc : 3 × 9 places, 4 × 5, 1 × 4. Une demande de 12 places recevait « Aucun véhicule libre ne
+ * correspond aux critères sur ce créneau » pendant que le panneau affichait 7 véhicules sur 8 libres.
+ */
+describe('ReservationsService — « 12 places » (29/09)', () => {
+  const H = 3_600_000;
+  /** Client test ; v1 (9 places) est pris sur le créneau. */
+  const PARC = [9, 9, 9, 5, 5, 5, 5, 4].map((seats, i) => ({ id: `v${i + 1}`, plate: `CT-00${i + 1}`, seats, features: [], tracker: null }));
+  function monterParc(parc: unknown[] = PARC, occupes: string[] = ['v1'], childSeats?: unknown) {
+    const prisma = makePrisma({
+      vehicle: {
+        findMany: jest.fn().mockResolvedValue(parc),
+        findUnique: jest.fn().mockResolvedValue({ outOfServiceReason: null, seats: null, plate: 'X', tracker: null }),
+      },
+      vehicleEvent: {
+        findMany: jest.fn().mockImplementation(async ({ where }: { where: { blocksVehicle?: boolean } }) =>
+          where?.blocksVehicle ? [] : occupes.map((vehicleId) => ({ vehicleId })),
+        ),
+        findUnique: jest.fn(), create: jest.fn(), update: jest.fn(),
+      },
+    }) as unknown as { vehicle: { findMany: jest.Mock; findUnique: jest.Mock }; vehicleEvent: { create: jest.Mock } };
+    // Position 7 du constructeur : (prisma, accès, events, perms, emitter, journal, sièges).
+    const svc = new ReservationsService(
+      prisma as never, access('ALL'), makeEvents(), makePerms(true), undefined, undefined, childSeats as never,
+    );
+    return { svc, prisma };
+  }
+  /** Stock de sièges auto VIDE, aucun à bord : tout besoin de siège écarte le véhicule. */
+  const stockVide = () => ({
+    availability: jest.fn().mockResolvedValue({
+      startAt: '', endAt: '', policy: 'STOCK_OR_INSTALLED', total: { baby: 0, child: 0 }, installed: { baby: 0, child: 0 },
+      stock: { baby: 0, child: 0 }, engaged: { baby: 0, child: 0 }, available: { baby: 0, child: 0 },
+    }),
+    assertAvailable: jest.fn().mockResolvedValue(undefined),
+  });
+
+  it('le vivier COMPTE les trop petits et rend le plus grand du parc', async () => {
+    const { svc } = monterParc();
+    const res = await svc.suggest(makeUser(), { ...SLOT, criteria: { minSeats: 12 } });
+    expect(res.vehicles).toHaveLength(0);
+    expect(res.excludedTooSmall).toBe(8);
+    expect(res.largestSeats).toBe(9);
+
+    // Sans plancher : rien d'écarté pour la taille ; le plus grand est rendu quand même.
+    const sans = await svc.suggest(makeUser(), SLOT);
+    expect(sans.excludedTooSmall).toBe(0);
+    expect(sans.largestSeats).toBe(9);
+    expect(sans.vehicles).toHaveLength(7); // v1 est pris
+
+    // Places inconnues : comptées à part, jamais « trop petites ».
+    const inconnu = monterParc([...PARC, { id: 'v9', plate: 'CT-009', seats: null, features: [], tracker: null }]);
+    const r2 = await inconnu.svc.suggest(makeUser(), { ...SLOT, criteria: { minSeats: 12 } });
+    expect(r2.excludedTooSmall).toBe(8);
+    expect(r2.excludedUnknownCapacity).toBe(1);
+    expect(r2.largestSeats).toBe(9);
+  });
+
+  it('request « ouverte » de 12 places : le 400 parle de TAILLE, et dit combien sont libres et de quelle taille', async () => {
+    const { svc, prisma } = monterParc();
+    const err = await svc.request(makeUser(), { ...SLOT, criteria: { minSeats: 12 } }).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(BadRequestException);
+    expect((err as Error).message).toBe(
+      'Aucun véhicule de 12 places ou plus (conducteur compris) : le plus grand en a 9. ' +
+        'Sur ce créneau, 7 véhicules sont libres, de 4 à 9 places : répartissez le groupe sur plusieurs véhicules (une réservation par véhicule).',
+    );
+    // Le parc a été relu SANS le plancher (deuxième lecture), même créneau : rien n'est créé.
+    expect(prisma.vehicle.findMany).toHaveBeenCalledTimes(2);
+    expect(prisma.vehicleEvent.create).not.toHaveBeenCalled();
+  });
+
+  it('request « ouverte » : des véhicules assez grands existent mais sont PRIS — c’est le créneau qui manque, et les libres sont dits', async () => {
+    const { svc } = monterParc(PARC, ['v1', 'v2', 'v3']); // les trois 9 places sont pris
+    await expect(svc.request(makeUser(), { ...SLOT, criteria: { minSeats: 8 } })).rejects.toThrow(
+      "Aucun véhicule d'au moins 8 places n'est libre sur ce créneau. Sur ce créneau, 5 véhicules sont libres, de 4 à 5 places",
+    );
+  });
+
+  it('request « ouverte » : sans véhicule trop petit, pas de relecture (une requête de plus seulement quand elle sert)', async () => {
+    const tousPris = PARC.map((v) => v.id);
+    const quatre = monterParc(PARC, tousPris);
+    await expect(quatre.svc.request(makeUser(), { ...SLOT, criteria: { minSeats: 4 } })).rejects.toThrow(
+      'Aucun véhicule libre ne correspond aux critères sur ce créneau (au moins 4 places).',
+    );
+    expect(quatre.prisma.vehicle.findMany).toHaveBeenCalledTimes(1);
+    const sansPlancher = monterParc(PARC, tousPris);
+    await expect(sansPlancher.svc.request(makeUser(), { ...SLOT })).rejects.toThrow(
+      'Aucun véhicule libre ne correspond aux critères sur ce créneau.',
+    );
+    expect(sansPlancher.prisma.vehicle.findMany).toHaveBeenCalledTimes(1);
+  });
+
+  /**
+   * Relecture du 29/09 — les sièges auto AVANT la taille. Client test, tout est libre ; 5 places et
+   * 2 sièges bébé, stock vide, aucun siège à bord. Le 4 places est « trop petit » (1), les 7 autres
+   * sont libres ET assez grands mais écartés pour leurs sièges (7). Le constructeur recevait
+   * `excludedTooSmall: 1` et disait « Aucun véhicule d'au moins 5 places n'est libre sur ce créneau.
+   * Aucun véhicule n'est libre sur ce créneau, quelle que soit sa taille. » — deux phrases fausses.
+   */
+  it('request « ouverte » : sièges auto manquants dans un parc qui a un petit véhicule — c’est le SIÈGE qui est dit, sans relecture', async () => {
+    const { svc, prisma } = monterParc(PARC, [], stockVide());
+    const criteria = { minSeats: 5, childSeatsBaby: 2 };
+    const vivier = await svc.suggest(makeUser(), { ...SLOT, criteria });
+    expect(vivier.vehicles).toHaveLength(0);
+    expect(vivier.excludedTooSmall).toBe(1);
+    expect(vivier.excludedChildSeats).toBe(7);
+    expect(vivier.largestSeats).toBe(9);
+    prisma.vehicle.findMany.mockClear();
+
+    const err = await svc.request(makeUser(), { ...SLOT, criteria }).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(BadRequestException);
+    expect((err as Error).message).toBe(
+      'Aucun véhicule libre ne peut recevoir les sièges auto demandés sur ce créneau ' +
+        '(7 véhicule(s) écarté(s) : pas assez de sièges à bord, et le stock ne complète pas ou ne suffit plus). ' +
+        'Choisissez un véhicule équipé, installez un siège, ou changez le réglage dans la vue Parc.',
+    );
+    // Les petits véhicules n'y sont pour rien : pas de relecture « toutes tailles ».
+    expect(prisma.vehicle.findMany).toHaveBeenCalledTimes(1);
+    expect(prisma.vehicleEvent.create).not.toHaveBeenCalled();
+  });
+
+  /**
+   * Relecture du 29/09 — « répartissez le groupe » seulement quand c'est POSSIBLE. 12 places, un seul
+   * 9 places libre : le message conseillait de répartir le groupe sur… un véhicule.
+   */
+  describe('« répartissez le groupe » seulement quand c’est possible', () => {
+    const TAILLE = 'Aucun véhicule de 12 places ou plus (conducteur compris) : le plus grand en a 9.';
+    const saufLibres = (parc: { id: string }[], libres: string[]) => parc.map((v) => v.id).filter((id) => !libres.includes(id));
+    const refus = async (parc: { id: string }[], libres: string[]) => {
+      const { svc } = monterParc(parc, saufLibres(parc, libres));
+      const err = await svc.request(makeUser(), { ...SLOT, criteria: { minSeats: 12 } }).catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(BadRequestException);
+      return (err as Error).message;
+    };
+
+    it('un seul véhicule libre (9 places) pour 12 : « pas assez », jamais « répartissez »', async () => {
+      const m = await refus(PARC, ['v2']);
+      expect(m).toBe(`${TAILLE} Sur ce créneau, un seul véhicule est libre (9 places) : pas assez pour les 12 places demandées, même en répartissant le groupe.`);
+      expect(m).not.toContain('répartissez');
+    });
+
+    /**
+     * Raccord du 29/09 avec la répartition de la feuille : chaque véhicule emporte SON conducteur.
+     * 9 + 4 = 13 places, mais 8 + 3 = 11 passagers : 13 places demandées (12 passagers) n'y tiennent pas.
+     */
+    it('un conducteur par véhicule : 9 + 4 = 13 places ne couvrent PAS 13 places demandées', async () => {
+      // Seuls CT-002 (9 places) et CT-008 (4 places) sont libres.
+      const { svc } = monterParc(PARC, saufLibres(PARC, ['v2', 'v8']));
+      const err = await svc
+        .request(makeUser(), { ...SLOT, criteria: { minSeats: 13 } })
+        .catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(BadRequestException);
+      expect((err as Error).message).toContain('13 places à eux tous (11 passagers, un conducteur par véhicule) : pas assez pour les 13 places demandées');
+      expect((err as Error).message).not.toContain('répartissez');
+    });
+
+    it('deux véhicules libres, 5 + 5 = 10 places pour 12 : « pas assez », avec la somme', async () => {
+      const m = await refus(PARC, ['v4', 'v5']);
+      expect(m).toBe(`${TAILLE} Sur ce créneau, 2 véhicules sont libres, 10 places à eux tous (8 passagers, un conducteur par véhicule) : pas assez pour les 12 places demandées, même en répartissant le groupe.`);
+    });
+
+    it('deux véhicules libres, 9 + 5 = 14 places pour 12 : la répartition tient, « répartissez »', async () => {
+      const m = await refus(PARC, ['v2', 'v4']);
+      expect(m).toBe(
+        `${TAILLE} Sur ce créneau, 2 véhicules sont libres, de 5 à 9 places : répartissez le groupe sur plusieurs véhicules (une réservation par véhicule).`,
+      );
+    });
+
+    it('places non renseignées : on ne conclut pas « pas assez » sur une donnée absente', async () => {
+      const avecInconnu = [...PARC, { id: 'v9', plate: 'CT-009', seats: null, features: [], tracker: null }];
+      // 5 places + un véhicule sans places : la répartition reste une piste.
+      const deux = await refus(avecInconnu, ['v4', 'v9']);
+      expect(deux).toContain('répartissez le groupe');
+      expect(deux).not.toContain('pas assez');
+      // Seul libre, sans places : répartir est impossible, mais aucun chiffre n'est inventé.
+      const seul = await refus(avecInconnu, ['v9']);
+      expect(seul).toContain('Sur ce créneau, un seul véhicule est libre (nombre de places non renseigné) : impossible de répartir le groupe.');
+      expect(seul).not.toContain('répartissez');
+      expect(seul).not.toContain('pas assez');
+    });
+  });
+
+  /**
+   * Revue du 29/09 (C6) — « 12 places » + siège(s) auto. Le premier passage est vidé par le plancher
+   * (les sièges n'y sont jamais jugés) ; la relecture « toutes tailles » GARDAIT les sièges : les 7 libres
+   * de Client test, sans siège à bord et stock vide, en sortaient tous, et le 400 disait « Aucun véhicule
+   * n'est libre sur ce créneau, quelle que soit sa taille. » Un seul 9 places équipé : « un seul véhicule
+   * est libre (9 places) : pas assez… même en répartissant » — alors que 9 (avec le siège) + 4 = 13, et
+   * que la feuille proposait justement cette répartition. Les libres sont relus SANS les sièges, et les
+   * sièges jugés à part sur ces mêmes libres.
+   */
+  describe('C6 — 12 places + sièges auto : la relecture ne perd ni les libres ni l’information des sièges', () => {
+    const TAILLE = 'Aucun véhicule de 12 places ou plus (conducteur compris) : le plus grand en a 9.';
+    const POURQUOI = 'pas assez de sièges à bord, et le stock ne complète pas ou ne suffit plus';
+    const dispo = (policy: 'STOCK_OR_INSTALLED' | 'INSTALLED_ONLY', stock = 0) => ({
+      availability: jest.fn().mockResolvedValue({
+        startAt: '', endAt: '', policy, total: { baby: stock, child: 0 }, installed: { baby: 0, child: 0 },
+        stock: { baby: stock, child: 0 }, engaged: { baby: 0, child: 0 }, available: { baby: stock, child: 0 },
+      }),
+      assertAvailable: jest.fn().mockResolvedValue(undefined),
+    });
+    /** Le parc de Client test, avec des sièges bébé À BORD de certains véhicules. */
+    const parcAvec = (aBord: Record<string, number>) => PARC.map((v) => ({ ...v, childSeatsBaby: aBord[v.id] ?? 0, childSeatsChild: 0 }));
+    const refus = async (opts: { parc?: unknown[]; occupes?: string[]; childSeats: unknown; criteria: Record<string, number> }) => {
+      const { svc, prisma } = monterParc(opts.parc ?? PARC, opts.occupes ?? ['v1'], opts.childSeats);
+      const err = await svc.request(makeUser(), { ...SLOT, criteria: opts.criteria }).catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(BadRequestException);
+      expect(prisma.vehicleEvent.create).not.toHaveBeenCalled();
+      // Deux lectures du parc, pas trois : les sièges se jugent sur la relecture elle-même.
+      expect(prisma.vehicle.findMany).toHaveBeenCalledTimes(2);
+      return (err as Error).message;
+    };
+
+    it('stock vide, aucun siège à bord (défaut « stock ou installés », puis « installés seulement ») : 7 libres DITS, et c’est le siège qui manque', async () => {
+      for (const childSeats of [stockVide(), dispo('INSTALLED_ONLY', 3)]) {
+        const m = await refus({ childSeats, criteria: { minSeats: 12, childSeatsBaby: 1 } });
+        expect(m).toBe(
+          `${TAILLE} Sur ce créneau, 7 véhicules sont libres, de 4 à 9 places, mais aucun ne peut recevoir les sièges auto demandés, ` +
+            `même en répartissant le groupe (${POURQUOI}). Installez un siège, ou changez le réglage dans la vue Parc.`,
+        );
+        expect(m).not.toContain('quelle que soit sa taille');
+        expect(m).not.toContain('répartissez');
+      }
+    });
+
+    it('les grands véhicules existent mais sont PRIS (8 places + 1 bébé) : même vérité, les 5 libres sont dits', async () => {
+      const m = await refus({ occupes: ['v1', 'v2', 'v3'], childSeats: stockVide(), criteria: { minSeats: 8, childSeatsBaby: 1 } });
+      expect(m).toBe(
+        "Aucun véhicule d'au moins 8 places n'est libre sur ce créneau. Sur ce créneau, 5 véhicules sont libres, de 4 à 5 places, " +
+          `mais aucun ne peut recevoir les sièges auto demandés, même en répartissant le groupe (${POURQUOI}). ` +
+          'Installez un siège, ou changez le réglage dans la vue Parc.',
+      );
+    });
+
+    it('un 9 places porte le siège : « répartissez », et le message NOMME le véhicule qui doit porter les sièges', async () => {
+      for (const childSeats of [stockVide(), dispo('INSTALLED_ONLY')]) {
+        const m = await refus({ parc: parcAvec({ v2: 1 }), childSeats, criteria: { minSeats: 12, childSeatsBaby: 1 } });
+        expect(m).toBe(
+          `${TAILLE} Sur ce créneau, 7 véhicules sont libres, de 4 à 9 places : répartissez le groupe sur plusieurs véhicules (une réservation par véhicule). ` +
+            'Les sièges auto demandés ne peuvent aller que sur CT-002 : mettez-les sur la réservation de ce véhicule.',
+        );
+      }
+    });
+
+    it('seuls CT-002 (9 places, siège à bord) et CT-008 (4 places) sont libres : 9 + 4 = 13, « répartissez » — jamais « un seul véhicule… pas assez »', async () => {
+      const parc = parcAvec({ v2: 1 });
+      const m = await refus({
+        parc, occupes: ['v1', 'v3', 'v4', 'v5', 'v6', 'v7'], childSeats: stockVide(), criteria: { minSeats: 12, childSeatsBaby: 1 },
+      });
+      expect(m).toContain('Sur ce créneau, 2 véhicules sont libres, de 4 à 9 places : répartissez le groupe');
+      expect(m).toContain('ne peuvent aller que sur CT-002');
+      expect(m).not.toContain('un seul véhicule');
+      expect(m).not.toContain('pas assez');
+    });
+
+    it('aucun ne prend seul les deux sièges, mais deux en ont un chacun : « répartissez-les aussi »', async () => {
+      const m = await refus({ parc: parcAvec({ v2: 1, v3: 1 }), childSeats: dispo('INSTALLED_ONLY'), criteria: { minSeats: 12, childSeatsBaby: 2 } });
+      expect(m).toBe(
+        `${TAILLE} Sur ce créneau, 7 véhicules sont libres, de 4 à 9 places : répartissez le groupe sur plusieurs véhicules (une réservation par véhicule). ` +
+          'Aucun de ces véhicules ne peut recevoir à lui seul tous les sièges auto demandés : répartissez-les aussi entre les réservations.',
+      );
+    });
+
+    it('pas assez de places ET pas de sièges : « pas assez » reste vrai, les sièges sont dits en plus', async () => {
+      const m = await refus({ occupes: ['v1', 'v2', 'v3', 'v6', 'v7', 'v8'], childSeats: stockVide(), criteria: { minSeats: 12, childSeatsBaby: 1 } });
+      expect(m).toBe(
+        `${TAILLE} Sur ce créneau, 2 véhicules sont libres, 10 places à eux tous (8 passagers, un conducteur par véhicule) : pas assez pour les 12 places demandées, même en répartissant le groupe. ` +
+          `Les sièges auto demandés n'y tiennent pas non plus (${POURQUOI}).`,
+      );
+    });
+
+    it('stock suffisant (tous peuvent recevoir le siège) : le message d’avant, sans phrase de plus ; rien de libre : « quelle que soit sa taille » reste vrai', async () => {
+      const m = await refus({ childSeats: dispo('STOCK_OR_INSTALLED', 2), criteria: { minSeats: 12, childSeatsBaby: 1 } });
+      expect(m).toBe(
+        `${TAILLE} Sur ce créneau, 7 véhicules sont libres, de 4 à 9 places : répartissez le groupe sur plusieurs véhicules (une réservation par véhicule).`,
+      );
+      const rien = await refus({ occupes: PARC.map((v) => v.id), childSeats: stockVide(), criteria: { minSeats: 12, childSeatsBaby: 1 } });
+      expect(rien).toBe(`${TAILLE} Aucun véhicule n'est libre sur ce créneau, quelle que soit sa taille.`);
+    });
+  });
+
+  /**
+   * ⚠️ Le lien public (availableForFleet + systemRequest) ne construit JAMAIS ces messages : il rend le
+   * DTO (le service de réservation publique n'en lit que `vehicles`) et ne relit pas les places.
+   */
+  it('⚠️ le lien public ne reçoit jamais ces chiffres dans un message', async () => {
+    const espion = jest.spyOn(aucunVehicule, 'messageAucunVehicule');
+    try {
+      const { svc, prisma } = monterParc();
+      const dispo = await svc.availableForFleet('f1', SLOT.startAt, SLOT.endAt, { minSeats: 12 }, { excludeRequested: true });
+      expect(dispo.vehicles).toHaveLength(0);
+      prisma.vehicleEvent.create.mockResolvedValue(evRow({ vehicleId: 'v2' }));
+      await svc.systemRequest({
+        fleetId: 'f1', vehicleId: 'v2', start: new Date(SLOT.startAt), end: new Date(SLOT.endAt), title: 'Demande publique',
+        metadata: { public: true, seatsNeeded: 12 },
+      });
+      expect(prisma.vehicle.findUnique).not.toHaveBeenCalled(); // aucune lecture des places
+      expect(espion).not.toHaveBeenCalled();
+
+      // Témoin : le chemin AUTHENTIFIÉ, lui, le construit.
+      await expect(svc.request(makeUser(), { ...SLOT, criteria: { minSeats: 12 } })).rejects.toBeInstanceOf(BadRequestException);
+      expect(espion).toHaveBeenCalledTimes(1);
+    } finally {
+      espion.mockRestore();
+    }
+  });
+
+  describe('véhicule choisi À LA MAIN', () => {
+    const monterChoix = (seats: number | null) => {
+      const prisma = makePrisma({
+        vehicle: {
+          findMany: jest.fn().mockResolvedValue([]),
+          findUnique: jest.fn().mockResolvedValue({ outOfServiceReason: null, seats, plate: 'TEST-001-XX', tracker: null }),
+        },
+      }) as unknown as { vehicleEvent: { create: jest.Mock } };
+      prisma.vehicleEvent.create.mockResolvedValue(evRow({ status: 'CONFIRMED' }));
+      const svc = new ReservationsService(prisma as never, access('ALL'), makeEvents(), makePerms(true));
+      return { svc, create: prisma.vehicleEvent.create };
+    };
+
+    it('moins de places que « Places min. » : 400 qui dit quoi faire, rien n’est créé', async () => {
+      const { svc, create } = monterChoix(9);
+      const err = await svc.request(makeUser(), { vehicleId: 'v1', ...SLOT, criteria: { minSeats: 12 } }).catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(BadRequestException);
+      expect((err as Error).message).toBe(
+        'TEST-001-XX a 9 places, moins que les 12 demandées (conducteur compris). Choisissez un véhicule plus grand, ou répartissez le groupe : une réservation par véhicule, sans « Places min. ».',
+      );
+      expect(create).not.toHaveBeenCalled();
+    });
+
+    it('…passe : assez de places, places inconnues, sans plancher, ou consignation rétroactive', async () => {
+      const cas: [number | null, { minSeats?: number } | undefined, typeof SLOT, boolean][] = [
+        [12, { minSeats: 12 }, SLOT, false],
+        [null, { minSeats: 12 }, SLOT, false],
+        [9, undefined, SLOT, false],
+        [9, { minSeats: 12 }, PAST_SLOT, true],
+      ];
+      for (const [seats, criteria, slot, retroactive] of cas) {
+        const { svc, create } = monterChoix(seats);
+        await svc.request(makeUser(), { vehicleId: 'v1', ...slot, criteria, ...(retroactive ? { retroactive } : {}) });
+        expect(create).toHaveBeenCalledTimes(1);
+      }
+    });
+  });
+
+  it('réaffecter en auto sans remplaçant assez grand : même constructeur, « le plus grand en a 5 »', async () => {
+    const row = evRow({
+      status: 'CONFIRMED', startAt: new Date(Date.now() + 48 * H), endAt: new Date(Date.now() + 50 * H), metadata: { criteria: { minSeats: 8 } },
+    });
+    const prisma = makePrisma({
+      vehicleEvent: { findUnique: jest.fn().mockResolvedValue(row), findMany: jest.fn().mockResolvedValue([]), create: jest.fn(), update: jest.fn() },
+    });
+    const svc = new ReservationsService(prisma, access('ALL'), makeEvents(), makePerms(true));
+    jest.spyOn(svc, 'suggest').mockResolvedValue({
+      startAt: '', endAt: '', vehicles: [], excludedUnknownCapacity: 0, excludedImmobilized: 0, excludedDormant: 0,
+      excludedTooSmall: 6, largestSeats: 5,
+    });
+    const err = await svc.reaffecter(makeUser(), 'r1', {}).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(ConflictException);
+    expect((err as Error).message).toBe('Aucun véhicule de 8 places ou plus (conducteur compris) : le plus grand en a 5.');
+  });
+});
+
+/**
+ * ── QUATRIÈME REVUE DU 29/09 (C0) — `lotIds` ─────────────────────────────────────────────────
+ *
+ * La simulation rend les identifiants EXACTS du lot ; l'écran les renvoie en `ids`. Une réservation
+ * arrivée entre-temps n'est pas dans `ids` : elle n'entre pas dans le lot, elle n'est jamais écrite.
+ * Une réservation sortie du lot en fait baisser le nombre : `attendu` refuse, rien n'est écrit.
+ */
+describe('ReservationsService.reorganiser — `lotIds` (C0)', () => {
+  const H = 3_600_000;
+  const iso = (ms: number) => new Date(Date.now() + ms).toISOString();
+  const r = (id: string, h: number, over: Record<string, unknown> = {}) => ({
+    id, fleetId: 'f1', vehicleId: 'v1', vehiclePlate: 'AA-1', type: 'RESERVATION', status: 'CONFIRMED', source: 'MANUAL',
+    startAt: iso(h * H), endAt: iso((h + 1) * H), ...over,
+  });
+  const fenetre = () => ({ from: iso(-H), to: iso(30 * 24 * H) });
+  function monterReorg(liste: unknown[]) {
+    const list = jest.fn().mockResolvedValue(liste);
+    const svc = new ReservationsService(makePrisma(), access('ALL'), makeEvents({ list }), makePerms(true), { emit: jest.fn() } as never);
+    const cancel = jest.spyOn(svc, 'cancel').mockResolvedValue({} as never);
+    return { svc, list, cancel };
+  }
+  const corps = () => ({ ...fenetre(), action: 'annuler' as const, origine: 'manuelle' as const, vehicleId: 'v1' });
+
+  it('les identifiants exacts du lot — après filtres d’origine, de véhicule, liste blanche — en simulation comme à l’application', async () => {
+    const { svc } = monterReorg([
+      r('a', 48), r('b', 50),
+      r('agent', 52, { source: 'SYSTEM' }), // hors « manuelle »
+      r('autre-vehicule', 54, { vehicleId: 'v2' }),
+      r('close', 56, { status: 'DONE' }),
+    ]);
+    const sim = await svc.reorganiser(makeUser(), corps());
+    expect(sim.lotIds).toEqual(['a', 'b']);
+    expect(sim.lotIds).toHaveLength(sim.concernees);
+    expect((await svc.reorganiser(makeUser(), { ...corps(), ids: ['b', 'inconnue'] })).lotIds).toEqual(['b']);
+    const res = await svc.reorganiser(makeUser(), { ...corps(), simulation: false, attendu: 2, ids: sim.lotIds });
+    expect(res.lotIds).toEqual(['a', 'b']);
+  });
+
+  it('le plafond borne aussi `lotIds`', async () => {
+    const { svc } = monterReorg(Array.from({ length: 501 }, (_, i) => r(`x${i}`, 48 + i / 100)));
+    const sim = await svc.reorganiser(makeUser(), corps());
+    expect(sim.plafonne).toBe(true);
+    expect(sim.lotIds).toHaveLength(500);
+    expect(sim.lotIds![0]).toBe('x0');
+  });
+
+  it('une ligne SORTIE + une ligne ENTRÉE entre simulation et application : 409 par `attendu`, rien n’est écrit', async () => {
+    const { svc, list, cancel } = monterReorg([r('a', 48), r('b', 50)]);
+    const sim = await svc.reorganiser(makeUser(), corps());
+    expect(sim.lotIds).toEqual(['a', 'b']);
+    // « a » a été annulée ailleurs ; « arrivee » vient d'entrer. Même nombre de lignes : sans `ids`, le
+    // décompte seul ne le verrait pas — avec `ids`, « arrivee » n'entre pas, et le lot tombe à 1.
+    list.mockResolvedValue([r('a', 48, { status: 'CANCELLED' }), r('b', 50), r('arrivee', 51)]);
+    await expect(
+      svc.reorganiser(makeUser(), { ...corps(), simulation: false, attendu: sim.concernees, ids: sim.lotIds }),
+    ).rejects.toBeInstanceOf(ConflictException);
+    expect(cancel).not.toHaveBeenCalled();
+  });
+
+  it('une ligne ENTRÉE seule : le lot vu est appliqué, la nouvelle n’est JAMAIS écrite', async () => {
+    const { svc, list, cancel } = monterReorg([r('a', 48), r('b', 50)]);
+    const sim = await svc.reorganiser(makeUser(), corps());
+    list.mockResolvedValue([r('a', 48), r('arrivee', 49), r('b', 50)]);
+    const res = await svc.reorganiser(makeUser(), { ...corps(), simulation: false, attendu: sim.concernees, ids: sim.lotIds });
+    expect(cancel.mock.calls.map((c) => c[1])).toEqual(['a', 'b']);
+    expect(res.appliquees).toBe(2);
+    expect(res.lotIds).toEqual(['a', 'b']);
   });
 });

@@ -178,6 +178,14 @@ export interface SuggestReservationResultDto {
    *  Exposé pour ne pas faire baisser un chiffre client EN SILENCE. Donnée INTERNE : jamais
    *  renvoyée au demandeur du lien public de réservation. */
   excludedDormant: number;
+  /**
+   * 29/09 (« 12 places ») — véhicules écartés parce qu'ils ont MOINS de places que `minSeats`
+   * (conducteur compris). Sans ce compte, « aucun véhicule libre » se lisait comme un agenda plein
+   * alors que le parc n'avait simplement pas de véhicule assez grand. Donnée INTERNE (lien public : jamais).
+   */
+  excludedTooSmall?: number;
+  /** Plus grand nombre de places parmi les véhicules en service du périmètre (null = aucun renseigné). */
+  largestSeats?: number | null;
 }
 
 /** Validation d'une demande : fixe le véhicule (si « ouverte ») et passe CONFIRMED. */

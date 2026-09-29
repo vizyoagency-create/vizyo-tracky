@@ -93,6 +93,8 @@ function build(over: {
   errors?: unknown;
   aiUsage?: unknown;
   permissions?: unknown;
+  /** Journal métier (29/09) — absent par défaut, comme avant : il est @Optional. */
+  systemActivity?: unknown;
 } = {}) {
   return new AiOptimizationService(
     (over.prisma ?? makePrisma()) as never,
@@ -105,6 +107,7 @@ function build(over: {
     (over.errors ?? makeErrors()) as never,
     (over.aiUsage ?? makeAiUsage()) as never,
     (over.permissions ?? makePermissions()) as never,
+    over.systemActivity as never,
   );
 }
 
@@ -1315,5 +1318,169 @@ describe('AiOptimizationService — revue du 29/09 : analyse de capacités conse
     const err = await svc.suggestCapacity(makeUser(), {}).catch((e: unknown) => e);
     expect(err).toMatchObject({ status: 429 });
     expect((err as Error).message).toMatch(/1 proposition reste à appliquer, 1 fiche modifiée depuis est à revoir\.$/);
+  });
+});
+
+/**
+ * ── JOURNAL MÉTIER DE « APPLIQUER » ET « AUCUN VÉHICULE » QUI DIT POURQUOI (29/09) ──────────
+ *
+ * « Appliquer » les capacités laisse une ligne `capacites_appliquees` (catégorie AGENDA) PAR
+ * SOCIÉTÉ DES VÉHICULES (un super-admin agit chez un client, parfois chez plusieurs d'un coup) :
+ * appliqués / écartés / déjà à jour, et véhicule par véhicule dans `meta`. Un véhicule refusé avant
+ * de connaître sa société (404, 403) n'est écrit chez personne.
+ *
+ * Placement : le 29/09 à 05:10, une demande de 12 places sur un parc dont le plus grand en a 9
+ * recevait « Aucun véhicule libre ne correspond aux critères sur ce créneau » — on cherchait un
+ * conflit d'horaire. La phrase vient désormais du constructeur partagé `messageAucunVehicule`.
+ */
+describe('AiOptimizationService — journal « Appliquer » et message « aucun véhicule » (29/09)', () => {
+  const superAdmin = () => makeUser({ id: 'u-sa', role: UserRole.SUPER_ADMIN, fleetId: null });
+  const parc = (fiches: { id: string; plate: string; seats: number | null; features: string[] }[]) =>
+    makePrisma({ vehicle: { findMany: jest.fn().mockResolvedValue(fiches), update: jest.fn().mockResolvedValue({}) } });
+
+  it('applyCapacity → capacites_appliquees, société des VÉHICULES, auteur réel, places avant → après', async () => {
+    const journal = { record: jest.fn() };
+    const prisma = parc([{ id: 'v1', plate: 'AA-1', seats: 5, features: [] }]);
+    const events = makeEvents({ assertVehicleAccess: jest.fn().mockResolvedValue('fCLIENT') });
+    const svc = build({ prisma, events, systemActivity: journal });
+
+    await svc.applyCapacity(superAdmin(), { items: [{ vehicleId: 'v1', seats: 9, features: ['clim'] }] });
+
+    expect(journal.record).toHaveBeenCalledTimes(1);
+    const l = journal.record.mock.calls[0][0];
+    expect(l).toEqual(expect.objectContaining({
+      category: 'AGENDA', action: 'capacites_appliquees', status: 'SUCCESS', actor: 'utilisateur',
+      fleetId: 'fCLIENT', triggeredByUserId: 'u-sa', target: 'AA-1',
+    }));
+    expect(l.detail).toContain('1 véhicule(s) mis à jour (AA-1 : 5 → 9 places, + clim)');
+    expect(l.meta).toEqual(expect.objectContaining({
+      applied: 1, skipped: 0, unchanged: 0,
+      vehicules: [expect.objectContaining({ vehicleId: 'v1', plate: 'AA-1', seats: { avant: 5, apres: 9 }, ajouts: ['clim'] })],
+    }));
+  });
+
+  it('deux sociétés touchées d’un coup → deux lignes, chacune chez SA société ; un véhicule refusé (403) n’est écrit chez personne', async () => {
+    const journal = { record: jest.fn() };
+    const prisma = parc([
+      { id: 'vA', plate: 'AA-1', seats: null, features: [] },
+      { id: 'vB', plate: 'BB-2', seats: 9, features: [] },
+      { id: 'vX', plate: 'SECRET', seats: null, features: [] },
+    ]);
+    const societes: Record<string, string> = { vA: 'fA', vB: 'fB' };
+    const events = makeEvents({
+      assertVehicleAccess: jest.fn().mockImplementation(async (_u: unknown, id: string) => {
+        if (id === 'vX') throw new ForbiddenException();
+        return societes[id];
+      }),
+    });
+    const svc = build({ prisma, events, systemActivity: journal });
+
+    await svc.applyCapacity(superAdmin(), { items: [{ vehicleId: 'vA', seats: 7 }, { vehicleId: 'vB', seats: 9 }, { vehicleId: 'vX', seats: 5 }] });
+
+    const lignes = journal.record.mock.calls.map((c) => c[0]);
+    expect(lignes.map((l) => l.fleetId).sort()).toEqual(['fA', 'fB']);
+    const b = lignes.find((l) => l.fleetId === 'fB');
+    // vB portait déjà 9 places : rien écrit, « déjà à jour », ligne SKIPPED.
+    expect(b).toEqual(expect.objectContaining({ status: 'SKIPPED' }));
+    expect(b.meta).toEqual(expect.objectContaining({ applied: 0, unchanged: 1 }));
+    expect(JSON.stringify(lignes)).not.toContain('SECRET');
+    expect(JSON.stringify(lignes)).not.toContain('vX');
+  });
+
+  it('un véhicule écarté (fiche modifiée depuis l’analyse) est compté et motivé dans la ligne de sa société', async () => {
+    const journal = { record: jest.fn() };
+    const prisma = parc([{ id: 'v1', plate: 'AA-1', seats: 9, features: [] }]);
+    // L'analyse avait lu 5 places ; la fiche en porte 9 (corrigée à la main) → écartée.
+    (prisma as unknown as { aiCapacityAnalysis: { findFirst: jest.Mock } }).aiCapacityAnalysis.findFirst.mockResolvedValue({
+      id: 'an1', appliedVehicleIds: [],
+      proposals: [{ vehicleId: 'v1', plate: 'AA-1', seats: 7, features: [], currentSeats: 5, currentFeatures: [], confidence: 0.8, reasoning: 'x' }],
+    });
+    const svc = build({ prisma, systemActivity: journal });
+
+    await svc.applyCapacity(makeUser(), { items: [{ vehicleId: 'v1', seats: 7 }] });
+
+    const l = journal.record.mock.calls[0][0];
+    expect(l).toEqual(expect.objectContaining({ fleetId: 'f1', status: 'SKIPPED' }));
+    expect(l.detail).toContain('1 écarté(s)');
+    expect(l.meta.ecartes).toEqual([expect.objectContaining({ vehicleId: 'v1', motif: expect.stringMatching(/modifiée/) })]);
+  });
+
+  it('journal EN PANNE (record lève) ou ABSENT : « Appliquer » écrit et répond pareil', async () => {
+    const enPanne = { record: jest.fn(() => { throw new Error('journal HS'); }) };
+    for (const systemActivity of [enPanne, undefined]) {
+      const prisma = parc([{ id: 'v1', plate: 'AA-1', seats: null, features: [] }]);
+      const svc = build({ prisma, systemActivity });
+      await expect(svc.applyCapacity(makeUser(), { items: [{ vehicleId: 'v1', seats: 9 }] })).resolves.toEqual({ updated: 1, skipped: [] });
+    }
+    expect(enPanne.record).toHaveBeenCalledTimes(1);
+  });
+
+  it('placement « 12 places » sur un parc dont le plus grand en a 9 : le message parle de TAILLE, pas de créneau', async () => {
+    const reservations = makeReservations({
+      suggest: jest.fn().mockResolvedValue({
+        startAt: SLOT.startAt, endAt: SLOT.endAt, vehicles: [],
+        excludedUnknownCapacity: 0, excludedImmobilized: 0, excludedDormant: 0, excludedChildSeats: 0,
+        excludedTooSmall: 8, largestSeats: 9,
+      }),
+    });
+    const anthropic = makeAnthropic({ proposals: [], noGoodMatch: false });
+    const svc = build({ reservations, anthropic });
+
+    const res = await svc.suggestPlacement(makeUser(), { ...SLOT, criteria: { minSeats: 12 } });
+
+    expect(res.noGoodMatch).toBe(true);
+    expect(res.notes).toBe('Aucun véhicule de 12 places ou plus (conducteur compris) : le plus grand en a 9.');
+    expect((anthropic as unknown as { completeJson: jest.Mock }).completeJson).not.toHaveBeenCalled();
+  });
+
+  it('placement : des véhicules assez grands existent mais aucun n’est libre → « aucun véhicule d’au moins N places n’est libre »', async () => {
+    const reservations = makeReservations({
+      suggest: jest.fn().mockResolvedValue({
+        startAt: SLOT.startAt, endAt: SLOT.endAt, vehicles: [], excludedDormant: 0, excludedTooSmall: 4, largestSeats: 9,
+      }),
+    });
+    const svc = build({ reservations });
+
+    const res = await svc.suggestPlacement(makeUser(), { ...SLOT, criteria: { minSeats: 8 } });
+    expect(res.notes).toMatch(/^Aucun véhicule d'au moins 8 places n'est libre sur ce créneau\./);
+  });
+
+  it('placement Client test (relecture 29/09) : 5 places + siège bébé, 7 écartés pour les SIÈGES et 1 petit → le message parle des sièges, pas de la taille', async () => {
+    const reservations = makeReservations({
+      suggest: jest.fn().mockResolvedValue({
+        startAt: SLOT.startAt, endAt: SLOT.endAt, vehicles: [],
+        excludedUnknownCapacity: 0, excludedImmobilized: 0, excludedDormant: 0,
+        excludedTooSmall: 1, excludedChildSeats: 7, largestSeats: 9,
+      }),
+    });
+    const anthropic = makeAnthropic({ proposals: [], noGoodMatch: false });
+    const svc = build({ reservations, anthropic });
+
+    const res = await svc.suggestPlacement(makeUser(), { ...SLOT, criteria: { minSeats: 5, childSeatsBaby: 1 } });
+
+    expect(res.noGoodMatch).toBe(true);
+    expect(res.notes).toMatch(/sièges auto demandés.*7 véhicule\(s\) écarté\(s\)/);
+    expect(res.notes).not.toMatch(/au moins 5 places n'est libre/);
+    expect(res.excludedChildSeats).toBe(7);
+    expect((anthropic as unknown as { completeJson: jest.Mock }).completeJson).not.toHaveBeenCalled();
+  });
+
+  it('placement : sièges écartés MAIS parc vraiment trop petit (plus grand < plancher) → la TAILLE reste la cause', async () => {
+    const reservations = makeReservations({
+      suggest: jest.fn().mockResolvedValue({
+        startAt: SLOT.startAt, endAt: SLOT.endAt, vehicles: [],
+        excludedDormant: 0, excludedTooSmall: 8, excludedChildSeats: 1, largestSeats: 9,
+      }),
+    });
+    const svc = build({ reservations });
+
+    const res = await svc.suggestPlacement(makeUser(), { ...SLOT, criteria: { minSeats: 12 } });
+    expect(res.notes).toBe('Aucun véhicule de 12 places ou plus (conducteur compris) : le plus grand en a 9.');
+  });
+
+  it('placement : un vivier qui ne rend pas encore les compteurs de taille garde le message d’avant', async () => {
+    const svc = build();
+    const res = await svc.suggestPlacement(makeUser(), { ...SLOT, criteria: { minSeats: 12 } });
+    expect(res.notes).toBe('Aucun véhicule libre ne correspond aux critères sur ce créneau (au moins 12 places).');
   });
 });

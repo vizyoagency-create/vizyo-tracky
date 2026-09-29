@@ -4,7 +4,7 @@ import { ConfigService } from '@nestjs/config';
 import { AllExceptionsFilter } from './all-exceptions.filter';
 import { CobanWireLogger } from './coban-wire-logger.service';
 import { ErrorLogger } from './error-logger.service';
-import { LogCleanupService } from './log-cleanup.service';
+import { CATEGORIES_JOURNAL_LONGUES, LogCleanupService } from './log-cleanup.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { SystemActivityService } from '../system-activity/system-activity.service';
 
@@ -301,18 +301,24 @@ describe('LogCleanupService', () => {
     expect(Math.abs(threshold.getTime() - thirtyDaysAgo)).toBeLessThan(1000);
   });
 
-  it('purge le journal système en deux lots : hors MUTATION (30j) et MUTATION (365j)', async () => {
+  // 29/09 — les gestes d'agenda (RESERVATION, AGENDA) sont gardés un an, comme l'audit MUTATION :
+  // la page Activité d'un administrateur de flotte les montre, trente jours n'y suffisaient pas.
+  it('purge le journal système en deux lots : courant (30j) et audit MUTATION/RESERVATION/AGENDA (365j)', async () => {
     await cleanupService.cleanupLogs();
     const calls = prisma.systemActivityLog.deleteMany.mock.calls.map((c) => c[0].where);
     expect(calls).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ category: { not: 'MUTATION' } }),
-        expect.objectContaining({ category: 'MUTATION' }),
+        expect.objectContaining({ category: { notIn: CATEGORIES_JOURNAL_LONGUES } }),
+        expect.objectContaining({ category: { in: CATEGORIES_JOURNAL_LONGUES } }),
       ]),
     );
-    const mutWhere = calls.find((w) => w.category === 'MUTATION');
+    expect(CATEGORIES_JOURNAL_LONGUES).toEqual(expect.arrayContaining(['MUTATION', 'RESERVATION', 'AGENDA']));
+    const courantWhere = calls.find((w) => w.category?.notIn);
+    const monthAgo = Date.now() - 30 * 24 * 60 * 60 * 1000;
+    expect(Math.abs(courantWhere.createdAt.lt.getTime() - monthAgo)).toBeLessThan(1000);
+    const auditWhere = calls.find((w) => w.category?.in);
     const yearAgo = Date.now() - 365 * 24 * 60 * 60 * 1000;
-    expect(Math.abs(mutWhere.createdAt.lt.getTime() - yearAgo)).toBeLessThan(1000);
+    expect(Math.abs(auditWhere.createdAt.lt.getTime() - yearAgo)).toBeLessThan(1000);
   });
 
   it('journalise la purge (logs_purged) quand des lignes ont été supprimées', async () => {

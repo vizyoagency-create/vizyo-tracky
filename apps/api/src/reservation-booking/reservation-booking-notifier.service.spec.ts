@@ -90,6 +90,9 @@ describe('ReservationBookingNotifier (P4 — notifications demandeur)', () => {
     expect((email as unknown as { send: jest.Mock }).send).toHaveBeenCalledTimes(1);
     expect((email as unknown as { buildReservationConfirmedEmail: jest.Mock }).buildReservationConfirmedEmail)
       .toHaveBeenCalledWith(expect.objectContaining({ vehicle: 'AA-1, BB-2' }));
+    // C1 (quatrième revue) : aucune sœur perdue → confirmation pleine, pas « en partie ».
+    expect((email as unknown as { buildReservationConfirmedEmail: jest.Mock }).buildReservationConfirmedEmail.mock.calls[0][0].partielle)
+      .toBeUndefined();
   });
 
   it('groupe : tous refusés → un seul refus part', async () => {
@@ -134,7 +137,7 @@ describe('ReservationBookingNotifier — réservation modifiée après confirmat
     await n.onModified(payload({ public: true, requesterContact: 'ecole@test.fr', destination: 'Albi' }));
     const e = email as unknown as { send: jest.Mock; buildReservationConfirmedEmail: jest.Mock };
     expect(e.buildReservationConfirmedEmail).toHaveBeenCalledWith(
-      expect.objectContaining({ modifiee: true, vehicle: 'AA-1', destination: 'Albi' }),
+      expect.objectContaining({ modifiee: true, motif: 'changement', vehicle: 'AA-1', destination: 'Albi' }),
     );
     expect(e.send).toHaveBeenCalledTimes(1);
     expect(e.send).toHaveBeenCalledWith(expect.objectContaining({ to: 'ecole@test.fr', template: 'reservation_confirmed' }));
@@ -258,7 +261,7 @@ describe('ReservationBookingNotifier — réservation modifiée après confirmat
     const config = { get: (k: string) => (k === 'APP_BASE_URL' ? 'https://app.test' : '') } as never;
     const service = new EmailService(config, {} as never, {} as never, {} as never);
     const built2 = service.buildReservationConfirmedEmail({
-      fleetName: 'CDEF', slotLabel: 'ignoré', destination: 'Albi', vehicle: 'AA-1, BB-2', modifiee: true,
+      fleetName: 'CDEF', slotLabel: 'ignoré', destination: 'Albi', vehicle: 'AA-1, BB-2', modifiee: true, motif: 'changement',
       lignes: [
         { vehicle: 'AA-1', slotLabel: 'lundi 29 septembre 09:00 → jeudi 2 octobre 00:00' },
         { vehicle: 'CC-3', slotLabel: 'jeudi 2 octobre 00:00 → vendredi 3 octobre 17:00' },
@@ -327,7 +330,7 @@ describe('ReservationBookingNotifier — réservation modifiée après confirmat
     const service = new EmailService(config, {} as never, {} as never, {} as never);
     const opts = { fleetName: 'CDEF', slotLabel: 'mar. 30 sept., 09:00 → 17:00', destination: 'Albi', vehicle: 'NEW-2' };
 
-    const modifie = service.buildReservationConfirmedEmail({ ...opts, modifiee: true });
+    const modifie = service.buildReservationConfirmedEmail({ ...opts, modifiee: true, motif: 'changement' });
     expect(modifie.subject).toBe('Votre réservation a été modifiée');
     expect(modifie.html).toContain('Votre réservation a été modifiée');
     expect(modifie.html).toContain('le véhicule ou le créneau a changé');
@@ -378,7 +381,7 @@ describe('ReservationBookingNotifier — réservation confirmée puis ANNULÉE (
     });
     const e = email as unknown as { send: jest.Mock; buildReservationRefusedEmail: jest.Mock; buildReservationConfirmedEmail: jest.Mock };
     const opts = e.buildReservationConfirmedEmail.mock.calls[0][0];
-    expect(opts).toEqual(expect.objectContaining({ modifiee: true, vehicle: 'CC-222-DD', destination: 'Albi' }));
+    expect(opts).toEqual(expect.objectContaining({ modifiee: true, motif: 'retrait', vehicle: 'CC-222-DD', destination: 'Albi' }));
     expect(opts.slotLabel).toContain('14:00');
     expect(opts.slotLabel).not.toContain('09:00');
     expect(e.buildReservationRefusedEmail).not.toHaveBeenCalled();
@@ -408,21 +411,308 @@ describe('ReservationBookingNotifier — réservation confirmée puis ANNULÉE (
    * Même famille, chemin du REFUS : une ligne validée (la validation s'était tue, sa sœur attendait),
    * l'autre refusée — le refus final écrivait « non retenue » et la confirmation n'arrivait jamais.
    */
-  it('refus de la dernière ligne en attente alors qu’une autre a été VALIDÉE : la confirmation part, pas « non retenue »', async () => {
+  /**
+   * Quatrième revue du 29/09 (C1) — ce courriel disait « Votre réservation est confirmée — votre
+   * demande a été validée — Véhicule : AA-1 » : le groupe de 11 se présentait pour 9 places. Il est
+   * désormais marqué « retenue qu'en partie », avec le rappel des places demandées.
+   */
+  it('refus de la dernière ligne en attente alors qu’une autre a été VALIDÉE : la confirmation part, marquée « en partie »', async () => {
     const email = makeEmail();
     const avenir = new Date(Date.now() + 30 * H);
     const groupe = makePrisma([
-      { status: 'CONFIRMED', startAt: new Date(Date.now() + 26 * H), endAt: avenir, vehicle: { plate: 'AA-1' } } as never,
-      { status: 'CANCELLED', startAt: new Date(Date.now() + 26 * H), endAt: avenir, vehicle: { plate: 'BB-2' } } as never,
+      { status: 'CONFIRMED', startAt: new Date(Date.now() + 26 * H), endAt: avenir, vehicle: { plate: 'AA-1', seats: 9 } } as never,
+      { status: 'CANCELLED', startAt: new Date(Date.now() + 26 * H), endAt: avenir, vehicle: { plate: 'BB-2', seats: 9 } } as never,
     ]);
     const n = new ReservationBookingNotifier(email, makeSms(), makeErrors(), groupe, makeDestinataires());
-    await n.onRefused({ ...payload(meta({ bookingRef: 'g1' })), vehiclePlate: 'BB-2' });
+    await n.onRefused({ ...payload(meta({ bookingRef: 'g1', seatsNeeded: 11 })), vehiclePlate: 'BB-2' });
     const e = email as unknown as { send: jest.Mock; buildReservationRefusedEmail: jest.Mock; buildReservationConfirmedEmail: jest.Mock };
     expect(e.buildReservationRefusedEmail).not.toHaveBeenCalled();
     const opts = e.buildReservationConfirmedEmail.mock.calls[0][0];
     expect(opts.vehicle).toBe('AA-1');
     expect(opts.modifiee).toBeUndefined(); // sa PREMIÈRE confirmation : la validation s'était tue
-    expect(e.send).toHaveBeenCalledWith(expect.objectContaining({ template: 'reservation_confirmed' }));
+    expect(opts.partielle).toBe(true);
+    expect(opts.placesDemandees).toBe(11);
+    // Conditions d'envoi inchangées : un seul courriel, au demandeur, sous le même modèle.
+    expect(e.send).toHaveBeenCalledTimes(1);
+    expect(e.send).toHaveBeenCalledWith(expect.objectContaining({ to: 'ecole@test.fr', template: 'reservation_confirmed' }));
+  });
+
+  it('C1 — ordre inverse (la ligne en attente ANNULÉE d’abord, l’autre VALIDÉE ensuite) : la confirmation est aussi « en partie »', async () => {
+    const email = makeEmail();
+    const avenir = new Date(Date.now() + 30 * H);
+    const groupe = makePrisma([
+      { status: 'CANCELLED', startAt: new Date(Date.now() + 26 * H), endAt: avenir, vehicle: { plate: 'BB-2', seats: 9 } } as never,
+      { status: 'CONFIRMED', startAt: new Date(Date.now() + 26 * H), endAt: avenir, vehicle: { plate: 'AA-1', seats: 9 } } as never,
+    ]);
+    const n = new ReservationBookingNotifier(email, makeSms(), makeErrors(), groupe, makeDestinataires());
+    await n.onConfirmed({ ...payload(meta({ bookingRef: 'g1', seatsNeeded: 11 })), vehiclePlate: 'AA-1' });
+    const e = email as unknown as { send: jest.Mock; buildReservationConfirmedEmail: jest.Mock };
+    expect(e.buildReservationConfirmedEmail.mock.calls[0][0]).toEqual(
+      expect.objectContaining({ vehicle: 'AA-1', partielle: true, placesDemandees: 11 }),
+    );
+    expect(e.send).toHaveBeenCalledTimes(1);
+  });
+
+  it('C1 — la ligne restante a été RÉAFFECTÉE sur un véhicule assez grand (12 pour 11) : pas de « en partie »', async () => {
+    const email = makeEmail();
+    const debut = new Date(Date.now() + 26 * H);
+    const fin = new Date(Date.now() + 30 * H);
+    const groupe = makePrisma([
+      { status: 'CONFIRMED', startAt: debut, endAt: fin, vehicle: { plate: 'MINI-12', seats: 12 } } as never,
+      { status: 'CANCELLED', startAt: debut, endAt: fin, vehicle: { plate: 'BB-2', seats: 9 } } as never,
+    ]);
+    const n = new ReservationBookingNotifier(email, makeSms(), makeErrors(), groupe, makeDestinataires());
+    await n.onRefused({ ...payload(meta({ bookingRef: 'g1', seatsNeeded: 11 })), vehiclePlate: 'BB-2' });
+    const opts = (email as unknown as { buildReservationConfirmedEmail: jest.Mock }).buildReservationConfirmedEmail.mock.calls[0][0];
+    expect(opts.vehicle).toBe('MINI-12');
+    expect(opts.partielle).toBeUndefined();
+    expect(opts.placesDemandees).toBeUndefined();
+  });
+
+  it('C1 — deux créneaux différents ne s’additionnent pas (9 puis 9 ≠ 18 places) : la sœur perdue suffit à dire « en partie »', async () => {
+    const email = makeEmail();
+    const lundi = new Date('2027-01-04T08:00:00Z');
+    const jeudi = new Date('2027-01-06T23:00:00Z');
+    const vendredi = new Date('2027-01-08T16:00:00Z');
+    const groupe = makePrisma([
+      { status: 'CONFIRMED', startAt: lundi, endAt: jeudi, vehicle: { plate: 'AA-1', seats: 9 } } as never,
+      { status: 'CONFIRMED', startAt: jeudi, endAt: vendredi, vehicle: { plate: 'CC-3', seats: 9 } } as never,
+      { status: 'CANCELLED', startAt: lundi, endAt: vendredi, vehicle: { plate: 'BB-2', seats: 9 } } as never,
+    ]);
+    const n = new ReservationBookingNotifier(email, makeSms(), makeErrors(), groupe, makeDestinataires());
+    await n.onRefused({ ...payload(meta({ bookingRef: 'g1', seatsNeeded: 11 })), vehiclePlate: 'BB-2' });
+    const opts = (email as unknown as { buildReservationConfirmedEmail: jest.Mock }).buildReservationConfirmedEmail.mock.calls[0][0];
+    expect(opts.partielle).toBe(true);
+  });
+
+  /**
+   * Revue du 29/09 — la couverture se juge INSTANT PAR INSTANT. La ligne de 12 places (réaffectée pour
+   * une demande de 11, la sœur de 9 refusée) est scindée par « Réaffecter » après une maintenance
+   * posée à partir de jeudi : lundi→jeudi sur MINI-12, jeudi→vendredi sur MAXI-12. Des créneaux
+   * différents, mais 12 places à chaque instant : l'ancienne règle (« créneaux différents = non
+   * prouvé ») écrivait « retenue qu'en partie » — faux et alarmant.
+   */
+  it('C1 — un 12 places RELAYÉ par un autre 12 places (scission) pour 11 places, une sœur refusée : pas de « en partie »', async () => {
+    const email = makeEmail();
+    const lundi = new Date(Date.now() + 26 * H);
+    const jeudi = new Date(Date.now() + 98 * H);
+    const vendredi = new Date(Date.now() + 122 * H);
+    const groupe = makePrisma([
+      { status: 'CONFIRMED', startAt: lundi, endAt: jeudi, vehicle: { plate: 'MINI-12', seats: 12 } } as never,
+      { status: 'CONFIRMED', startAt: jeudi, endAt: vendredi, vehicle: { plate: 'MAXI-12', seats: 12 } } as never,
+      { status: 'CANCELLED', startAt: lundi, endAt: vendredi, vehicle: { plate: 'BB-2', seats: 9 } } as never,
+    ]);
+    const n = new ReservationBookingNotifier(email, makeSms(), makeErrors(), groupe, makeDestinataires());
+    await n.onModified({
+      ...payload(meta({ bookingRef: 'g1', seatsNeeded: 11 })),
+      vehiclePlate: 'MAXI-12', startAt: jeudi.toISOString(), endAt: vendredi.toISOString(),
+    });
+    const e = email as unknown as { send: jest.Mock; buildReservationConfirmedEmail: jest.Mock };
+    const opts = e.buildReservationConfirmedEmail.mock.calls[0][0];
+    expect(opts.modifiee).toBe(true);
+    expect(opts.partielle).toBeUndefined();
+    expect(opts.placesDemandees).toBeUndefined();
+    // Les deux lignes sont nommées, chacune sur son créneau (R3) ; conditions d'envoi inchangées.
+    expect(opts.lignes).toEqual([
+      { vehicle: 'MINI-12', slotLabel: expect.any(String) },
+      { vehicle: 'MAXI-12', slotLabel: expect.any(String) },
+    ]);
+    expect(e.send).toHaveBeenCalledTimes(1);
+    expect(e.send).toHaveBeenCalledWith(expect.objectContaining({ to: 'ecole@test.fr', template: 'reservation_confirmed' }));
+  });
+
+  it('C1 — un TROU entre deux lignes de 12 (mercredi → jeudi sans véhicule) : non couvert, « en partie »', async () => {
+    const email = makeEmail();
+    const lundi = new Date(Date.now() + 26 * H);
+    const mercredi = new Date(Date.now() + 74 * H);
+    const jeudi = new Date(Date.now() + 98 * H);
+    const vendredi = new Date(Date.now() + 122 * H);
+    const groupe = makePrisma([
+      { status: 'CONFIRMED', startAt: lundi, endAt: mercredi, vehicle: { plate: 'MINI-12', seats: 12 } } as never,
+      { status: 'CONFIRMED', startAt: jeudi, endAt: vendredi, vehicle: { plate: 'MAXI-12', seats: 12 } } as never,
+      { status: 'CANCELLED', startAt: lundi, endAt: vendredi, vehicle: { plate: 'BB-2', seats: 9 } } as never,
+    ]);
+    const n = new ReservationBookingNotifier(email, makeSms(), makeErrors(), groupe, makeDestinataires());
+    await n.onRefused({ ...payload(meta({ bookingRef: 'g1', seatsNeeded: 11 })), vehiclePlate: 'BB-2' });
+    const opts = (email as unknown as { buildReservationConfirmedEmail: jest.Mock }).buildReservationConfirmedEmail.mock.calls[0][0];
+    expect(opts).toEqual(expect.objectContaining({ partielle: true, placesDemandees: 11 }));
+  });
+
+  it('C1 — seul ce qui reste À VENIR est jugé : 9 + 9 présents dès maintenant couvrent 11, même si l’une a commencé seule', async () => {
+    const email = makeEmail();
+    const fin = new Date(Date.now() + 4 * H);
+    const groupe = makePrisma([
+      // en cours depuis 3 h, seule pendant les deux premières heures (sa sœur scindée a relayé l'autre partie)
+      { status: 'IN_PROGRESS', startAt: new Date(Date.now() - 3 * H), endAt: fin, vehicle: { plate: 'AA-1', seats: 9 } } as never,
+      { status: 'CONFIRMED', startAt: new Date(Date.now() - H), endAt: fin, vehicle: { plate: 'CC-3', seats: 9 } } as never,
+      { status: 'CANCELLED', startAt: new Date(Date.now() - 3 * H), endAt: fin, vehicle: { plate: 'BB-2', seats: 5 } } as never,
+    ]);
+    const n = new ReservationBookingNotifier(email, makeSms(), makeErrors(), groupe, makeDestinataires());
+    await n.onRefused({ ...payload(meta({ bookingRef: 'g1', seatsNeeded: 11 })), vehiclePlate: 'BB-2' });
+    const opts = (email as unknown as { buildReservationConfirmedEmail: jest.Mock }).buildReservationConfirmedEmail.mock.calls[0][0];
+    expect(opts.partielle).toBeUndefined();
+  });
+
+  it('C1 — une ligne relais à la capacité INCONNUE : non prouvé, la sœur perdue suffit à dire « en partie »', async () => {
+    const email = makeEmail();
+    const lundi = new Date(Date.now() + 26 * H);
+    const jeudi = new Date(Date.now() + 98 * H);
+    const vendredi = new Date(Date.now() + 122 * H);
+    const groupe = makePrisma([
+      { status: 'CONFIRMED', startAt: lundi, endAt: jeudi, vehicle: { plate: 'MINI-12', seats: 12 } } as never,
+      { status: 'CONFIRMED', startAt: jeudi, endAt: vendredi, vehicle: { plate: 'XX-0', seats: null } } as never,
+      { status: 'CANCELLED', startAt: lundi, endAt: vendredi, vehicle: { plate: 'BB-2', seats: 9 } } as never,
+    ]);
+    const n = new ReservationBookingNotifier(email, makeSms(), makeErrors(), groupe, makeDestinataires());
+    await n.onRefused({ ...payload(meta({ bookingRef: 'g1', seatsNeeded: 11 })), vehiclePlate: 'BB-2' });
+    const opts = (email as unknown as { buildReservationConfirmedEmail: jest.Mock }).buildReservationConfirmedEmail.mock.calls[0][0];
+    expect(opts.partielle).toBe(true);
+  });
+
+  it('C1 — une ligne ferme ANNULÉE, une autre reste : « modifiée » ET « en partie »', async () => {
+    const email = makeEmail();
+    const debut = new Date(Date.now() + 26 * H);
+    const fin = new Date(Date.now() + 30 * H);
+    const groupe = makePrisma([
+      { status: 'CANCELLED', startAt: debut, endAt: fin, vehicle: { plate: 'AA-111-BB', seats: 9 } } as never,
+      { status: 'CONFIRMED', startAt: debut, endAt: fin, vehicle: { plate: 'CC-222-DD', seats: 5 } } as never,
+    ]);
+    const n = new ReservationBookingNotifier(email, makeSms(), makeErrors(), groupe, makeDestinataires());
+    await n.onCancelled({ ...annulee({ bookingRef: 'g1', seatsNeeded: 12 }), startAt: debut.toISOString(), endAt: fin.toISOString() });
+    const opts = (email as unknown as { buildReservationConfirmedEmail: jest.Mock }).buildReservationConfirmedEmail.mock.calls[0][0];
+    expect(opts).toEqual(expect.objectContaining({ modifiee: true, motif: 'retrait', partielle: true, placesDemandees: 12, vehicle: 'CC-222-DD' }));
+  });
+
+  it('C1 — le gabarit réel : « retenue qu’en partie » dans le sujet, le titre, le texte, avec les places demandées ; sans l’option, rien ne change', () => {
+    const config = { get: (k: string) => (k === 'APP_BASE_URL' ? 'https://app.test' : '') } as never;
+    const service = new EmailService(config, {} as never, {} as never, {} as never);
+    const opts = { fleetName: 'CDEF', slotLabel: 'mar. 30 sept., 09:00 → 17:00', destination: 'Albi', vehicle: 'AA-1' };
+
+    const p = service.buildReservationConfirmedEmail({ ...opts, partielle: true, placesDemandees: 11 });
+    expect(p.subject).toBe('Votre demande n\'a été retenue qu\'en partie');
+    expect(p.html).toContain('Votre demande n\'a été retenue qu\'en partie');
+    expect(p.html).toContain('Voici ce qui reste confirmé');
+    expect(p.html).toContain('Places demandées');
+    expect(p.html).not.toContain('>validée<');
+    expect(p.text).toContain('n\'a été retenue qu\'en partie : voici ce qui reste confirmé.');
+    expect(p.text).toContain('Places demandées : 11');
+    expect(p.text).toContain('Véhicule : AA-1');
+    expect(p.text).not.toContain('est confirmée.');
+
+    const pm = service.buildReservationConfirmedEmail({ ...opts, partielle: true, modifiee: true, motif: 'retrait', placesDemandees: null });
+    expect(pm.subject).toBe('Votre réservation a été modifiée : elle n\'est retenue qu\'en partie');
+    expect(pm.text).toContain('a été modifiée et n\'est retenue qu\'en partie');
+    expect(pm.text).not.toContain('Places demandées');
+
+    const c = service.buildReservationConfirmedEmail({ ...opts, placesDemandees: 11 });
+    expect(c.subject).toBe('Votre réservation est confirmée');
+    expect(c.text).toContain('est confirmée.');
+    expect(c.text).not.toContain('Places demandées'); // le rappel n'accompagne que la variante partielle
+    expect(c.html).not.toContain('en partie');
+  });
+
+  /**
+   * Cinquième revue du 29/09 (C1) — demande de 11 places : A (9 places) validée, B refusée (« retenue
+   * qu'en partie » déjà envoyé). Le gestionnaire DÉCALE ensuite A. Le courriel disait « modifiée et
+   * n'est retenue qu'en partie : une partie des véhicules prévus n'est plus maintenue » — une perte
+   * qui n'avait pas eu lieu — et plus un mot du créneau changé. Le notifier dit désormais le MOTIF.
+   */
+  it('C1 (5e revue) — décalage d’une demande DÉJÀ retenue en partie : motif « changement », partielle en rappel, un seul courriel', async () => {
+    const email = makeEmail();
+    const debut = new Date(Date.now() + 27 * H); // A décalée de +60 min
+    const fin = new Date(Date.now() + 31 * H);
+    const groupe = makePrisma([
+      { status: 'CONFIRMED', startAt: debut, endAt: fin, vehicle: { plate: 'AA-1', seats: 9 } } as never,
+      { status: 'CANCELLED', startAt: new Date(Date.now() + 26 * H), endAt: new Date(Date.now() + 30 * H), vehicle: { plate: 'BB-2', seats: 4 } } as never,
+    ]);
+    const n = new ReservationBookingNotifier(email, makeSms(), makeErrors(), groupe, makeDestinataires());
+    await n.onModified({
+      ...payload(meta({ bookingRef: 'g1', seatsNeeded: 11 })),
+      vehiclePlate: 'AA-1', status: 'CONFIRMED', startAt: debut.toISOString(), endAt: fin.toISOString(),
+    });
+    const e = email as unknown as { send: jest.Mock; buildReservationConfirmedEmail: jest.Mock };
+    const opts = e.buildReservationConfirmedEmail.mock.calls[0][0];
+    expect(opts).toEqual(
+      expect.objectContaining({ modifiee: true, motif: 'changement', partielle: true, placesDemandees: 11, vehicle: 'AA-1' }),
+    );
+    // Conditions d'envoi inchangées : un seul courriel, au demandeur, sous le même modèle.
+    expect(e.send).toHaveBeenCalledTimes(1);
+    expect(e.send).toHaveBeenCalledWith(expect.objectContaining({ to: 'ecole@test.fr', template: 'reservation_confirmed' }));
+  });
+
+  it('C1 (5e revue) — annulation d’une ligne dont la restante COUVRE le besoin (12 pour 11) : motif « retrait », pas de « en partie »', async () => {
+    const email = makeEmail();
+    const debut = new Date(Date.now() + 26 * H);
+    const fin = new Date(Date.now() + 30 * H);
+    const groupe = makePrisma([
+      { status: 'CANCELLED', startAt: debut, endAt: fin, vehicle: { plate: 'AA-111-BB', seats: 9 } } as never,
+      { status: 'CONFIRMED', startAt: debut, endAt: fin, vehicle: { plate: 'MINI-12', seats: 12 } } as never,
+    ]);
+    const n = new ReservationBookingNotifier(email, makeSms(), makeErrors(), groupe, makeDestinataires());
+    await n.onCancelled({ ...annulee({ bookingRef: 'g1', seatsNeeded: 11 }), startAt: debut.toISOString(), endAt: fin.toISOString() });
+    const e = email as unknown as { send: jest.Mock; buildReservationConfirmedEmail: jest.Mock };
+    const opts = e.buildReservationConfirmedEmail.mock.calls[0][0];
+    expect(opts).toEqual(expect.objectContaining({ modifiee: true, motif: 'retrait', vehicle: 'MINI-12' }));
+    expect(opts.partielle).toBeUndefined();
+    expect(e.send).toHaveBeenCalledTimes(1);
+  });
+
+  it('C1 (5e revue) — le gabarit réel : « changement » + « en partie » dit le créneau changé partout et n’annonce aucune perte', () => {
+    const config = { get: (k: string) => (k === 'APP_BASE_URL' ? 'https://app.test' : '') } as never;
+    const service = new EmailService(config, {} as never, {} as never, {} as never);
+    const opts = { fleetName: 'CDEF', slotLabel: 'mar. 30 sept., 10:00 → 18:00', destination: 'Albi', vehicle: 'AA-1' };
+
+    const ch = service.buildReservationConfirmedEmail({ ...opts, modifiee: true, motif: 'changement', partielle: true, placesDemandees: 11 });
+    expect(ch.subject).toBe('Votre réservation a été modifiée');
+    // Phrase, aperçu (preheader) et texte (qui sert aussi au SMS) disent ce qui vient de se passer.
+    expect(ch.html).toContain('le véhicule ou le créneau a changé. Pour rappel, elle n\'est retenue');
+    expect(ch.html).toContain('Le véhicule ou le créneau de votre réservation a changé. Pour rappel, elle n\'est retenue qu\'en partie.');
+    expect(ch.html).toContain('Réservation · Modifiée');
+    expect(ch.text).toContain('a été modifiée : le véhicule ou le créneau a changé. Pour rappel, elle n\'est retenue qu\'en partie.');
+    // Le rappel « en partie » garde les places demandées et le conseil de la variante partielle.
+    expect(ch.html).toContain('Places demandées');
+    expect(ch.text).toContain('Places demandées : 11');
+    expect(ch.text).toContain('Ce qui reste ne suffit pas ?');
+    expect(ch.text).toContain('Créneau : mar. 30 sept., 10:00 → 18:00');
+    // Aucune perte annoncée, aucune « confirmée » pleine.
+    for (const out of [ch.html, ch.text]) {
+      expect(out).not.toContain('n\'est plus maintenue');
+      expect(out).not.toContain('n\'a pas pu être retenue');
+      expect(out).not.toContain('Retenue en partie');
+      expect(out).not.toContain('Elle reste confirmée');
+    }
+  });
+
+  it('C1 (5e revue) — le gabarit réel : « retrait » est la SEULE variante qui annonce une perte (avec ou sans « en partie »)', () => {
+    const config = { get: (k: string) => (k === 'APP_BASE_URL' ? 'https://app.test' : '') } as never;
+    const service = new EmailService(config, {} as never, {} as never, {} as never);
+    const opts = { fleetName: 'CDEF', slotLabel: 'mar. 30 sept., 09:00 → 17:00', destination: 'Albi', vehicle: 'CC-222-DD' };
+
+    const rp = service.buildReservationConfirmedEmail({ ...opts, modifiee: true, motif: 'retrait', partielle: true, placesDemandees: 12 });
+    expect(rp.subject).toBe('Votre réservation a été modifiée : elle n\'est retenue qu\'en partie');
+    expect(rp.html).toContain('une partie des véhicules prévus n\'est plus maintenue');
+    expect(rp.html).toContain('Réservation · Retenue en partie');
+    expect(rp.html).toContain('Places demandées');
+    expect(rp.text).toContain('a été modifiée et n\'est retenue qu\'en partie');
+    expect(rp.html).not.toContain('le véhicule ou le créneau a changé');
+    expect(rp.text).not.toContain('le véhicule ou le créneau a changé');
+
+    // Retrait couvert (le reste suffit) : l'ancien texte disait « le véhicule ou le créneau a changé ».
+    const r = service.buildReservationConfirmedEmail({ ...opts, modifiee: true, motif: 'retrait' });
+    expect(r.subject).toBe('Votre réservation a été modifiée');
+    expect(r.html).toContain('une partie des véhicules prévus n\'est plus maintenue. Elle reste confirmée');
+    expect(r.html).toContain('Réservation · Modifiée');
+    expect(r.text).toContain('a été modifiée : une partie des véhicules prévus n\'est plus maintenue. Elle reste confirmée.');
+    expect(r.text).not.toContain('Places demandées');
+    for (const out of [r.html, r.text]) {
+      expect(out).not.toContain('le véhicule ou le créneau a changé');
+      expect(out).not.toContain('en partie');
+    }
+
+    // Le changement sans « en partie » est inchangé (C5).
+    const c = service.buildReservationConfirmedEmail({ ...opts, modifiee: true, motif: 'changement' });
+    expect(c.text).toContain('a été modifiée : le véhicule ou le créneau a changé. Elle reste confirmée.');
+    expect(c.html).not.toContain('n\'est plus maintenue');
   });
 
   it('le gabarit réel : « annulée » le dit (sujet, titre, texte) ; sans l’option, le refus est inchangé', () => {

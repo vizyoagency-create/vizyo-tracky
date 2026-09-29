@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { ConflictException } from '@nestjs/common';
 import { AutomationDisabledException } from '../common/automation-disabled.exception';
 import { AgendaAgentRunnerService } from './agenda-agent-runner.service';
 import { AGENDA_AGENT_SCHEMA } from './agenda-agent.prompt';
@@ -51,13 +52,21 @@ function makePrisma(settings: unknown, existingProposal: unknown = null) {
     agendaAgentProposal: {
       findUnique: jest.fn().mockResolvedValue(existingProposal),
       findMany: jest.fn().mockResolvedValue([]),
+      // D0 — « cette réservation est-elle déjà liée à une AUTRE proposition ? » (null = non).
+      findFirst: jest.fn().mockResolvedValue(null),
       create: jest.fn().mockImplementation(async () => ({ id: `p${++seq}` })),
       updateMany: jest.fn().mockResolvedValue({ count: 1 }),
       update: jest.fn().mockImplementation(async ({ data }: { data: Record<string, unknown> }) => ({ ...(existingProposal as object), ...data })),
       // P2-5 — la purge des propositions closes : `findMany` (lot borné) puis `deleteMany`.
       deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
     },
-    vehicle: { findMany: jest.fn().mockResolvedValue([]) },
+    vehicle: {
+      findMany: jest.fn().mockResolvedValue([]),
+      // Plaque relue pour le journal métier d'un « Écarter » (29/09).
+      findUnique: jest.fn().mockResolvedValue({ plate: 'AA-1' }),
+    },
+    // D0 — le rattrapage cherche la réservation posée PAR une proposition prise (relecture 29/09).
+    vehicleEvent: { findMany: jest.fn().mockResolvedValue([]) },
     fleet: { findUnique: jest.fn().mockResolvedValue({ metier: 'CHILDREN_TRANSPORT', name: 'CDEF' }) },
     // Historique des passages : présent dans le mock pour que les tests exercent la VRAIE
     // écriture (sinon tout partirait dans le catch défensif de recordRun sans qu'on le voie).
@@ -142,11 +151,13 @@ function monter(opts: {
   detector?: { detectWithStats: jest.Mock };
   aiOn?: boolean;
   faits?: unknown[];
+  /** `null` = aucun journal injecté (le geste doit passer quand même). */
+  activity?: { record: jest.Mock } | null;
 } = {}) {
   const prisma = makePrisma(opts.settings === undefined ? makeSettings() : opts.settings, opts.existing ?? null);
   const detector = opts.detector ?? makeDetector(opts.patterns ?? [PATTERN], opts.excluded);
   const reservations = opts.reservations ?? makeReservations();
-  const activity = makeActivity();
+  const activity = opts.activity === null ? (undefined as unknown as ReturnType<typeof makeActivity>) : (opts.activity ?? makeActivity());
   const errors = makeErrors();
   const aiUsage = makeAiUsage();
   const travauxIa = makeTravauxIa(opts.faits);
@@ -952,24 +963,362 @@ describe('AgendaAgentRunnerService (P3.3 — agent nocturne)', () => {
       expect(proposalsOf(prisma).updateMany.mock.calls[1][0].data).toEqual({ status: 'pending' });
     });
 
-    it('dismiss écrit sous condition (jamais sur une proposition devenue réservation)', async () => {
+    it('dismiss écrit sous condition `pending` (jamais sur une proposition devenue réservation, écartée ou expirée)', async () => {
       const { svc, prisma } = monter({ existing: pending });
 
       const dto = await svc.dismiss(user, 'p1');
 
       expect(proposalsOf(prisma).updateMany).toHaveBeenCalledWith({
-        where: { id: 'p1', status: { notIn: ['applied', 'auto_applied'] } },
+        where: { id: 'p1', status: 'pending' },
         data: { status: 'dismissed' },
       });
       expect(dto.status).toBe('dismissed');
     });
 
-    it('dismiss perdu (réservée entre la lecture et l’écriture) → 400, rien d’écrit', async () => {
+    it('dismiss perdu (réservée entre la lecture et l’écriture) → 400 « réservation », rien d’écrit', async () => {
       const { svc, prisma } = monter({ existing: pending });
       proposalsOf(prisma).updateMany.mockResolvedValueOnce({ count: 0 });
+      // Première lecture : pending ; relecture après l'écriture perdue : réservée.
+      proposalsOf(prisma).findUnique.mockResolvedValueOnce(pending).mockResolvedValueOnce({ status: 'applied' });
 
       await expect(svc.dismiss(user, 'p1')).rejects.toThrow('Une réservation déjà créée s\'annule depuis l\'agenda.');
       expect(proposalsOf(prisma).update).not.toHaveBeenCalled();
+    });
+
+    /**
+     * Revue du 29/09 (C3) — l'écran ne se rafraîchit pas : une proposition écartée par l'IA, par le
+     * ménage ou par un collègue, ou expirée par le cron, y reste affichée. « Écarter » réussissait et
+     * écrivait une SECONDE ligne au nom de celui qui cliquait ; une `expired` repassait `dismissed`.
+     */
+    it('déjà écartée → 200 idempotent : rien d’écrit', async () => {
+      const { svc, prisma } = monter({ existing: { ...pending, status: 'dismissed' } });
+
+      await expect(svc.dismiss(user, 'p1')).resolves.toEqual(expect.objectContaining({ id: 'p1', status: 'dismissed' }));
+      expect(proposalsOf(prisma).updateMany).not.toHaveBeenCalled();
+    });
+
+    it('expirée → rendue TELLE QUELLE (expired), jamais réécrite en dismissed', async () => {
+      const { svc, prisma } = monter({ existing: { ...pending, status: 'expired' } });
+
+      await expect(svc.dismiss(user, 'p1')).resolves.toEqual(expect.objectContaining({ status: 'expired' }));
+      expect(proposalsOf(prisma).updateMany).not.toHaveBeenCalled();
+    });
+
+    it('écartée EN PARALLÈLE (count 0, relue dismissed) → 200, pas d’erreur « réservation »', async () => {
+      const { svc, prisma } = monter({ existing: pending });
+      proposalsOf(prisma).updateMany.mockResolvedValueOnce({ count: 0 });
+      proposalsOf(prisma).findUnique.mockResolvedValueOnce(pending).mockResolvedValueOnce({ status: 'dismissed' });
+
+      await expect(svc.dismiss(user, 'p1')).resolves.toEqual(expect.objectContaining({ status: 'dismissed' }));
+    });
+
+    it('prise puis rendue pendant l’écriture (count 0, relue pending) → 409 « réessayez »', async () => {
+      const { svc, prisma } = monter({ existing: pending });
+      proposalsOf(prisma).updateMany.mockResolvedValueOnce({ count: 0 });
+
+      await expect(svc.dismiss(user, 'p1')).rejects.toMatchObject({ constructor: ConflictException });
+    });
+  });
+});
+
+/**
+ * ── JOURNAL MÉTIER ET RATTRAPAGE D0 (29/09) ─────────────────────────────────────────────────
+ *
+ * Chaque geste sur une proposition laisse une ligne au journal métier (`system_activity_logs`),
+ * lue par le fil « Agenda » de la société. Trois règles verrouillées ici : la société est celle de
+ * la PROPOSITION (un super-admin agit souvent chez un client), l'auteur est l'utilisateur réel, et
+ * les heures du texte sont celles de PARIS (le serveur tourne en UTC). Un journal absent ou en
+ * panne ne fait jamais échouer le geste.
+ *
+ * D0 (4e revue) : un processus tué entre la prise et la réservation laissait une proposition
+ * `applied` sans réservation, figée pour toujours. Le cron horaire la rattache ou la rend.
+ */
+describe('AgendaAgentRunnerService — journal métier et rattrapage D0 (29/09)', () => {
+  // Super-admin SANS société propre, qui agit sur la société d'un client.
+  const superAdmin = { id: 'u-sa', role: 'SUPER_ADMIN', fleetId: null } as never;
+  const gestionnaire = { id: 'u1', role: 'FLEET_ADMIN', fleetId: 'fCLIENT' } as never;
+  // Lundi 05/10/2026, 07:00Z → 09:00 à Paris (heure d'été).
+  const proposition = {
+    id: 'p1', fleetId: 'fCLIENT', vehicleId: 'v1', startAt: new Date('2026-10-05T07:00:00Z'), endAt: new Date('2026-10-05T10:00:00Z'),
+    dayOfWeek: 1, destinationLabel: 'Carcassonne', confidence: 0.9, basis: 'b', reasoning: 'r', status: 'pending', origin: 'scheduled',
+    createdEventId: null, createdAt: new Date('2026-09-28T00:00:00Z'), aiVerdictAt: null, aiKeep: null,
+  };
+
+  it('apply → RESERVATION / proposition_reservee, société de la PROPOSITION, auteur réel, heure de Paris', async () => {
+    const { svc, activity } = monter({ existing: proposition });
+
+    await svc.apply(superAdmin, 'p1');
+
+    expect(activity.record).toHaveBeenCalledTimes(1);
+    const ligne = activity.record.mock.calls[0][0];
+    expect(ligne).toEqual(expect.objectContaining({
+      category: 'RESERVATION',
+      action: 'proposition_reservee',
+      actor: 'utilisateur',
+      target: 'AA-1',
+      fleetId: 'fCLIENT',
+      triggeredByUserId: 'u-sa',
+    }));
+    expect(ligne.meta).toEqual(expect.objectContaining({ propositionId: 'p1', reservationId: 'ev1', vehicleId: 'v1' }));
+    expect(ligne.detail).toContain('05/10/2026 09:00 → 12:00');
+    expect(ligne.detail).toContain('Carcassonne');
+    expect(ligne.detail).not.toMatch(/T07:00|07:00/);
+  });
+
+  it('apply qui échoue (créneau occupé) : AUCUNE ligne « réservée »', async () => {
+    const reservations = makeReservations({ systemConfirm: jest.fn().mockResolvedValue(null) });
+    const { svc, activity } = monter({ existing: proposition, reservations });
+
+    await expect(svc.apply(gestionnaire, 'p1')).rejects.toThrow('Le créneau est déjà occupé.');
+    expect(activity.record).not.toHaveBeenCalled();
+  });
+
+  it('dismiss → AGENDA / proposition_ecartee, société de la proposition, plaque relue, auteur réel', async () => {
+    const { svc, activity, prisma } = monter({ existing: proposition });
+
+    await svc.dismiss(superAdmin, 'p1');
+
+    const ligne = activity.record.mock.calls[0][0];
+    expect(ligne).toEqual(expect.objectContaining({
+      category: 'AGENDA',
+      action: 'proposition_ecartee',
+      actor: 'utilisateur',
+      target: 'AA-1',
+      fleetId: 'fCLIENT',
+      triggeredByUserId: 'u-sa',
+    }));
+    expect(ligne.meta).toEqual(expect.objectContaining({ propositionId: 'p1', vehicleId: 'v1' }));
+    expect(ligne.detail).toContain('05/10/2026 09:00 → 12:00');
+    expect(prisma.vehicle.findUnique).toHaveBeenCalledWith({ where: { id: 'v1' }, select: { plate: true } });
+  });
+
+  it('dismiss perdu (déjà réservée) : aucune ligne', async () => {
+    const { svc, activity, prisma } = monter({ existing: proposition });
+    proposalsOf(prisma).updateMany.mockResolvedValueOnce({ count: 0 });
+    proposalsOf(prisma).findUnique.mockResolvedValueOnce(proposition).mockResolvedValueOnce({ status: 'applied' });
+
+    await expect(svc.dismiss(gestionnaire, 'p1')).rejects.toThrow('Une réservation déjà créée');
+    expect(activity.record).not.toHaveBeenCalled();
+  });
+
+  /**
+   * Revue du 29/09 (C3) — Joost écarte P ; un collègue, liste d'avant encore ouverte, écarte P à son
+   * tour : une seule ligne au fil, celle de Joost. Idem pour une proposition écartée par l'IA
+   * (verdict de 06:30) puis « écartée » par un gestionnaire dont l'onglet est resté ouvert.
+   */
+  it('dismiss d’une proposition DÉJÀ écartée (ou expirée) : 200, aucune seconde ligne', async () => {
+    for (const status of ['dismissed', 'expired']) {
+      const { svc, activity, prisma } = monter({ existing: { ...proposition, status } });
+
+      await expect(svc.dismiss(gestionnaire, 'p1')).resolves.toEqual(expect.objectContaining({ status }));
+      expect(proposalsOf(prisma).updateMany).not.toHaveBeenCalled();
+      expect(activity.record).not.toHaveBeenCalled();
+    }
+  });
+
+  it('dismiss écartée en parallèle (count 0, relue dismissed) : 200, aucune ligne', async () => {
+    const { svc, activity, prisma } = monter({ existing: proposition });
+    proposalsOf(prisma).updateMany.mockResolvedValueOnce({ count: 0 });
+    proposalsOf(prisma).findUnique.mockResolvedValueOnce(proposition).mockResolvedValueOnce({ status: 'dismissed' });
+
+    await expect(svc.dismiss(gestionnaire, 'p1')).resolves.toEqual(expect.objectContaining({ status: 'dismissed' }));
+    expect(activity.record).not.toHaveBeenCalled();
+  });
+
+  it('plaque illisible : la ligne part quand même, sans plaque — le geste passe', async () => {
+    const { svc, activity, prisma } = monter({ existing: proposition });
+    prisma.vehicle.findUnique.mockRejectedValue(new Error('base indisponible'));
+
+    await expect(svc.dismiss(gestionnaire, 'p1')).resolves.toEqual(expect.objectContaining({ status: 'dismissed' }));
+    expect(activity.record.mock.calls[0][0].target).toBeNull();
+  });
+
+  it('journal ABSENT : apply et dismiss passent, sans erreur', async () => {
+    const a = monter({ existing: proposition, activity: null });
+    await expect(a.svc.apply(gestionnaire, 'p1')).resolves.toEqual(expect.objectContaining({ status: 'applied', createdEventId: 'ev1' }));
+    const d = monter({ existing: proposition, activity: null });
+    await expect(d.svc.dismiss(gestionnaire, 'p1')).resolves.toEqual(expect.objectContaining({ status: 'dismissed' }));
+  });
+
+  it('journal EN PANNE (record lève) : apply et dismiss passent quand même', async () => {
+    const enPanne = { record: jest.fn(() => { throw new Error('journal HS'); }) };
+    const a = monter({ existing: proposition, activity: enPanne });
+    await expect(a.svc.apply(gestionnaire, 'p1')).resolves.toEqual(expect.objectContaining({ status: 'applied' }));
+    const d = monter({ existing: proposition, activity: enPanne });
+    await expect(d.svc.dismiss(gestionnaire, 'p1')).resolves.toEqual(expect.objectContaining({ status: 'dismissed' }));
+  });
+
+  it('passage MANUEL : la ligne « Passage de l’agent » porte l’utilisateur réel ; un passage de nuit, personne', async () => {
+    const manuel = monter({ settings: makeSettings({ autonomy: 'suggest' }) });
+    await manuel.svc.runOnDemand({ id: 'u-sa', role: 'SUPER_ADMIN', fleetId: null } as never, 'fCLIENT');
+    const ligneManuelle = manuel.activity.record.mock.calls[0][0];
+    expect(ligneManuelle).toEqual(expect.objectContaining({ action: 'agenda_agent_run', fleetId: 'fCLIENT', triggeredByUserId: 'u-sa', actor: 'utilisateur' }));
+
+    const nuit = monter({ settings: makeSettings({ autonomy: 'suggest' }) });
+    await nuit.svc.runForFleet('fCLIENT', 'scheduled');
+    expect(nuit.activity.record.mock.calls[0][0]).toEqual(expect.objectContaining({ triggeredByUserId: null, actor: 'system' }));
+  });
+
+  describe('D0 — rattrapage des propositions prises sans réservation', () => {
+    const now = new Date('2026-10-01T12:00:00Z');
+    const orpheline = {
+      id: 'p9', fleetId: 'fCLIENT', vehicleId: 'v1', startAt: new Date('2026-10-05T07:00:00Z'), endAt: new Date('2026-10-05T10:00:00Z'),
+      destinationLabel: 'Carcassonne',
+    };
+
+    it('ne vise que les « applied » SANS réservation dont la prise a plus de 10 minutes', async () => {
+      const { svc, prisma } = monter();
+
+      await svc.rattraperPropositionsPrises(now);
+
+      const args = proposalsOf(prisma).findMany.mock.calls[0][0];
+      expect(args.where).toEqual({ status: 'applied', createdEventId: null, updatedAt: { lt: new Date('2026-10-01T11:50:00Z') } });
+      expect(args.take).toBeGreaterThan(0);
+    });
+
+    it('la réservation posée PAR cette proposition → RATTACHÉE, et la ligne « réservée » est écrite au nom de qui avait cliqué', async () => {
+      const { svc, prisma, activity } = monter();
+      proposalsOf(prisma).findMany.mockResolvedValueOnce([orpheline]);
+      prisma.vehicleEvent.findMany.mockResolvedValue([
+        { id: 'ev-orph', status: 'CONFIRMED', metadata: { agent: true, appliedBy: 'u-sa' }, vehicle: { plate: 'AA-1' } },
+      ]);
+
+      const res = await svc.rattraperPropositionsPrises(now);
+
+      expect(res).toEqual({ liees: 1, rendues: 0 });
+      // « Sa » réservation, pas « une » réservation (relecture 29/09) : marquée par la proposition,
+      // ou posée par l'agent sur EXACTEMENT ce véhicule et ce créneau — tous statuts, même société.
+      const recherche = prisma.vehicleEvent.findMany.mock.calls[0][0].where;
+      expect(recherche).toEqual({
+        fleetId: 'fCLIENT',
+        type: 'RESERVATION',
+        OR: [
+          { metadata: { path: ['propositionId'], equals: 'p9' } },
+          { vehicleId: 'v1', startAt: orpheline.startAt, endAt: orpheline.endAt, metadata: { path: ['agent'], equals: true } },
+        ],
+      });
+      expect(recherche.status).toBeUndefined();
+      // Jamais une réservation déjà liée à une AUTRE proposition.
+      expect(proposalsOf(prisma).findFirst).toHaveBeenCalledWith({
+        where: { createdEventId: 'ev-orph', id: { not: 'p9' } },
+        select: { id: true },
+      });
+      // Écriture SOUS CONDITION : une application tardive qui a abouti n'est jamais écrasée.
+      expect(proposalsOf(prisma).updateMany).toHaveBeenCalledWith({
+        where: { id: 'p9', status: 'applied', createdEventId: null },
+        data: { createdEventId: 'ev-orph' },
+      });
+      const ligne = activity.record.mock.calls[0][0];
+      expect(ligne).toEqual(expect.objectContaining({
+        category: 'RESERVATION', action: 'proposition_reservee', fleetId: 'fCLIENT', triggeredByUserId: 'u-sa', actor: 'utilisateur', target: 'AA-1',
+      }));
+      expect(ligne.meta).toEqual(expect.objectContaining({ propositionId: 'p9', reservationId: 'ev-orph', rattrapage: true }));
+      expect(ligne.detail).toContain('05/10/2026 09:00 → 12:00');
+      expect(ligne.detail).not.toContain('annulée');
+    });
+
+    it('relecture 29/09 — une réservation MANUELLE (sans metadata.agent) qui couvre le créneau n’est jamais reprise : proposition rendue, aucune ligne', async () => {
+      const { svc, prisma, activity } = monter();
+      proposalsOf(prisma).findMany.mockResolvedValueOnce([orpheline]);
+      // Même si la base la rendait (filtre JSON contourné), le contrôle en mémoire l'écarte.
+      prisma.vehicleEvent.findMany.mockResolvedValue([
+        { id: 'ev-main', status: 'CONFIRMED', metadata: { group: 'Atelier' }, vehicle: { plate: 'AA-1' } },
+      ]);
+
+      await expect(svc.rattraperPropositionsPrises(now)).resolves.toEqual({ liees: 0, rendues: 1 });
+      expect(proposalsOf(prisma).updateMany).not.toHaveBeenCalledWith(expect.objectContaining({ data: { createdEventId: 'ev-main' } }));
+      expect(activity.record).not.toHaveBeenCalled();
+    });
+
+    it('relecture 29/09 — la réservation d’une AUTRE proposition (marqueur différent, ou déjà liée) n’est jamais reprise', async () => {
+      const { svc, prisma, activity } = monter();
+      proposalsOf(prisma).findMany.mockResolvedValueOnce([orpheline]);
+      prisma.vehicleEvent.findMany.mockResolvedValue([
+        { id: 'ev-autre', status: 'CONFIRMED', metadata: { agent: true, propositionId: 'p-autre', appliedBy: 'u2' }, vehicle: { plate: 'AA-1' } },
+        { id: 'ev-liee', status: 'CONFIRMED', metadata: { agent: true, appliedBy: 'u2' }, vehicle: { plate: 'AA-1' } },
+      ]);
+      proposalsOf(prisma).findFirst.mockImplementation(async ({ where }: { where: { createdEventId: string } }) =>
+        where.createdEventId === 'ev-liee' ? { id: 'p-autre' } : null,
+      );
+
+      await expect(svc.rattraperPropositionsPrises(now)).resolves.toEqual({ liees: 0, rendues: 1 });
+      expect(activity.record).not.toHaveBeenCalled();
+    });
+
+    it('relecture 29/09 — sa réservation ANNULÉE avant le passage : la proposition garde son lien (applied), jamais re-proposée', async () => {
+      const { svc, prisma, activity } = monter();
+      proposalsOf(prisma).findMany.mockResolvedValueOnce([orpheline]);
+      prisma.vehicleEvent.findMany.mockResolvedValue([
+        { id: 'ev-ann', status: 'CANCELLED', metadata: { agent: true, propositionId: 'p9', appliedBy: 'u-sa' }, vehicle: { plate: 'AA-1' } },
+      ]);
+
+      await expect(svc.rattraperPropositionsPrises(now)).resolves.toEqual({ liees: 1, rendues: 0 });
+      expect(proposalsOf(prisma).updateMany).toHaveBeenCalledWith({
+        where: { id: 'p9', status: 'applied', createdEventId: null },
+        data: { createdEventId: 'ev-ann' },
+      });
+      expect(proposalsOf(prisma).updateMany).not.toHaveBeenCalledWith(expect.objectContaining({ data: { status: 'pending' } }));
+      const ligne = activity.record.mock.calls[0][0];
+      expect(ligne).toEqual(expect.objectContaining({ action: 'proposition_reservee', triggeredByUserId: 'u-sa', actor: 'utilisateur' }));
+      expect(ligne.detail).toContain('réservation annulée depuis');
+    });
+
+    it('apply marque la réservation avec l’identité de la proposition (metadata.propositionId)', async () => {
+      const { svc, reservations } = monter({ existing: proposition });
+
+      await svc.apply(gestionnaire, 'p1');
+
+      expect(reservations.systemConfirm).toHaveBeenCalledWith(expect.objectContaining({
+        metadata: expect.objectContaining({ agent: true, propositionId: 'p1', appliedBy: 'u1' }),
+      }));
+    });
+
+    it('aucune réservation → la proposition est RENDUE à pending (réservable à nouveau), sans ligne au journal', async () => {
+      const { svc, prisma, activity } = monter();
+      proposalsOf(prisma).findMany.mockResolvedValueOnce([orpheline]);
+
+      const res = await svc.rattraperPropositionsPrises(now);
+
+      expect(res).toEqual({ liees: 0, rendues: 1 });
+      expect(proposalsOf(prisma).updateMany).toHaveBeenCalledWith({
+        where: { id: 'p9', status: 'applied', createdEventId: null },
+        data: { status: 'pending' },
+      });
+      expect(activity.record).not.toHaveBeenCalled();
+    });
+
+    it('course perdue (l’application a abouti entre-temps) : rien compté, rien journalisé', async () => {
+      const { svc, prisma, activity } = monter();
+      proposalsOf(prisma).findMany.mockResolvedValueOnce([orpheline]);
+      prisma.vehicleEvent.findMany.mockResolvedValue([
+        { id: 'ev-orph', status: 'CONFIRMED', metadata: { agent: true }, vehicle: { plate: 'AA-1' } },
+      ]);
+      proposalsOf(prisma).updateMany.mockResolvedValueOnce({ count: 0 });
+
+      await expect(svc.rattraperPropositionsPrises(now)).resolves.toEqual({ liees: 0, rendues: 0 });
+      expect(activity.record).not.toHaveBeenCalled();
+    });
+
+    it('le cron horaire rattrape AVANT d’expirer — une proposition rendue dont le créneau est passé expire au même passage', async () => {
+      const { svc, prisma } = monter();
+
+      await svc.runScheduled();
+
+      const rattrapage = proposalsOf(prisma).findMany.mock.invocationCallOrder[0];
+      const expiration = proposalsOf(prisma).updateMany.mock.invocationCallOrder[0];
+      expect(proposalsOf(prisma).findMany.mock.calls[0][0].where.status).toBe('applied');
+      expect(rattrapage).toBeLessThan(expiration);
+    });
+
+    it('un rattrapage qui plante est archivé (AGENDA_AGENT) et n’empêche ni l’expiration ni les flottes', async () => {
+      const { svc, prisma, errors } = monter();
+      proposalsOf(prisma).findMany.mockRejectedValueOnce(new Error('verrou'));
+
+      await svc.runScheduled();
+
+      expect(errors.record).toHaveBeenCalledWith(expect.any(Error), 'AGENDA_AGENT', expect.objectContaining({ phase: 'rattraperPropositionsPrises' }));
+      expect(proposalsOf(prisma).updateMany).toHaveBeenCalledWith(expect.objectContaining({ data: { status: 'expired' } }));
+      expect(prisma.agendaAgentSettings.findMany).toHaveBeenCalledTimes(1);
     });
   });
 });

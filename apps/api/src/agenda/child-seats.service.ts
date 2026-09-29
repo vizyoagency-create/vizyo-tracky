@@ -1,4 +1,12 @@
-import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  Injectable,
+  Logger,
+  NotFoundException,
+  Optional,
+} from '@nestjs/common';
 import { UserRole, VehicleEventStatus, VehicleEventType } from '@prisma/client';
 import type {
   ChildSeatAvailabilityDto,
@@ -9,9 +17,10 @@ import type {
   SetChildSeatStockDto,
   SetVehicleChildSeatsDto,
 } from '@vizyo/tracky-shared';
-import { CHILD_SEAT_LABELS } from '@vizyo/tracky-shared';
+import { CHILD_SEAT_LABELS, CHILD_SEAT_POLICY_LABELS } from '@vizyo/tracky-shared';
 import type { AuthUser } from '../auth/types/auth-user';
 import { PrismaService } from '../prisma/prisma.service';
+import { SystemActivityService } from '../system-activity/system-activity.service';
 
 /** Statuts qui ENGAGENT le stock : une réservation ferme, ou en cours. */
 const ENGAGING: VehicleEventStatus[] = [VehicleEventStatus.CONFIRMED, VehicleEventStatus.IN_PROGRESS];
@@ -60,7 +69,51 @@ const aucun = (c: ChildSeatCounts): boolean => c.baby <= 0 && c.child <= 0;
  */
 @Injectable()
 export class ChildSeatsService {
-  constructor(private readonly prisma: PrismaService) {}
+  private readonly logger = new Logger(ChildSeatsService.name);
+
+  constructor(
+    private readonly prisma: PrismaService,
+    // Journal métier (29/09, @Global) — en dernier et @Optional : les specs montées à la main
+    // (`new ChildSeatsService(prisma)`) restent valides, et sans journal rien ne casse.
+    @Optional() private readonly systemActivity?: SystemActivityService,
+  ) {}
+
+  /**
+   * Une ligne `sieges_modifies` (catégorie AGENDA) : « avant → après », type par type. La société
+   * est celle de la RESSOURCE (la société réglée, ou celle du véhicule) — jamais celle de
+   * l'utilisateur, qu'un super-admin n'a d'ailleurs pas. Rien n'est écrit si rien n'a changé.
+   */
+  private journaliser(
+    user: AuthUser,
+    fleetId: string,
+    target: string | null,
+    changements: string[],
+    meta: Record<string, unknown>,
+    sujet: string,
+  ): void {
+    if (!this.systemActivity || changements.length === 0) return;
+    try {
+      this.systemActivity.record({
+        category: 'AGENDA',
+        action: 'sieges_modifies',
+        actor: 'utilisateur',
+        target,
+        detail: `${sujet} : ${changements.join(' ; ')}`,
+        fleetId,
+        triggeredByUserId: user.id,
+        meta,
+      });
+    } catch (e) {
+      this.logger.warn(`journal sièges auto non écrit : ${(e as Error)?.message ?? e}`);
+    }
+  }
+
+  /** « Bébé 3 → 2 » pour chaque type qui a bougé. */
+  private static ecarts(prefixe: string, avant: ChildSeatCounts, apres: ChildSeatCounts): string[] {
+    return (['baby', 'child'] as const)
+      .filter((t) => avant[t] !== apres[t])
+      .map((t) => `${prefixe}« ${t === 'baby' ? CHILD_SEAT_LABELS.BABY : CHILD_SEAT_LABELS.CHILD} » ${avant[t]} → ${apres[t]}`);
+  }
 
   // ─── Lecture / réglage ──────────────────────────────────────────────────────
 
@@ -109,7 +162,12 @@ export class ChildSeatsService {
     const baby = this.cleanStock(dto?.baby, CHILD_SEAT_LABELS.BABY);
     const child = this.cleanStock(dto?.child, CHILD_SEAT_LABELS.CHILD);
     const policy = dto?.policy === undefined ? undefined : this.cleanPolicy(dto.policy);
-    const existing = await this.prisma.fleet.findUnique({ where: { id }, select: { id: true } });
+    // Les valeurs AVANT sont lues ici (même requête qu'avant, trois colonnes de plus) : le journal
+    // dit « Bébé 3 → 2 », pas seulement « 2 ».
+    const existing = await this.prisma.fleet.findUnique({
+      where: { id },
+      select: { id: true, childSeatsBaby: true, childSeatsChild: true, childSeatPolicy: true },
+    });
     if (!existing) throw new NotFoundException('Société introuvable.');
     const installed = await this.installedOf(id);
     if (baby < installed.baby || child < installed.child) {
@@ -122,6 +180,18 @@ export class ChildSeatsService {
       where: { id },
       data: { childSeatsBaby: baby, childSeatsChild: child, ...(policy ? { childSeatPolicy: policy } : {}) },
     });
+    const totalAvant = { baby: existing.childSeatsBaby ?? 0, child: existing.childSeatsChild ?? 0 };
+    const totalApres = { baby, child };
+    const policyAvant = (existing.childSeatPolicy as ChildSeatPolicy | undefined) ?? 'STOCK_OR_INSTALLED';
+    const changements = ChildSeatsService.ecarts('possédés ', totalAvant, totalApres);
+    if (policy && policy !== policyAvant) {
+      changements.push(`réglage « ${CHILD_SEAT_POLICY_LABELS[policyAvant] ?? policyAvant} » → « ${CHILD_SEAT_POLICY_LABELS[policy]} »`);
+    }
+    this.journaliser(user, id, null, changements, {
+      scope: 'societe',
+      avant: { total: totalAvant, policy: policyAvant },
+      apres: { total: totalApres, policy: policy ?? policyAvant },
+    }, 'Sièges auto de la société');
     return this.summary(id);
   }
 
@@ -131,27 +201,48 @@ export class ChildSeatsService {
    * moins 2 — refuser ici obligerait à aller compter ailleurs d'abord.
    */
   async setVehicleSeats(user: AuthUser, vehicleId: string, dto: SetVehicleChildSeatsDto): Promise<ChildSeatStockDto> {
-    const v = await this.prisma.vehicle.findUnique({ where: { id: vehicleId }, select: { id: true, fleetId: true } });
+    const v = await this.prisma.vehicle.findUnique({
+      where: { id: vehicleId },
+      // Plaque et sièges à bord AVANT : lus dans la même requête, pour le journal (« avant → après »).
+      select: { id: true, fleetId: true, plate: true, childSeatsBaby: true, childSeatsChild: true },
+    });
     if (!v) throw new NotFoundException('Véhicule introuvable.');
     const fleetId = this.resolveFleetId(user, v.fleetId);
     const baby = this.cleanVehicle(dto?.baby, CHILD_SEAT_LABELS.BABY);
     const child = this.cleanVehicle(dto?.child, CHILD_SEAT_LABELS.CHILD);
     await this.prisma.vehicle.update({ where: { id: vehicleId }, data: { childSeatsBaby: baby, childSeatsChild: child } });
-    await this.releverTotal(fleetId);
+    const releve = await this.releverTotal(fleetId);
+    const aBordAvant = { baby: v.childSeatsBaby ?? 0, child: v.childSeatsChild ?? 0 };
+    const aBordApres = { baby, child };
+    const changements = ChildSeatsService.ecarts('à bord ', aBordAvant, aBordApres);
+    // Le total relevé est un effet du geste : le taire ferait croire à un stock qui bouge seul.
+    if (releve) changements.push(...ChildSeatsService.ecarts('possédés (relevé) ', releve.avant, releve.apres));
+    this.journaliser(user, fleetId, v.plate ?? null, changements, {
+      scope: 'vehicule',
+      vehicleId,
+      avant: { aBord: aBordAvant, ...(releve ? { total: releve.avant } : {}) },
+      apres: { aBord: aBordApres, ...(releve ? { total: releve.apres } : {}) },
+    }, `Sièges auto à bord de ${v.plate ?? 'ce véhicule'}`);
     return this.summary(fleetId);
   }
 
-  /** Invariant possédés ≥ installés, par type : on relève le total si la somme à bord le dépasse. */
-  private async releverTotal(fleetId: string): Promise<void> {
+  /**
+   * Invariant possédés ≥ installés, par type : on relève le total si la somme à bord le dépasse.
+   * Rend le total avant/après quand il a été relevé (le journal le dit), sinon null.
+   */
+  private async releverTotal(fleetId: string): Promise<{ avant: ChildSeatCounts; apres: ChildSeatCounts } | null> {
     const [installed, fleet] = await Promise.all([
       this.installedOf(fleetId),
       this.prisma.fleet.findUnique({ where: { id: fleetId }, select: { childSeatsBaby: true, childSeatsChild: true } }),
     ]);
-    if (!fleet) return;
+    if (!fleet) return null;
     const data: { childSeatsBaby?: number; childSeatsChild?: number } = {};
     if (fleet.childSeatsBaby < installed.baby) data.childSeatsBaby = installed.baby;
     if (fleet.childSeatsChild < installed.child) data.childSeatsChild = installed.child;
-    if (Object.keys(data).length > 0) await this.prisma.fleet.update({ where: { id: fleetId }, data });
+    if (Object.keys(data).length === 0) return null;
+    await this.prisma.fleet.update({ where: { id: fleetId }, data });
+    const avant = { baby: fleet.childSeatsBaby, child: fleet.childSeatsChild };
+    return { avant, apres: { baby: data.childSeatsBaby ?? avant.baby, child: data.childSeatsChild ?? avant.child } };
   }
 
   /** Somme des sièges installés dans les véhicules de la société. */

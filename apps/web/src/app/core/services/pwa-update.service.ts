@@ -9,6 +9,8 @@ import { filter } from 'rxjs';
 // significative. Combine avec le check on `visibilitychange`, ca couvre 99%
 // des scenarios de PWA en arriere-plan.
 const CHECK_INTERVAL_MS = 60 * 1000; // 1 min
+// Au-delà, on recharge sans attendre la réponse du service worker (voir applyUpdate).
+const ACTIVATION_MAX_MS = 5000;
 
 /**
  * Surveille les nouvelles versions du service worker.
@@ -80,7 +82,14 @@ export class PwaUpdateService {
     if (this.applying()) return;
     this.applying.set(true);
     try {
-      await this.sw.activateUpdate();
+      // Recette du 29/09 : dans un onglet en arrière-plan, « Mettre à jour maintenant » n'a pas
+      // rechargé — le client est resté sur l'ancienne version plusieurs minutes. Si l'activation ne
+      // répond pas, on recharge quand même : une page rechargée est un NOUVEAU client, que le
+      // service worker rattache à la dernière version.
+      await Promise.race([
+        this.sw.activateUpdate(),
+        new Promise<void>((resolve) => setTimeout(resolve, ACTIVATION_MAX_MS)),
+      ]);
     } finally {
       location.reload();
     }

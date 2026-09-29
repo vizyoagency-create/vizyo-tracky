@@ -10,6 +10,7 @@ import {
   signal,
   untracked,
 } from '@angular/core';
+import { HttpErrorResponse } from '@angular/common/http';
 import { apiErrorMessage } from '../../../core/error/api-error';
 import {
   LucideAngularModule, Baby, Truck, X, Loader, Pencil, Check, AlertTriangle, WifiOff, Ban, Search,
@@ -90,6 +91,21 @@ export function etatVehicule(
 function messageSiegesInstalles(installed: ChildSeatCounts): string {
   return `Impossible : ${installed.baby} siège(s) « ${CHILD_SEAT_LABELS.BABY} » et ${installed.child} « ${CHILD_SEAT_LABELS.CHILD} » sont installés dans des véhicules. `
     + 'Retirez-les des véhicules avant de réduire le total possédé.';
+}
+
+/**
+ * Quatrième revue du 29/09 (C3) — le 403 d'une écriture sur UN véhicule. Le serveur refuse désormais
+ * véhicule par véhicule (« Permission requise : vehicles_edit »), et ce texte technique arrivait tel
+ * quel à l'écran. Un refus de droit se dit en clair ; un autre 403, porteur d'un motif explicite du
+ * serveur, reste affiché tel quel.
+ */
+export function messageEcritureVehicule(err: unknown, fallback: string): string {
+  if (err instanceof HttpErrorResponse && err.status === 403) {
+    const body = err.error as { message?: string; error?: { message?: string } } | null;
+    const m = (body?.error?.message ?? body?.message ?? '').trim();
+    if (!m || m.startsWith('Permission requise') || m.startsWith('Forbidden')) return 'Vous ne pouvez que consulter ce véhicule.';
+  }
+  return apiErrorMessage(err, fallback);
 }
 
 /** Équipements tels que le serveur les range (`normalizeFeatures`) : rognés, sans vide, sans doublon à la casse près. */
@@ -281,19 +297,19 @@ function ficheAEcrire(e: Brouillon): { erreur: string } | { payload: Record<stri
             <button type="button" class="pv-x" (click)="fermer()" aria-label="Fermer"><lucide-icon [img]="XIcon" [size]="18"></lucide-icon></button>
           </div>
           <div class="pv-sheet-body">
-            @if (!canEdit() && !canSeats()) {
-              <p class="pv-hint">Consultation seule : le droit « Modifier un véhicule » est requis pour régler la fiche.</p>
+            @if (!canEditRow(e.row) && !canSeats()) {
+              <p class="pv-hint">Vous ne pouvez que consulter ce véhicule : votre droit « Modifier un véhicule » ne le couvre pas.</p>
             }
             <div class="pv-grid2">
-              <label class="pv-f"><span>Places <em>conducteur compris</em></span><input type="number" min="1" max="99" inputmode="numeric" class="pv-in" [disabled]="!canEdit()" [value]="e.seats" (input)="draftSet('seats', $any($event.target).value)" placeholder="ex. 9"></label>
+              <label class="pv-f"><span>Places <em>conducteur compris</em></span><input type="number" min="1" max="99" inputmode="numeric" class="pv-in" [disabled]="!canEditRow(e.row)" [value]="e.seats" (input)="draftSet('seats', $any($event.target).value)" placeholder="ex. 9"></label>
               <label class="pv-f"><span>Énergie</span>
-                <select class="pv-in" [disabled]="!canEdit()" (change)="draftSet('energy', $any($event.target).value)">
+                <select class="pv-in" [disabled]="!canEditRow(e.row)" (change)="draftSet('energy', $any($event.target).value)">
                   <option value="" [selected]="!e.energy">—</option>
                   @for (en of energies; track en) { <option [value]="en" [selected]="en === e.energy">{{ energyLabel(en) }}</option> }
                 </select>
               </label>
             </div>
-            <label class="pv-f"><span>Équipements <em>séparés par des virgules</em></span><input type="text" class="pv-in" [disabled]="!canEdit()" [value]="e.features" (input)="draftSet('features', $any($event.target).value)" placeholder="ex. climatisation, attelage, rampe PMR"></label>
+            <label class="pv-f"><span>Équipements <em>séparés par des virgules</em></span><input type="text" class="pv-in" [disabled]="!canEditRow(e.row)" [value]="e.features" (input)="draftSet('features', $any($event.target).value)" placeholder="ex. climatisation, attelage, rampe PMR"></label>
             <p class="pv-hint">Les places et les équipements servent aux critères des demandes (« 7 places, attelage ») et à l'IA de placement.</p>
             @if (canSeats()) {
               <div class="pv-grid2">
@@ -308,7 +324,7 @@ function ficheAEcrire(e: Brouillon): { erreur: string } | { payload: Record<stri
           </div>
           <div class="pv-sheet-foot">
             <button type="button" class="pv-btn" (click)="fermer()">Annuler</button>
-            @if (canEdit() || canSeats()) {
+            @if (canEditRow(e.row) || canSeats()) {
               <button type="button" class="pv-btn pv-btn--primary" [disabled]="saving() || !dirty()" (click)="enregistrer()">
                 @if (saving()) { <lucide-icon [img]="LoaderIcon" [size]="14" class="pv-spin"></lucide-icon> } @else { <lucide-icon [img]="CheckIcon" [size]="14"></lucide-icon> } Enregistrer
               </button>
@@ -461,7 +477,20 @@ export class AgendaParcViewComponent {
 
   protected readonly isSuperAdmin = computed(() => this.auth.user()?.role === 'SUPER_ADMIN');
   protected readonly needsFleet = computed(() => this.isSuperAdmin() && !this.fleetFilter.selectedFleetId());
-  protected readonly canEdit = computed(() => this.perms.can('vehicles_edit'));
+  /**
+   * Quatrième revue du 29/09 (C3) — le droit se lit PAR VÉHICULE. Il se lisait en union
+   * (`perms.can('vehicles_edit')` sans véhicule) : un gestionnaire « Nord : modifier, Sud :
+   * consulter » voyait les champs actifs sur les véhicules Sud, et chaque enregistrement finissait
+   * en 403 « Permission requise : vehicles_edit ».
+   *
+   * Le droit « Modifier un véhicule » sur CE véhicule — même règle que le serveur (le plus spécifique
+   * gagne : véhicule > groupe > tous ; administrateurs toujours autorisés). Les sièges à bord restent
+   * réservés aux administrateurs (`canSeats`, rôle vérifié par le serveur) : un administrateur a tous
+   * les véhicules de sa société, il n'y a pas d'équivalent par véhicule à résoudre.
+   */
+  protected canEditRow(r: Pick<VehicleCapacityRowDto, 'vehicleId'>): boolean {
+    return this.perms.can('vehicles_edit', r.vehicleId);
+  }
   protected readonly canSeats = computed(() => {
     const r = this.auth.user()?.role;
     return r === 'SUPER_ADMIN' || r === 'FLEET_ADMIN';
@@ -518,8 +547,10 @@ export class AgendaParcViewComponent {
   protected readonly dirty = computed(() => {
     const e = this.edit();
     if (!e) return false;
-    const fiche = ficheAEcrire(e);
-    return 'erreur' in fiche || fiche.champs.length > 0 || e.baby !== e.row.childSeatsBaby || e.child !== e.row.childSeatsChild;
+    // C3 : seul ce qu'on a le droit d'écrire sur CE véhicule allume le bouton.
+    const fiche = this.canEditRow(e.row) ? ficheAEcrire(e) : { champs: [] as string[] };
+    const sieges = this.canSeats() && (e.baby !== e.row.childSeatsBaby || e.child !== e.row.childSeatsChild);
+    return 'erreur' in fiche || fiche.champs.length > 0 || sieges;
   });
 
   constructor() {
@@ -713,7 +744,7 @@ export class AgendaParcViewComponent {
     if (!e || this.saving()) return;
     this.editError.set(null);
     const r = e.row;
-    const fiche = this.canEdit() ? ficheAEcrire(e) : { payload: {}, champs: [] as string[] };
+    const fiche = this.canEditRow(r) ? ficheAEcrire(e) : { payload: {}, champs: [] as string[] };
     if ('erreur' in fiche) { this.editError.set(fiche.erreur); return; }
     const siegesChanges = this.canSeats() && (e.baby !== r.childSeatsBaby || e.child !== r.childSeatsChild);
     // Rien de réel à écrire (le bouton est alors éteint) : on referme sans annoncer d'enregistrement.
@@ -746,7 +777,8 @@ export class AgendaParcViewComponent {
       if (memeSociete()) await this.chargerParc();
     } catch (err) {
       swallow('agenda-parc-view:enregistrer', err);
-      const msg = (faits.length ? `Enregistré : ${faits.join(', ')}. Puis : ` : '') + apiErrorMessage(err, 'Enregistrement impossible.');
+      // C3 : un refus de droit se dit en clair (« Vous ne pouvez que consulter ce véhicule. »).
+      const msg = (faits.length ? `Enregistré : ${faits.join(', ')}. Puis : ` : '') + messageEcritureVehicule(err, 'Enregistrement impossible.');
       // Feuille refermée, autre véhicule ouvert ou société changée : l'erreur n'a plus de feuille
       // où s'afficher — elle est dite quand même, avec la plaque.
       if (memeFeuille()) this.editError.set(msg);

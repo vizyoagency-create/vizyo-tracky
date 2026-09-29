@@ -2,6 +2,7 @@ import { fakeAsync, TestBed, tick, type ComponentFixture } from '@angular/core/t
 import { provideHttpClient } from '@angular/common/http';
 import { provideHttpClientTesting } from '@angular/common/http/testing';
 import { signal } from '@angular/core';
+import { provideRouter } from '@angular/router';
 import { of, throwError } from 'rxjs';
 import { AuthService } from '../../core/services/auth.service';
 import { DemoModeService } from '../../core/services/demo-mode.service';
@@ -62,7 +63,14 @@ describe('C4 — engine-control-button : l’état est dit, et un clic de trop n
     commandesServies = null;
   });
 
-  const creer = (options?: { veilleur?: boolean }): void => {
+  /**
+   * Le rôle joué — le VEILLEUR par défaut (cf. en-tête). `isWatchman` et `user()` en dérivent
+   * TOUS LES DEUX : le composant lit l'un pour la garde de coupe et l'autre pour le lien
+   * « Voir l'historique » (voitHistorique). Un mock qui n'exposerait que le premier ferait
+   * planter, sur « user is not a function », tout test qui affiche l'état « non confirmée ».
+   */
+  const creer = (options?: { role?: string }): void => {
+    const role = options?.role ?? 'NIGHT_WATCHMAN';
     cutActifs = signal(new Set<string>());
     cutEnAttente = signal(new Set<string>());
     enMouvement = signal(new Set<string>());
@@ -72,9 +80,11 @@ describe('C4 — engine-control-button : l’état est dit, et un clic de trop n
       providers: [
         provideHttpClient(),
         provideHttpClientTesting(),
+        // « Voir l'historique » est un routerLink : sans routeur, pas de lien à rendre.
+        provideRouter([]),
         {
           provide: AuthService,
-          useValue: { isWatchman: () => options?.veilleur ?? true },
+          useValue: { isWatchman: () => role === 'NIGHT_WATCHMAN', user: () => ({ role }) },
         },
         {
           provide: PermissionsService,
@@ -230,5 +240,56 @@ describe('C4 — engine-control-button : l’état est dit, et un clic de trop n
     expect(texteEtat()).toBe('Moteur coupé');
     expect(bouton('rallumer')?.disabled).toBeFalse();
     expect(bouton('couper')?.disabled).toBeTrue();
+  }));
+
+  // ══ D1 — « VOIR L'HISTORIQUE » SEULEMENT POUR QUI PEUT L'OUVRIR (revue du 29/09) ═════════════
+  //
+  // /fleet-admin/activity n'admet que FLEET_ADMIN et SUPER_ADMIN (roleGuard, app.routes.ts). Le
+  // veilleur et le gestionnaire à qui l'on a donné engine_control voyaient pourtant le lien, au
+  // moment de savoir si le véhicule était immobilisé : un clic, et rien — le veilleur restait sur
+  // /vehicles, le gestionnaire repartait au tableau de bord. `fakeAsync` pour la même raison que
+  // le cas C7 ci-dessus : la liste servie arrive dans une microtâche.
+
+  /** Une coupe partie il y a cinq minutes et jamais confirmée : l'état « non confirmée ». */
+  const servirCoupeNonConfirmee = (): void => {
+    commandesServies = [
+      { id: 'c2', trackerId: TRACKER, action: 'CUT', status: 'SENT', source: 'MANUAL',
+        createdAt: new Date(Date.now() - 5 * 60_000).toISOString(),
+        sentAt: new Date(Date.now() - 5 * 60_000).toISOString(),
+        ackedAt: null, confirmationExpected: true, reason: null, lastError: null, requestedBy: '' },
+    ];
+  };
+  const sorties = (): string[] =>
+    Array.from(fixture.nativeElement.querySelectorAll('.ec-nc .ec-sortie') as NodeListOf<HTMLElement>)
+      .map((e) => e.textContent?.trim() ?? '');
+  const lienHistorique = (): HTMLAnchorElement | null => fixture.nativeElement.querySelector('a.ec-sortie');
+
+  for (const role of ['NIGHT_WATCHMAN', 'FLEET_MANAGER']) {
+    it(`🔴 D1 — ${role}, coupe NON CONFIRMÉE : deux sorties, et aucun lien vers une page qui le refoule`, fakeAsync(() => {
+      servirCoupeNonConfirmee();
+      creer({ role });
+      tick();
+      fixture.detectChanges();
+
+      // Le bandeau est bien là — sinon l'absence du lien ne prouverait rien.
+      expect(fixture.nativeElement.querySelector('.ec-nc')).withContext('bandeau « non confirmée » absent').not.toBeNull();
+      expect(lienHistorique()).withContext('lien mort offert à ' + role).toBeNull();
+      expect(sorties()).toEqual(['Renvoyer la commande', "J'ai vérifié sur place"]);
+    }));
+  }
+
+  it('D1 — FLEET_ADMIN, coupe NON CONFIRMÉE : « Voir l’historique » mène à l’onglet Moteurs, pas à Agenda', fakeAsync(() => {
+    servirCoupeNonConfirmee();
+    creer({ role: 'FLEET_ADMIN' });
+    tick();
+    fixture.detectChanges();
+
+    const lien = lienHistorique();
+    expect(lien).withContext('lien absent pour un rôle que la route admet').not.toBeNull();
+    // L'onglet Agenda est devenu l'onglet par défaut de la page : sans `tab=engine`, le lien
+    // ouvrirait l'agenda au moment où l'on cherche la trace d'une coupe.
+    expect(lien?.getAttribute('href') ?? '').toContain('/fleet-admin/activity');
+    expect(lien?.getAttribute('href') ?? '').toContain('tab=engine');
+    expect(sorties().length).toBe(3);
   }));
 });

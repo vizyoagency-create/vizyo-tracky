@@ -125,7 +125,7 @@ interface EditRow extends VehicleCapacityRowDto {
                 <div class="cap-src">
                   <span class="cap-src-label"><lucide-icon [img]="ClipboardIcon" [size]="11"></lucide-icon> Planning{{ src.planName ? ' · ' + src.planName : '' }} :</span>
                   <span class="cap-src-val">{{ src.brand || '—' }} {{ src.model || '' }}@if (src.energy) { · {{ energyLabel(src.energy) }} }</span>
-                  @if (canEdit() && r.divergentFields.length > 0) {
+                  @if (canEditRow(r) && r.divergentFields.length > 0) {
                     <button type="button" class="cap-sync-btn" (click)="openSync(r)">
                       <lucide-icon [img]="SyncIcon" [size]="12"></lucide-icon> Synchroniser
                     </button>
@@ -157,19 +157,22 @@ interface EditRow extends VehicleCapacityRowDto {
               } @else {
                 <div class="cap-src cap-src--none"><lucide-icon [img]="InfoIcon" [size]="11"></lucide-icon> Aucun planning d'installation lié.</div>
               }
+              @if (canEdit() && !canEditRow(r)) {
+                <div class="cap-src cap-src--none"><lucide-icon [img]="InfoIcon" [size]="11"></lucide-icon> Vous ne pouvez que consulter ce véhicule.</div>
+              }
 
               <!-- Capacité éditable -->
               <div class="cap-fields">
                 <label class="cap-f">
                   <span><lucide-icon [img]="UsersIcon" [size]="12"></lucide-icon> Places</span>
-                  <input type="number" min="1" max="99" inputmode="numeric" class="cap-in" [disabled]="!canEdit()"
+                  <input type="number" min="1" max="99" inputmode="numeric" class="cap-in" [disabled]="!canEditRow(r)"
                          [value]="r.draftSeats" (input)="patch(r, 'draftSeats', $any($event.target).value)">
                 </label>
                 <label class="cap-f">
                   <span><lucide-icon [img]="FuelIcon" [size]="12"></lucide-icon> Énergie</span>
                   <!-- [selected] sur chaque option : avec [value] seul, les options créées par la boucle
                        arrivent après la liaison et le select retombait sur « — ». -->
-                  <select class="cap-in" [disabled]="!canEdit()" [value]="r.draftEnergy" (change)="patch(r, 'draftEnergy', $any($event.target).value)">
+                  <select class="cap-in" [disabled]="!canEditRow(r)" [value]="r.draftEnergy" (change)="patch(r, 'draftEnergy', $any($event.target).value)">
                     <option value="" [selected]="!r.draftEnergy">—</option>
                     @for (e of energies; track e) { <option [value]="e" [selected]="e === r.draftEnergy">{{ energyLabel(e) }}</option> }
                   </select>
@@ -188,12 +191,12 @@ interface EditRow extends VehicleCapacityRowDto {
                 </div>
                 <label class="cap-f cap-f--wide">
                   <span><lucide-icon [img]="ClipboardIcon" [size]="12"></lucide-icon> Équipements (séparés par des virgules)</span>
-                  <input type="text" class="cap-in" [disabled]="!canEdit()" placeholder="Ex. climatisation, hayon, GPS"
+                  <input type="text" class="cap-in" [disabled]="!canEditRow(r)" placeholder="Ex. climatisation, hayon, GPS"
                          [value]="r.draftFeatures" (input)="patch(r, 'draftFeatures', $any($event.target).value)">
                 </label>
               </div>
 
-              @if (canEdit()) {
+              @if (canEditRow(r)) {
                 <div class="cap-card-foot">
                   @if (isDirty(r)) { <button type="button" class="cap-btn cap-btn--ghost" (click)="resetRow(r)">Annuler</button> }
                   <button type="button" class="cap-btn cap-btn--primary" [disabled]="!isDirty(r) || r.saving" (click)="save(r)">
@@ -287,7 +290,21 @@ export class VehicleCapacityTableComponent {
   protected readonly SparklesIcon = Sparkles;
   protected readonly energies = ENERGIES;
 
+  /**
+   * Droit GLOBAL (union des périmètres) : ne sert plus qu'au bandeau « Lecture seule » et au libellé
+   * du renvoi vers la vue Parc. Il ne décide plus d'aucun champ (quatrième revue du 29/09, C3).
+   */
   protected readonly canEdit = computed(() => this.perms.can('vehicles_edit'));
+  /**
+   * Quatrième revue du 29/09 (C3) — le droit « Modifier un véhicule » sur CE véhicule, même règle que
+   * le serveur (le plus spécifique gagne : véhicule > groupe > tous ; administrateurs toujours
+   * autorisés). Lu en union, il activait les champs, Enregistrer et « Synchroniser » sur les véhicules
+   * qu'un gestionnaire « Nord : modifier, Sud : consulter » ne peut que consulter : chaque écriture
+   * finissait en 403. Les sièges à bord ne se règlent pas ici (vue Parc, administrateurs).
+   */
+  protected canEditRow(r: Pick<VehicleCapacityRowDto, 'vehicleId'>): boolean {
+    return this.perms.can('vehicles_edit', r.vehicleId);
+  }
   /**
    * Vue Parc de l'agenda : même garde que `vuePermise('parc')` de la page (onglet, lien profond
    * `?vue=parc`, route) — `reservations_view` seul. Contre-revue du 29/09 : `agenda_view` en plus
@@ -420,7 +437,7 @@ export class VehicleCapacityTableComponent {
   }
 
   protected async save(row: EditRow): Promise<void> {
-    if (!this.canEdit() || row.saving) return;
+    if (!this.canEditRow(row) || row.saving) return;
     const places = this.placesAEcrire(row);
     if ('erreur' in places) {
       this.toast.error(`${row.plate} — non enregistré`, places.erreur);
@@ -481,7 +498,7 @@ export class VehicleCapacityTableComponent {
 
   protected async applySync(row: EditRow): Promise<void> {
     const fields = [...this.syncSel()];
-    if (!this.canEdit() || row.syncing || fields.length === 0) return;
+    if (!this.canEditRow(row) || row.syncing || fields.length === 0) return;
     this.setRow(row.vehicleId, { syncing: true });
     try {
       const updated = await firstValueFrom(this.api.syncFromInstallation(row.vehicleId, fields));
@@ -528,10 +545,23 @@ export class VehicleCapacityTableComponent {
     this.rows.update((list) => list.map((r) => (r.vehicleId === vehicleId ? { ...r, ...partial } : r)));
   }
 
+  /**
+   * Message lisible d'une erreur d'API. Le serveur enveloppe ses erreurs (`{ error: { message } }`) :
+   * le message imbriqué d'abord, le message à plat ensuite (compat.).
+   *
+   * Quatrième revue du 29/09 (C3) — un refus de DROIT sur une écriture (403 « Permission requise :
+   * vehicles_edit ») se dit en clair : « Vous ne pouvez que consulter ce véhicule. ». Un autre 403
+   * porteur d'un motif explicite reste affiché tel quel.
+   */
   private errMsg(e: unknown): string {
     if (e instanceof HttpErrorResponse) {
-      const m = (e.error as { message?: string } | null)?.message;
-      if (m) return Array.isArray(m) ? m.join(', ') : m;
+      const body = e.error as { message?: string | string[]; error?: { message?: string | string[] } } | null;
+      const brut = body?.error?.message ?? body?.message;
+      const m = Array.isArray(brut) ? brut.join(', ') : (brut ?? '').trim();
+      if (e.status === 403 && (!m || m.startsWith('Permission requise') || m.startsWith('Forbidden'))) {
+        return 'Vous ne pouvez que consulter ce véhicule.';
+      }
+      if (m) return m;
       return `Erreur (${e.status}).`;
     }
     return 'Une erreur est survenue.';

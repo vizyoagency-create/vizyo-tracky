@@ -5,6 +5,9 @@ import { OwnerVisibilityService } from '../common/owner-visibility.service';
 import { ErrorLogger } from '../observability/error-logger.service';
 import { PrismaService } from '../prisma/prisma.service';
 
+/** Colonnes `@db.Uuid` : toute autre forme ferait rejeter la requête par Prisma (erreur 500). */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export interface SystemActivityInput {
   /** 'EMAIL' | 'SMS' | 'PUSH' | 'ENGINE' | 'RETENTION' | 'AI_REPORT' */
   category: string;
@@ -79,32 +82,60 @@ export class SystemActivityService {
     }
   }
 
-  /** Feed admin (SUPER_ADMIN) — timeline des actions système récentes. */
+  /**
+   * Feed admin (SUPER_ADMIN) — timeline des actions système récentes.
+   * 29/09 : filtres optionnels `fleetId` (la société de la ligne) et période `from`/`to` (ISO).
+   * Un `fleetId` mal formé rend une liste VIDE (et non tout le journal : l'écran se croirait filtré).
+   */
   async getFeed(
-    opts: { limit?: number; before?: string; beforeId?: string; category?: string; status?: string } = {},
+    opts: {
+      limit?: number;
+      before?: string;
+      beforeId?: string;
+      category?: string;
+      status?: string;
+      fleetId?: string;
+      from?: string;
+      to?: string;
+    } = {},
     viewer: { isOwner?: boolean | null } = {},
   ): Promise<SystemActivityDto[]> {
     const take = Math.min(Math.max(opts.limit ?? 60, 1), 200);
-    const where: Prisma.SystemActivityLogWhereInput = {};
-    if (opts.category) where.category = opts.category;
-    if (opts.status && ['SUCCESS', 'FAILURE', 'SKIPPED'].includes(opts.status)) where.status = opts.status;
+    // Chaque filtre est une clause du AND : aucun ne peut en écraser un autre (le cursor et
+    // l'exclusion owner portent chacun un OR).
+    const and: Prisma.SystemActivityLogWhereInput[] = [];
+    if (opts.category) and.push({ category: opts.category });
+    if (opts.status && ['SUCCESS', 'FAILURE', 'SKIPPED'].includes(opts.status)) and.push({ status: opts.status });
+    if (opts.fleetId) {
+      if (!UUID_RE.test(opts.fleetId)) return [];
+      and.push({ fleetId: opts.fleetId });
+    }
+    if (opts.from) {
+      const d = new Date(opts.from);
+      if (!Number.isNaN(d.getTime())) and.push({ createdAt: { gte: d } });
+    }
+    if (opts.to) {
+      const d = new Date(opts.to);
+      if (!Number.isNaN(d.getTime())) and.push({ createdAt: { lte: d } });
+    }
     if (opts.before) {
       const d = new Date(opts.before);
       if (!Number.isNaN(d.getTime())) {
-        // Cursor composite (createdAt, id) — même timestamp = tiebreak id.
-        if (opts.beforeId) {
-          where.OR = [{ createdAt: { lt: d } }, { createdAt: d, id: { lt: opts.beforeId } }];
-        } else {
-          where.createdAt = { lt: d };
-        }
+        // Cursor composite (createdAt, id) — même timestamp = tiebreak id. Un beforeId qui n'est
+        // pas un UUID ferait rejeter la requête par Prisma (colonne uuid) : on retombe sur la date.
+        and.push(
+          opts.beforeId && UUID_RE.test(opts.beforeId)
+            ? { OR: [{ createdAt: { lt: d } }, { createdAt: d, id: { lt: opts.beforeId } }] }
+            : { createdAt: { lt: d } },
+        );
       }
     }
     // Owner plateforme — actions déclenchées par l'owner masquées pour un viewer
-    // non-owner. Champ NULLABLE (null = action système sans acteur) → on combine
-    // via AND un OR qui CONSERVE les null et n'exclut que les owners (sans écraser
-    // le OR du cursor ci-dessus, qui reste à la racine du where).
+    // non-owner. Champ NULLABLE (null = action système sans acteur) → un OR qui
+    // CONSERVE les null et n'exclut que les owners, posé comme clause du AND.
     const ownerExcl = await this.ownerVis.nullableUserIdExclusion(viewer, 'triggeredByUserId');
-    if (Object.keys(ownerExcl).length) where.AND = [ownerExcl as Prisma.SystemActivityLogWhereInput];
+    if (Object.keys(ownerExcl).length) and.push(ownerExcl as Prisma.SystemActivityLogWhereInput);
+    const where: Prisma.SystemActivityLogWhereInput = and.length ? { AND: and } : {};
     const rows = await this.prisma.systemActivityLog.findMany({
       where,
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],

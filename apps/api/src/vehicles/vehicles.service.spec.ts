@@ -52,8 +52,11 @@ describe('VehiclesService', () => {
     $queryRaw: jest.Mock;
     $transaction: jest.Mock;
   };
+  // Journal métier — lu par les tests « capacites_modifiees » (revue du 29/09, C5).
+  let systemActivity: { record: jest.Mock };
 
   beforeEach(async () => {
+    systemActivity = { record: jest.fn() };
     prisma = {
       vehicle: {
         create: jest.fn().mockImplementation(({ data }) => Promise.resolve(vehicleRecord(data))),
@@ -103,9 +106,9 @@ describe('VehiclesService', () => {
             verifyVehicleToken: jest.fn(),
           },
         },
-        // Journal des actions systeme : le service y trace les bascules « hors service ».
-        // Non exerce par ces tests -> mock minimal (record est fire-and-forget).
-        { provide: SystemActivityService, useValue: { record: jest.fn() } },
+        // Journal des actions systeme : le service y trace les bascules « hors service » et, depuis
+        // le 29/09 (C5), les capacités modifiées à la main. `record` est fire-and-forget.
+        { provide: SystemActivityService, useValue: systemActivity },
         // TRK-046 — présomption de stationnement : aucune zone par défaut, la dérivation
         // rend null et les DTO gardent leur forme d'avant.
         {
@@ -501,6 +504,61 @@ describe('VehiclesService', () => {
     ] as const)('le contrôleur exige %s -> %s résolu sur le véhicule de la route (:id)', (handler, key) => {
       const spec = Reflect.getMetadata(VEHICLE_PERMISSIONS_KEY, VehiclesController.prototype[handler]);
       expect(spec).toEqual({ keys: [key], paramName: 'id' });
+    });
+  });
+
+  // Revue du 29/09 (C5) — un gestionnaire passe un véhicule de 9 à 12 places dans Agenda → Parc :
+  // aucune ligne au fil « Agenda », alors que « Appliquer » de l'IA (capacites_appliquees) et les
+  // sièges de la même feuille (sieges_modifies) en écrivent une. Le PATCH trace désormais
+  // `capacites_modifiees` — seulement quand places ou équipements changent VRAIMENT.
+  describe('C5 : capacités modifiées à la main → ligne AGENDA capacites_modifiees', () => {
+    // Super-admin SANS société propre, qui agit sur le véhicule d'un client (OTHER_FLEET).
+    const superAdminSansSociete = { userId: USER_ID, role: UserRole.SUPER_ADMIN, fleetId: null };
+    const chezLeClient = { fleetId: OTHER_FLEET, seats: 9, features: ['Climatisation', 'GPS'], energy: 'DIESEL' };
+    beforeEach(() => {
+      prisma.vehicle.findFirst.mockResolvedValue(vehicleRecord(chezLeClient));
+      prisma.vehicle.update.mockImplementation(({ data }) => Promise.resolve(vehicleRecord({ ...chezLeClient, ...data })));
+    });
+
+    it('9 → 12 places, attelage ajouté, climatisation retirée : UNE ligne, société du VÉHICULE, auteur réel', async () => {
+      await service.update(VEHICLE_ID, { seats: 12, features: ['gps', 'attelage'] }, superAdminSansSociete);
+
+      expect(systemActivity.record).toHaveBeenCalledTimes(1);
+      const l = systemActivity.record.mock.calls[0][0];
+      expect(l).toEqual(expect.objectContaining({
+        category: 'AGENDA',
+        action: 'capacites_modifiees',
+        status: 'SUCCESS',
+        actor: 'utilisateur',
+        target: 'AB-123-CD',
+        fleetId: OTHER_FLEET,
+        triggeredByUserId: USER_ID,
+      }));
+      expect(l.detail).toBe('Capacités modifiées — 9 → 12 places ; + attelage ; − Climatisation');
+      expect(l.meta).toEqual({ vehicleId: VEHICLE_ID, seats: { avant: 9, apres: 12 }, ajouts: ['attelage'], retraits: ['Climatisation'] });
+    });
+
+    it('rien de changé (mêmes places, équipements réordonnés / autre casse), ou seulement couleur et énergie : AUCUNE ligne', async () => {
+      await service.update(VEHICLE_ID, { seats: 9, features: ['gps', 'climatisation'] }, superAdminSansSociete);
+      await service.update(VEHICLE_ID, { color: 'Blanc', energy: 'ELECTRIC' } as never, superAdminSansSociete);
+
+      expect(prisma.vehicle.update).toHaveBeenCalledTimes(2);
+      expect(systemActivity.record).not.toHaveBeenCalled();
+    });
+
+    it('écriture refusée (plaque en double) : 409 et AUCUNE ligne', async () => {
+      prisma.vehicle.update.mockRejectedValue(
+        new Prisma.PrismaClientKnownRequestError('Unique constraint', { code: 'P2002', clientVersion: '6.0.0' }),
+      );
+
+      await expect(service.update(VEHICLE_ID, { seats: 12, plate: 'ZZ-999-ZZ' }, superAdminSansSociete)).rejects.toThrow(ConflictException);
+      expect(systemActivity.record).not.toHaveBeenCalled();
+    });
+
+    it('journal en panne : l’enregistrement de la fiche passe quand même', async () => {
+      systemActivity.record.mockImplementation(() => { throw new Error('journal HS'); });
+
+      await expect(service.update(VEHICLE_ID, { seats: 12 }, superAdminSansSociete)).resolves.toMatchObject({ seats: 12 });
     });
   });
 

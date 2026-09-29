@@ -346,3 +346,283 @@ describe('VehicleEventsService — summary : statuts et périmètre', () => {
     expect(countOf(vide)).not.toHaveBeenCalled();
   });
 });
+
+/**
+ * ── JOURNAL MÉTIER (29/09) ───────────────────────────────────────────────────────────────────
+ *
+ * Chaque geste sur un évènement d'agenda laisse une ligne AGENDA au journal, lue par le fil de la
+ * société. Verrouillé ici : la société est celle de l'ÉVÈNEMENT (un super-admin, sans société
+ * propre, agit chez un client), l'auteur est l'utilisateur réel, les heures du texte sont celles de
+ * PARIS, une suppression est écrite AVANT d'effacer ce qu'elle décrit, et un journal absent ou en
+ * panne ne fait jamais échouer le geste.
+ */
+describe('VehicleEventsService — journal métier (29/09)', () => {
+  const superAdmin = () => makeUser({ id: 'u-sa', role: UserRole.SUPER_ADMIN, fleetId: null });
+  const journal = () => ({ record: jest.fn() });
+  // 05/10/2026 07:00Z = 09:00 à Paris (heure d'été).
+  const ligne = (over: Record<string, unknown> = {}) => ({
+    id: 'e1', fleetId: 'fCLIENT', vehicleId: 'v1', vehicle: { plate: 'AA-1' }, type: 'MAINTENANCE', status: 'PLANNED',
+    severity: null, title: 'Vidange', description: null, startAt: new Date('2026-10-05T07:00:00Z'), endAt: new Date('2026-10-05T10:00:00Z'),
+    allDay: false, blocksVehicle: true, odometerKm: null, planId: null, linkedEventId: null, resolvedAt: null, metadata: null,
+    source: 'MANUAL', createdAt: new Date(), updatedAt: new Date(), ...over,
+  });
+  const charge = (over: Record<string, unknown> = {}) => ({
+    id: 'e1', vehicleId: 'v1', type: 'MAINTENANCE', startAt: new Date('2026-10-05T07:00:00Z'), endAt: new Date('2026-10-05T10:00:00Z'),
+    fleetId: 'fCLIENT', status: 'IN_PROGRESS', title: 'Vidange', allDay: false, blocksVehicle: true, vehicle: { plate: 'AA-1' }, ...over,
+  });
+  type P = { vehicle: { findUnique: jest.Mock }; vehicleEvent: { create: jest.Mock; findFirst: jest.Mock; update: jest.Mock; delete: jest.Mock } };
+
+  it('create (maintenance) → evenement_cree, société du VÉHICULE et non de l’utilisateur, auteur réel, heure de Paris', async () => {
+    const prisma = makePrisma();
+    const p = prisma as P;
+    p.vehicle.findUnique.mockResolvedValue({ id: 'v1', fleetId: 'fCLIENT', lastOdometerAt: null });
+    p.vehicleEvent.create.mockResolvedValue(ligne());
+    const j = journal();
+    const svc = new VehicleEventsService(prisma, access('ALL'), undefined, j as never);
+
+    await svc.create(superAdmin(), { vehicleId: 'v1', type: 'MAINTENANCE', title: 'Vidange', startAt: '2026-10-05T07:00:00Z', endAt: '2026-10-05T10:00:00Z', allDay: false });
+
+    expect(j.record).toHaveBeenCalledTimes(1);
+    const l = j.record.mock.calls[0][0];
+    expect(l).toEqual(expect.objectContaining({
+      category: 'AGENDA', action: 'evenement_cree', actor: 'utilisateur', target: 'AA-1', fleetId: 'fCLIENT', triggeredByUserId: 'u-sa',
+    }));
+    expect(l.detail).toContain('Maintenance « Vidange »');
+    expect(l.detail).toContain('05/10/2026 09:00 → 12:00');
+    expect(l.detail).toContain('véhicule indisponible');
+    expect(l.meta).toEqual(expect.objectContaining({ eventId: 'e1', vehicleId: 'v1', type: 'MAINTENANCE' }));
+  });
+
+  it('create d’un INCIDENT par la feuille → incident_signale (même libellé que le bouton dédié)', async () => {
+    const prisma = makePrisma();
+    const p = prisma as P;
+    p.vehicle.findUnique.mockResolvedValue({ id: 'v1', fleetId: 'fCLIENT', lastOdometerAt: null });
+    p.vehicleEvent.create.mockResolvedValue(ligne({ type: 'INCIDENT', status: 'OPEN', title: 'Pare-brise' }));
+    const j = journal();
+    const svc = new VehicleEventsService(prisma, access('ALL'), undefined, j as never);
+
+    await svc.create(superAdmin(), { vehicleId: 'v1', type: 'INCIDENT', title: 'Pare-brise', startAt: '2026-10-05T07:00:00Z' });
+
+    expect(j.record.mock.calls[0][0].action).toBe('incident_signale');
+  });
+
+  it('reportIncident → incident_signale, société du véhicule, gravité et immobilisation dites', async () => {
+    const prisma = makePrisma();
+    const p = prisma as P;
+    p.vehicle.findUnique.mockResolvedValue({ id: 'v1', fleetId: 'fCLIENT' });
+    p.vehicleEvent.create.mockResolvedValue(ligne({ type: 'INCIDENT', status: 'OPEN', title: 'Roue crevée', severity: 'HIGH', endAt: null, allDay: true }));
+    const j = journal();
+    const svc = new VehicleEventsService(prisma, access('ALL'), undefined, j as never);
+
+    await svc.reportIncident(superAdmin(), { vehicleId: 'v1', title: 'Roue crevée', severity: 'HIGH' });
+
+    const l = j.record.mock.calls[0][0];
+    expect(l).toEqual(expect.objectContaining({ category: 'AGENDA', action: 'incident_signale', fleetId: 'fCLIENT', triggeredByUserId: 'u-sa', target: 'AA-1' }));
+    expect(l.detail).toContain('Incident « Roue crevée » signalé le 05/10/2026 09:00');
+    expect(l.detail).toContain('gravité haute');
+    expect(l.detail).toContain('véhicule immobilisé');
+  });
+
+  it('update qui passe le statut à DONE → evenement_clos ; société de l’évènement', async () => {
+    const prisma = makePrisma();
+    const p = prisma as P;
+    p.vehicleEvent.findFirst.mockResolvedValue(charge());
+    p.vehicleEvent.update.mockResolvedValue(ligne({ status: 'DONE', resolvedAt: new Date() }));
+    const j = journal();
+    const svc = new VehicleEventsService(prisma, access('ALL'), undefined, j as never);
+
+    await svc.update(superAdmin(), 'e1', { status: 'DONE' });
+
+    const l = j.record.mock.calls[0][0];
+    expect(l).toEqual(expect.objectContaining({ category: 'AGENDA', action: 'evenement_clos', fleetId: 'fCLIENT', triggeredByUserId: 'u-sa', target: 'AA-1' }));
+    expect(l.detail).toContain('Clôture : Maintenance « Vidange »');
+    expect(l.meta.avant.status).toBe('IN_PROGRESS');
+    expect(l.meta.apres.status).toBe('DONE');
+  });
+
+  it('update d’un évènement DÉJÀ clos (DONE réécrit) : ni clôture ni modification — aucune ligne ; repousser la fin → evenement_modifie en heure de Paris', async () => {
+    const prisma = makePrisma();
+    const p = prisma as P;
+    p.vehicleEvent.findFirst.mockResolvedValueOnce(charge({ status: 'DONE' }));
+    p.vehicleEvent.update.mockResolvedValueOnce(ligne({ status: 'DONE' }));
+    const j = journal();
+    const svc = new VehicleEventsService(prisma, access('ALL'), undefined, j as never);
+
+    // Revue du 29/09 (C2) : un DONE réécrit sur un DONE ne change rien → pas de ligne.
+    await svc.update(superAdmin(), 'e1', { status: 'DONE' });
+    expect(j.record).not.toHaveBeenCalled();
+
+    // Repousser la fin : « dates … → … », en heure de Paris (12:00 → 18:00, pas 10:00Z → 16:00Z).
+    p.vehicleEvent.findFirst.mockResolvedValueOnce(charge());
+    p.vehicleEvent.update.mockResolvedValueOnce(ligne({ status: 'IN_PROGRESS', endAt: new Date('2026-10-05T16:00:00Z') }));
+    await svc.update(superAdmin(), 'e1', { endAt: '2026-10-05T16:00:00Z' });
+    const l = j.record.mock.calls[0][0];
+    expect(l.action).toBe('evenement_modifie');
+    expect(l.detail).toContain('dates 05/10/2026 09:00 → 12:00, désormais 05/10/2026 09:00 → 18:00');
+    expect(l.meta.champs).toEqual(['endAt']);
+  });
+
+  /**
+   * Revue du 29/09 (C2) — la feuille d'édition (agenda.component, `submitCreate` en édition) renvoie
+   * TOUJOURS titre, catégorie, description, dates, journée entière, immobilisation, la gravité d'un
+   * incident et le kilométrage s'il est connu — `''` là où la base a `null`. Le journal ne nommait
+   * que ce qui était ENVOYÉ : « description, catégorie mis à jour » à chaque report, et une ligne
+   * même quand on cliquait Enregistrer sans rien toucher.
+   */
+  describe('update par la feuille d’édition : ne nommer que ce qui change (C2)', () => {
+    // Maintenance du 05/10 09:00 → 12:00 (Paris), telle qu'en base : catégorie et description NULL.
+    const enBase = (over: Record<string, unknown> = {}) =>
+      charge({
+        status: 'PLANNED', description: null, category: null, severity: null, odometerKm: 12000,
+        linkedEventId: null, metadata: { source: 'plan' }, ...over,
+      });
+    // Ce que la feuille envoie quand on ne touche à rien.
+    const feuille = (over: Record<string, unknown> = {}) => ({
+      title: 'Vidange', category: '', description: '', startAt: '2026-10-05T07:00:00.000Z', endAt: '2026-10-05T10:00:00.000Z',
+      allDay: false, blocksVehicle: true, odometerKm: 12000, ...over,
+    });
+    // La ligne réécrite : la feuille a écrit '' dans catégorie et description.
+    const reecrite = (over: Record<string, unknown> = {}) =>
+      ligne({ status: 'PLANNED', category: '', description: '', odometerKm: 12000, metadata: { source: 'plan' }, ...over });
+
+    function monter(avant: ReturnType<typeof enBase>, apres: ReturnType<typeof reecrite>) {
+      const prisma = makePrisma();
+      const p = prisma as P;
+      p.vehicleEvent.findFirst.mockResolvedValue(avant);
+      p.vehicleEvent.update.mockResolvedValue(apres);
+      p.vehicle.findUnique.mockResolvedValue({ lastOdometerAt: null });
+      const j = journal();
+      return { svc: new VehicleEventsService(prisma, access('ALL'), undefined, j as never), j, p };
+    }
+
+    it('Enregistrer sans rien toucher (\'\' renvoyé pour un null en base) → AUCUNE ligne, mais l’écriture a bien lieu', async () => {
+      const { svc, j, p } = monter(enBase(), reecrite());
+
+      await expect(svc.update(superAdmin(), 'e1', feuille())).resolves.toMatchObject({ id: 'e1' });
+
+      expect(p.vehicleEvent.update).toHaveBeenCalledTimes(1);
+      expect(j.record).not.toHaveBeenCalled();
+    });
+
+    it('repousser la fin seule → le détail ne nomme QUE les dates ; champs = [endAt]', async () => {
+      const { svc, j } = monter(enBase(), reecrite({ endAt: new Date('2026-10-05T16:00:00Z') }));
+
+      await svc.update(superAdmin(), 'e1', feuille({ endAt: '2026-10-05T16:00:00.000Z' }));
+
+      const l = j.record.mock.calls[0][0];
+      expect(l.action).toBe('evenement_modifie');
+      expect(l.detail).toBe('Modification : Maintenance « Vidange » — dates 05/10/2026 09:00 → 12:00, désormais 05/10/2026 09:00 → 18:00');
+      expect(l.detail).not.toMatch(/description|catégorie|gravité|kilométrage|mis à jour/);
+      expect(l.meta.champs).toEqual(['endAt']);
+    });
+
+    it('incident : gravité et kilométrage changés → « avant → après » ; gravité inchangée → non nommée', async () => {
+      const incident = { type: 'INCIDENT', title: 'Pare-brise' };
+      const { svc, j } = monter(
+        enBase({ ...incident, severity: 'MEDIUM' }),
+        reecrite({ ...incident, severity: 'HIGH', odometerKm: 12450 }),
+      );
+
+      await svc.update(superAdmin(), 'e1', feuille({ title: 'Pare-brise', severity: 'HIGH', odometerKm: 12450 }));
+
+      const l = j.record.mock.calls[0][0];
+      expect(l.detail).toContain('gravité moyenne → haute');
+      expect(l.detail).toContain('kilométrage 12 000 km → 12 450 km');
+      expect(l.detail).not.toMatch(/description|catégorie|dates/);
+      expect(l.meta.champs).toEqual(['severity', 'odometerKm']);
+
+      const second = monter(enBase({ ...incident, severity: 'HIGH' }), reecrite({ ...incident, severity: 'HIGH' }));
+      await second.svc.update(superAdmin(), 'e1', feuille({ title: 'Pare-brise', severity: 'HIGH' }));
+      expect(second.j.record).not.toHaveBeenCalled();
+    });
+
+    it('catégorie et description réellement saisies → nommées ; la catégorie avec ses valeurs', async () => {
+      const { svc, j } = monter(enBase(), reecrite({ category: 'Carrosserie', description: 'Rayure porte' }));
+
+      await svc.update(superAdmin(), 'e1', feuille({ category: 'Carrosserie', description: 'Rayure porte' }));
+
+      const l = j.record.mock.calls[0][0];
+      expect(l.detail).toContain('catégorie — → « Carrosserie »');
+      expect(l.detail).toContain('description mise à jour');
+      expect(l.meta.champs).toEqual(['category', 'description']);
+    });
+
+    it('une clôture reste TOUJOURS une ligne, même si rien d’autre ne change', async () => {
+      const { svc, j } = monter(enBase({ status: 'IN_PROGRESS' }), reecrite({ status: 'DONE' }));
+
+      await svc.update(superAdmin(), 'e1', { status: 'DONE' });
+
+      expect(j.record).toHaveBeenCalledTimes(1);
+      expect(j.record.mock.calls[0][0].action).toBe('evenement_clos');
+    });
+  });
+
+  it('remove → evenement_supprime écrit AVANT la suppression (titre, type, plaque, société de l’évènement)', async () => {
+    const prisma = makePrisma();
+    const p = prisma as P;
+    p.vehicleEvent.findFirst.mockResolvedValue(charge());
+    p.vehicleEvent.delete.mockResolvedValue({});
+    const j = journal();
+    const svc = new VehicleEventsService(prisma, access('ALL'), undefined, j as never);
+
+    await expect(svc.remove(superAdmin(), 'e1')).resolves.toEqual({ ok: true });
+
+    expect(j.record.mock.invocationCallOrder[0]).toBeLessThan(p.vehicleEvent.delete.mock.invocationCallOrder[0]);
+    const l = j.record.mock.calls[0][0];
+    expect(l).toEqual(expect.objectContaining({ category: 'AGENDA', action: 'evenement_supprime', fleetId: 'fCLIENT', triggeredByUserId: 'u-sa', target: 'AA-1' }));
+    expect(l.detail).toContain('Suppression : Maintenance « Vidange »');
+    expect(l.meta).toEqual(expect.objectContaining({ eventId: 'e1', type: 'MAINTENANCE', title: 'Vidange' }));
+  });
+
+  it('remove dont la suppression échoue : une seconde ligne EN ÉCHEC le dit, et l’erreur remonte', async () => {
+    const prisma = makePrisma();
+    const p = prisma as P;
+    p.vehicleEvent.findFirst.mockResolvedValue(charge());
+    p.vehicleEvent.delete.mockRejectedValue(new Error('verrou'));
+    const j = journal();
+    const svc = new VehicleEventsService(prisma, access('ALL'), undefined, j as never);
+
+    await expect(svc.remove(superAdmin(), 'e1')).rejects.toThrow('verrou');
+    expect(j.record).toHaveBeenCalledTimes(2);
+    expect(j.record.mock.calls[1][0]).toEqual(expect.objectContaining({ action: 'evenement_supprime', status: 'FAILURE', fleetId: 'fCLIENT' }));
+  });
+
+  it('refus (réservation, mission) : aucune ligne', async () => {
+    const prisma = makePrisma();
+    const p = prisma as P;
+    p.vehicleEvent.findFirst.mockResolvedValue(charge({ type: 'MISSION' }));
+    const j = journal();
+    const svc = new VehicleEventsService(prisma, access('ALL'), undefined, j as never);
+
+    await expect(svc.remove(superAdmin(), 'e1')).rejects.toBeInstanceOf(BadRequestException);
+    await expect(svc.update(superAdmin(), 'e1', { status: 'DONE' })).rejects.toBeInstanceOf(BadRequestException);
+    expect(j.record).not.toHaveBeenCalled();
+  });
+
+  it('journal EN PANNE (record lève) : create, update et remove passent quand même', async () => {
+    const prisma = makePrisma();
+    const p = prisma as P;
+    p.vehicle.findUnique.mockResolvedValue({ id: 'v1', fleetId: 'fCLIENT', lastOdometerAt: null });
+    p.vehicleEvent.create.mockResolvedValue(ligne());
+    p.vehicleEvent.findFirst.mockResolvedValue(charge());
+    p.vehicleEvent.update.mockResolvedValue(ligne({ status: 'DONE' }));
+    p.vehicleEvent.delete.mockResolvedValue({});
+    const enPanne = { record: jest.fn(() => { throw new Error('journal HS'); }) };
+    const svc = new VehicleEventsService(prisma, access('ALL'), undefined, enPanne as never);
+
+    await expect(svc.create(superAdmin(), { vehicleId: 'v1', type: 'MAINTENANCE', title: 'Vidange', startAt: '2026-10-05T07:00:00Z' })).resolves.toMatchObject({ id: 'e1' });
+    await expect(svc.update(superAdmin(), 'e1', { status: 'DONE' })).resolves.toMatchObject({ status: 'DONE' });
+    await expect(svc.remove(superAdmin(), 'e1')).resolves.toEqual({ ok: true });
+    expect(enPanne.record).toHaveBeenCalledTimes(3);
+  });
+
+  it('journal ABSENT (specs montées à la main, 2 paramètres) : aucun effet, aucune erreur', async () => {
+    const prisma = makePrisma();
+    const p = prisma as P;
+    p.vehicleEvent.findFirst.mockResolvedValue(charge());
+    p.vehicleEvent.delete.mockResolvedValue({});
+    const svc = new VehicleEventsService(prisma, access('ALL'));
+
+    await expect(svc.remove(superAdmin(), 'e1')).resolves.toEqual({ ok: true });
+  });
+});

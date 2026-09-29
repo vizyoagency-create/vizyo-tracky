@@ -23,12 +23,19 @@ import type {
 } from '@vizyo/tracky-shared';
 import { DORMANT_STOP_COUNTING_MS, effectiveBlockingEndMs, IMMOBILIZING_STATUSES, isVehicleDormant } from '@vizyo/tracky-shared';
 import { EventEmitter2 } from '@nestjs/event-emitter';
+import { randomUUID } from 'crypto';
 import type { AuthUser } from '../auth/types/auth-user';
 import { resolveReportVehicleScope } from '../common/report-vehicle-scope';
 import { PermissionsResolverService } from '../permissions/permissions-resolver.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { SystemActivityService } from '../system-activity/system-activity.service';
 import { VehicleAccessService } from '../vehicle-access/vehicle-access.service';
+import {
+  fourchettePlaces,
+  messageAucunVehicule,
+  motifPlacesInsuffisantes,
+  type AucunVehiculeContexte,
+} from './aucun-vehicule.message';
 import { ChildSeatsService } from './child-seats.service';
 import { VehicleEventsService } from './vehicle-events.service';
 
@@ -73,6 +80,122 @@ const MESSAGE_CIBLE_NON_GEREE = 'Vous ne gérez pas les réservations du véhicu
  */
 interface OptionsInternes {
   silencieux?: boolean;
+  /**
+   * Journal (29/09) — POURQUOI `update()` est appelé, quand ce n'est pas la feuille d'édition : il
+   * choisit la ligne écrite (« réaffectée » pour `reaffecter`, « décalée » pour Réorganiser → Décaler)
+   * au lieu d'un « modifiée » générique qui ne dirait pas le geste.
+   */
+  motif?: 'reaffectation' | 'decalage';
+  /**
+   * Journal — identifiant d'un geste de MASSE (`reorganiser`) : porté par chaque ligne unitaire ET par
+   * les résumés, pour relire « ce lot-là » d'un seul filtre.
+   */
+  lot?: string;
+}
+
+/** Les codes d'action que ce service écrit (sous-ensemble de AGENDA_ACTIVITY_ACTION_LABELS). */
+type ActionJournal =
+  | 'reservation_demandee'
+  | 'reservation_creee'
+  | 'reservation_consignee'
+  | 'reservation_validee'
+  | 'reservation_refusee'
+  | 'reservation_retiree'
+  | 'reservation_annulee'
+  | 'reservation_modifiee'
+  | 'reservation_reaffectee'
+  | 'reservation_decalee'
+  | 'reservation_scindee'
+  | 'reservations_reorganisees';
+
+/** Une ligne du journal métier, telle que la construit l'appelant (cf. `journaliser`). */
+interface EntreeJournal {
+  /** Société de la RESSOURCE (réservation, véhicule) — jamais celle de l'utilisateur. */
+  fleetId: string | null;
+  /** La plaque concernée (`target`). */
+  plaque?: string | null;
+  /** Lisible, dates en heure de Paris (jamais un ISO en UTC). */
+  detail: string;
+  meta?: Record<string, unknown>;
+  status?: 'SUCCESS' | 'SKIPPED';
+}
+
+/**
+ * ── LES DATES DU JOURNAL SONT EN HEURE DE PARIS ──────────────────────────────────────────────
+ * Le détail est lu par un gestionnaire, pas par une machine : « 2026-10-01T08:00:00.000Z » pour une
+ * sortie à 10:00 le faisait chercher deux heures trop tôt. `meta` garde les ISO pour les outils.
+ */
+const FMT_JOUR = new Intl.DateTimeFormat('fr-FR', { timeZone: 'Europe/Paris', day: '2-digit', month: '2-digit', year: 'numeric' });
+const FMT_HEURE = new Intl.DateTimeFormat('fr-FR', { timeZone: 'Europe/Paris', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
+
+function enDate(d: Date | string | null | undefined): Date | null {
+  if (!d) return null;
+  const date = d instanceof Date ? d : new Date(d);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+/** « 01/10/2026 10:00 » (Europe/Paris). */
+function heureParis(d: Date | string | null | undefined): string {
+  const date = enDate(d);
+  return date ? `${FMT_JOUR.format(date)} ${FMT_HEURE.format(date)}` : '—';
+}
+
+/** « 01/10/2026 10:00 → 12:00 », ou « 01/10/2026 10:00 → 02/10/2026 18:00 » sur deux jours. */
+function creneauParis(debut: Date | string | null | undefined, fin: Date | string | null | undefined): string {
+  const a = enDate(debut);
+  const b = enDate(fin);
+  if (!a) return '—';
+  if (!b) return `à partir du ${heureParis(a)}`;
+  return FMT_JOUR.format(a) === FMT_JOUR.format(b)
+    ? `${heureParis(a)} → ${FMT_HEURE.format(b)}`
+    : `${heureParis(a)} → ${heureParis(b)}`;
+}
+
+/** Ce qu'une écriture de `update()` a changé, champ par champ (cf. `changementsDe`). */
+interface Changements {
+  vehicule?: { avant: string; apres: string };
+  creneau?: { avant: { debut: Date; fin: Date | null }; apres: { debut: Date; fin: Date | null } };
+  titre?: { avant: string; apres: string };
+  motif?: { avant: string | null; apres: string | null };
+  groupe?: { avant: ReservationGroupDto | null; apres: ReservationGroupDto | null };
+  criteres?: { avant: RequestReservationDto['criteria'] | null; apres: RequestReservationDto['criteria'] | null };
+}
+
+/**
+ * « 12 places » — les véhicules libres sur le créneau quelle que soit leur taille, tels que la demande
+ * les relit : ce que lit le constructeur partagé (nombre, fourchette), plus la SOMME des places connues
+ * et le nombre de libres sans places renseignées (relecture du 29/09 : « répartissez » seulement si
+ * c'est possible).
+ */
+type LibresToutesTailles = NonNullable<AucunVehiculeContexte['libresToutesTailles']> & {
+  places: number;
+  inconnues: number;
+  /**
+   * Revue du 29/09 (C6) — les SIÈGES AUTO demandés, jugés sur ces mêmes libres (relus SANS eux). Null =
+   * aucun siège demandé, ou disponibilité inconnue (société non résolue) : rien à en dire.
+   *  - `porteurs` : les plaques des libres qui peuvent recevoir, À EUX SEULS, tous les sièges demandés
+   *    (à bord + stock, selon la politique) — la feuille les met sur UNE réservation de la répartition ;
+   *  - `combinables` : les libres, ensemble, peuvent-ils les recevoir (sièges répartis entre plusieurs
+   *    réservations) ? Faux = aucun partage ne les assoit, même en répartissant le groupe.
+   */
+  sieges: { porteurs: string[]; combinables: boolean } | null;
+};
+
+/** « 12 places min., 1 siège(s) bébé » — les critères, lisibles. */
+function decrireCriteres(c: RequestReservationDto['criteria'] | null | undefined): string {
+  if (!c) return 'aucun';
+  const p: string[] = [];
+  if (c.minSeats) p.push(`${c.minSeats} places min.`);
+  if (c.childSeatsBaby) p.push(`${c.childSeatsBaby} siège(s) bébé`);
+  if (c.childSeatsChild) p.push(`${c.childSeatsChild} siège(s) enfant`);
+  if (c.requiredFeatures?.length) p.push(c.requiredFeatures.join(', '));
+  return p.length > 0 ? p.join(', ') : 'aucun';
+}
+
+/** Un texte libre cité dans le détail : court, entre guillemets, « — » s'il est vide. */
+function cite(v: unknown): string {
+  const s = typeof v === 'string' ? v.trim() : '';
+  return s ? `« ${s.length > 60 ? `${s.slice(0, 59)}…` : s} »` : '—';
 }
 
 /** Début de la minute en cours : le point de coupe d'une réservation scindée (l'écran raisonne à la minute). */
@@ -95,6 +218,18 @@ function motifDemandeNonReaffectable(status: string, debutMs: number, maintenant
     return 'Cette demande n’a pas été validée et déborde sur l’indisponibilité du véhicule : validez-la ou refusez-la, elle ne se réaffecte pas.';
   }
   return null;
+}
+
+/**
+ * L'AUTEUR d'une demande encore en attente la retire lui-même (revue du 29/09, C4). Une seule règle,
+ * lue par `cancel()` (droit : on reprend ce qu'on a déposé, sans gérer le véhicule ; journal :
+ * `reservation_retiree`, jamais « Demande refusée ») et par `reorganiser()` (aucune annonce de refus).
+ * `requesterId` n'est posé que par `request()` (demande interne) : une demande publique n'est jamais
+ * un retrait — son demandeur n'a pas de compte.
+ */
+function estRetraitDeSaDemande(status: string, metadata: unknown, userId: string): boolean {
+  const auteur = (metadata as { requesterId?: unknown } | null | undefined)?.requesterId;
+  return status === VehicleEventStatus.REQUESTED && typeof auteur === 'string' && auteur === userId;
 }
 
 /**
@@ -141,9 +276,10 @@ export class ReservationsService {
     // réservation HUMAINE uniquement (jamais depuis systemConfirm/systemRequest → anti-boucle).
     private readonly emitter?: EventEmitter2,
     /**
-     * Journal d'activité (@Global) : trace un geste de MASSE — qui a annulé ou décalé combien de
-     * réservations, et combien ont été refusées. `@Optional()` : les specs montent ce service à la
-     * main, et un journal absent ne doit pas empêcher la réorganisation.
+     * Journal d'activité (@Global) : chaque geste sur une réservation (demande, création, validation,
+     * refus, annulation, modification, réaffectation, scission, réorganisation) — cf. `journaliser`.
+     * `@Optional()` : les specs montent ce service à la main, et un journal absent ne doit jamais
+     * empêcher un geste d'aboutir.
      */
     @Optional() private readonly systemActivity?: SystemActivityService,
     /**
@@ -260,6 +396,212 @@ export class ReservationsService {
     throw new ConflictException(
       `${v.plate ?? 'Ce véhicule'} est déclaré hors service (${motif}) : il ne peut pas être réservé tant qu'il n'est pas remis en service.`,
     );
+  }
+
+  /**
+   * « 12 places » (29/09) — un véhicule choisi À LA MAIN dont le nombre de places est CONNU et
+   * inférieur au plancher saisi (conducteur compris) : 400 qui dit quoi faire. Places inconnues : on ne
+   * refuse pas sur une donnée absente (le vivier, lui, les compte à part).
+   */
+  private async assertAssezDePlaces(vehicleId: string, minSeats: number | undefined): Promise<void> {
+    if (!minSeats) return;
+    const v = await this.prisma.vehicle.findUnique({ where: { id: vehicleId }, select: { seats: true, plate: true } });
+    // La phrase est partagée avec l'annonce de `reorganiser()` en simulation (C8) : un seul texte.
+    const motif = motifPlacesInsuffisantes(v?.plate, v?.seats, minSeats);
+    if (motif) throw new BadRequestException(motif);
+  }
+
+  /**
+   * Relecture du 29/09 (C8 × T4) — les places d'une cible CHOISIE pour « Réorganiser → Réaffecter »,
+   * lues UNE fois pour tout le lot : de quoi annoncer dès la simulation le refus « trop petit » que
+   * `reaffecter()` lèvera à coup sûr. Null — donc rien d'annoncé, `reaffecter()` garde le dernier mot —
+   * dès que ce refus ne serait PAS le premier que `reaffecter()` rendrait : cible hors périmètre ou
+   * introuvable, non gérée, places inconnues. On ne nomme jamais (plaque, places) un véhicule que
+   * `reaffecter()` aurait refusé avant d'en parler. La société est rendue : une ligne d'une autre
+   * société est refusée par `reaffecter()` (« autre société ») avant les places.
+   */
+  private async placesDeLaCibleChoisie(
+    user: AuthUser,
+    vehicleId: string,
+  ): Promise<{ fleetId: string; plate: string | null; seats: number } | null> {
+    try {
+      const fleetId = await this.events.assertVehicleAccess(user, vehicleId);
+      if (!(await this.permissions.canOnVehicle(user, vehicleId, 'reservations_manage'))) return null;
+      const v = await this.prisma.vehicle.findUnique({ where: { id: vehicleId }, select: { seats: true, plate: true } });
+      if (typeof v?.seats !== 'number' || v.seats <= 0) return null;
+      return { fleetId, plate: v.plate ?? null, seats: v.seats };
+    } catch {
+      return null; // l'annonce n'est qu'une avance : en cas de doute, l'application tranche ligne par ligne
+    }
+  }
+
+  /**
+   * Ce que `messageAucunVehicule` lit d'un vivier vide (chemins AUTHENTIFIÉS seulement).
+   *
+   * Relecture du 29/09 — les SIÈGES AUTO passent avant la taille. Le vivier juge les sièges APRÈS le
+   * plancher de places et l'occupation : un véhicule écarté pour ses sièges était donc libre ET assez
+   * grand. Compter alors les petits véhicules du parc (le 4 places de Client test, ou tout le parc
+   * mixte d'une réaffectation, dont le plancher vaut les places du véhicule d'origine) faisait dire au
+   * constructeur « aucun véhicule d'au moins 5 places n'est libre sur ce créneau. Aucun véhicule n'est
+   * libre, quelle que soit sa taille. » — deux phrases fausses pour 7 véhicules libres à qui il
+   * manquait un siège bébé. La taille ne l'emporte que si le parc n'a VRAIMENT aucun véhicule assez
+   * grand (`largestSeats < minSeats`, impossible quand des sièges ont écarté quelqu'un — gardé pour un
+   * vivier qui ne suivrait pas cet ordre).
+   */
+  private contexteAucunVehicule(sug: SuggestReservationResultDto, minSeats: number | null): AucunVehiculeContexte {
+    const sieges = sug.excludedChildSeats ?? 0;
+    const largestSeats = sug.largestSeats ?? null;
+    const parcTropPetit = !!minSeats && largestSeats != null && largestSeats < minSeats;
+    return {
+      minSeats,
+      excludedTooSmall: sieges > 0 && !parcTropPetit ? 0 : (sug.excludedTooSmall ?? 0),
+      largestSeats,
+      excludedUnknownCapacity: sug.excludedUnknownCapacity ?? 0,
+      excludedChildSeats: sieges,
+      excludedDormant: sug.excludedDormant ?? 0,
+    };
+  }
+
+  /**
+   * « 12 places » — les véhicules libres sur le créneau QUELLE QUE SOIT leur taille : le même vivier
+   * (même créneau, même société, mêmes équipements), relu sans `minSeats`. Rend leur nombre, leur
+   * fourchette de places et — relecture du 29/09 — la SOMME des places connues et le nombre de libres
+   * sans places renseignées : de quoi ne conseiller « répartissez le groupe » que quand c'est possible
+   * (cf. `messageDemandeSansVehicule`).
+   *
+   * Revue du 29/09 (C6) — relu aussi SANS les sièges auto. Dans une répartition, les sièges vont sur
+   * UNE réservation (comme dans la feuille) : les garder dans la relecture écartait chaque véhicule qui
+   * ne pouvait pas les porter tous, et « 12 places + 1 siège bébé » chez Client test (7 libres, stock
+   * vide) répondait « Aucun véhicule n'est libre sur ce créneau, quelle que soit sa taille » — ou, un
+   * seul 9 places équipé, « pas assez… même en répartissant » alors que 9 (avec le siège) + 4 = 13.
+   * L'information n'est pas perdue : elle est jugée À PART sur ces mêmes libres (`sieges`), sans
+   * requête de plus — la disponibilité du créneau (`sug.childSeats`) et les sièges à bord de chaque
+   * véhicule (`childSeatsInstalled`) sont rendus même sans besoin.
+   * Un échec de relecture n'empêche pas le message : il perd seulement cette phrase.
+   */
+  private async libresToutesTailles(user: AuthUser, dto: RequestReservationDto): Promise<LibresToutesTailles | null> {
+    try {
+      const {
+        minSeats: _plancher,
+        childSeatsBaby: _bebe,
+        childSeatsChild: _enfant,
+        ...autres
+      } = (dto.criteria ?? {}) as NonNullable<RequestReservationDto['criteria']>;
+      const sug = await this.suggest(user, { startAt: dto.startAt, endAt: dto.endAt, criteria: autres, fleetId: dto.fleetId });
+      const places = sug.vehicles.map((v) => v.seats).filter((s): s is number => typeof s === 'number' && s > 0);
+      return {
+        n: sug.vehicles.length,
+        min: places.length > 0 ? Math.min(...places) : null,
+        max: places.length > 0 ? Math.max(...places) : null,
+        places: places.reduce((a, b) => a + b, 0),
+        inconnues: sug.vehicles.length - places.length,
+        sieges: this.siegesDesLibres(sug, ChildSeatsService.needOf(dto.criteria)),
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  /** C6 — les sièges auto demandés, jugés sur des libres relus sans eux (cf. `LibresToutesTailles.sieges`). */
+  private siegesDesLibres(
+    sug: SuggestReservationResultDto,
+    need: { baby: number; child: number },
+  ): LibresToutesTailles['sieges'] {
+    const avail = sug.childSeats;
+    if ((need.baby <= 0 && need.child <= 0) || !avail) return null;
+    const aBord = (v: SuggestedVehicleDto) => v.childSeatsInstalled ?? { baby: 0, child: 0 };
+    const porteurs = sug.vehicles
+      .filter((v) => ChildSeatsService.couvre(avail, need, aBord(v)))
+      .map((v) => v.vehiclePlate ?? 'un véhicule sans plaque');
+    // Ensemble : les sièges à bord de TOUS les libres, plus le stock — chaque réservation de la
+    // répartition prend d'abord ceux de son véhicule, le stock ne fournit que le reste.
+    const sommeABord = sug.vehicles.reduce(
+      (s, v) => ({ baby: s.baby + aBord(v).baby, child: s.child + aBord(v).child }),
+      { baby: 0, child: 0 },
+    );
+    return { porteurs, combinables: porteurs.length > 0 || ChildSeatsService.couvre(avail, need, sommeABord) };
+  }
+
+  /**
+   * Le 400 d'une demande « ouverte » dont le vivier est vide.
+   *
+   * Relecture du 29/09 — « répartissez le groupe » seulement quand c'est POSSIBLE : au moins deux
+   * véhicules libres, dont les places connues couvrent, à elles toutes, le plancher saisi (ou dont une
+   * partie n'a pas de places renseignées : on ne conclut pas « pas assez » sur une donnée absente).
+   * Demande de 12 places, un seul 9 places libre : le constructeur disait « 1 véhicule est libre
+   * (9 places) : répartissez le groupe » — l'exploitant essayait, et échouait. La somme est une
+   * condition NÉCESSAIRE (chaque véhicule de plus emporte aussi un conducteur) : « pas assez » est
+   * donc toujours vrai, « répartissez » reste une piste.
+   *
+   * Revue du 29/09 (C6) — les libres sont relus SANS les sièges auto, jugés à part (`libres.sieges`) :
+   *  - aucun partage ne les assoit (`combinables` faux) → jamais « répartissez » : la phrase dit les
+   *    libres ET que les sièges manquent (installer un siège, changer le réglage) ;
+   *  - un seul (ou quelques-uns) des libres peut les recevoir → « répartissez », et la phrase NOMME
+   *    celui qui doit porter les sièges ;
+   *  - aucun seul, mais ensemble oui → « répartissez » les sièges aussi.
+   * « Aucun véhicule n'est libre, quelle que soit sa taille » ne sort donc plus que si RIEN n'est libre.
+   *
+   * ⚠️ Le constructeur partagé (`messageAucunVehicule`) ne juge pas la faisabilité et ne reçoit pas la
+   * somme : le cas « pas assez » est écrit ICI, après sa phrase. Seule la demande relit les libres
+   * (ni la réaffectation ni l'IA de placement) : aucune autre surface n'est concernée.
+   */
+  private messageDemandeSansVehicule(contexte: AucunVehiculeContexte, libres: LibresToutesTailles | null): string {
+    const min = contexte.minSeats ?? 0;
+    const sieges = libres?.sieges ?? null;
+    const siegesImpossibles = !!sieges && !sieges.combinables;
+    // Chaque véhicule emporte SON conducteur (revue du 29/09, aligné sur la répartition de la
+    // feuille) : N places demandées conducteur compris = N − 1 passagers, et un véhicule de S places
+    // en offre S − 1. « 9 + 4 = 13 » ne couvre donc pas 13 places : il y faut 12 passagers, il n'y en a que 11.
+    const connus = libres ? libres.n - libres.inconnues : 0;
+    const passagersLibres = libres ? libres.places - connus : 0;
+    const placesSuffisent = !!libres && libres.n >= 2 && (libres.inconnues > 0 || passagersLibres >= min - 1);
+    const repartissable = placesSuffisent && !siegesImpossibles;
+    if (!libres || libres.n === 0 || repartissable) {
+      const message = messageAucunVehicule({
+        ...contexte,
+        libresToutesTailles: libres ? { n: libres.n, min: libres.min, max: libres.max } : null,
+      });
+      return repartissable ? message + this.noteSiegesRepartition(libres!) : message;
+    }
+    const base = messageAucunVehicule({ ...contexte, libresToutesTailles: null });
+    const pourquoiSieges = 'pas assez de sièges à bord, et le stock ne complète pas ou ne suffit plus';
+    // Assez de places à eux tous, mais aucun partage n'assoit les enfants : c'est le SIÈGE qui manque.
+    if (placesSuffisent) {
+      return (
+        `${base} Sur ce créneau, ${libres.n} véhicules sont libres${fourchettePlaces(libres.min, libres.max)}, ` +
+        `mais aucun ne peut recevoir les sièges auto demandés, même en répartissant le groupe (${pourquoiSieges}). ` +
+        'Installez un siège, ou changez le réglage dans la vue Parc.'
+      );
+    }
+    const siegesNonPlus = siegesImpossibles ? ` Les sièges auto demandés n'y tiennent pas non plus (${pourquoiSieges}).` : '';
+    // Un seul véhicule libre, sans places renseignées : on ne chiffre rien, mais répartir est impossible.
+    if (libres.inconnues > 0) {
+      return `${base} Sur ce créneau, un seul véhicule est libre (nombre de places non renseigné) : impossible de répartir le groupe.${siegesNonPlus}`;
+    }
+    const qui =
+      libres.n === 1
+        ? `un seul véhicule est libre (${libres.places} ${libres.places > 1 ? 'places' : 'place'})`
+        : `${libres.n} véhicules sont libres, ${libres.places} places à eux tous (${passagersLibres} passagers, un conducteur par véhicule)`;
+    return `${base} Sur ce créneau, ${qui} : pas assez pour les ${min} places demandées, même en répartissant le groupe.${siegesNonPlus}`;
+  }
+
+  /**
+   * C6 — la répartition tient : où vont les sièges auto demandés ? Rien à dire quand tous les libres
+   * peuvent les recevoir (ou qu'aucun siège n'est demandé) ; sinon, le véhicule qui doit les porter
+   * est NOMMÉ (jusqu'à trois plaques), ou l'on dit de les répartir aussi quand aucun ne les prend seul.
+   */
+  private noteSiegesRepartition(libres: LibresToutesTailles): string {
+    const s = libres.sieges;
+    if (!s || s.porteurs.length >= libres.n) return '';
+    if (s.porteurs.length === 0) {
+      return ' Aucun de ces véhicules ne peut recevoir à lui seul tous les sièges auto demandés : répartissez-les aussi entre les réservations.';
+    }
+    const k = s.porteurs.length;
+    const qui =
+      k === 1 ? s.porteurs[0]
+        : k <= 3 ? `${s.porteurs.slice(0, -1).join(', ')} ou ${s.porteurs[k - 1]}`
+          : `${k} de ces véhicules`;
+    return ` Les sièges auto demandés ne peuvent aller que sur ${qui} : mettez-les sur la réservation de ${k === 1 ? 'ce véhicule' : 'l’un d’eux'}.`;
   }
 
   private async resolveScope(
@@ -440,9 +782,11 @@ export class ReservationsService {
    * `excludeRequested` : traite AUSSI les demandes en attente (REQUESTED) comme occupantes — un
    * demandeur public ne doit pas voir un véhicule déjà réservé NI déjà suggéré/demandé pour un autre.
    *
-   * ⚠️ Le résultat porte les compteurs d'exclusion (dont `excludedDormant`) : ce sont des
-   * informations INTERNES (état du parc). L'appelant public ne consomme que `vehicles` — ne jamais
-   * remonter ces chiffres dans une réponse du lien public (anti-sondage de l'état de la flotte).
+   * ⚠️ Le résultat porte les compteurs d'exclusion (dont `excludedDormant`, et depuis le 29/09
+   * `excludedTooSmall` et `largestSeats`) : ce sont des informations INTERNES (état du parc).
+   * L'appelant public ne consomme que `vehicles` — ne jamais remonter ces chiffres dans une réponse
+   * du lien public (anti-sondage de l'état de la flotte). Ce chemin ne construit AUCUN message
+   * `messageAucunVehicule` : il rend le DTO, il ne lève pas.
    */
   async availableForFleet(
     fleetId: string,
@@ -505,14 +849,27 @@ export class ReservationsService {
     // Les sièges auto, eux, se jugent APRÈS l'occupation (plus bas) : sièges à bord + stock du
     // créneau, selon la politique de la société.
     let excludedUnknownCapacity = 0;
+    // « 12 places » (29/09) : les véhicules trop PETITS sont comptés aussi. Sans ce compte, un vivier
+    // vidé par la taille se lisait « aucun véhicule libre sur ce créneau » — on cherchait un conflit
+    // d'horaire qui n'existait pas, pendant que le panneau du jour affichait 7 véhicules sur 8 libres.
+    let excludedTooSmall = 0;
     const capacityOk = candidates.filter((v) => {
       if (c.minSeats && v.seats == null) {
         excludedUnknownCapacity++;
         return false;
       }
-      if (c.minSeats && (v.seats ?? 0) < c.minSeats) return false;
+      if (c.minSeats && (v.seats ?? 0) < c.minSeats) {
+        excludedTooSmall++;
+        return false;
+      }
       return true;
     });
+    // Le plus grand véhicule EN SERVICE du périmètre (les hors-service sont déjà hors de `candidates`),
+    // occupé ou non : c'est lui qui dit « aucun véhicule de 12 places, le plus grand en a 9 ».
+    const placesConnues = candidates
+      .map((v) => v.seats)
+      .filter((s): s is number => typeof s === 'number' && s > 0);
+    const largestSeats = placesConnues.length > 0 ? Math.max(...placesConnues) : null;
 
     // Disponibilité des sièges auto sur le créneau — quand la société est connue. Lue en parallèle
     // du reste : c'est une requête de plus, mais une seule, et seulement si un stock peut exister.
@@ -543,6 +900,8 @@ export class ReservationsService {
       excludedUnknownCapacity,
       excludedImmobilized,
       excludedDormant,
+      excludedTooSmall,
+      largestSeats,
     });
     if (matching.length === 0) return empty(0);
 
@@ -662,6 +1021,8 @@ export class ReservationsService {
       excludedUnknownCapacity,
       excludedImmobilized,
       excludedDormant,
+      excludedTooSmall,
+      largestSeats,
     };
   }
 
@@ -718,21 +1079,40 @@ export class ReservationsService {
         // Seule surface HUMAINE où le compteur d'exclusion disparaîtrait : ici on ne renvoie pas le
         // DTO, on lève. Sans la mention, l'exploitant lit « aucun véhicule » comme « agenda plein »
         // et part chercher un conflit de créneau qui n'existe pas, alors que le vrai sujet est un
-        // boîtier muet (batterie débranchée, SIM coupée) à faire réparer. Une exclusion ne fait
-        // jamais baisser un chiffre client en silence — y compris dans un message d'erreur.
-        // Chemin AUTHENTIFIÉ (le lien public passe par systemRequest) : aucune fuite d'état de parc.
-        // Sièges auto (28/09) : quand ce sont les sièges qui ont vidé le vivier, le dire — sinon
-        // l'exploitant cherche un créneau libre alors qu'il lui manque un siège à bord ou en stock.
-        throw new BadRequestException(
-          (sug.excludedChildSeats ?? 0) > 0
-            ? `Aucun véhicule libre ne peut recevoir les sièges auto demandés sur ce créneau (${sug.excludedChildSeats} véhicule(s) écarté(s) : pas assez de sièges à bord, et le stock ne complète pas ou ne suffit plus). Choisissez un véhicule équipé, installez un siège, ou changez le réglage dans Paramètres de l'agenda.`
-            : sug.excludedDormant > 0
-              ? `Aucun véhicule libre ne correspond aux critères sur ce créneau (${sug.excludedDormant} véhicule(s) écarté(s) : boîtier muet depuis plus de 7 jours).`
-              : 'Aucun véhicule libre ne correspond aux critères sur ce créneau.',
-        );
+        // boîtier muet (batterie débranchée, SIM coupée) à faire réparer, un siège auto qui manque —
+        // ou, le 29/09 à 05:10 sur Client test, un groupe de 12 pour un parc dont le plus grand
+        // véhicule a 9 places. Une exclusion ne fait jamais baisser un chiffre client en silence —
+        // y compris dans un message d'erreur. Un seul constructeur pour tous ces cas
+        // (`messageAucunVehicule`), partagé avec la réaffectation.
+        // Chemin AUTHENTIFIÉ (le lien public passe par availableForFleet + systemRequest, qui ne
+        // construisent aucun de ces messages) : aucune fuite d'état de parc.
+        const minSeats = this.sanitizeCriteria(dto.criteria).minSeats ?? null;
+        const contexte = this.contexteAucunVehicule(sug, minSeats);
+        // « 12 places » : ce sont les places qui ont vidé le vivier. Relire le créneau SANS le plancher
+        // dit combien de véhicules sont libres et de quelle taille — de quoi répartir le groupe, ou dire
+        // que même répartis ils ne suffisent pas. Seulement ici : c'est une requête de plus, sur le seul
+        // chemin qui en a besoin — et jamais quand ce sont les sièges auto qui ont vidé le vivier
+        // (`contexte.excludedTooSmall` vaut alors 0 : les petits véhicules n'y sont pour rien).
+        const libres =
+          minSeats && (contexte.excludedTooSmall ?? 0) > 0 ? await this.libresToutesTailles(user, dto) : null;
+        throw new BadRequestException(this.messageDemandeSansVehicule(contexte, libres));
       }
       vehicleId = sug.vehicles[0].vehicleId;
       fleetId = await this.events.assertVehicleAccess(user, vehicleId);
+    }
+
+    // « 12 places » (29/09) — le choix EXPLICITE d'un véhicule trop petit pour le plancher saisi : 400
+    // avant tout contrôle de créneau (c'est le choix qui est faux, pas l'agenda). Le vivier écarte déjà
+    // ces véhicules pour une demande ouverte ; le choix à la main passait, et la réservation annonçait
+    // 12 places dans une voiture de 9. Aucun flux légitime n'envoie un tel couple : l'IA de placement
+    // (« Suggérer avec l'IA », seule source de pré-sélection de la feuille Réserver) propose depuis ce
+    // même vivier, donc jamais sous `minSeats` ; une demande publique répartie ne porte pas `minSeats`
+    // (seulement `seatsNeeded`) et passe par systemRequest. Jamais en rétroactif : on consigne ce qui a
+    // roulé, pas une promesse. La même règle tient à l'édition (`update()`, dès que le véhicule ou le
+    // plancher change), à la validation qui déplace (`confirm()`) et à la réaffectation vers un véhicule
+    // choisi (`reaffecter()`) — revue du 29/09, C8.
+    if (dto.vehicleId && !retro) {
+      await this.assertAssezDePlaces(vehicleId, this.sanitizeCriteria(dto.criteria).minSeats);
     }
 
     // Une réservation FERME existante (une autre réservation) sur le créneau rend la demande caduque —
@@ -815,6 +1195,9 @@ export class ReservationsService {
       // Déclencheur agent : une réservation HUMAINE À VENIR vient d'être créée (l'agent décide selon
       // son toggle). Une consignation rétroactive (créneau passé) n'a rien à optimiser → pas de trigger.
       if (!retro) this.emitter?.emit('agenda-agent.trigger', { fleetId, kind: 'reservation' });
+      // Journal (29/09) : la demande, la création ferme ou la consignation — jamais un événement de
+      // plus (les courriels ne changent pas), seulement une ligne dans le journal métier.
+      this.tracerCreation(user, row, { retro, auto: !dto.vehicleId });
       return this.toDto(row);
     } catch (err) {
       // Une réservation FERME (CONFIRMED) est soumise à la contrainte EXCLUDE : traduire
@@ -851,6 +1234,11 @@ export class ReservationsService {
       // et `reaffecter()` — l'origine est contrôlée juste au-dessus, la cible ici.
       await this.cibleDeLaMemeSociete(user, resa, dto.vehicleId); // réaffectation
       await this.exigerGestion(user, dto.vehicleId, MESSAGE_CIBLE_NON_GEREE);
+      // C8 (revue du 29/09) — valider EN DÉPLAÇANT vers un véhicule plus petit que le plancher saisi
+      // à la demande : même 400 que `request()` et `update()`. Sans déplacement, rien de neuf n'est
+      // choisi : une demande ancienne déjà incohérente se valide telle quelle.
+      const criteresDemande = (resa.metadata as { criteria?: RequestReservationDto['criteria'] } | null)?.criteria;
+      await this.assertAssezDePlaces(dto.vehicleId, this.sanitizeCriteria(criteresDemande).minSeats);
       vehicleId = dto.vehicleId;
     }
 
@@ -917,7 +1305,9 @@ export class ReservationsService {
         endAt: row.endAt ? row.endAt.toISOString() : null,
         metadata: (row.metadata as Record<string, unknown> | null) ?? null,
       });
-      this.tracerDecision('validee', user, row);
+      this.tracerDecision('validee', user, row, {
+        vehiculeAvant: vehicleId !== resa.vehicleId ? { id: resa.vehicleId, plate: resa.vehicle?.plate ?? null } : null,
+      });
       return this.toDto(row);
     } catch (err) {
       if (this.isExclusionConflict(err)) {
@@ -948,8 +1338,7 @@ export class ReservationsService {
      * Seule exception : retirer SA PROPRE demande encore en attente — ce n'est pas gérer Sud, c'est
      * reprendre ce qu'on a soi-même déposé.
      */
-    const meta = (resa.metadata as { requesterId?: unknown } | null) ?? null;
-    const retraitDeSaDemande = resa.status === VehicleEventStatus.REQUESTED && meta?.requesterId === user.id;
+    const retraitDeSaDemande = estRetraitDeSaDemande(resa.status, resa.metadata, user.id);
     if (!retraitDeSaDemande) await this.exigerGestion(user, resa.vehicleId, this.messageNonGeree(resa, 'annuler'));
     const etait = resa.status;
     const row = await this.prisma.vehicleEvent.update({
@@ -957,16 +1346,23 @@ export class ReservationsService {
       data: { status: VehicleEventStatus.CANCELLED, resolvedAt: new Date() },
       include: INCLUDE_PLATE,
     });
-    // « Refusée » et « annulée » sont deux gestes différents pour un même appel : refuser une
-    // demande en attente n'a pas le même sens qu'annuler une réservation déjà ferme. Le journal
-    // doit les distinguer, sinon il raconte une histoire fausse.
-    this.tracerDecision(etait === VehicleEventStatus.REQUESTED ? 'refusee' : 'annulee', user, row);
+    // « Refusée », « retirée » et « annulée » sont trois gestes différents pour un même appel :
+    // refuser la demande de quelqu'un, retirer SA propre demande, annuler une réservation déjà ferme.
+    // Le journal doit les distinguer, sinon il raconte une histoire fausse — revue du 29/09 (C4) : un
+    // gestionnaire de Nord qui retirait sa demande sur Sud était écrit « Demande refusée » sur Sud, en
+    // rouge, comme s'il avait tranché chez des véhicules qu'il ne gère pas.
+    const quoi = etait !== VehicleEventStatus.REQUESTED ? 'annulee' : retraitDeSaDemande ? 'retiree' : 'refusee';
+    this.tracerDecision(quoi, user, row, { lot: interne?.lot });
     const ecrite = this.toDto(row);
     if (!interne?.silencieux) {
       // F16 (recette du 28/09) : le demandeur d'une demande PUBLIQUE apprenait la validation, jamais
       // le refus — il attendait un véhicule qui ne viendrait pas. Même événement que la confirmation,
       // l'autre verbe ; le notifier ne réagit qu'aux demandes publiques avec un contact.
-      if (etait === VehicleEventStatus.REQUESTED) this.annoncerRefus(ecrite);
+      // Un RETRAIT n'est pas un refus (C4) : rien à annoncer. Sans effet sur les courriels — un retrait
+      // ne vise qu'une demande interne (`requesterId`), que le notifier ignorait déjà.
+      if (etait === VehicleEventStatus.REQUESTED) {
+        if (quoi === 'refusee') this.annoncerRefus(ecrite);
+      }
       // T2 — et une réservation publique DÉJÀ CONFIRMÉE qu'on annule : le demandeur avait reçu
       // « confirmée — AA-111-BB » et se présentait pour une réservation annulée.
       else if (this.annulationAAnnoncer(etait, ecrite)) this.annoncerAnnulation(ecrite);
@@ -1034,19 +1430,113 @@ export class ReservationsService {
    * une validation d'aboutir.
    */
   private tracerDecision(
-    quoi: 'validee' | 'refusee' | 'annulee',
+    quoi: 'validee' | 'refusee' | 'retiree' | 'annulee',
     user: AuthUser,
-    row: { id: string; fleetId: string; startAt: Date; vehicle?: { plate: string | null } | null },
+    row: {
+      id: string;
+      fleetId: string;
+      vehicleId?: string;
+      startAt: Date;
+      endAt?: Date | null;
+      metadata?: unknown;
+      vehicle?: { plate: string | null } | null;
+    },
+    extra?: { lot?: string; vehiculeAvant?: { id: string; plate: string | null } | null },
   ): void {
-    const libelle = quoi === 'validee' ? 'validée' : quoi === 'refusee' ? 'refusée' : 'annulée';
-    this.systemActivity?.record?.({
-      category: 'RESERVATION',
-      action: `reservation_${quoi}`,
-      status: 'SUCCESS',
-      actor: 'utilisateur',
-      detail: `Réservation ${libelle} — ${row.vehicle?.plate ?? 'véhicule inconnu'}, ${row.startAt.toISOString()}`,
-      fleetId: row.fleetId,
-      meta: { reservationId: row.id, parUtilisateur: user.id, plaque: row.vehicle?.plate ?? null },
+    this.journaliser(`reservation_${quoi}`, user, () => {
+      const plaque = row.vehicle?.plate ?? null;
+      const quoiLisible =
+        quoi === 'validee' ? 'Réservation validée'
+          : quoi === 'refusee' ? 'Demande refusée'
+            : quoi === 'retiree' ? 'Demande retirée par son auteur'
+              : 'Réservation annulée';
+      const deplacee = extra?.vehiculeAvant ? ` (véhicule ${extra.vehiculeAvant.plate ?? '?'} → ${plaque ?? '?'})` : '';
+      return {
+        fleetId: row.fleetId,
+        plaque,
+        detail: `${quoiLisible} — ${plaque ?? 'véhicule inconnu'}, ${creneauParis(row.startAt, row.endAt)}${deplacee}`,
+        meta: {
+          reservationId: row.id,
+          vehicleId: row.vehicleId ?? null,
+          bookingRef: this.bookingRefOf(row.metadata),
+          parUtilisateur: user.id,
+          plaque,
+          ...(extra?.vehiculeAvant ? { vehiculeAvant: extra.vehiculeAvant.id, plaqueAvant: extra.vehiculeAvant.plate } : {}),
+          ...(extra?.lot ? { lot: extra.lot } : {}),
+        },
+      };
+    });
+  }
+
+  /**
+   * ── LE JOURNALISEUR UNIQUE (29/09) ──────────────────────────────────────────────────────────
+   *
+   * Toutes les lignes que ce service écrit dans `system_activity_logs` passent ICI : demande,
+   * création, consignation, validation, refus, annulation, modification, réaffectation, décalage,
+   * scission, réorganisation. Les règles, dites une fois :
+   *  - `category` RESERVATION, `actor` 'utilisateur' (jamais un nom en texte libre : le fil client
+   *    affiche « Équipe Tracky » pour un super-admin, il ne doit pas le trouver écrit ailleurs) ;
+   *  - `fleetId` = la société de la RESSOURCE — un super-admin agit sur la société d'un client, et
+   *    c'est dans l'activité de CE client que son geste doit apparaître ;
+   *  - `triggeredByUserId` = la personne réelle ;
+   *  - le détail est en heure de Paris ; `meta` garde les identifiants.
+   *
+   * La ligne est CONSTRUITE dans le `try` (`construire` est paresseux) : ni un journal absent
+   * (service optionnel, specs), ni une donnée inattendue au moment de rédiger le détail ne peuvent
+   * faire échouer le geste — il a déjà été écrit quand on le raconte.
+   */
+  private journaliser(action: ActionJournal, user: AuthUser | null | undefined, construire: () => EntreeJournal): void {
+    const journal = this.systemActivity;
+    if (!journal?.record) return;
+    try {
+      const e = construire();
+      journal.record({
+        category: 'RESERVATION',
+        action,
+        status: e.status ?? 'SUCCESS',
+        actor: 'utilisateur',
+        target: e.plaque ?? null,
+        detail: e.detail,
+        fleetId: e.fleetId,
+        triggeredByUserId: user?.id ?? null,
+        meta: e.meta ?? null,
+      });
+    } catch {
+      // Le journal observe le geste ; il ne l'empêche jamais (SystemActivityService.record ne jette
+      // déjà pas — ce filet couvre la rédaction de la ligne elle-même).
+    }
+  }
+
+  /** `request()` — la réservation qui vient d'être posée : demande, création ferme ou consignation. */
+  private tracerCreation(user: AuthUser, row: EventRow, opts: { retro: boolean; auto: boolean }): void {
+    const action: ActionJournal = opts.retro
+      ? 'reservation_consignee'
+      : row.status === VehicleEventStatus.CONFIRMED
+        ? 'reservation_creee'
+        : 'reservation_demandee';
+    this.journaliser(action, user, () => {
+      const plaque = row.vehicle?.plate ?? null;
+      const quoi =
+        action === 'reservation_consignee' ? 'Réservation consignée (déjà effectuée)'
+          : action === 'reservation_creee' ? 'Réservation créée'
+            : 'Demande de réservation';
+      const titre = row.title && row.title !== 'Réservation' ? ` · ${cite(row.title)}` : '';
+      return {
+        fleetId: row.fleetId,
+        plaque,
+        detail:
+          `${quoi} — ${plaque ?? 'véhicule inconnu'}, ${creneauParis(row.startAt, row.endAt)}${titre}` +
+          (opts.auto ? ' (véhicule attribué automatiquement)' : ''),
+        meta: {
+          reservationId: row.id,
+          vehicleId: row.vehicleId,
+          statut: row.status,
+          attribueAuto: opts.auto,
+          bookingRef: this.bookingRefOf(row.metadata),
+          startAt: row.startAt.toISOString(),
+          endAt: row.endAt ? row.endAt.toISOString() : null,
+        },
+      };
     });
   }
 
@@ -1165,6 +1655,23 @@ export class ReservationsService {
     const criteresApres = dto.criteria !== undefined
       ? ChildSeatsService.criteresPropres(dto.criteria)
       : ((metaActuelle['criteria'] as RequestReservationDto['criteria'] | null | undefined) ?? null);
+    const vivante = resa.status !== VehicleEventStatus.DONE && resa.status !== VehicleEventStatus.CANCELLED;
+    /**
+     * Revue du 29/09 (C8) — « véhicule trop petit » : la règle de `request()` tient aussi à l'édition.
+     * « 8 places min. » déplacée sur un 4 places, ou « Places min. » montée à 12 sur un 9 places,
+     * répondait 200 : la réservation annonçait 8 places dans une voiture de 4 (la feuille l'affichait,
+     * sans que rien ne le refuse). Contrôlé AVANT la scission (retour anticipé, plus bas) : un seul
+     * appel couvre l'édition, la scission lancée depuis l'édition et `reaffecter()` non scindé.
+     * On compare les VALEURS, pas la présence des champs : la feuille renvoie toujours `criteria`, et
+     * une réservation ancienne déjà incohérente doit rester modifiable (motif, titre, créneau) tant
+     * qu'on ne touche ni au véhicule ni au plancher. Jamais en rétroactif (on consigne ce qui a roulé),
+     * jamais une réservation close ; places inconnues : pas de refus (cf. `assertAssezDePlaces`).
+     */
+    if (vivante && !isRetro) {
+      const minAvant = this.sanitizeCriteria(metaActuelle['criteria'] as RequestReservationDto['criteria']).minSeats;
+      const minApres = this.sanitizeCriteria(criteresApres ?? undefined).minSeats;
+      if (vehicleChanged || minApres !== minAvant) await this.assertAssezDePlaces(targetVehicleId, minApres);
+    }
     let metaApres: Record<string, unknown> | null = null;
     if (dto.reason !== undefined || dto.criteria !== undefined || dto.group !== undefined) {
       metaApres = {
@@ -1195,6 +1702,7 @@ export class ReservationsService {
         metadata: metaApres,
         criteres: criteresApres,
         silencieux: interne?.silencieux,
+        lot: interne?.lot,
       });
     }
 
@@ -1224,7 +1732,6 @@ export class ReservationsService {
     // réservation ferme comme pour une demande encore en attente (le valideur ne doit pas hériter
     // d'un refus). Une réservation close ne bouge plus ; une rétroactive n'engage plus rien. Jugé sur
     // la partie À VENIR (C44) : les heures écoulées n'engagent plus aucun siège du stock.
-    const vivante = resa.status !== VehicleEventStatus.DONE && resa.status !== VehicleEventStatus.CANCELLED;
     if (vivante && !isRetro && end && (slotChanged || dto.criteria !== undefined || vehicleChanged)) {
       const debutUtile = start.getTime() >= maintenant ? start : new Date(maintenant);
       if (debutUtile.getTime() < end.getTime()) {
@@ -1238,11 +1745,27 @@ export class ReservationsService {
       }
     }
 
+    // Journal (29/09) : ce qui change VRAIMENT, comparé à la base — pas ce que le client a renvoyé.
+    // La feuille d'édition renvoie critères et groupe à chaque enregistrement : sans cette comparaison,
+    // un « Enregistrer » sans rien toucher écrirait « Réservation modifiée ».
+    const changements = this.changementsDe(resa, {
+      vehicleChanged,
+      targetVehicleId,
+      slotChanged,
+      start,
+      end,
+      title: data.title as string | undefined,
+      reason: dto.reason,
+      groupe: dto.group !== undefined ? { apres: (metaApres?.['group'] as ReservationGroupDto | null | undefined) ?? null } : undefined,
+      criteres: dto.criteria !== undefined ? { apres: criteresApres } : undefined,
+    });
+
     try {
       const row = await this.prisma.vehicleEvent.update({ where: { id }, data, include: INCLUDE_PLATE });
       const ecrite = this.toDto(row);
       // Silencieux : la réorganisation prévient une fois par demande groupée, après sa boucle (R3).
       if (!interne?.silencieux && !isRetro && (vehicleChanged || slotChanged)) this.annoncerModification(resa.status, ecrite);
+      this.tracerModification(user, resa, row, changements, interne);
       return ecrite;
     } catch (err) {
       if (this.isExclusionConflict(err)) {
@@ -1250,6 +1773,129 @@ export class ReservationsService {
       }
       throw err;
     }
+  }
+
+  /**
+   * Journal (29/09) — ce qu'une écriture de `update()` change VRAIMENT par rapport à la base. Vide =
+   * rien à journaliser (un « Enregistrer » qui renvoie les mêmes valeurs n'est pas une modification).
+   */
+  private changementsDe(
+    resa: EventRow,
+    x: {
+      vehicleChanged: boolean;
+      targetVehicleId: string;
+      slotChanged: boolean;
+      start: Date;
+      end: Date | null;
+      title: string | undefined;
+      reason: unknown;
+      groupe?: { apres: ReservationGroupDto | null };
+      criteres?: { apres: RequestReservationDto['criteria'] | null };
+    },
+  ): Changements {
+    const meta = (resa.metadata as Record<string, unknown> | null) ?? {};
+    const out: Changements = {};
+    if (x.vehicleChanged) out.vehicule = { avant: resa.vehicleId, apres: x.targetVehicleId };
+    if (x.slotChanged) {
+      out.creneau = { avant: { debut: resa.startAt, fin: resa.endAt }, apres: { debut: x.start, fin: x.end } };
+    }
+    if (x.title !== undefined && x.title !== resa.title) out.titre = { avant: resa.title, apres: x.title };
+    if (x.reason !== undefined) {
+      const avant = typeof meta['reason'] === 'string' ? (meta['reason'] as string).trim() : '';
+      const apres = typeof x.reason === 'string' ? x.reason.trim() : '';
+      if (avant !== apres) out.motif = { avant: avant || null, apres: apres || null };
+    }
+    if (x.groupe) {
+      const avant = ReservationsService.groupeDe(meta);
+      const apres = x.groupe.apres;
+      if ((avant?.id ?? null) !== (apres?.id ?? null) || (avant?.name ?? '') !== (apres?.name ?? '')) {
+        out.groupe = { avant, apres };
+      }
+    }
+    if (x.criteres) {
+      // Les deux côtés passent par la même mise au propre : l'ordre des clés est le même, un `{}` vaut null.
+      const avant = ChildSeatsService.criteresPropres(meta['criteria'] as RequestReservationDto['criteria']);
+      const apres = ChildSeatsService.criteresPropres(x.criteres.apres ?? null);
+      if (JSON.stringify(avant) !== JSON.stringify(apres)) out.criteres = { avant, apres };
+    }
+    return out;
+  }
+
+  /**
+   * Journal (29/09) — UNE ligne par écriture de `update()`, et seulement si quelque chose a changé :
+   *  - appelée par `reaffecter()` (motif `reaffectation`) : « Réservation réaffectée », véhicule A → B ;
+   *  - appelée par Réorganiser → Décaler (motif `decalage`) : « Réservation décalée » ;
+   *  - sinon (feuille d'édition) : « Réservation modifiée », avec avant → après champ par champ.
+   * Une scission n'arrive pas ici : `scinder()` écrit sa propre ligne.
+   */
+  private tracerModification(
+    user: AuthUser,
+    resa: EventRow,
+    row: EventRow,
+    ch: Changements,
+    interne?: OptionsInternes,
+  ): void {
+    const champs = Object.keys(ch) as (keyof Changements)[];
+    if (champs.length === 0) return;
+    const action: ActionJournal =
+      interne?.motif === 'reaffectation' && ch.vehicule
+        ? 'reservation_reaffectee'
+        : interne?.motif === 'decalage' && ch.creneau
+          ? 'reservation_decalee'
+          : 'reservation_modifiee';
+    this.journaliser(action, user, () => {
+      const plaqueAvant = resa.vehicle?.plate ?? null;
+      const plaque = row.vehicle?.plate ?? plaqueAvant;
+      const morceaux: string[] = [];
+      if (ch.vehicule) morceaux.push(`véhicule ${plaqueAvant ?? '?'} → ${plaque ?? '?'}`);
+      if (ch.creneau) {
+        morceaux.push(
+          `créneau ${creneauParis(ch.creneau.avant.debut, ch.creneau.avant.fin)} devient ${creneauParis(ch.creneau.apres.debut, ch.creneau.apres.fin)}`,
+        );
+      }
+      // Un titre qui ne fait que suivre le motif (T13) ne se dit pas deux fois.
+      const titreSuitMotif = !!ch.motif && !!ch.titre && ch.titre.apres === (ch.motif.apres ?? 'Réservation');
+      if (ch.titre && !titreSuitMotif) morceaux.push(`titre ${cite(ch.titre.avant)} → ${cite(ch.titre.apres)}`);
+      if (ch.motif) morceaux.push(`motif ${cite(ch.motif.avant)} → ${cite(ch.motif.apres)}`);
+      if (ch.groupe) morceaux.push(`groupe ${ch.groupe.avant?.name ?? 'aucun'} → ${ch.groupe.apres?.name ?? 'aucun'}`);
+      if (ch.criteres) morceaux.push(`critères ${decrireCriteres(ch.criteres.avant)} → ${decrireCriteres(ch.criteres.apres)}`);
+      const quoi =
+        action === 'reservation_reaffectee' ? 'Réservation réaffectée'
+          : action === 'reservation_decalee' ? 'Réservation décalée'
+            : 'Réservation modifiée';
+      // Le créneau est toujours situé : dans le morceau « créneau » s'il a bougé, sinon en tête.
+      const situe = ch.creneau ? '' : `, ${creneauParis(row.startAt, row.endAt)}`;
+      const iso = (d: Date | null) => (d ? d.toISOString() : null);
+      return {
+        fleetId: resa.fleetId,
+        plaque,
+        detail: `${quoi} — ${plaque ?? 'véhicule inconnu'}${situe} : ${morceaux.join(' ; ')}`,
+        meta: {
+          reservationId: resa.id,
+          vehicleId: row.vehicleId ?? resa.vehicleId,
+          bookingRef: this.bookingRefOf(resa.metadata),
+          parUtilisateur: user.id,
+          champs,
+          avant: {
+            ...(ch.vehicule ? { vehicleId: ch.vehicule.avant, plaque: plaqueAvant } : {}),
+            ...(ch.creneau ? { startAt: iso(ch.creneau.avant.debut), endAt: iso(ch.creneau.avant.fin) } : {}),
+            ...(ch.titre ? { title: ch.titre.avant } : {}),
+            ...(ch.motif ? { reason: ch.motif.avant } : {}),
+            ...(ch.groupe ? { group: ch.groupe.avant } : {}),
+            ...(ch.criteres ? { criteria: ch.criteres.avant } : {}),
+          },
+          apres: {
+            ...(ch.vehicule ? { vehicleId: ch.vehicule.apres, plaque } : {}),
+            ...(ch.creneau ? { startAt: iso(ch.creneau.apres.debut), endAt: iso(ch.creneau.apres.fin) } : {}),
+            ...(ch.titre ? { title: ch.titre.apres } : {}),
+            ...(ch.motif ? { reason: ch.motif.apres } : {}),
+            ...(ch.groupe ? { group: ch.groupe.apres } : {}),
+            ...(ch.criteres ? { criteria: ch.criteres.apres } : {}),
+          },
+          ...(interne?.lot ? { lot: interne.lot } : {}),
+        },
+      };
+    });
   }
 
   /**
@@ -1468,6 +2114,18 @@ export class ReservationsService {
       if (soeurs.has(cible)) {
         throw new ConflictException('Ce véhicule porte déjà une autre ligne de la même demande sur ce créneau.');
       }
+      /**
+       * C8 (revue du 29/09) — une cible CHOISIE plus petite que le plancher SAISI : 400, comme
+       * `request()` et `update()`. Ici et pas seulement dans `update()` : la scission appelle `scinder()`
+       * sans passer par lui. Le plancher DÉRIVÉ de `criteresDeReaffectation` (places du véhicule
+       * d'origine, `seatsNeeded`) n'est PAS utilisé : il borne la recherche automatique, il n'interdit
+       * pas un choix humain — trois personnes réservées sur un 9 places, sans « Places min. », passent
+       * à la main sur un 5 places. Jamais en rétroactif (même règle qu'`update()`).
+       */
+      const metaResa = (resa.metadata as { criteria?: RequestReservationDto['criteria']; retroactive?: unknown } | null) ?? null;
+      if (metaResa?.retroactive !== true) {
+        await this.assertAssezDePlaces(cible, this.sanitizeCriteria(metaResa?.criteria).minSeats);
+      }
     } else {
       const { criteres, minSeats } = await this.criteresDeReaffectation(resa);
       const sug = await this.suggest(
@@ -1485,12 +2143,13 @@ export class ReservationsService {
       if (!cible) throw new ConflictException(this.motifAucunCandidat(sug, libres.length, minSeats));
     }
 
-    if (aScinder) return this.scinder(user, resa, cible, coupe, { fin, silencieux: interne?.silencieux });
+    if (aScinder) return this.scinder(user, resa, cible, coupe, { fin, silencieux: interne?.silencieux, lot: interne?.lot });
     // C1 — une demande EN ATTENTE : `update()` ne contrôle que les réservations fermes. Mêmes
     // contrôles que `request()` et `confirm()`, sinon la demande atterrit sur un véhicule pris et le
     // valideur hérite d'un refus (« Validé 1 sur 2 »).
     if (resa.status === VehicleEventStatus.REQUESTED) await this.controlerCible(cible, resa.startAt, fin, resa.id);
-    return this.update(user, id, { vehicleId: cible }, interne);
+    // Journal : `update()` écrit UNE ligne « réaffectée » (véhicule A → B), pas un « modifiée » générique.
+    return this.update(user, id, { vehicleId: cible }, { ...interne, motif: 'reaffectation' });
   }
 
   /**
@@ -1593,17 +2252,25 @@ export class ReservationsService {
   }
 
   /**
-   * « Aucun remplaçant » qui dit POURQUOI : un plancher de places écarte les véhicules dont le nombre
-   * de places n'est pas renseigné, et une exclusion ne doit jamais se lire comme un agenda plein.
+   * « Aucun remplaçant » qui dit POURQUOI : un plancher de places écarte les véhicules trop petits ou
+   * dont le nombre de places n'est pas renseigné, et une exclusion ne doit jamais se lire comme un
+   * agenda plein. Même constructeur que `request()` (29/09, « 12 places »), au « autre » près — plus
+   * les véhicules libres que l'appelant ne gère pas (D1), qui n'existent que sur ce chemin.
    */
   private motifAucunCandidat(sug: SuggestReservationResultDto, sansDroit: number, minSeats: number | null): string {
-    const details: string[] = [];
-    if (sansDroit > 0) details.push(`${sansDroit} véhicule(s) libre(s) dont vous ne gérez pas les réservations`);
-    if (sug.excludedUnknownCapacity > 0) details.push(`${sug.excludedUnknownCapacity} écarté(s) faute de nombre de places renseigné`);
-    if ((sug.excludedChildSeats ?? 0) > 0) details.push(`${sug.excludedChildSeats} écarté(s) : sièges auto insuffisants`);
-    if (sug.excludedDormant > 0) details.push(`${sug.excludedDormant} écarté(s) : boîtier muet depuis plus de 7 jours`);
-    const places = minSeats ? ` (au moins ${minSeats} places)` : '';
-    return `Aucun autre véhicule libre et conforme sur ce créneau${places}${details.length > 0 ? ` — ${details.join(' ; ')}` : ''}.`;
+    const contexte = this.contexteAucunVehicule(sug, minSeats);
+    if (sansDroit === 0) return messageAucunVehicule({ ...contexte, autre: true });
+    // Des véhicules libres ET conformes existent (ceux que l'appelant ne gère pas) : ils ont passé le
+    // plancher de places ET les sièges auto. Ni la taille ni les sièges n'expliquent le refus —
+    // « aucun véhicule d'au moins N places n'est libre » ou « aucun véhicule libre ne peut recevoir les
+    // sièges auto » seraient faux (relecture du 29/09). Les écartés pour leurs sièges restent NOMMÉS, en
+    // complément, comme le faisait le motif d'avant le constructeur.
+    const sieges = contexte.excludedChildSeats ?? 0;
+    const base = messageAucunVehicule({ ...contexte, excludedTooSmall: 0, excludedChildSeats: 0, autre: true });
+    return (
+      `${base} Hors de vos droits : ${sansDroit} véhicule(s) libre(s) dont vous ne gérez pas les réservations.` +
+      (sieges > 0 ? ` (${sieges} autre(s) écarté(s) : sièges auto insuffisants.)` : '')
+    );
   }
 
   /**
@@ -1636,6 +2303,8 @@ export class ReservationsService {
       criteres?: RequestReservationDto['criteria'] | null;
       /** R3 — la réorganisation prévient elle-même, une fois par demande groupée. */
       silencieux?: boolean;
+      /** Journal — le geste de masse dont cette scission fait partie. */
+      lot?: string;
     },
   ): Promise<VehicleEventDto> {
     const { fin } = opts;
@@ -1687,16 +2356,27 @@ export class ReservationsService {
       }
       throw err;
     }
-    this.systemActivity?.record?.({
-      category: 'RESERVATION',
-      action: 'reservation_scindee',
-      status: 'SUCCESS',
-      actor: 'utilisateur',
-      detail:
-        `Réservation scindée — ${resa.vehicle?.plate ?? 'véhicule inconnu'} jusqu'à ${coupe.toISOString()}, ` +
-        `suite sur ${suite.vehicle?.plate ?? 'véhicule inconnu'} jusqu'à ${fin.toISOString()}`,
-      fleetId: resa.fleetId,
-      meta: { reservationId: resa.id, suiteId: suite.id, coupe: coupe.toISOString(), parUtilisateur: user.id },
+    this.journaliser('reservation_scindee', user, () => {
+      const plaque = resa.vehicle?.plate ?? null;
+      const plaqueSuite = suite.vehicle?.plate ?? null;
+      return {
+        fleetId: resa.fleetId,
+        plaque,
+        detail:
+          `Réservation scindée — ${plaque ?? 'véhicule inconnu'} garde ${creneauParis(resa.startAt, coupe)}, ` +
+          `la suite part sur ${plaqueSuite ?? 'véhicule inconnu'} (${creneauParis(coupe, fin)})`,
+        meta: {
+          reservationId: resa.id,
+          suiteId: suite.id,
+          vehicleId: resa.vehicleId,
+          versVehicleId: cible,
+          plaqueSuite,
+          coupe: coupe.toISOString(),
+          bookingRef: this.bookingRefOf(resa.metadata),
+          parUtilisateur: user.id,
+          ...(opts.lot ? { lot: opts.lot } : {}),
+        },
+      };
     });
     const ecrite = this.toDto(suite);
     if (!opts.silencieux) this.annoncerModification(resa.status, ecrite);
@@ -1822,6 +2502,14 @@ export class ReservationsService {
 
     const plafonne = candidates.length > MAX_REORGANISATION;
     const lot = candidates.slice(0, MAX_REORGANISATION);
+    /**
+     * Quatrième revue du 29/09 (C0) — les identifiants EXACTS du lot, rendus en simulation comme à
+     * l'application. L'écran les renvoie en `ids` : la liste blanche ci-dessus fait alors le reste —
+     * une réservation arrivée entre la simulation et le clic n'est pas dans `ids`, elle n'entre pas
+     * dans le lot et n'est jamais écrite ; une réservation sortie du lot en fait baisser le nombre, et
+     * `attendu` refuse (409) sans rien écrire.
+     */
+    const lotIds = lot.map((e) => e.id);
     const apercu = lot.slice(0, 8).map((e) => ({
       plate: e.vehiclePlate,
       startAt: e.startAt,
@@ -1842,10 +2530,29 @@ export class ReservationsService {
      * n'est pas réduit : `concernees` reste `lot.length`, sinon `attendu` ne correspondrait plus.
      */
     const coupeReaffectation = debutDeMinute(Math.max(Date.now(), debut.getTime())).getTime();
-    const refusCertain = (e: VehicleEventDto): string | null =>
-      action === 'reaffecter'
-        ? motifDemandeNonReaffectable(e.status, Date.parse(e.startAt), Date.now(), coupeReaffectation)
+    /**
+     * Relecture du 29/09 (C8 × T4) — vers un véhicule CHOISI, le refus « trop petit » de `reaffecter()`
+     * est lui aussi certain dès la simulation : ni les places de la cible ni le plancher SAISI de la
+     * ligne (`metadata.criteria.minSeats`) ne dépendent de l'occupation. Sans cette annonce, l'écran
+     * comptait « 3 seront reprises » et l'application en refusait 2 : le lot partait à moitié, deux
+     * lignes restant sur le véhicule qui part au garage. Même phrase (`motifPlacesInsuffisantes`), même
+     * exception qu'à l'écriture : jamais en rétroactif, rien si les places sont inconnues, rien pour une
+     * ligne d'une autre société (cf. `placesDeLaCibleChoisie`). Le plancher DÉRIVÉ n'entre pas en compte,
+     * comme dans `reaffecter()`.
+     */
+    const placesCible =
+      action === 'reaffecter' && versVehicleId !== 'auto' && lot.length > 0
+        ? await this.placesDeLaCibleChoisie(user, versVehicleId)
         : null;
+    const refusCertain = (e: VehicleEventDto): string | null => {
+      if (action !== 'reaffecter') return null;
+      const demande = motifDemandeNonReaffectable(e.status, Date.parse(e.startAt), Date.now(), coupeReaffectation);
+      if (demande) return demande; // `reaffecter()` le lève avant de regarder la cible
+      if (!placesCible || e.fleetId !== placesCible.fleetId) return null;
+      const meta = (e.metadata as { criteria?: RequestReservationDto['criteria']; retroactive?: unknown } | null | undefined) ?? null;
+      if (meta?.retroactive === true) return null;
+      return motifPlacesInsuffisantes(placesCible.plate, placesCible.seats, this.sanitizeCriteria(meta?.criteria).minSeats);
+    };
 
     if (simulation) {
       for (const e of lot) {
@@ -1856,6 +2563,7 @@ export class ReservationsService {
         simulation: true, concernees: lot.length, appliquees: 0, refusees, apercu, plafonne, totaux,
         ...(totauxVehicule ? { totauxVehicule } : {}),
         parVehicule,
+        lotIds,
       };
     }
 
@@ -1901,49 +2609,80 @@ export class ReservationsService {
       action === 'decaler'
         ? [...lot].sort((a, b) => Math.sign(decalage) * (Date.parse(b.startAt) - Date.parse(a.startAt)))
         : lot;
+    /**
+     * Journal (29/09) — un identifiant de LOT, porté par chaque ligne unitaire (annulée, refusée,
+     * réaffectée, scindée, décalée) et par les résumés : « ce que ce clic a fait » se relit d'un filtre.
+     * Et UN résumé PAR SOCIÉTÉ présente dans le lot, compté ici : un super-admin en « Toutes les
+     * sociétés » qui réorganise deux clients doit laisser une trace dans l'activité de CHACUN, sur
+     * SES chiffres — pas une ligne orpheline (`fleetId` absent) ni les chiffres de l'autre.
+     */
+    const lotId = randomUUID();
+    const parSociete = new Map<string | null, { concernees: number; appliquees: number; refusees: number; plaques: Set<string> }>();
+    const compteSociete = (e: VehicleEventDto) => {
+      const cle = e.fleetId ?? null;
+      let s = parSociete.get(cle);
+      if (!s) {
+        s = { concernees: 0, appliquees: 0, refusees: 0, plaques: new Set() };
+        parSociete.set(cle, s);
+      }
+      return s;
+    };
+    for (const e of lot) {
+      const s = compteSociete(e);
+      s.concernees++;
+      if (e.vehiclePlate) s.plaques.add(e.vehiclePlate);
+    }
+    const refuser = (e: VehicleEventDto, motif: string) => {
+      refusees.push({ plate: e.vehiclePlate, startAt: e.startAt, motif });
+      compteSociete(e).refusees++;
+    };
     let appliquees = 0;
     for (const e of ordreEcriture) {
       try {
         let ecrite: VehicleEventDto | null = null;
         if (action === 'annuler') {
-          const annulee = await this.cancel(user, e.id, { silencieux: true });
+          const annulee = await this.cancel(user, e.id, { silencieux: true, lot: lotId });
           // Statut lu dans le lot, AVANT l'écriture : c'est lui qui dit « refusée » ou « annulée ».
+          // Sa propre demande retirée (C4) : ni refus ni annulation à annoncer — même règle que `cancel()`.
           const verbe =
-            e.status === VehicleEventStatus.REQUESTED ? 'refus' : this.annulationAAnnoncer(e.status, e) ? 'annulation' : null;
+            e.status === VehicleEventStatus.REQUESTED
+              ? estRetraitDeSaDemande(e.status, e.metadata, user.id) ? null : 'refus'
+              : this.annulationAAnnoncer(e.status, e) ? 'annulation' : null;
           if (verbe) {
             const cle = this.bookingRefOf(e.metadata) ?? e.id;
             const deja = aPrevenirAnnulation.get(cle);
             if (!deja || verbe === 'annulation' || deja.verbe === 'refus') aPrevenirAnnulation.set(cle, { verbe, ligne: annulee });
           }
         } else if (action === 'reaffecter') {
-          // T4 — la même règle qu'en simulation : un refus certain n'est pas tenté.
+          // T4 / C8 — la même règle qu'en simulation : un refus certain n'est pas tenté.
           const motif = refusCertain(e);
           if (motif) {
-            refusees.push({ plate: e.vehiclePlate, startAt: e.startAt, motif });
+            refuser(e, motif);
             continue;
           }
           // R2 — la coupe est le début de la fenêtre, pas « maintenant » : une maintenance jeudi ne
           // retire pas lundi la voiture d'une location lundi → vendredi.
-          ecrite = await this.reaffecter(user, e.id, { versVehicleId, aPartirDe }, { silencieux: true });
+          ecrite = await this.reaffecter(user, e.id, { versVehicleId, aPartirDe }, { silencieux: true, lot: lotId });
         } else {
           const debutNouveau = new Date(new Date(e.startAt).getTime() + decalage * 60_000);
           const finNouvelle = e.endAt ? new Date(new Date(e.endAt).getTime() + decalage * 60_000) : null;
           if (!finNouvelle) {
-            refusees.push({ plate: e.vehiclePlate, startAt: e.startAt, motif: 'Réservation sans heure de fin.' });
+            refuser(e, 'Réservation sans heure de fin.');
             continue;
           }
           if (debutNouveau.getTime() < Date.now()) {
-            refusees.push({ plate: e.vehiclePlate, startAt: e.startAt, motif: 'Le décalage la ferait passer dans le passé.' });
+            refuser(e, 'Le décalage la ferait passer dans le passé.');
             continue;
           }
           ecrite = await this.update(
             user,
             e.id,
             { startAt: debutNouveau.toISOString(), endAt: finNouvelle.toISOString() },
-            { silencieux: true },
+            { silencieux: true, motif: 'decalage', lot: lotId },
           );
         }
         appliquees++;
+        compteSociete(e).appliquees++;
         const meta = (e.metadata as { public?: unknown; retroactive?: unknown } | null | undefined) ?? null;
         if (ecrite && e.status === VehicleEventStatus.CONFIRMED && meta?.public === true && meta.retroactive !== true) {
           aPrevenir.set(this.bookingRefOf(e.metadata) ?? e.id, ecrite);
@@ -1951,11 +2690,7 @@ export class ReservationsService {
       } catch (err) {
         // Garde 4 : le motif REMONTE. Un conflit de créneau (EXCLUDE) ou un refus métier doit se
         // lire ligne par ligne — « 12 sur 108 » sans dire lesquelles ne s'explique pas.
-        refusees.push({
-          plate: e.vehiclePlate,
-          startAt: e.startAt,
-          motif: err instanceof Error ? err.message : 'Refus inattendu.',
-        });
+        refuser(e, err instanceof Error ? err.message : 'Refus inattendu.');
       }
     }
     // Après la boucle : chaque demande prévenue une seule fois, sur son état final (R3, T2).
@@ -1965,25 +2700,45 @@ export class ReservationsService {
       else this.annoncerRefus(ligne);
     }
 
-    this.systemActivity?.record?.({
-      category: 'RESERVATION',
-      action: 'reservations_reorganisees',
-      // `SKIPPED` quand au moins une ligne a été refusée : le journal ne connaît pas de
-      // « partiel », et dire `SUCCESS` sur un lot incomplet ferait passer un refus pour un succès.
-      // Le détail ci-dessous porte les deux nombres.
-      status: refusees.length > 0 ? 'SKIPPED' : 'SUCCESS',
-      actor: 'utilisateur',
-      detail:
-        `Réorganisation (${action}${action === 'decaler' ? ` ${decalage > 0 ? '+' : ''}${decalage} min` : ''}, ` +
-        `origine ${origine}) : ${appliquees} reprise(s), ${refusees.length} refus.`,
-      fleetId: dto?.fleetId,
-      meta: { action, decalage, origine, concernees: lot.length, appliquees, refusees: refusees.length },
-    });
+    // UN résumé par société du lot (un lot vide n'a rien écrit : aucun résumé). Chacun porte les
+    // chiffres de SA société ; `meta.lot` le relie à ses lignes unitaires.
+    const geste =
+      action === 'annuler' ? 'annulation'
+        : action === 'decaler' ? `décalage de ${decalage > 0 ? '+' : ''}${decalage} min`
+          : `réaffectation vers ${versVehicleId === 'auto' ? 'le premier véhicule libre' : 'un véhicule choisi'}`;
+    for (const [fleetId, s] of parSociete) {
+      this.journaliser('reservations_reorganisees', user, () => ({
+        fleetId,
+        // Un seul véhicule dans le lot de cette société (le cas « un véhicule part au garage ») : sa plaque.
+        plaque: s.plaques.size === 1 ? [...s.plaques][0] : null,
+        // `SKIPPED` quand au moins une ligne a été refusée : le journal ne connaît pas de « partiel »,
+        // et dire `SUCCESS` sur un lot incomplet ferait passer un refus pour un succès.
+        status: s.refusees > 0 ? 'SKIPPED' : 'SUCCESS',
+        detail:
+          `Réorganisation appliquée (${geste}, origine ${origine}, fenêtre ${creneauParis(debut, to)}) : ` +
+          `${s.appliquees} reprise(s) sur ${s.concernees}, ${s.refusees} refus.`,
+        meta: {
+          lot: lotId,
+          action,
+          decalage,
+          origine,
+          vehicleId: dto?.vehicleId ?? null,
+          versVehicleId: action === 'reaffecter' ? versVehicleId : null,
+          from: debut.toISOString(),
+          to: to.toISOString(),
+          concernees: s.concernees,
+          appliquees: s.appliquees,
+          refusees: s.refusees,
+          parUtilisateur: user.id,
+        },
+      }));
+    }
 
     return {
       simulation: false, concernees: lot.length, appliquees, refusees, apercu, plafonne, totaux,
       ...(totauxVehicule ? { totauxVehicule } : {}),
       parVehicule,
+      lotIds,
     };
   }
 

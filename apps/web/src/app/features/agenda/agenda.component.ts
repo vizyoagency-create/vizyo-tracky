@@ -64,6 +64,7 @@ import { VehicleLinkDirective } from '../../shared/directives/vehicle-link.direc
 import { AgendaSyncService } from './agenda-sync.service';
 import {
   addMonths,
+  demandeNonReaffectable,
   dureeEnJours,
   estUneEcheance,
   eventColor,
@@ -73,7 +74,9 @@ import {
   fenetreAReorganiser,
   fenetreImmobilisation,
   fenetresAjoutees,
+  libelleVehiculesLibres,
   localIso,
+  placesMaxLibres,
   rangDuJour,
   repliDefinitif,
   severityLabel,
@@ -560,7 +563,9 @@ function groupeReservationId(ev: VehicleEventDto): string | null {
                     <span class="ag-avail-big">{{ dayAvailability().available }}</span>
                     <span class="ag-avail-den">/ {{ dayAvailability().total }}</span>
                   </span>
-                  <span class="ag-avail-lbl">véhicule(s) disponible(s){{ dayContext() === 'today' ? " aujourd'hui" : ' ce jour' }}</span>
+                  <!-- Quatrième revue du 29/09 (« 12 places ») : le compte seul a fait chercher 12 places
+                       dans un parc dont le plus grand véhicule en a 9 — la capacité du plus grand LIBRE le suit. -->
+                  <span class="ag-avail-lbl">{{ libelleVehiculesLibres(dayAvailability().available, dayAvailability().capacite, dayContext() === 'today') }}</span>
                 </div>
                 <div class="ag-avail-bar"><span [style.width.%]="dayAvailability().pct"></span></div>
                 @if (dayAvailability().unavailable.length > 0) {
@@ -998,12 +1003,21 @@ function groupeReservationId(ev: VehicleEventDto): string | null {
                         <div class="ag-resa-main">
                           <span class="ag-resa-title">{{ r.title }}</span>
                           <span class="ag-resa-when">{{ plageHoraire(r) }}@if (dureeEnJours(r) > 1) { · {{ dureeEnJours(r) }} j }@if (r.status === 'REQUESTED') { · demande en attente }@if (groupeReservation(r); as g) { · {{ g }} }</span>
+                          <!-- Quatrième revue du 29/09 (C6) : une demande en attente qui déborde sur le début de
+                               l'immobilisation ne se réaffecte pas (le serveur la refuserait) : on le dit ICI, pas
+                               seulement au survol — un téléphone n'a pas de survol. -->
+                          @if (canValidate() && resasNonReaffectables().has(r.id)) {
+                            <span class="ag-resa-when ag-resa-motif">Demande pas encore validée qui déborde sur l'immobilisation : validez-la ou refusez-la d'abord (Annuler la refuse).</span>
+                          }
                         </div>
                         @if (canValidate()) {
                           <div class="ag-seg ag-seg--mini">
                             <button type="button" class="ag-seg-btn" [class.ag-seg-btn--active]="decisionDe(r.id) === 'laisser'" (click)="decider(r.id, 'laisser')" title="Ne rien changer : la réservation reste sur ce véhicule">Laisser</button>
-                            <button type="button" class="ag-seg-btn" [class.ag-seg-btn--active]="decisionDe(r.id) === 'reaffecter'" (click)="decider(r.id, 'reaffecter')" title="Passer sur le premier véhicule libre et conforme. Commencée avant l'immobilisation, elle est coupée : seule la suite change de véhicule.">Réaffecter</button>
-                            <button type="button" class="ag-seg-btn ag-seg-btn--danger" [class.ag-seg-btn--active]="decisionDe(r.id) === 'annuler'" (click)="decider(r.id, 'annuler')" title="Annuler la réservation">Annuler</button>
+                            <button type="button" class="ag-seg-btn" [class.ag-seg-btn--active]="decisionDe(r.id) === 'reaffecter'" (click)="decider(r.id, 'reaffecter')"
+                                    [disabled]="resasNonReaffectables().has(r.id)"
+                                    [attr.title]="resasNonReaffectables().has(r.id) ? 'Validez-la ou refusez-la d\\'abord : une demande pas encore validée qui déborde sur l\\'immobilisation ne se réaffecte pas.' : 'Passer sur le premier véhicule libre et conforme. Commencée avant l\\'immobilisation, elle est coupée : seule la suite change de véhicule.'">Réaffecter</button>
+                            <button type="button" class="ag-seg-btn ag-seg-btn--danger" [class.ag-seg-btn--active]="decisionDe(r.id) === 'annuler'" (click)="decider(r.id, 'annuler')"
+                                    [attr.title]="r.status === 'REQUESTED' ? 'Refuser la demande' : 'Annuler la réservation'">Annuler</button>
                           </div>
                         }
                       </div>
@@ -1478,6 +1492,9 @@ function groupeReservationId(ev: VehicleEventDto): string | null {
     }
     .ag-seg--mini .ag-seg-btn { min-height: 32px; padding: 5px 8px; font-size: 11.5px; }
     .ag-seg-btn--danger.ag-seg-btn--active { color: var(--texte-alerte); }
+    /* C6 (29/09) : « Réaffecter » grisé sur une demande que le serveur refuserait. */
+    .ag-seg--mini .ag-seg-btn:disabled { opacity: .45; cursor: not-allowed; }
+    .ag-resa-when.ag-resa-motif { color: var(--texte-attente); }
     .ag-resas { display: flex; flex-direction: column; gap: 8px; padding: 10px 11px; border-radius: 12px; background: var(--bg-secondary); border: 1px solid var(--border-subtle); }
     .ag-resas-head { display: flex; align-items: center; justify-content: space-between; }
     .ag-resas-t { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 700; color: var(--fg-primary); }
@@ -1883,6 +1900,12 @@ export class AgendaComponent implements OnInit {
   /** Revue du 29/09 (C17) : la lecture a échoué — ce n'est PAS « aucune réservation ». Null sinon. */
   protected readonly resasPeriodeErreur = signal<string | null>(null);
   protected readonly resasDecisions = signal<Record<string, DecisionResa>>({});
+  /**
+   * Quatrième revue du 29/09 (C6) — demandes EN ATTENTE de la période que « Réaffecter » refuserait à
+   * coup sûr (`demandeNonReaffectable`, calque de la règle du serveur) : « Laisser » par défaut (jamais
+   * « Annuler », qui enverrait un refus au client sans décision), « Réaffecter » grisé.
+   */
+  protected readonly resasNonReaffectables = signal<ReadonlySet<string>>(new Set<string>());
   protected readonly nbDecisions = computed(() => Object.values(this.resasDecisions()).filter((d) => d !== 'laisser').length);
   /**
    * Propositions de l'agent EN ATTENTE — la liste, plus seulement son compte (lot 3a, 23/09).
@@ -2353,7 +2376,8 @@ export class AgendaComponent implements OnInit {
     const total = universe.length;
     const b = this.selectedDayBounds();
     const unavailable: { vehicleId: string; plate: string; kind: 'immobilized' | 'reserved' | 'out_of_service' | 'dormant'; label: string }[] = [];
-    if (!b || total === 0) return { total, available: total, pct: 100, unavailable };
+    // « 12 places » (29/09) : la capacité du plus grand véhicule LIBRE accompagne le compte.
+    if (!b || total === 0) return { total, available: total, pct: 100, unavailable, capacite: placesMaxLibres(universe, new Set<string>()) };
 
     const ids = new Set(universe.map((v) => v.id));
     const plateOf = new Map(universe.map((v) => [v.id, v.plate ?? '—']));
@@ -2403,8 +2427,12 @@ export class AgendaComponent implements OnInit {
       unavailable.push({ vehicleId: vid, plate: plateOf.get(vid) ?? '—', kind: 'reserved', label });
     }
     const available = Math.max(0, total - unavailable.length);
-    return { total, available, pct: Math.round((available / total) * 100), unavailable };
+    // La capacité compte aussi les libres SANS places renseignées : le libellé qualifie alors la borne.
+    const capacite = placesMaxLibres(universe, new Set(unavailable.map((u) => u.vehicleId)));
+    return { total, available, pct: Math.round((available / total) * 100), unavailable, capacite };
   });
+  /** Libellé qui suit « 7 / 8 » dans le panneau du jour (quatrième revue du 29/09, « 12 places »). */
+  protected readonly libelleVehiculesLibres = libelleVehiculesLibres;
 
   /**
    * Ce qu'une réservation prend du jour OUVERT, dit comme la carte du même panneau (revue du 29/09, C47).
@@ -2498,8 +2526,19 @@ export class AgendaComponent implements OnInit {
     // `initialised` est faux, et un effet ne rejoue pas un changement passé : une société changée
     // pendant ce chargement (que `chargerParc` rallonge, page après page) laissait les compteurs de A
     // sous la grille de B, pour de bon.
-    const societe = this.fleetFilter.selectedFleetId();
+    //
+    // Quatrième revue du 29/09 (C5) : comparer la société du DÉPART à la société FINALE ne suffisait
+    // pas. `loadEvents` part après le premier `await`, avec la société de CE moment : A → B pendant
+    // le parc, puis B → A pendant la grille, et la grille de B restait sous le bandeau A (A === A,
+    // rien n'était relancé). On relève donc la société au départ de CHAQUE chargeur qui part avant
+    // un `await` — `loadSummary` (qui la lit une seule fois) et `loadEvents` — et l'on relance si
+    // l'une des deux n'est pas la société finale. `loadVehicles` ne dépend pas de la société (filtre
+    // client `matches`) ; activité, prévision, propositions et demandes partent dans le même bloc
+    // synchrone que la comparaison, donc avec la société finale. Pas de compteur dans l'effet : sa
+    // première exécution a lieu APRÈS le début de `ngOnInit`, il aurait relancé tout à chaque ouverture.
+    const societe = this.fleetFilter.selectedFleetId(); // celle de loadSummary
     await Promise.all([this.loadVehicles(), this.loadSummary()]);
+    const societeGrille = this.fleetFilter.selectedFleetId(); // celle de loadEvents, lue à son départ
     await this.loadEvents();
     void this.loadActivity();
     void this.loadForecast();
@@ -2507,7 +2546,8 @@ export class AgendaComponent implements OnInit {
     void this.loadPendingRequests();
     this.initialised = true; // à partir d'ici, un changement de société recharge tout
     // Les lectures relancées prennent de nouveaux numéros : celles de l'ancienne société sont ignorées.
-    if (this.fleetFilter.selectedFleetId() !== societe) this.rechargerPourSociete();
+    const finale = this.fleetFilter.selectedFleetId();
+    if (finale !== societe || finale !== societeGrille) this.rechargerPourSociete();
   }
 
   /**
@@ -2585,6 +2625,11 @@ export class AgendaComponent implements OnInit {
     // T15 : un seul numéro pour les deux moitiés (compteurs, puis échéances) — une lecture plus
     // récente les remplace ensemble ; celle-ci ne pose plus ni l'une ni l'autre.
     const n = ++this.lecture.summary;
+    // Quatrième revue du 29/09 (C5) : la société est lue UNE fois, au départ, pour les deux moitiés.
+    // Relue après le premier `await`, un aller-retour A→B→A entre les deux mêlait les compteurs de A
+    // et les échéances de B — et l'init, qui compare la société de départ à la société finale, ne
+    // pouvait pas le voir.
+    const fleetId = this.currentFleetId();
     // Même garde que `loadEvents` : `GET /agenda/summary` exige `agenda_view`.
     if (!this.canSeeAgenda()) {
       this.summary.set(null);
@@ -2596,7 +2641,7 @@ export class AgendaComponent implements OnInit {
       // Le véhicule prime : un véhicule choisi est déjà dans le groupe choisi, ou l'a réinitialisé.
       const resume = await firstValueFrom(
         this.api.summary({
-          fleetId: this.currentFleetId(),
+          fleetId,
           vehicleId: this.selectedVehicleId() || undefined,
           groupId: this.selectedVehicleId() ? undefined : this.selectedGroupId() || undefined,
         }),
@@ -2616,7 +2661,7 @@ export class AgendaComponent implements OnInit {
           // échéance oubliée depuis plus d'un trimestre ne se règle pas depuis cette liste.
           from: new Date(now - 90 * 24 * 3600 * 1000).toISOString(),
           to: new Date(now + 30 * 24 * 3600 * 1000).toISOString(),
-          fleetId: this.currentFleetId(),
+          fleetId, // C5 : la société du départ, pas celle d'après le premier `await`
         }),
       );
       if (n !== this.lecture.summary) return;
@@ -3148,6 +3193,37 @@ export class AgendaComponent implements OnInit {
     this.echeances.update((list) => list.map((e) => (e.id === updated.id ? updated : e)));
   }
 
+  /**
+   * ── QUATRIÈME REVUE DU 29/09 (C4) — UN ÉVÈNEMENT ÉCRIT QUI COMMENCE AVANT LA GRILLE ──────────
+   *
+   * La création n'ajoutait l'évènement à la grille que s'il y COMMENÇAIT. Un incident « depuis le
+   * 25/09 », sans fin, créé en regardant octobre (grille à partir du lun. 28/09) restait hors
+   * d'`events()` : le panneau du jour disait « Tous les véhicules du périmètre sont disponibles »,
+   * « À clore » montrait l'incident, et réserver le véhicule répondait 409 — jusqu'au rechargement.
+   * Le serveur, lui, le renvoie depuis T16. Même trou en modification (un évènement ouvert depuis
+   * « À clore » ou « À venir » n'a jamais été dans la grille) et en « nouvelle date de fin ».
+   *
+   *  - déjà dans la grille : `remplacerEvenement` l'a mis à jour ;
+   *  - commence dans la grille : ajouté sur place, sans requête ;
+   *  - commence AVANT elle et l'atteint selon le prédicat d'affichage de la page (`eventSpanEndMs`,
+   *    celui du panneau du jour) : on RELIT — le serveur tranche, on ne recopie pas son prédicat.
+   *    C'est rare (antidater avant le premier jour affiché) : la grille ne clignote pas à chaque
+   *    création ordinaire. T15 écarte une réponse périmée ; une relecture concurrente (reprise des
+   *    réservations) ne fait pas de doublon, puisque la liste est remplacée.
+   */
+  private integrerDansGrille(ev: VehicleEventDto): void {
+    if (this.events().some((e) => e.id === ev.id)) return;
+    const t = new Date(ev.startAt).getTime();
+    if (Number.isNaN(t)) return;
+    const { from, to } = this.monthWindow();
+    const fromMs = new Date(from).getTime();
+    if (t >= fromMs) {
+      if (t < new Date(to).getTime()) this.events.update((list) => [...list, ev]);
+      return;
+    }
+    if (this.eventSpanEndMs(ev, t) >= fromMs) void this.loadEvents();
+  }
+
   // ─── « Cette maintenance est-elle terminée ? » (lot du 28/09) ───────────────
   /**
    * Maintenances et incidents encore ouverts dont la fin prévue est passée — ou, sans fin, commencés
@@ -3232,6 +3308,8 @@ export class AgendaComponent implements OnInit {
     try {
       const updated = await firstValueFrom(this.api.updateEvent(ev.id, { endAt: endAt.toISOString() }));
       this.remplacerEvenement(updated);
+      // C4 : une fin échue AVANT la grille, repoussée dedans — l'immobilisation doit s'y voir.
+      this.integrerDansGrille(updated);
       this.annulerCloreEdit(ev.id);
       this.toast.success('Fin repoussée', `jusqu'au ${formatDate(endAt, 'EEE d MMM', 'fr')}`);
       void this.loadSummary();
@@ -3305,6 +3383,7 @@ export class AgendaComponent implements OnInit {
     ++this.resasLecture;
     this.resasPeriode.set([]);
     this.resasDecisions.set({});
+    this.resasNonReaffectables.set(new Set<string>());
     this.resasPeriodeErreur.set(null);
     this.resasPeriodeLoading.set(false);
   }
@@ -3346,10 +3425,19 @@ export class AgendaComponent implements OnInit {
         new Date(r.startAt).getTime() < endMs && (r.endAt ? new Date(r.endAt).getTime() : new Date(r.startAt).getTime()) > Math.max(startMs, now),
       ).sort((a, b) => new Date(a.startAt).getTime() - new Date(b.startAt).getTime());
       this.resasPeriode.set(vivantes);
+      // Quatrième revue du 29/09 (C6) : une demande EN ATTENTE qui commence avant la coupe que la
+      // création enverra — max(maintenant, début de l'immobilisation), à la minute — sera refusée par
+      // le serveur (elle se valide ou se refuse, elle ne se scinde pas). Elle n'est ni proposée en
+      // « Réaffecter », ni comptée dans le bouton : « Laisser » par défaut, et surtout pas
+      // « Annuler » — pour une demande publique, c'est un courriel de refus sans décision humaine.
+      const nonReaffectables = new Set(
+        vivantes.filter((r) => demandeNonReaffectable(r.status, new Date(r.startAt).getTime(), now, startMs)).map((r) => r.id),
+      );
+      this.resasNonReaffectables.set(nonReaffectables);
       // Défaut : réaffecter — c'est le cas du garage ; « laisser » reste à un clic. Sans le droit de
       // gérer les réservations (C17), rien ne peut être repris : tout reste « laisser ».
       const defaut: DecisionResa = this.canValidate() ? 'reaffecter' : 'laisser';
-      this.resasDecisions.set(Object.fromEntries(vivantes.map((r) => [r.id, defaut])));
+      this.resasDecisions.set(Object.fromEntries(vivantes.map((r) => [r.id, nonReaffectables.has(r.id) ? 'laisser' : defaut])));
     }).catch((err) => {
       swallow('agenda:resasPeriode', err);
       // C17 : un échec n'est PAS une liste vide. « Rien à reprendre » ne se dit qu'après une lecture réussie.
@@ -3375,6 +3463,8 @@ export class AgendaComponent implements OnInit {
 
   protected decisionDe(id: string): DecisionResa { return this.resasDecisions()[id] ?? 'laisser'; }
   protected decider(id: string, d: DecisionResa): void {
+    // C6 : défense derrière le bouton grisé — une demande que le serveur refusera ne se réaffecte pas.
+    if (d === 'reaffecter' && this.resasNonReaffectables().has(id)) return;
     this.resasDecisions.update((m) => ({ ...m, [id]: d }));
   }
 
@@ -3465,6 +3555,9 @@ export class AgendaComponent implements OnInit {
           nonReprises: refus
             .filter((x): x is (typeof refus)[number] & { r: VehicleEventDto } => !!x.r)
             .map((x) => ({
+              // C13 (cinquième revue) : l'id apparie chaque refus daté à `ids` — les refus sans
+              // réservation connue sont filtrés ci-dessus, un appariement par position se décalerait.
+              id: x.id,
               plate: x.r.vehiclePlate,
               startAt: x.r.startAt,
               endAt: x.r.endAt,
@@ -3620,6 +3713,8 @@ export class AgendaComponent implements OnInit {
       try {
         const updated = await firstValueFrom(this.api.updateEvent(editing.id, patch));
         this.remplacerEvenement(updated);
+        // C4 : ouvert depuis « À clore » ou « À venir », il peut n'avoir jamais été dans la grille.
+        this.integrerDansGrille(updated);
         this.toast.success('Événement modifié', updated.title);
         this.fermerFormulaire();
         void this.loadSummary();
@@ -3665,12 +3760,8 @@ export class AgendaComponent implements OnInit {
       this.saving.set(false);
       return;
     }
-    // Ajoute à la liste si l'événement tombe dans la fenêtre du mois affiché.
-    const { from, to } = this.monthWindow();
-    const t = new Date(created.startAt).getTime();
-    if (t >= new Date(from).getTime() && t < new Date(to).getTime()) {
-      this.events.update((list) => [...list, created]);
-    }
+    // Ajoute à la grille s'il y commence ; relit la grille s'il commence AVANT elle (C4).
+    this.integrerDansGrille(created);
     this.toast.success('Événement créé', created.title);
     // Fermé et oublié TOUT DE SUITE, avant la reprise : un formulaire rouvert pendant les
     // réaffectations garde sa propre liste (l'ancien code la vidait à la fin de la boucle).

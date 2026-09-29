@@ -612,8 +612,9 @@ export class VehiclesService {
       }
     }
 
+    let apres: Vehicle;
     try {
-      return await this.prisma.vehicle.update({
+      apres = await this.prisma.vehicle.update({
         where: { id },
         data,
         include: { tracker: true, ...VehiclesService.CURRENT_DRIVER_INCLUDE },
@@ -623,6 +624,69 @@ export class VehiclesService {
         throw new ConflictException(`Plaque "${dto.plate}" déjà utilisée dans cette flotte`);
       }
       throw err;
+    }
+    // APRÈS l'écriture réussie : un PATCH refusé ne laisse aucune ligne.
+    this.tracerCapacites(vehicle, apres, requestedBy);
+    return apres;
+  }
+
+  /**
+   * Revue du 29/09 (C5) — places ou équipements changés À LA MAIN (vue Parc de l'agenda, fiche
+   * véhicule, tableau des capacités : tous passent par `update`) → une ligne AGENDA
+   * `capacites_modifiees` au fil de la société. Le même changement fait par « Appliquer » de l'IA
+   * écrit `capacites_appliquees` (ai-optimization, qui écrit sans passer par ici : pas de doublon),
+   * et les sièges auto de la même feuille `sieges_modifies` : sans cette ligne, le fil montrait les
+   * sièges mais pas les places — celles qui décident des futurs « aucun véhicule de 12 places ».
+   *
+   * Seulement si quelque chose a VRAIMENT changé : places comparées avant/après en base, équipements
+   * comme des ensembles sans casse ni ordre (les réordonner n'est pas un changement). `fleetId` =
+   * société du VÉHICULE (un super-admin n'en a pas), auteur = l'utilisateur réel. Ne lève jamais.
+   */
+  private tracerCapacites(
+    avant: { seats?: number | null; features?: string[] | null },
+    apres: Vehicle,
+    requestedBy: RequestedBy,
+  ): void {
+    try {
+      const placesAvant = avant.seats ?? null;
+      const placesApres = apres.seats ?? null;
+      const cle = (f: string): string => f.trim().toLowerCase();
+      const equipAvant = avant.features ?? [];
+      const equipApres = apres.features ?? [];
+      const setAvant = new Set(equipAvant.map(cle));
+      const setApres = new Set(equipApres.map(cle));
+      const ajouts = equipApres.filter((f) => !setAvant.has(cle(f)));
+      const retraits = equipAvant.filter((f) => !setApres.has(cle(f)));
+      const quoi: string[] = [];
+      if (placesAvant !== placesApres) {
+        quoi.push(
+          placesAvant != null && placesApres != null
+            ? `${placesAvant} → ${placesApres} places`
+            : `places ${placesAvant ?? '—'} → ${placesApres ?? '—'}`,
+        );
+      }
+      if (ajouts.length > 0) quoi.push(`+ ${ajouts.join(', ')}`);
+      if (retraits.length > 0) quoi.push(`− ${retraits.join(', ')}`);
+      if (quoi.length === 0) return;
+      this.systemActivity?.record({
+        category: 'AGENDA',
+        action: 'capacites_modifiees',
+        status: 'SUCCESS',
+        actor: 'utilisateur',
+        target: apres.plate ?? null,
+        detail: `Capacités modifiées — ${quoi.join(' ; ')}`,
+        fleetId: apres.fleetId ?? null,
+        triggeredByUserId: requestedBy.userId ?? null,
+        meta: {
+          vehicleId: apres.id,
+          seats: { avant: placesAvant, apres: placesApres },
+          ajouts,
+          retraits,
+        },
+      });
+    } catch {
+      // Le journal ne fait jamais échouer l'enregistrement d'une fiche (`record` ne lève pas ;
+      // ce `catch` couvre la construction du texte sur une donnée inattendue).
     }
   }
 

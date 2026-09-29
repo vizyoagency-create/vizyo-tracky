@@ -237,6 +237,13 @@ export interface ReorganisationResultDto {
   totauxVehicule?: { agent: number; public: number; manuelle: number };
   /** Réservations à venir par véhicule (pour l'origine choisie), toutes plaques confondues. */
   parVehicule?: { vehicleId: string; plate: string | null; n: number }[];
+  /**
+   * Quatrième revue du 29/09 (C0) — les identifiants EXACTS du lot calculé (après filtres, liste
+   * blanche et plafond). L'écran les renvoie en `ids` à l'application : le serveur n'écrit alors que
+   * sur ces réservations-là, et `attendu` (le nombre) détecte celles qui en sont sorties. Une
+   * réservation arrivée entre la simulation et l'application n'est jamais touchée sans avoir été vue.
+   */
+  lotIds?: string[];
 }
 
 /** Réaffecter UNE réservation à un autre véhicule (`auto` = premier libre et conforme). */

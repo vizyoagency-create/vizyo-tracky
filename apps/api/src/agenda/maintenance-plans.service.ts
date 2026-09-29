@@ -1,11 +1,45 @@
-import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { ForbiddenException, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
 import { MaintenancePlan, Prisma, UserRole, VehicleEventStatus, VehicleEventType } from '@prisma/client';
 import type { MaintenancePlanDto, RecordMaintenanceDoneDto, UpsertMaintenancePlanDto } from '@vizyo/tracky-shared';
 import type { AuthUser } from '../auth/types/auth-user';
+import { formatFleetDate } from '../common/utils/datetime';
 import { PrismaService } from '../prisma/prisma.service';
+import { SystemActivityService } from '../system-activity/system-activity.service';
 import { VehicleEventsService } from './vehicle-events.service';
 
 type PlanRow = MaintenancePlan;
+
+/** Ce qu'un plan « dit » dans le journal : son rythme et sa dernière réalisation. */
+type EtatPlan = Pick<
+  PlanRow,
+  'label' | 'category' | 'intervalMonths' | 'intervalKm' | 'lastDoneAt' | 'lastDoneKm' | 'reminderDaysBefore' | 'reminderKmBefore' | 'enabled'
+>;
+
+/** « tous les 12 mois ou 20 000 km » — ce que lit un exploitant, sans champ technique. */
+function rythme(p: Pick<PlanRow, 'intervalMonths' | 'intervalKm'>): string {
+  const parts: string[] = [];
+  if (p.intervalMonths) parts.push(`${p.intervalMonths} mois`);
+  if (p.intervalKm) parts.push(`${p.intervalKm.toLocaleString('fr-FR')} km`);
+  return parts.length > 0 ? `tous les ${parts.join(' ou ')}` : 'sans rythme';
+}
+
+/** Les champs changés d'un plan, en clair (« rythme tous les 12 mois → tous les 6 mois »). */
+function changementsPlan(avant: EtatPlan, apres: EtatPlan): string[] {
+  const out: string[] = [];
+  if (avant.label !== apres.label) out.push(`nom « ${avant.label} » → « ${apres.label} »`);
+  if (avant.intervalMonths !== apres.intervalMonths || avant.intervalKm !== apres.intervalKm) {
+    out.push(`rythme ${rythme(avant)} → ${rythme(apres)}`);
+  }
+  const fait = (p: EtatPlan) =>
+    p.lastDoneAt ? `${formatFleetDate(p.lastDoneAt)}${p.lastDoneKm != null ? ` à ${p.lastDoneKm.toLocaleString('fr-FR')} km` : ''}` : 'jamais';
+  if ((avant.lastDoneAt?.getTime() ?? null) !== (apres.lastDoneAt?.getTime() ?? null) || avant.lastDoneKm !== apres.lastDoneKm) {
+    out.push(`dernier entretien ${fait(avant)} → ${fait(apres)}`);
+  }
+  if (avant.reminderDaysBefore !== apres.reminderDaysBefore || avant.reminderKmBefore !== apres.reminderKmBefore) out.push('rappel modifié');
+  if (avant.category !== apres.category) out.push(`catégorie ${avant.category} → ${apres.category}`);
+  if (avant.enabled !== apres.enabled) out.push(apres.enabled ? 'réactivé' : 'désactivé');
+  return out;
+}
 
 /** Marqueur "système" pour createdBy des événements auto-générés (pas de FK, simple traçabilité). */
 const SYSTEM_UUID = '00000000-0000-0000-0000-000000000000';
@@ -23,10 +57,50 @@ function addMonths(d: Date, months: number): Date {
  */
 @Injectable()
 export class MaintenancePlansService {
+  private readonly logger = new Logger(MaintenancePlansService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly events: VehicleEventsService,
+    // Journal métier (29/09, @Global) — en dernier et @Optional : sans lui, rien ne casse.
+    @Optional() private readonly systemActivity?: SystemActivityService,
   ) {}
+
+  /**
+   * Une ligne `plan_entretien_modifie` (catégorie AGENDA) sur la société DU PLAN — jamais celle de
+   * l'utilisateur. La plaque est relue à part (le plan n'en porte pas) et une lecture qui échoue
+   * laisse la ligne sans plaque : le journal ne fait jamais échouer le geste qu'il trace.
+   */
+  private async journaliser(
+    user: AuthUser,
+    plan: Pick<PlanRow, 'id' | 'fleetId' | 'vehicleId' | 'label'>,
+    operation: 'cree' | 'modifie' | 'supprime' | 'fait',
+    detail: string,
+    meta: Record<string, unknown> = {},
+  ): Promise<void> {
+    if (!this.systemActivity) return;
+    try {
+      let plate: string | null = null;
+      try {
+        const v = await this.prisma.vehicle.findUnique({ where: { id: plan.vehicleId }, select: { plate: true } });
+        plate = v?.plate ?? null;
+      } catch {
+        plate = null;
+      }
+      this.systemActivity.record({
+        category: 'AGENDA',
+        action: 'plan_entretien_modifie',
+        actor: 'utilisateur',
+        target: plate,
+        detail,
+        fleetId: plan.fleetId,
+        triggeredByUserId: user.id,
+        meta: { planId: plan.id, vehicleId: plan.vehicleId, operation, ...meta },
+      });
+    } catch (e) {
+      this.logger.warn(`journal plan d'entretien non écrit : ${(e as Error)?.message ?? e}`);
+    }
+  }
 
   async list(user: AuthUser, vehicleId?: string): Promise<MaintenancePlanDto[]> {
     const where: Prisma.MaintenancePlanWhereInput = {};
@@ -56,20 +130,61 @@ export class MaintenancePlansService {
       enabled: dto.enabled ?? true,
     };
     let plan: PlanRow;
+    let avant: PlanRow | null = null;
     if (id) {
-      await this.loadScoped(user, id);
+      avant = await this.loadScoped(user, id);
       plan = await this.prisma.maintenancePlan.update({ where: { id }, data });
     } else {
       plan = await this.prisma.maintenancePlan.create({ data: { ...data, fleetId, vehicleId: dto.vehicleId } });
     }
     await this.materializePlannedEvent(plan);
+    const echeance = this.echeanceLisible(plan);
+    if (avant) {
+      const changes = changementsPlan(avant, plan);
+      // Un enregistrement sans changement n'est pas un geste à relire : pas de ligne.
+      if (changes.length > 0) {
+        await this.journaliser(user, plan, 'modifie', `Plan d'entretien « ${plan.label} » modifié — ${changes.join(' ; ')}${echeance}`, {
+          avant: this.etatJournal(avant),
+          apres: this.etatJournal(plan),
+        });
+      }
+    } else {
+      await this.journaliser(user, plan, 'cree', `Plan d'entretien « ${plan.label} » créé — ${rythme(plan)}${echeance}`, {
+        apres: this.etatJournal(plan),
+      });
+    }
     return this.toDto(plan);
   }
 
   async remove(user: AuthUser, id: string): Promise<{ ok: true }> {
-    await this.loadScoped(user, id);
+    const plan = await this.loadScoped(user, id);
     await this.prisma.maintenancePlan.delete({ where: { id } });
+    await this.journaliser(user, plan, 'supprime', `Plan d'entretien « ${plan.label} » supprimé (${rythme(plan)})`, {
+      avant: this.etatJournal(plan),
+    });
     return { ok: true };
+  }
+
+  /** « · prochaine échéance le 05/10/2026 » (heure de Paris), ou rien si le plan n'en calcule pas. */
+  private echeanceLisible(plan: PlanRow): string {
+    const { nextDueAt, nextDueKm } = this.computeNextDue(plan);
+    const parts: string[] = [];
+    if (nextDueAt) parts.push(`le ${formatFleetDate(nextDueAt)}`);
+    if (nextDueKm != null) parts.push(`à ${nextDueKm.toLocaleString('fr-FR')} km`);
+    return plan.enabled && parts.length > 0 ? ` · prochaine échéance ${parts.join(' ou ')}` : '';
+  }
+
+  /** L'état d'un plan pour `meta` (machine) : dates ISO, valeurs brutes. */
+  private etatJournal(p: EtatPlan): Record<string, unknown> {
+    return {
+      label: p.label,
+      category: p.category,
+      intervalMonths: p.intervalMonths,
+      intervalKm: p.intervalKm,
+      lastDoneAt: p.lastDoneAt ? p.lastDoneAt.toISOString() : null,
+      lastDoneKm: p.lastDoneKm,
+      enabled: p.enabled,
+    };
   }
 
   /** Enregistre un entretien réalisé : VehicleEvent DONE + MAJ du plan (lastDone) + re-matérialise. */
@@ -104,6 +219,15 @@ export class MaintenancePlansService {
       await this.events.maybeUpdateOdometer(plan.vehicleId, doneKm, doneAt).catch(() => undefined);
     }
     await this.materializePlannedEvent(updated);
+    await this.journaliser(
+      user,
+      updated,
+      'fait',
+      `Entretien « ${plan.label} » fait le ${formatFleetDate(doneAt)}` +
+        (doneKm != null ? ` à ${doneKm.toLocaleString('fr-FR')} km` : '') +
+        this.echeanceLisible(updated),
+      { doneAt: doneAt.toISOString(), doneKm, avant: this.etatJournal(plan), apres: this.etatJournal(updated) },
+    );
     return this.toDto(updated);
   }
 

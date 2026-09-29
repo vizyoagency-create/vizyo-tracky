@@ -122,7 +122,8 @@ const CONFIRM_WINDOW_MS = 90_000;
       }
 
       <!--
-        L'ETAT NON CONFIRME A TROIS SORTIES. C'etait un constat rouge, definitif, sans
+        L'ETAT NON CONFIRME A TROIS SORTIES (deux hors FLEET_ADMIN / SUPER_ADMIN, cf.
+        voitHistorique). C'etait un constat rouge, definitif, sans
         aucune suite : « Non confirmee » et rien d'autre — sur l'ecran ou l'on vient de
         tenter d'immobiliser un vehicule.
       -->
@@ -137,7 +138,11 @@ const CONFIRM_WINDOW_MS = 90_000;
             <button type="button" class="ec-sortie" (click)="renvoyer()" [disabled]="commandLocked()">
               {{ commandLocked() ? 'Envoi…' : 'Renvoyer la commande' }}
             </button>
-            <a class="ec-sortie" routerLink="/fleet-admin/activity">Voir l'historique</a>
+            <!-- L'onglet Agenda est désormais l'onglet par défaut de la page : ce lien demande Moteurs.
+                 Seulement pour les rôles que la route admet (voitHistorique) : ailleurs, un lien mort. -->
+            @if (voitHistorique()) {
+              <a class="ec-sortie" routerLink="/fleet-admin/activity" [queryParams]="{ tab: 'engine' }">Voir l'historique</a>
+            }
             <button type="button" class="ec-sortie" (click)="verifieSurPlace.set(true)">
               J'ai vérifié sur place
             </button>
@@ -612,6 +617,21 @@ export class EngineControlButtonComponent implements OnInit {
    * succes que tout cet ecran existe pour eviter.
    */
   protected readonly verifieSurPlace = signal(false);
+
+  /**
+   * Sortie n° 2, « Voir l'historique » : /fleet-admin/activity n'admet que FLEET_ADMIN et
+   * SUPER_ADMIN (roleGuard de la route, app.routes.ts — garder les deux listes d'accord).
+   *
+   * Revue du 29/09 : les autres rôles qui commandent un moteur voyaient un lien qui ne menait
+   * nulle part, sans un mot, au moment de savoir si le véhicule est immobilisé — le veilleur
+   * restait sur /vehicles (watchmanChildGuard passe avant le roleGuard), un gestionnaire à qui
+   * l'on a donné engine_control repartait au tableau de bord. Ils gardent « Renvoyer » et « J'ai
+   * vérifié sur place ». Pas de vue de repli : le client refuse tout historique au veilleur.
+   */
+  protected readonly voitHistorique = computed(() => {
+    const role = this.authService.user()?.role;
+    return role === 'FLEET_ADMIN' || role === 'SUPER_ADMIN';
+  });
 
   /** La fenetre de confirmation, en secondes — pour l'etape 2 de l'avertissement. */
   protected readonly fenetreSecondes = CONFIRM_WINDOW_MS / 1000;

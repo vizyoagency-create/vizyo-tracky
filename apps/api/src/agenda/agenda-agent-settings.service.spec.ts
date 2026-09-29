@@ -79,6 +79,75 @@ describe('AgendaAgentSettingsService — ⚙️ Paramètres de l\'agenda (P2)', 
 });
 
 /**
+ * ── JOURNAL MÉTIER (29/09) ───────────────────────────────────────────────────────────────────
+ *
+ * Enregistrer les réglages de l'agent laisse UNE ligne `reglages_agent_modifies` (catégorie
+ * AGENDA) qui ne nomme que les champs CHANGÉS, « avant → après ». Société = celle RÉGLÉE (un
+ * super-admin règle celle d'un client) ; auteur = l'utilisateur réel ; un enregistrement qui ne
+ * change rien n'écrit rien ; un journal absent ou en panne ne fait pas échouer l'enregistrement.
+ */
+describe('AgendaAgentSettingsService — journal métier (29/09)', () => {
+  const ligneExistante = {
+    enabled: true, nightlyHour: 2, frequency: 'daily', autonomy: 'suggest', confidenceThreshold: 80,
+    autoCompleteAfterReservation: false, triggerNightly: true, triggerIncident: true, triggerMaintenance: true,
+    triggerReservation: false, lastRunAt: null,
+  };
+
+  it('premier réglage : comparé aux DÉFAUTS — seuls les champs réellement changés sont dits', async () => {
+    const journal = { record: jest.fn() };
+    const svc = new AgendaAgentSettingsService(makePrisma(), makeAiUsage(), makeDestinataires(), journal as never);
+
+    // nightlyHour 2 = la valeur par défaut : pas un changement.
+    await svc.set(makeUser({ id: 'u-sa', role: UserRole.SUPER_ADMIN, fleetId: null }), { fleetId: 'fCLIENT', enabled: true, nightlyHour: 2 });
+
+    expect(journal.record).toHaveBeenCalledTimes(1);
+    const l = journal.record.mock.calls[0][0];
+    expect(l).toEqual(expect.objectContaining({
+      category: 'AGENDA', action: 'reglages_agent_modifies', actor: 'utilisateur', fleetId: 'fCLIENT', triggeredByUserId: 'u-sa', target: null,
+    }));
+    expect(l.detail).toContain('agent activé : non → oui');
+    expect(l.detail).not.toContain('heure');
+    expect(l.meta).toEqual(expect.objectContaining({ champs: ['enabled'], avant: { enabled: false }, apres: { enabled: true }, premierReglage: true }));
+  });
+
+  it('réglage existant : comparé à la ligne en base (heure 2 h → 4 h, seuil 80 % → 90 %)', async () => {
+    const journal = { record: jest.fn() };
+    const prisma = makePrisma();
+    (prisma as unknown as { agendaAgentSettings: { findUnique: jest.Mock } }).agendaAgentSettings.findUnique.mockResolvedValue(ligneExistante);
+    const svc = new AgendaAgentSettingsService(prisma, makeAiUsage(), makeDestinataires(), journal as never);
+
+    await svc.set(makeUser(), { enabled: true, nightlyHour: 4, confidenceThreshold: 90 });
+
+    const l = journal.record.mock.calls[0][0];
+    expect(l.fleetId).toBe('f1');
+    expect(l.detail).toContain('heure du passage de nuit : 2 h → 4 h');
+    expect(l.detail).toContain('seuil de confiance : 80 % → 90 %');
+    expect(l.detail).not.toContain('agent activé'); // déjà activé
+    expect(l.meta.champs).toEqual(['nightlyHour', 'confidenceThreshold']);
+    expect(l.meta.premierReglage).toBe(false);
+  });
+
+  it('enregistrement sans changement : aucune ligne', async () => {
+    const journal = { record: jest.fn() };
+    const prisma = makePrisma();
+    (prisma as unknown as { agendaAgentSettings: { findUnique: jest.Mock } }).agendaAgentSettings.findUnique.mockResolvedValue(ligneExistante);
+    const svc = new AgendaAgentSettingsService(prisma, makeAiUsage(), makeDestinataires(), journal as never);
+
+    await svc.set(makeUser(), { enabled: true, nightlyHour: 2, frequency: 'daily' });
+    expect(journal.record).not.toHaveBeenCalled();
+  });
+
+  it('journal EN PANNE (record lève) ou ABSENT : l’enregistrement passe', async () => {
+    const enPanne = { record: jest.fn(() => { throw new Error('journal HS'); }) };
+    for (const journal of [enPanne, undefined]) {
+      const svc = new AgendaAgentSettingsService(makePrisma(), makeAiUsage(), makeDestinataires(), journal as never);
+      await expect(svc.set(makeUser(), { enabled: true })).resolves.toMatchObject({ enabled: true });
+    }
+    expect(enPanne.record).toHaveBeenCalledTimes(1);
+  });
+});
+
+/**
  * ON NE COUPE PAS LE DERNIER DESTINATAIRE.
  *
  * Une demande de conducteur qui n'atteint personne reste en plan sans que quiconque le sache —

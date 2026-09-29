@@ -4,6 +4,7 @@ import {
   HttpException,
   Injectable,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import { Prisma, UserRole, VehicleEventStatus, VehicleEventType } from '@prisma/client';
 import type {
@@ -29,6 +30,7 @@ import { DORMANT_STOP_COUNTING_MS, isVehicleDormant } from '@vizyo/tracky-shared
 /** Refonte UX du 28/09 (point 6) : une analyse de capacités par société et par fenêtre de 24 h. */
 const CAPACITY_WINDOW_MS = 24 * 60 * 60 * 1000;
 import type { AuthUser } from '../auth/types/auth-user';
+import { messageAucunVehicule } from '../agenda/aucun-vehicule.message';
 import { ForecastService } from '../agenda/forecast.service';
 import { ReservationsService } from '../agenda/reservations.service';
 import { VehicleEventsService } from '../agenda/vehicle-events.service';
@@ -37,6 +39,7 @@ import { AiUsageService } from '../ai-usage/ai-usage.service';
 import { ErrorLogger } from '../observability/error-logger.service';
 import { PermissionsResolverService } from '../permissions/permissions-resolver.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { SystemActivityService } from '../system-activity/system-activity.service';
 import { VehicleAccessService } from '../vehicle-access/vehicle-access.service';
 import { AiServiceError, type AiErrorKind, type NiveauEchecIa } from './anthropic.client';
 import { AiRouter } from './ai-router.service';
@@ -64,6 +67,13 @@ function cleanSeats(n: unknown): number | null {
   if (n === null || n === undefined || n === '') return null;
   const x = Number(n);
   return Number.isInteger(x) && x >= 1 && x <= 99 ? x : null;
+}
+
+/** Plancher de places demandé (conducteur compris), entier > 0, sinon null — corps non typé à l'exécution. */
+function minSeatsDe(criteria: unknown): number | null {
+  const brut = criteria && typeof criteria === 'object' ? (criteria as { minSeats?: unknown }).minSeats : undefined;
+  const n = Math.floor(Number(brut));
+  return brut !== null && brut !== undefined && brut !== '' && Number.isFinite(n) && n > 0 ? n : null;
 }
 
 /** Bornes de `UpdateVehicleDto` : la fiche écrite par « Appliquer » doit rester une fiche que la vue Parc accepte. */
@@ -100,6 +110,22 @@ function cleanFeatures(f: unknown, max: number, exclus: ReadonlySet<string> = ne
 
 /** Ce que porte une fiche véhicule côté capacité. */
 type FicheCapacite = { seats: number | null; features: string[] };
+
+/** Bilan d'un « Appliquer » pour UNE société — une ligne `capacites_appliquees` au journal (29/09). */
+type BilanCapacites = {
+  appliques: {
+    vehicleId: string;
+    plate: string | null;
+    seats?: { avant: number | null; apres: number };
+    ajouts: string[];
+    force: boolean;
+  }[];
+  ecartes: { vehicleId: string; plate: string | null; motif: string }[];
+  /** La fiche portait déjà les valeurs proposées : rien écrit, proposition notée faite. */
+  inchanges: string[];
+};
+/** Véhicules nommés dans le texte d'une ligne ; au-delà, « … » (le détail complet est dans `meta`). */
+const CAPACITES_NOMMEES_MAX = 5;
 
 /**
  * Ce qu'une proposition AJOUTE à une fiche (revue du 29/09) : un nombre de places valide et
@@ -290,6 +316,9 @@ export class AiOptimizationService {
     // Revue du 29/09 (T9) — `vehicles_edit` résolu véhicule par véhicule dans `applyCapacity`.
     // Module global (`PermissionsModule`) : rien à importer dans `AiModule`.
     private readonly permissions: PermissionsResolverService,
+    // Journal métier (29/09, `SystemActivityModule` @Global) — EN DERNIER et @Optional : les specs
+    // qui construisent le service à la main restent valides, et sans journal « Appliquer » passe.
+    @Optional() private readonly systemActivity?: SystemActivityService,
   ) {}
 
   // ─── Capacité 1 — enrichissement de capacité ───────────────────────────────
@@ -730,6 +759,19 @@ export class AiOptimizationService {
     let updated = 0;
     const skipped: AiCapacityApplyResultDto['skipped'] = [];
     const aNoter = new Map<string, string[]>(); // id d'analyse → véhicules traités
+    // Journal métier (29/09) — le bilan PAR SOCIÉTÉ DU VÉHICULE (un super-admin peut en toucher
+    // plusieurs d'un coup). Un véhicule refusé AVANT de connaître sa société (404, 403 de
+    // périmètre) n'entre dans aucun bilan : l'écrire chez sa société serait tracer, chez un tiers,
+    // un geste que l'utilisateur n'avait pas le droit de faire — et révéler qu'il l'a tenté.
+    const bilans = new Map<string, BilanCapacites>();
+    const bilanDe = (fleetId: string): BilanCapacites => {
+      let b = bilans.get(fleetId);
+      if (!b) {
+        b = { appliques: [], ecartes: [], inchanges: [] };
+        bilans.set(fleetId, b);
+      }
+      return b;
+    };
     const noter = (analyse: AnalyseCible | null, vehicleId: string): void => {
       // Seuls les véhicules que CETTE analyse proposait y sont notés.
       if (!analyse || !analyse.proposals.has(vehicleId)) return;
@@ -752,14 +794,18 @@ export class AiOptimizationService {
         }
         // Dans le périmètre, mais sans le droit d'écrire CE véhicule : écarté, rien n'est écrit ni
         // noté sur l'analyse (la proposition reste à appliquer par un compte qui en a le droit).
-        // Pas de plaque lue en base ici non plus : l'écran la tient de sa proposition.
+        // Pas de plaque lue en base ici non plus : l'écran la tient de sa proposition. (Le journal,
+        // lui, la porte : sa ligne est écrite chez la société DU véhicule, qui la connaît.)
+        const bilan = bilanDe(fleetId);
+        const lue = ficheParId.get(it.vehicleId);
         if (!(await this.permissions.canOnVehicle(user, it.vehicleId, 'vehicles_edit'))) {
           skipped.push({ vehicleId: it.vehicleId, plate: null, motif: MOTIF_SANS_DROIT_EDITION });
+          bilan.ecartes.push({ vehicleId: it.vehicleId, plate: lue?.plate ?? null, motif: MOTIF_SANS_DROIT_EDITION });
           continue;
         }
-        const lue = ficheParId.get(it.vehicleId);
         if (!lue) {
           skipped.push({ vehicleId: it.vehicleId, plate: null, motif: MOTIF_INTROUVABLE });
+          bilan.ecartes.push({ vehicleId: it.vehicleId, plate: null, motif: MOTIF_INTROUVABLE });
           continue;
         }
         const fiche: FicheCapacite = { seats: lue.seats ?? null, features: lue.features ?? [] };
@@ -772,12 +818,14 @@ export class AiOptimizationService {
           // La fiche porte déjà ces valeurs : rien à écrire, mais la proposition est faite — sans
           // quoi elle resterait « à appliquer » pour toujours.
           noter(analyse, it.vehicleId);
+          bilan.inchanges.push(it.vehicleId);
           continue;
         }
         // Une correction faite à la main prime — sauf geste explicite « Appliquer quand même ».
         // `=== true` : un « true » en chaîne ou un 1 ne passe pas outre une correction manuelle.
         if (it.forcer !== true && ficheModifiee(proposition, fiche)) {
           skipped.push({ vehicleId: it.vehicleId, plate: lue.plate ?? null, motif: MOTIF_FICHE_MODIFIEE });
+          bilan.ecartes.push({ vehicleId: it.vehicleId, plate: lue.plate ?? null, motif: MOTIF_FICHE_MODIFIEE });
           continue;
         }
         // Jamais une fiche que la vue Parc refuserait, jamais une partie des ajouts en silence :
@@ -785,6 +833,7 @@ export class AiOptimizationService {
         // ajout d'équipement, la liste n'est pas réécrite : une fiche déjà pleine reçoit ses places.
         if (ajout.features.length > 0 && fiche.features.length + ajout.features.length > FEATURES_MAX) {
           skipped.push({ vehicleId: it.vehicleId, plate: lue.plate ?? null, motif: MOTIF_TROP_EQUIPEMENTS });
+          bilan.ecartes.push({ vehicleId: it.vehicleId, plate: lue.plate ?? null, motif: MOTIF_TROP_EQUIPEMENTS });
           continue;
         }
         const data: Prisma.VehicleUpdateInput = {};
@@ -796,16 +845,27 @@ export class AiOptimizationService {
           // Supprimé entre la lecture et l'écriture : écarté comme les autres introuvables.
           if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2025') {
             skipped.push({ vehicleId: it.vehicleId, plate: lue.plate ?? null, motif: MOTIF_INTROUVABLE });
+            bilan.ecartes.push({ vehicleId: it.vehicleId, plate: lue.plate ?? null, motif: MOTIF_INTROUVABLE });
             continue;
           }
           throw e;
         }
         updated++;
         noter(analyse, it.vehicleId);
+        bilan.appliques.push({
+          vehicleId: it.vehicleId,
+          plate: lue.plate ?? null,
+          ...(ajout.seats !== null ? { seats: { avant: fiche.seats, apres: ajout.seats } } : {}),
+          ajouts: ajout.features,
+          force: it.forcer === true,
+        });
       }
     } catch (e) {
       erreur = e;
     }
+    // Journalisé AVANT de rendre la main (et avant de relancer une erreur) : les fiches déjà
+    // écrites le sont, même si la boucle a été interrompue.
+    this.journaliserCapacites(user, bilans, erreur);
 
     // L'analyse note ce qui est fait — y compris quand la boucle a été interrompue : les fiches
     // déjà écrites le sont, l'écran ne doit plus les proposer. `push` est un ajout atomique en
@@ -828,6 +888,52 @@ export class AiOptimizationService {
     return { updated, skipped };
   }
 
+  /**
+   * Une ligne `capacites_appliquees` (catégorie AGENDA) par société touchée : combien de fiches
+   * complétées, écartées (avec leur motif) ou déjà à jour, et véhicule par véhicule dans `meta`
+   * (places avant → après, équipements ajoutés). `fleetId` = société DES VÉHICULES, jamais celle
+   * de l'utilisateur. Ne lève jamais : le journal ne fait pas échouer « Appliquer ».
+   */
+  private journaliserCapacites(user: AuthUser, bilans: Map<string, BilanCapacites>, erreur: unknown): void {
+    if (!this.systemActivity) return;
+    for (const [fleetId, b] of bilans) {
+      try {
+        const nommes = b.appliques.slice(0, CAPACITES_NOMMEES_MAX).map((a) => {
+          const quoi: string[] = [];
+          if (a.seats) quoi.push(`${a.seats.avant ?? '?'} → ${a.seats.apres} places`);
+          if (a.ajouts.length > 0) quoi.push(`+ ${a.ajouts.join(', ')}`);
+          return `${a.plate ?? 'véhicule'} : ${quoi.join(', ')}`;
+        });
+        const suite = b.appliques.length > CAPACITES_NOMMEES_MAX ? ' ; …' : '';
+        const parts = [
+          `${b.appliques.length} véhicule(s) mis à jour${nommes.length > 0 ? ` (${nommes.join(' ; ')}${suite})` : ''}`,
+        ];
+        if (b.ecartes.length > 0) parts.push(`${b.ecartes.length} écarté(s)`);
+        if (b.inchanges.length > 0) parts.push(`${b.inchanges.length} déjà à jour`);
+        this.systemActivity.record({
+          category: 'AGENDA',
+          action: 'capacites_appliquees',
+          status: erreur !== undefined ? 'FAILURE' : b.appliques.length > 0 ? 'SUCCESS' : 'SKIPPED',
+          actor: 'utilisateur',
+          target: b.appliques.length === 1 ? b.appliques[0].plate : null,
+          detail: `Capacités du parc appliquées — ${parts.join(' · ')}${erreur !== undefined ? ' · interrompu par une erreur' : ''}`,
+          fleetId,
+          triggeredByUserId: user.id,
+          meta: {
+            applied: b.appliques.length,
+            skipped: b.ecartes.length,
+            unchanged: b.inchanges.length,
+            vehicules: b.appliques,
+            ecartes: b.ecartes,
+            ...(erreur !== undefined ? { error: erreur instanceof Error ? erreur.message.slice(0, 300) : String(erreur) } : {}),
+          },
+        });
+      } catch {
+        // Le journal ne fait jamais échouer « Appliquer ».
+      }
+    }
+  }
+
   // ─── Capacité 2 — optimiseur de placement ──────────────────────────────────
 
   /** Construit le payload placement (scopé, candidats disponibles). Réutilisé par preview + suggest. */
@@ -838,7 +944,15 @@ export class AiOptimizationService {
     payload: AiPlacementInputDto;
     candidates: AiPlacementCandidateInput[];
     slot: { startAt: string; endAt: string };
-    excluded: { unknownCapacity: number; immobilized: number; dormant: number; childSeats: number };
+    excluded: {
+      unknownCapacity: number;
+      immobilized: number;
+      dormant: number;
+      childSeats: number;
+      /** 29/09 (« 12 places ») — trop petits pour `minSeats`, et la plus grande capacité du périmètre. */
+      tooSmall: number;
+      largestSeats: number | null;
+    };
     fleetId: string;
   }> {
     if (!dto?.startAt || !dto?.endAt) throw new BadRequestException('startAt et endAt (ISO) requis.');
@@ -1032,6 +1146,10 @@ export class AiOptimizationService {
         immobilized: sug.excludedImmobilized ?? 0,
         dormant: excludedDormant,
         childSeats: sug.excludedChildSeats ?? 0,
+        // Rendus par le vivier depuis le 29/09 (contrat `SuggestReservationResultDto`) — lus en
+        // optionnel : un vivier qui ne les renseigne pas encore laisse le message d'avant.
+        tooSmall: typeof sug.excludedTooSmall === 'number' && sug.excludedTooSmall > 0 ? sug.excludedTooSmall : 0,
+        largestSeats: typeof sug.largestSeats === 'number' ? sug.largestSeats : null,
       },
       fleetId,
     };
@@ -1045,6 +1163,16 @@ export class AiOptimizationService {
   async suggestPlacement(user: AuthUser, dto: AiPlacementSuggestRequestDto): Promise<AiPlacementResultDto> {
     const { payload, candidates, slot, excluded, fleetId } = await this.buildPlacementPayload(user, dto);
     if (candidates.length === 0) {
+      // Relecture du 29/09 — les SIÈGES AUTO passent avant la taille (même règle que
+      // `ReservationsService.contexteAucunVehicule`). Le vivier juge les sièges APRÈS le plancher de
+      // places et l'occupation : un véhicule écarté pour ses sièges était libre ET assez grand.
+      // Transmettre tel quel le 4 places de Client test (`tooSmall` = 1) faisait sauter la branche
+      // « sièges auto » du constructeur et dire « aucun véhicule d'au moins 5 places n'est libre »
+      // pour 7 véhicules libres à qui il manquait un siège bébé. La taille ne l'emporte que si le parc
+      // n'a VRAIMENT aucun véhicule assez grand (`largestSeats < minSeats`).
+      const minSeats = minSeatsDe(dto?.criteria);
+      const parcTropPetit = !!minSeats && excluded.largestSeats != null && excluded.largestSeats < minSeats;
+      const tropPetits = excluded.childSeats > 0 && !parcTropPetit ? 0 : excluded.tooSmall;
       return {
         slot,
         proposals: [],
@@ -1055,12 +1183,17 @@ export class AiOptimizationService {
         // Sièges auto (2026-09-28) : quand des véhicules libres ont été écartés faute de sièges
         // (pas assez à bord, et le stock ne complète pas ou ne suffit plus), la réponse est
         // CERTAINE et ne coûte aucun jeton — on la donne, avec la cause, pas « aucun véhicule ».
-        notes:
-          excluded.childSeats > 0
-            ? `Aucun véhicule libre ne peut recevoir les sièges auto demandés sur ce créneau (${excluded.childSeats} véhicule(s) écarté(s) : pas assez de sièges à bord, et le stock ne complète pas ou ne suffit plus). Un siège « Bébé » ne remplace jamais un siège « Enfant », ni l'inverse.`
-            : excluded.dormant > 0
-              ? `Aucun véhicule libre ne correspond aux critères sur ce créneau (${excluded.dormant} véhicule(s) écarté(s) : boîtier muet depuis plus de ${DORMANT_COUNTING_DAYS} jours).`
-              : 'Aucun véhicule libre ne correspond aux critères sur ce créneau.',
+        // 29/09 (« 12 places ») : la phrase vient du constructeur PARTAGÉ avec la demande et la
+        // réaffectation (`messageAucunVehicule`) — une demande de 12 places sur un parc dont le plus
+        // grand en a 9 dit « aucun véhicule de 12 places », plus « aucun véhicule libre sur ce créneau ».
+        notes: messageAucunVehicule({
+          minSeats,
+          excludedTooSmall: tropPetits,
+          largestSeats: excluded.largestSeats,
+          excludedUnknownCapacity: excluded.unknownCapacity,
+          excludedChildSeats: excluded.childSeats,
+          excludedDormant: excluded.dormant,
+        }),
         excludedUnknownCapacity: excluded.unknownCapacity,
         excludedImmobilized: excluded.immobilized,
         excludedDormant: excluded.dormant,
