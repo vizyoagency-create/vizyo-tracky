@@ -107,7 +107,7 @@ function groupeReservationId(ev: VehicleEventDto): string | null {
                  n'existe pas pour lui. -->
             <p class="text-sm text-fg-tertiary mt-0.5">
               @if (canSeeAgenda()) {
-                Entretiens planifiés et incidents de votre flotte
+                Réservations, entretiens, incidents et missions de votre flotte
               } @else {
                 Les missions de votre flotte, et leurs tournées
               }
@@ -493,7 +493,7 @@ function groupeReservationId(ev: VehicleEventDto): string | null {
                 <div class="ag-avail-bar"><span [style.width.%]="dayAvailability().pct"></span></div>
                 @if (dayAvailability().unavailable.length > 0) {
                   <ul class="ag-unavail">
-                    @for (u of dayAvailability().unavailable; track u.vehicleId) {
+                    @for (u of borne(dayAvailability().unavailable, 'indispo', 6); track u.vehicleId) {
                       <li class="ag-unavail-row">
                         <span class="ag-unavail-ic" [attr.data-kind]="u.kind">
                           <lucide-icon [img]="u.kind === 'reserved' ? CalendarCheckIcon : u.kind === 'dormant' ? WifiOffIcon : BanIcon" [size]="12"></lucide-icon>
@@ -503,6 +503,9 @@ function groupeReservationId(ev: VehicleEventDto): string | null {
                       </li>
                     }
                   </ul>
+                  @if (dayAvailability().unavailable.length > 6) {
+                    <button type="button" class="ag-voir-plus" (click)="basculerListe('indispo')">{{ listesDepliees().has('indispo') ? 'Replier' : 'Voir les ' + (dayAvailability().unavailable.length - 6) + ' autres' }}</button>
+                  }
                 } @else {
                   <p class="ag-avail-ok">
                     <lucide-icon [img]="ShieldCheckIcon" [size]="13"></lucide-icon>
@@ -512,88 +515,9 @@ function groupeReservationId(ev: VehicleEventDto): string | null {
               </div>
             }
 
-            <!-- ── Usage prévu (aujourd'hui + à venir) ── -->
-            @if (canSeeInsights() && dayContext() !== 'past') {
-              <section class="ag-sec">
-                <div class="ag-sec-head">
-                  <span class="ag-sec-titr ag-sec-titr--fc"><lucide-icon [img]="SparklesIcon" [size]="13"></lucide-icon> Usage prévu</span>
-                  <span class="ag-sec-badge ag-sec-badge--fc">{{ dayForecast().length }}</span>
-                </div>
-                <p class="ag-sec-sub">Estimé d'après l'historique récent. Indicatif — n'empêche pas de réserver.</p>
-                @if (dayForecast().length === 0) {
-                  <p class="ag-sec-empty">Aucun usage habituel prévu ce jour.</p>
-                } @else {
-                  @for (f of dayForecast(); track f.vehicleId) {
-                    <div class="ag-insight">
-                      <span class="ag-insight-plate" [vehicleLink]="f.vehicleId" [attr.title]="'Voir ' + f.plate">{{ f.plate }}</span>
-                      <span class="ag-insight-time">{{ f.time }}</span>
-                      <span class="ag-insight-conf" [title]="'Observé : ' + f.basis">
-                        <span class="ag-insight-bar"><span [style.width.%]="f.confidence * 100" [style.background]="confColor(f.confidence)"></span></span>
-                        <span class="ag-insight-basis">{{ f.basis }}</span>
-                      </span>
-                    </div>
-                  }
-                }
-              </section>
-            }
-
-            <!-- ── Utilisation réelle (jours passés) ── -->
-            @if (canSeeInsights() && dayContext() === 'past') {
-              <section class="ag-sec">
-                <div class="ag-sec-head">
-                  <span class="ag-sec-titr ag-sec-titr--act"><lucide-icon [img]="ActivityIcon" [size]="13"></lucide-icon> Utilisation réelle</span>
-                  @if (dayForecast().length > 0) {
-                    <span class="ag-cmp" title="Prévision vs réalité de ce jour">prévu {{ dayForecast().length }} · réel {{ dayActivity().length }}</span>
-                  } @else {
-                    <span class="ag-sec-badge ag-sec-badge--act">{{ dayActivity().length }}</span>
-                  }
-                </div>
-                @if (dayActivity().length === 0) {
-                  <p class="ag-sec-empty">Aucun véhicule n'a roulé ce jour.</p>
-                } @else {
-                  @for (a of dayActivity(); track a.vehicleId) {
-                    <div class="ag-insight">
-                      <span class="ag-insight-plate" [vehicleLink]="a.vehicleId" [attr.title]="'Voir ' + a.plate">{{ a.plate }}</span>
-                      <span class="ag-insight-time">{{ a.trips }} trajet{{ a.trips > 1 ? 's' : '' }}</span>
-                      <span class="ag-insight-km">{{ a.distanceKm }} km</span>
-                    </div>
-                  }
-                }
-              </section>
-            }
-
-            <!-- ── Proposé par l'agent (réservations fantômes) ── -->
-            @if (canOptimize() && dayProposals().length > 0) {
-              <section class="ag-sec">
-                <div class="ag-sec-head">
-                  <span class="ag-sec-titr ag-sec-titr--fantome"><lucide-icon [img]="SparklesIcon" [size]="13"></lucide-icon> Proposé par l'agent</span>
-                  <span class="ag-sec-badge ag-sec-badge--fantome">{{ dayProposals().length }}</span>
-                </div>
-                <p class="ag-sec-sub">Déduit des habitudes du véhicule. <strong>Aucun véhicule n'est bloqué</strong> tant que vous n'avez pas validé.</p>
-                @for (p of dayProposals(); track p.id) {
-                  <article class="ag-fantome">
-                    <div class="ag-fantome-top">
-                      <span class="ag-fantome-plate" [vehicleLink]="p.vehicleId" [attr.title]="'Voir ' + (p.vehiclePlate || '')">{{ p.vehiclePlate || '—' }}</span>
-                      <span class="ag-fantome-time">{{ hm(p.startAt) }} → {{ hm(p.endAt) }}</span>
-                      @if (p.destinationLabel) { <span class="ag-fantome-dest">{{ p.destinationLabel }}</span> }
-                    </div>
-                    <p class="ag-fantome-why">{{ p.reasoning }}</p>
-                    @if (canValidate()) {
-                      <div class="ag-fantome-actions">
-                        <button type="button" (click)="applyProposal(p)" [disabled]="busyId() === p.id" class="ag-act ag-act--done">
-                          <lucide-icon [img]="CheckIcon" [size]="12"></lucide-icon> Réserver
-                        </button>
-                        <button type="button" (click)="dismissProposal(p)" [disabled]="busyId() === p.id" class="ag-act ag-act--del">
-                          <lucide-icon [img]="XIcon" [size]="12"></lucide-icon> Écarter
-                        </button>
-                      </div>
-                    }
-                  </article>
-                }
-              </section>
-            }
-
-            <!-- ── Réservations & événements (tous les jours) ── -->
+            <!-- ── Réservations & événements (tous les jours) ──
+                 Refonte du 28/09 (point 11) : ce qui est ACTÉ ce jour vient AVANT ce qui est prévu ou
+                 proposé — le gestionnaire ouvre un jour pour voir ses réservations, pas 31 prévisions. -->
             <section class="ag-sec">
               <div class="ag-sec-head">
                 <span class="ag-sec-titr"><lucide-icon [img]="CalendarDaysIcon" [size]="13"></lucide-icon> Réservations &amp; événements</span>
@@ -685,6 +609,100 @@ function groupeReservationId(ev: VehicleEventDto): string | null {
                 </article>
               }
             </section>
+            <!-- ── Usage prévu (aujourd'hui + à venir) ── -->
+            @if (canSeeInsights() && dayContext() !== 'past') {
+              <section class="ag-sec">
+                <div class="ag-sec-head">
+                  <span class="ag-sec-titr ag-sec-titr--fc"><lucide-icon [img]="SparklesIcon" [size]="13"></lucide-icon> Usage prévu</span>
+                  <span class="ag-sec-badge ag-sec-badge--fc">{{ dayForecast().length }}</span>
+                </div>
+                <p class="ag-sec-sub">Estimé d'après l'historique récent. Indicatif — n'empêche pas de réserver.</p>
+                @if (dayForecast().length === 0) {
+                  <p class="ag-sec-empty">Aucun usage habituel prévu ce jour.</p>
+                } @else {
+                  @for (f of borne(dayForecast(), 'prevu', 5); track f.vehicleId) {
+                    <div class="ag-insight">
+                      <span class="ag-insight-plate" [vehicleLink]="f.vehicleId" [attr.title]="'Voir ' + f.plate">{{ f.plate }}</span>
+                      <span class="ag-insight-time">{{ f.time }}</span>
+                      <span class="ag-insight-conf" [title]="'Observé : ' + f.basis">
+                        <span class="ag-insight-bar"><span [style.width.%]="f.confidence * 100" [style.background]="confColor(f.confidence)"></span></span>
+                        <span class="ag-insight-basis">{{ f.basis }}</span>
+                      </span>
+                    </div>
+                  }
+                  @if (dayForecast().length > 5) {
+                    <button type="button" class="ag-voir-plus" (click)="basculerListe('prevu')">{{ listesDepliees().has('prevu') ? 'Replier' : 'Voir les ' + (dayForecast().length - 5) + ' autres' }}</button>
+                  }
+                }
+              </section>
+            }
+
+            <!-- ── Utilisation réelle (jours passés) ── -->
+            @if (canSeeInsights() && dayContext() === 'past') {
+              <section class="ag-sec">
+                <div class="ag-sec-head">
+                  <span class="ag-sec-titr ag-sec-titr--act"><lucide-icon [img]="ActivityIcon" [size]="13"></lucide-icon> Utilisation réelle</span>
+                  @if (dayForecast().length > 0) {
+                    <span class="ag-cmp" title="Prévision vs réalité de ce jour">prévu {{ dayForecast().length }} · réel {{ dayActivity().length }}</span>
+                  } @else {
+                    <span class="ag-sec-badge ag-sec-badge--act">{{ dayActivity().length }}</span>
+                  }
+                </div>
+                @if (dayActivity().length === 0) {
+                  <p class="ag-sec-empty">Aucun véhicule n'a roulé ce jour.</p>
+                } @else {
+                  @for (a of borne(dayActivity(), 'reel', 8); track a.vehicleId) {
+                    <div class="ag-insight">
+                      <span class="ag-insight-plate" [vehicleLink]="a.vehicleId" [attr.title]="'Voir ' + a.plate">{{ a.plate }}</span>
+                      <span class="ag-insight-time">{{ a.trips }} trajet{{ a.trips > 1 ? 's' : '' }}</span>
+                      <span class="ag-insight-km">{{ a.distanceKm }} km</span>
+                    </div>
+                  }
+                  @if (dayActivity().length > 8) {
+                    <button type="button" class="ag-voir-plus" (click)="basculerListe('reel')">{{ listesDepliees().has('reel') ? 'Replier' : 'Voir les ' + (dayActivity().length - 8) + ' autres' }}</button>
+                  }
+                }
+              </section>
+            }
+
+            <!-- ── Proposé par l'agent (réservations fantômes) ──
+                 Refonte du 28/09 (point 7) : une LIGNE par proposition (plaque · heures · destination ·
+                 ✓ ✗), le pourquoi au survol ; au-delà de trois, la liste se replie — 31 cartes sur un
+                 jeudi faisaient du panneau du jour un long défilement. -->
+            @if (canOptimize() && dayProposals().length > 0) {
+              <section class="ag-sec">
+                <div class="ag-sec-head">
+                  <span class="ag-sec-titr ag-sec-titr--fantome"><lucide-icon [img]="SparklesIcon" [size]="13"></lucide-icon> Proposé par l'agent</span>
+                  <span class="ag-sec-badge ag-sec-badge--fantome">{{ dayProposals().length }}</span>
+                </div>
+                <p class="ag-sec-sub">Déduit des habitudes du véhicule. <strong>Aucun véhicule n'est bloqué</strong> tant que vous n'avez pas validé.</p>
+                <ul class="ag-fantome-liste">
+                  @for (p of dayProposalsVisibles(); track p.id) {
+                    <li class="ag-fantome-ligne" [title]="p.reasoning">
+                      <span class="ag-fantome-plate" [vehicleLink]="p.vehicleId" [attr.title]="'Voir ' + (p.vehiclePlate || '')">{{ p.vehiclePlate || '—' }}</span>
+                      <span class="ag-fantome-time">{{ hm(p.startAt) }} → {{ hm(p.endAt) }}</span>
+                      @if (p.destinationLabel) { <span class="ag-fantome-dest">{{ p.destinationLabel }}</span> }
+                      @if (canValidate()) {
+                        <span class="ag-fantome-actions">
+                          <button type="button" (click)="applyProposal(p)" [disabled]="busyId() === p.id" class="ag-act ag-act--done" title="Réserver ce créneau">
+                            <lucide-icon [img]="CheckIcon" [size]="12"></lucide-icon> Réserver
+                          </button>
+                          <button type="button" (click)="dismissProposal(p)" [disabled]="busyId() === p.id" class="ag-act ag-act--del" title="Écarter" aria-label="Écarter">
+                            <lucide-icon [img]="XIcon" [size]="12"></lucide-icon>
+                          </button>
+                        </span>
+                      }
+                    </li>
+                  }
+                </ul>
+                @if (dayProposals().length > 3) {
+                  <button type="button" class="ag-fantome-plus" (click)="propositionsDepliees.set(!propositionsDepliees())">
+                    {{ propositionsDepliees() ? 'Replier' : 'Voir les ' + (dayProposals().length - 3) + ' autres' }}
+                  </button>
+                }
+              </section>
+            }
+
           </div>
           @if (canReserve()) {
             <footer class="ag-sheet-foot">
@@ -1033,6 +1051,17 @@ function groupeReservationId(ev: VehicleEventDto): string | null {
     /* ── Panneau jour : la proposition. Encadré POINTILLÉ, comme sa pastille. ── */
     .ag-sec-titr--fantome { color: var(--texte-violet); }
     .ag-sec-badge--fantome { color: var(--texte-violet); background: color-mix(in srgb, var(--violet) 14%, transparent); }
+    /* Propositions du jour en LIGNES (refonte du 28/09) : plaque · heures · destination · actions. */
+    .ag-fantome-liste { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+    .ag-fantome-ligne { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 6px 9px; border-radius: 9px;
+                        border: 1px dashed color-mix(in srgb, var(--violet) 45%, transparent); font-size: 12px; }
+    .ag-fantome-ligne .ag-fantome-actions { margin-left: auto; display: inline-flex; gap: 4px; }
+    .ag-fantome-plus { align-self: flex-start; margin-top: 4px; font-size: 12px; font-weight: 700; color: var(--texte-violet); padding: 4px 2px; }
+    .ag-voir-plus { align-self: flex-start; margin-top: 4px; font-size: 12px; font-weight: 700; color: var(--texte-succes); padding: 4px 2px; }
+    .ag-voir-plus:hover, .ag-fantome-plus:hover { text-decoration: underline; }
+    /* D8 : une plaque ne se coupe jamais sur deux lignes (« GD-057- / AG » vu en 412 px). */
+    .ag-unavail-plate, .ag-insight-plate, .ag-fantome-plate, .ag-day-card-plate { white-space: nowrap; }
+    .ag-fantome-plus:hover { text-decoration: underline; }
     .ag-fantome {
       padding: 10px 12px; border-radius: 10px; margin-top: 6px;
       background: transparent;
@@ -1856,6 +1885,24 @@ export class AgendaComponent implements OnInit {
   });
 
   /** Propositions du jour ouvert, triées par heure — affichées dans le panneau jour. */
+  /** Le panneau du jour replie les propositions au-delà de trois ; ce drapeau les déplie. */
+  protected readonly propositionsDepliees = signal(false);
+  /**
+   * Listes du panneau du jour dépliées à la demande (indisponibles, usage prévu, utilisation
+   * réelle). Bornées par défaut : 31 prévisions et 7 indisponibles faisaient d'un jeudi un long
+   * défilement avant d'atteindre les réservations du jour.
+   */
+  protected readonly listesDepliees = signal<Set<string>>(new Set());
+  protected borne<T>(liste: T[], cle: string, n: number): T[] {
+    return this.listesDepliees().has(cle) ? liste : liste.slice(0, n);
+  }
+  protected basculerListe(cle: string): void {
+    this.listesDepliees.update((s) => { const next = new Set(s); if (next.has(cle)) next.delete(cle); else next.add(cle); return next; });
+  }
+  protected readonly dayProposalsVisibles = computed(() =>
+    this.propositionsDepliees() ? this.dayProposals() : this.dayProposals().slice(0, 3),
+  );
+
   protected readonly dayProposals = computed(() => {
     const b = this.selectedDayBounds();
     if (!b) return [];
@@ -2338,6 +2385,8 @@ export class AgendaComponent implements OnInit {
   // ─── Panneau jour ──────────────────────────────────────────────────────────
   protected onDayClick(iso: string): void {
     this.selectedDay.set(iso);
+    this.propositionsDepliees.set(false);
+    this.listesDepliees.set(new Set());
     this.dayPanelOpen.set(true);
   }
 

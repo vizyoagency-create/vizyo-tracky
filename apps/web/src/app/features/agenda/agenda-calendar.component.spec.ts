@@ -136,11 +136,11 @@ describe('libelleMultiJours', () => {
   it('un seul jour : le titre nu', () => {
     expect(libelleMultiJours('Sortie', 1, 1)).toBe('Sortie');
   });
-  it('le premier jour annonce la durée', () => {
-    expect(libelleMultiJours('Sortie', 1, 3)).toBe('Sortie · 3 j');
+  it('le premier jour annonce la durée, AVANT le titre (une cellule étroite coupe la fin)', () => {
+    expect(libelleMultiJours('Sortie', 1, 3)).toBe('3 j · Sortie');
   });
-  it('une suite dit où on en est', () => {
-    expect(libelleMultiJours('Sortie', 2, 3)).toBe('↳ Sortie (2/3)');
-    expect(libelleMultiJours('Sortie', 3, 3)).toBe('↳ Sortie (3/3)');
+  it('une suite dit où on en est, avant le titre', () => {
+    expect(libelleMultiJours('Sortie', 2, 3)).toBe('↳ 2/3 · Sortie');
+    expect(libelleMultiJours('Sortie', 3, 3)).toBe('↳ 3/3 · Sortie');
   });
 });

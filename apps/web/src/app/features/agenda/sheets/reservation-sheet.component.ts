@@ -181,10 +181,12 @@ function toLocalInput(d: Date): string {
               <!-- Les dormants restent LISTÉS et lisibles, avec leur motif daté : les faire
                    disparaître laisserait croire à une suppression du parc. Ils sont
                    seulement non sélectionnables (cf. vehicleOptions pour les exceptions). -->
+              <!-- « [selected] » sur chaque option, pas « [value] » seul : ouvert directement en édition, le
+                   select retombait sur « Auto » alors que le signal portait bien le véhicule (recette du 28/09 au soir). -->
               <select class="rs-in" [value]="vehicleId()" (change)="vehicleId.set($any($event.target).value)">
-                <option value="">Auto (le 1er disponible conforme)</option>
+                <option value="" [selected]="!vehicleId()">Auto (le 1er disponible conforme)</option>
                 @for (v of vehicleOptions(); track v.id) {
-                  <option [value]="v.id" [disabled]="v.disabled">{{ v.label }}@if (v.aBord) { · à bord : {{ v.aBord }} }@if (v.horsService) { — hors service ({{ v.horsService }}) } @else if (v.silence) { — boîtier muet depuis {{ v.silence }} }</option>
+                  <option [value]="v.id" [disabled]="v.disabled" [selected]="v.id === vehicleId()">{{ v.label }}@if (v.aBord) { · à bord : {{ v.aBord }} }@if (v.horsService) { — hors service ({{ v.horsService }}) } @else if (v.silence) { — boîtier muet depuis {{ v.silence }} }</option>
                 }
               </select>
               @if (horsServiceCount() > 0) {
