@@ -932,6 +932,10 @@ describe('Page Rapports — bascule de société', () => {
           provide: AuthService,
           useValue: {
             user: signal({ sub: 'u-sa', email: 'sa@exemple.fr', role: 'SUPER_ADMIN', fleetId: null, permissions: null }),
+            // Le traqueur d'activité (injecté par la page) lit `isAuthenticated()` dans un effet : sans
+            // lui, 4 « TypeError » par passage dans la console des tests (fusion du 29/09). « Non » : il
+            // ne démarre pas, et n'émet aucune requête que ce spec n'attend.
+            isAuthenticated: () => false,
           },
         },
       ],
