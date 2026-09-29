@@ -918,6 +918,206 @@ Ménage : la réservation de recette de Client test supprimée en base (`DELETE 
 refuse une réservation, 400 — c'est voulu : une réservation s'annule, elle ne s'efface pas depuis
 l'écran). Aucun courriel vers `@cdef31.org` sur la fenêtre (vérifié dans `email_logs`).
 
+## 2026-09-29, nuit et matin — cinq revues contradictoires, deux déploiements, l'activité et « 12 places »
+
+### Les passes de revue (00:30 – 05:15)
+
+Le propriétaire : « prends le temps de bien finir ». La refonte du 28/09 au soir a été relue par des
+relecteurs indépendants, chaque constat soumis à deux sceptiques chargés de le réfuter ; seuls les
+constats que les deux n'ont pas pu réfuter ont été corrigés, puis la correction elle-même relue.
+
+| Passe | Confirmés | Graves | Moyens | Mineurs | Ce qui dominait |
+|---|---|---|---|---|---|
+| 1 — revue | 51 | 9 | 26 | 16 | réaffectation sans contrôle des places ni des conflits, analyse IA hors périmètre, « Appliquer » qui écrasait la fiche, Réorganiser qui appliquait des critères changés depuis la simulation, « Aucun groupe » ignoré |
+| 2 — contre-revue | 29 | 1 | 12 | 16 | prolonger une réservation commencée bloqué par son propre trajet, coupe `aPartirDe`, verrou de l'analyse |
+| 3 | 21 | 0 | 9 | 12 | droits par véhicule (valider, annuler, modifier, PATCH véhicule), courriel « annulée », `ids` des refusées, ordre d'écriture de Décaler |
+| 4 | 8 | 0 | 2 | 6 | `attendu` ne comparait que le nombre, incident antidaté invisible jusqu'au rechargement, courriel « confirmée » après un refus partiel |
+| 5 — lot activité / 12 places | 14 (+2 disputés) | 0 | 3 | 11 | courriel « retenue en partie » qui masquait un simple changement, journal d'un événement qui nommait des champs inchangés, répartition qui oubliait un conducteur par véhicule, owner visible dans le fil agenda d'un autre super-admin |
+
+Ce que le code fait désormais, en bref :
+
+- **Réaffecter** coupe à max(maintenant, début de l'indisponibilité) : une réservation qui déborde
+  est **scindée** (avant : reste ; après : part sur la cible, `suiteDe`), une demande en attente qui
+  déborde est refusée (elle se valide ou se refuse d'abord), les places demandées et les conflits
+  de la cible sont contrôlés.
+- **Droit `reservations_manage` par véhicule** pour valider, annuler, modifier, réaffecter
+  (exception : retirer sa propre demande en attente) ; `vehicles_edit` par véhicule sur
+  `PATCH /vehicles/:id`, la synchro et l'application des capacités.
+- **Réorganiser** n'écrit que sur le lot affiché : `attendu` (409 si le lot a changé), `ids`
+  pour ne reprendre que les refusées, demandes en attente refusées dès la simulation.
+- **Courriels** : `reservation.modified` / `reservation.cancelled`, un seul par demande groupée,
+  jamais pour une réservation interne, close ou passée.
+- **Propositions de l'agent** prises sous condition (`pending → applied`) avant de réserver,
+  rendues si la réservation échoue : deux onglets ne tranchent plus la même proposition.
+- **Analyse du parc** : sociétés en périmètre complet seulement, verrou par société, propositions
+  en ajout seulement, « fiche modifiée depuis l'analyse » sautée sauf « Appliquer quand même ».
+
+Vérifié avant de pousser : `pnpm verify` — typecheck, 153 migrations rejouées, smoke-boot, **4 540
+tests API** (272 suites) — et **826 tests web**, `ng build` sans erreur. Le garde-fou « serveur de
+dev » a bloqué l'étape Tests (un Next.js d'un autre dépôt tournait) : relancée avec
+`ALLOW_DEV_DURING_TESTS=1`, RAM surveillée.
+
+### Seconde passe dans Chrome, le 28/09 (21:40 – 22:20) — « prends le temps »
+
+Après le déploiement, chaque vue et chaque feuille rejouées sur la démo, en grand écran, en 412 px
+(cadre injecté) et en thème sombre, l'onglet redevenu visible. Huit retouches, toutes visuelles ou
+de lecture — aucune règle serveur ne bouge :
+
+| # | Vu | Fait |
+|---|---|---|
+| D1 | sous-titre « Entretiens planifiés et incidents de votre flotte » sous une page qui parle aussi de réservations, de missions, de parc | « Réservations, entretiens, incidents et missions de votre flotte » |
+| D2 | dans une cellule étroite, « ↳ Recette refonte — 8 jours (… » : la fraction, en fin de pilule, était coupée | la durée et la position passent AVANT le titre : « 7 j · titre », « ↳ 2/7 · titre » (test ajusté) |
+| D3 | 31 propositions de l'agent un jeudi = 31 cartes dans le panneau du jour | une ligne par proposition (plaque · heures · destination · ✓ ✗), le pourquoi au survol, trois visibles puis « Voir les 28 autres » |
+| D4 | sur un poste, une feuille du bas fait 1 500 px de large — des champs d'un mètre | la feuille est centrée et bornée à 960 px dès 1 024 px (`bottom-sheet`, toute l'application) |
+| D5 | ouvert directement en édition, le sélecteur de véhicule affichait « Auto » alors que le signal portait GR-903-GS | `[selected]` sur chaque option — le piège `[value]` + `@for` déjà rencontré le matin sur le métier |
+| D6 | 32 lignes d'usage prévu et 7 indisponibles avant d'atteindre les réservations du jour | listes bornées (6 indisponibles, 5 prévus, 8 réels) avec « Voir les N autres » |
+| D7 | les réservations et événements du jour — ce qui est acté — arrivaient en dernier, sous les prévisions | ils viennent juste après la disponibilité ; prévisions et propositions après |
+| D8 | en 412 px, « GD-057- / AG » : une plaque coupée sur deux lignes | plaques insécables partout dans le panneau |
+
+Vu et laissé tel quel : le calendrier mobile ne montre que des pastilles (voulu depuis le 24/09),
+le formulaire d'indisponibilité sur une colonne en 412 px, la vue Parc et l'Assistant IA en sombre.
+
+### 🚀 Déployé le 29/09 à 05:36 (Paris) — `0c6767c7`, avec `--force`, à la demande du propriétaire
+
+« Personne n'est connecté, on va risquer. » Le script refuse de 05:30 à 09:00 (reprises du
+coupe-circuit) ; `--force` passe outre **toutes** les gardes, y compris celle qui protège le passage
+d'automatisation. Le risque a donc été mesuré avant, pas pris à l'aveugle :
+
+- reprises du matin : **05:00 (5 véhicules, passée) et 07:00 (30 véhicules)** — lues dans
+  `vehicle_schedules` ;
+- passages de nuit : 30 s à 8 min ; celui de 04:45 fini, le suivant à 05:45 ;
+- en ligne : le seul compte du propriétaire dans les 20 dernières minutes (`user_activities`).
+
+Images pré-construites de 05:29 à 05:32 (rien de recréé), puis `deploy.sh --force` à 05:32:52 :
+recréation à 05:36:47, **API saine en 10 s, 0 redémarrage**, démo à jour et saine à 05:37:21 — huit
+minutes avant le passage de 05:45 (fini en 28 s), une heure vingt avant la reprise de 07:00.
+Artefacts vérifiés dans les conteneurs (la prise sous condition dans l'API de prod et de démo, la
+nouvelle vue dans le web).
+
+### Recette prod (05:40 – 06:05) — Client test, dans Chrome
+
+⚠️ L'onglet servait encore l'**ancienne** version : le service worker Angular garde chaque client
+sur sa version jusqu'à la bannière « Mise à jour disponible ». Le bouton, cliqué dans un onglet en
+arrière-plan, n'a pas rechargé ; une nouvelle navigation a pris la version neuve. Chez un
+utilisateur, la bannière apparaît dans la minute (`PwaUpdateService`, vérification toutes les 60 s).
+
+| Geste | Résultat |
+|---|---|
+| Rejouer la demande « 12 places » du propriétaire (05:10, sur téléphone) | refus « Aucun véhicule libre… » reproduit — voir plus bas |
+| Réserver 30/09 09:00 → 02/10 17:00, 4 places, Auto, groupe libre « Groupe recette » | `request` 201, TEST-006-XX (9 places), titre = motif, `metadata.group` = Groupe recette |
+| Carte du jour du 30/09 | « 6 / 8 disponibles », « 3 jours · jour 1/3 », « Groupe : Groupe recette » |
+| Éditer | véhicule actuel présélectionné, pas d'« Auto » en édition, groupe et motif repris ; fin repoussée au 03/10 → `PATCH` 200, « 4 jours » |
+| Maintenance TEST-006-XX le 01/10, « Immobilise » | le bloc liste la réservation, défaut « Réaffecter » → **scission** : TEST-006-XX 30/09 09:00 → 01/10 00:00, suite sur TEST-007-XX 01/10 00:00 → 03/10 17:00, même groupe, `suiteDe` posé |
+| Réorganiser, TEST-007-XX, Annuler | « 1 réservation serait annulée » → appliqué : la suite seule est annulée, la réservation du propriétaire (TEST-004-XX) intacte |
+| Parc, Missions, QR, Paramètres | places de chaque véhicule ; aucune mission ; QR sans défilement (571 px pour 571) ; les sièges renvoient à la vue Parc |
+| 412 px (cadre injecté) | aucune largeur au-delà de 412, vues sur une ligne, pastilles de filtre défilantes dans leur rangée |
+| `email_logs` | **0 courriel** sur les 90 minutes |
+
+Ménage : la partie restante annulée, la maintenance supprimée.
+
+### 🔎 « 12 places » : le propriétaire ne s'est pas trompé de geste — le message, si
+
+À 05:10, sur Client test : « Places min. » 12, véhicule Auto → « Aucun véhicule libre ne correspond
+aux critères sur ce créneau. », alors que la carte du jour disait **« 7 / 8 véhicule(s)
+disponible(s) »**. Le parc : trois véhicules de 9 places, quatre de 5, un de 4. **Le refus était
+juste : aucun véhicule n'a 12 places.** Mais le filtre écartait les véhicules trop petits sans les
+compter, et le message parlait d'un créneau — on cherche un conflit d'horaire qui n'existe pas. Et
+le « 7 / 8 » compte des véhicules, pas des places.
+
+### 🔎 L'activité : Joost ne voyait AUCUNE action d'agenda
+
+Cartographie (quatre lecteurs indépendants, données prod lues en `SELECT`) :
+
+- sa page `/fleet-admin/activity` ne lit **que la navigation** (`user_activities` : pages, clics,
+  défilement) et les commandes moteur — jamais le journal métier ;
+- le journal métier (`system_activity_logs`) n'enregistrait que valider / refuser / annuler, la
+  scission, la réorganisation appliquée et la demande publique — **ni la création, ni la
+  modification, ni la réaffectation simple, ni les maintenances et incidents, ni les propositions
+  de l'agent** ;
+- les lignes enregistrées ne portaient **pas l'auteur** (`triggeredByUserId` vide, « UTILISATEUR »
+  à l'écran), dataient le créneau **en UTC**, et la réorganisation prenait la société du filtre de
+  l'écran (souvent vide) au lieu de celle des réservations ;
+- l'onglet Système de `/admin/activity` n'avait ni puce « Réservations », ni filtre société ;
+- ces lignes partaient à la purge au bout de **30 jours**.
+
+Relevé de la recette : la scission de 05:51 apparaît bien (`reservation_scindee`, société juste),
+mais sans auteur et « jusqu'à 2026-09-30T22:00:00.000Z ».
+
+
+### Ce qui a été fait pour les deux (07:00 – 07:35) — lot `c10e27d5`
+
+Six lots aux fichiers disjoints, chacun relu par un relecteur indépendant puis repris ; puis une
+**cinquième revue contradictoire** du lot entier (14 confirmés, 2 disputés, **aucun grave**),
+corrigée elle aussi.
+
+**Activité.**
+- **Le journal** (catégories `RESERVATION` et `AGENDA`) note désormais chaque geste : demande,
+  création, consignation, validation, refus, **retrait par son auteur** (ce n'est pas un refus),
+  annulation, modification (seulement si un champ change vraiment), réaffectation, décalage,
+  scission, réorganisation (**un résumé par société du lot**), événement créé / modifié / clos /
+  supprimé (écrit AVANT la suppression), incident, proposition de l'agent réservée / écartée
+  (Écarter est idempotent), sièges auto, capacités appliquées par l'IA ou modifiées à la main,
+  plans d'entretien, réglages de l'agent. Toujours : la société de la **ressource**, l'**auteur**
+  (`triggeredByUserId`), l'heure de **Paris**. Un journal qui échoue ne fait jamais échouer le geste.
+- **Chez Joost** : un onglet **« Agenda »**, par défaut, sur `/fleet-admin/activity`
+  (`GET /api/fleet-admin/activity/agenda`, borné à sa société). Un super-admin ou le propriétaire
+  y apparaît **« Équipe Tracky »** : le geste se voit, jamais l'identité — et le propriétaire reste
+  caché aux autres super-admins, comme partout.
+- **Chez le propriétaire** : `/admin/activity` › Système filtrable par société et période, puces
+  Réservations / Agenda, badges lisibles, et le même statut que le client (« Avec refus » pour une
+  réorganisation appliquée en partie, plus « ignoré »).
+- **Conservation** : `RESERVATION` et `AGENDA` gardées **365 jours**, comme l'audit `MUTATION`.
+
+**12 places.**
+- Un constructeur unique (`aucun-vehicule.message.ts`) pour la demande, la réaffectation et l'IA
+  de placement : « Aucun véhicule de 12 places ou plus (conducteur compris) : le plus grand en a 9.
+  Sur ce créneau, 7 véhicules sont libres, de 4 à 9 places : répartissez le groupe… ». Les sièges
+  auto passent avant la taille ; les places non renseignées et les boîtiers muets sont dits.
+- **Un conducteur par véhicule** : « 9 + 4 = 13 places » ne couvre pas 13 places demandées (12
+  passagers, 11 offerts). Le serveur et la feuille comptent de la même façon.
+- Un véhicule choisi à la main plus petit que « Places min. » est refusé (demande, édition,
+  validation qui déplace, réaffectation vers un véhicule choisi — jamais en rétroactif ni sur des
+  places inconnues).
+- La feuille : les places dans chaque option, « Places min. (conducteur compris) », l'avertissement
+  **avant** l'envoi, et **« Répartir le groupe : A (9 pl.) + B (5 pl.) »** → une demande interne par
+  véhicule, séquentielles, avec un bilan clair ; **aucun courriel**.
+- La carte du jour : « 7 / 8 libres · jusqu'à 9 places par véhicule ».
+
+**Et aussi** : les correctifs de la quatrième revue (`lotIds` de Réorganiser renvoyés en `ids`,
+incident antidaté relu, course de société, demande en attente non réaffectable laissée par défaut,
+droits par véhicule dans la vue Parc, courriel « retenue en partie » avec un motif explicite),
+« Mettre à jour maintenant » qui recharge au bout de 5 s même si le service worker se tait, et
+« Voir l'historique » d'une coupure non confirmée qui ouvre l'onglet Moteurs (pour les seuls rôles
+qui ont la page).
+
+Vérifié : `pnpm verify` — typecheck, 153 migrations, smoke-boot, **4 717 tests API**, **876 tests
+web** — et `ng build`.
+
+La reprise de 07:00, sur l'API déployée à 05:36 : **24 remises en marche, 24 réussies**.
+
+### 🚀 Déployé le 29/09 à 08:12 (Paris) — `c10e27d5`, `--force` pour la seule fenêtre du matin
+
+Images pré-construites à 07:37 ; le passage de 07:45 a duré **21 min 52** (la nuit : 23 s) — le
+déploiement a attendu sa fin (08:06) plutôt que de le tuer : `--force` passe outre TOUTES les gardes,
+passage compris. Au départ : un seul compte en ligne (le propriétaire), aucun compte cdef31, dernière
+reprise du jour (07:00) passée. Aucune migration nouvelle. Recréation à 08:12:04, **API saine en 10 s,
+0 redémarrage**, démo à jour et saine à 08:12:52. Artefacts vérifiés dans les conteneurs.
+
+### Recette prod (08:13 – 08:20) — Client test, dans Chrome, navigation neuve (nouvelle version)
+
+| Geste | Résultat |
+|---|---|
+| Carte du jour du 29/09 | « **7 / 8 véhicules libres aujourd'hui · jusqu'à 9 places par véhicule** » |
+| Réserver, 30/09 09:00 → 12:00, « Places min. » 12 | libellé « Places min. (conducteur compris) », options « TEST-004-XX · 5 pl. · Fictif Kangoo » ; sous le champ : « Aucun véhicule n'a 12 places : le plus grand en a 9. » puis « **Répartir le groupe : TEST-001-XX (9 pl.) + TEST-008-XX (4 pl.) = 13 places, dont 2 conducteurs : 11 places passagers pour 11 passagers** » |
+| « Réserver » en Auto malgré tout | 400 : « **Aucun véhicule de 12 places ou plus (conducteur compris) : le plus grand en a 9. Sur ce créneau, 7 véhicules sont libres, de 4 à 9 places : répartissez le groupe sur plusieurs véhicules (une réservation par véhicule).** » |
+| « Réserver ces 2 véhicules » | deux réservations fermes, « Recette 12 places (1/2) » sur TEST-001-XX et « (2/2) » sur TEST-008-XX, 09:00 → 12:00, sans plancher de places |
+| `/fleet-admin/activity` (bandeau Client test) | onglet **Agenda** par défaut : « 08:14 · Équipe Tracky · Réservation créée · TEST-008-XX — Réservation créée — TEST-008-XX, 30/09/2026 09:00 → 12:00 · « Recette 12 places (2/2) » » ; les lignes d'avant le déploiement restent telles qu'écrites (« Tracky », dates UTC) |
+| `/admin/activity` › Système | sélecteur Société = Client test (celui du bandeau), puces Réservations / Agenda, « Réservation créée **par Administrateur TRACKY** » avec plaque et société |
+| Annuler les deux (ménage) | `cancel` 201 ×2 → « Réservation annulée — Équipe Tracky » dans le fil ; la réponse de l'API ne porte **aucun** identifiant d'utilisateur ni `meta` (clés : id, at, category, action, actionLabel, status, actorName, actorKind, vehiclePlate, detail) |
+| Fil agenda de cdef31 (lecture seule, ce que Joost voit) | les passages de l'agent (« Agent de l'agenda »), la demande publique du 23/09 (« Demande publique »), la réorganisation du 23/09 ; les gestes antérieurs n'avaient pas été journalisés — tout nouveau geste y figurera |
+| 412 px (cadre injecté) | page Activité sans débordement, onglet « En ligne » présent sous 1 024 px |
+| `email_logs` | **0 courriel** sur les 4 dernières heures |
+
 ---
 
 ## Ce qu'il ne faut pas défaire
@@ -936,3 +1136,9 @@ l'écran). Aucun courriel vers `@cdef31.org` sur la fenêtre (vérifié dans `em
   **refuser** une demande humaine.
 - **Le refus du dernier destinataire**, et celui de fermer les deux canaux d'alerte. Deux gardes de
   la même famille : on ne laisse pas l'application devenir muette par un réglage.
+- **Un geste d'agenda écrit sa ligne au journal** (`RESERVATION` / `AGENDA`) avec la société de la
+  RESSOURCE, l'auteur et l'heure de Paris ; le client la lit dans son onglet « Agenda », un
+  super-admin y apparaît « Équipe Tracky ». Un geste neuf qui n'écrit pas sa ligne est invisible au
+  client — c'était le cas de la création et de la modification jusqu'au 29/09.
+- **Un conducteur par véhicule** : « Places min. » compte le conducteur ; répartir un groupe sur N
+  véhicules coûte N conducteurs (9 + 4 ne couvre pas 13). Serveur et feuille comptent pareil.
