@@ -1202,6 +1202,53 @@ jour seule à 15:35 pour la préversion (IA active sans clé : note « aucun mot
 
 Aucune écriture sur cdef31 ; le bandeau remis sur cdef31 à la fin.
 
+
+### Réorganiser : pistes 1, 2 et 4 du propriétaire — en prod à 18:10, retouche à 18:24
+
+Le propriétaire a retenu trois des quatre pistes proposées (la 3 — faire agir Réorganiser sur les
+propositions de l'agent — reste ouverte).
+
+- **Piste 4 — l'entrée du menu « ⋯ » grisée, avec sa raison.** Nouveau
+  `GET /api/reservations/reorganisables` (droit `reservations_manage`) : les réservations vivantes qui
+  chevauchent les 30 prochains jours, même règle (`chevaucheFenetre`, partagée avec la simulation) et
+  même périmètre que Réorganiser, plus le nom de la société. Relu à l'ouverture du menu, au
+  changement de société et après chaque changement de réservation ; inconnu = entrée active. Chez
+  cdef31 : « Réorganiser des réservations » grisé, et dessous « Aucune réservation à venir sur 30 jours
+  — les 307 propositions de l'agent se traitent dans l'Assistant IA ».
+- **Piste 1 — « Rien à réorganiser » en tête.** Quand rien ne chevauche les 30 jours (compte du menu,
+  ou simulation « Toutes » sur 30 jours vide), la feuille ne montre plus que : « Rien à réorganiser —
+  Aucune réservation à venir chez cdef31 dans les 30 prochains jours », ce que fait Réorganiser, « Les
+  307 propositions de l'agent ne sont pas des réservations… » et « Ouvrir l'Assistant IA » ; « Fermer »
+  en pied. Jamais pour une feuille ouverte depuis un geste (véhicule, période, refusées). Décision en
+  fonction pure testée (`rienAReorganiser`).
+- **Piste 2 — seuls les véhicules qui ont des réservations** dans la liste « Véhicule » (le véhicule
+  en panne en pleine réservation y est, par sa réservation en cours ; le véhicule choisi reste), avec
+  « 1 véhicule a des réservations dans les 30 prochains jours : seul celui-là est proposé ». Les
+  conseils « relisez la liste » et « choisissez d'abord le véhicule » ne s'affichent plus sans objet.
+
+**Trouvé en recette (démo, puis prod) et corrigé avant la fin :**
+
+| Vu | Corrigé |
+|---|---|
+| démo, « Tous les véhicules » + Annuler : « 1 véhicule a des réservations » et, juste dessous, « Aucune réservation à venir » — la seule réservation était EN COURS, qu'Annuler ne prend pas | l'explication « 1 réservation déborde sur la fenêtre mais commence avant… » vaut aussi pour « Tous », avec « Réaffecter celle de GR-903-GS » (choisit le véhicule et l'action) |
+| démo, 7 jours : « Une réservation plus loin, dans les 30 prochains jours » — la même, déjà dans la fenêtre | plus loin = les 30 jours moins la fenêtre |
+| prod, entrée active : « Réorganiser des / réservations » sur deux lignes (56 px contre 37) | le libellé ne se coupe plus, le menu s'élargit (234 px) |
+| prod, juste après le déploiement : l'onglet servait encore l'ancienne version (navigation moins d'une minute après, le service worker n'avait pas encore vu la nouvelle) | rien à corriger : une seconde navigation l'a prise — à savoir pour les recettes |
+
+**Recette prod (18:11 – 18:30), Chrome :**
+
+| | Résultat |
+|---|---|
+| cdef31, `reorganisables` | `{ total: 0, jours: 30, societe: "cdef31" }` |
+| cdef31, menu « ⋯ » | Réorganiser grisé (désactivé, opacité 0,62, curseur interdit), raison dessous et en info-bulle ; QR et Paramètres actifs ; en 412 px, menu de 160 à 386, sans débordement |
+| cdef31, feuille (ouverte au DOM pour le test — une simulation, aucune écriture) | la carte seule, sans critères ; « Ouvrir l'Assistant IA » ferme la feuille et affiche l'Assistant IA 307 |
+| Client test (IA coupée), menu | entrée active (compte 1 : la réservation de 8 jours de TEST-004-XX, en cours), une ligne |
+| Client test, feuille | « Tous les véhicules (1) · TEST-004-XX (1) » ; pas de « Posées par l'agent » ; « Rien à annuler… 1 réservation déborde… » ; « Réaffecter celle de TEST-004-XX » → simulation « 1 réservation serait réaffectée », scindée — non appliquée |
+
+Déploiements : 18:10 avec `--force` (le propriétaire : « tu peux déployer quand tu veux ») — le
+passage de 17:45, commencé 25 min plus tôt, a été interrompu ; puis 18:24 sans `--force`, aucun
+passage en cours. Aucun courriel.
+
 ---
 
 ## Ce qu'il ne faut pas défaire
