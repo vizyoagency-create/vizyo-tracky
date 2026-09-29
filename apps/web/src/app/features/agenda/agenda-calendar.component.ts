@@ -34,13 +34,15 @@ export function joursCouverts(ev: Pick<VehicleEventDto, 'startAt' | 'endAt'>, ma
 /**
  * Le libellé d'une pilule qui s'étale sur plusieurs jours (refonte UX du 28/09, point 1) : « comprendre
  * immédiatement la durée d'une réservation sans devoir ouvrir chaque élément ».
- *  - premier jour : « Sortie Carcassonne · 3 j » ;
- *  - jours suivants : « ↳ Sortie Carcassonne (2/3) » — la flèche dit « ça continue », la fraction dit où on en est.
+ *  - premier jour : « 3 j · Sortie Carcassonne » ;
+ *  - jours suivants : « ↳ 2/3 · Sortie Carcassonne » — la flèche dit « ça continue », la fraction dit où on en est.
+ * La durée et la position viennent AVANT le titre : une cellule étroite coupe la fin d'une pilule,
+ * jamais son début (vu en recette : « ↳ Recette refonte — 8 jours (… », la fraction invisible).
  * Un évènement d'un seul jour garde son titre nu.
  */
 export function libelleMultiJours(titre: string, jour: number, total: number): string {
   if (total <= 1) return titre;
-  return jour <= 1 ? `${titre} · ${total} j` : `↳ ${titre} (${jour}/${total})`;
+  return jour <= 1 ? `${total} j · ${titre}` : `↳ ${jour}/${total} · ${titre}`;
 }
 
 interface CalendarPill {

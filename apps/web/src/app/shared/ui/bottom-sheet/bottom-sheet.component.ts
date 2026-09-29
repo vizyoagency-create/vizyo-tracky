@@ -118,6 +118,12 @@ import {
        position 44 %. Une feuille qui prend la hauteur de son contenu saute d'un écran
        à l'autre ; une hauteur déclarée se retient. Sans l'entrée, rien ne change. */
     .bs-panel[data-hauteur] { height: var(--bs-hauteur); }
+    /* Grand écran (refonte agenda du 28/09) : une feuille pensée pour le pouce faisait 1 500 px de
+       large sur un poste — des champs d'un mètre. Centrée, 960 px au plus ; « left/right » et non un
+       « transform », que le glisser-pour-fermer occupe déjà. */
+    @media (min-width: 1024px) {
+      .bs-panel { left: max(0px, calc(50% - 480px)); right: max(0px, calc(50% - 480px)); border-radius: var(--feuille-rayon) var(--feuille-rayon) 0 0; }
+    }
     .bs-panel--leaving {
       animation: bs-slide-down 220ms cubic-bezier(0.4, 0, 1, 1) both;
     }
