@@ -1249,6 +1249,83 @@ Déploiements : 18:10 avec `--force` (le propriétaire : « tu peux déployer qu
 passage de 17:45, commencé 25 min plus tôt, a été interrompu ; puis 18:24 sans `--force`, aucun
 passage en cours. Aucun courriel.
 
+### Réorganiser : piste 3 — les propositions de l'agent — en prod à 20:10
+
+« Fais la piste 3 aussi et teste sur Chrome. » L'agenda de cdef31 porte **307 propositions de
+l'agent sur 25 véhicules** (du 30/09 au 12/10) et **aucune réservation à venir** : Réorganiser, qui
+ne prenait que des réservations, n'y trouvait rien. Il écarte désormais un LOT de propositions.
+
+**Vérifié d'abord** : une proposition écartée ne revient pas. L'agent ne repropose jamais un créneau
+déjà traité — unicité société × véhicule × début, quel que soit le statut (`runForFleet`) — et ses
+verdicts IA ne touchent que les propositions `pending`. Écarter en lot tient donc plus d'une nuit.
+
+**Serveur — `POST /api/agenda/agent/proposals/ecarter`** (`reservations_manage`) :
+- simulation par défaut ; à l'application, `ids` **obligatoire** = les `lotIds` montrés (une
+  proposition arrivée depuis — un passage de l'agent — n'est jamais écartée sans avoir été vue) ;
+- à venir seulement, et qui **chevauche** la fenêtre (une immobilisation à 10:00 emporte le trajet
+  08:00–12:00) ;
+- écriture sous condition `pending` : réservée ou écartée ailleurs entre-temps = non touchée,
+  comptée `dejaTraitees` ; après l'écriture, la liste par véhicule compte ce qui RESTE ;
+- société de l'appelant (celle du bandeau pour un super-admin ; `fleetId` **ignoré** pour les autres
+  rôles, comme pour les réservations — voir plus bas) ; seuls les véhicules dont il gère les
+  réservations (`gereLesReservationsDe`, la règle d'`exigerGestion`), les autres comptés à part
+  (`horsGestion`) ; plafond 500, dit ;
+- **UNE ligne de journal par lot** (`AGENDA` / `propositions_ecartees`, « Propositions de l'agent
+  écartées en lot »), pas une par proposition — 307 lignes noieraient l'activité de Joost ; rien si
+  sans effet ; aucun courriel.
+
+**Écran :**
+- feuille : onglet **« Réservations | Propositions de l'agent »** en tête (IA active seulement),
+  même fenêtre et même véhicule pour les deux, chaque bouton avec son compte ; titre « Réorganiser »
+  quand l'onglet est là ; la feuille **s'ouvre sur les propositions quand il n'y a qu'elles**
+  (`quoiALOuverture`) ; « Écarter ces N propositions » renvoie le lot montré, puis la page relit ses
+  propositions (calendrier, badge, Assistant IA) ; la carte « Rien à réorganiser » de l'onglet
+  Réservations mène aux propositions (« Voir les propositions de l'agent ») ;
+- menu « ⋯ » : grisé seulement s'il n'y a **ni** réservation **ni** proposition ; chez cdef31, actif,
+  avec « Aucune réservation à venir · 307 propositions de l'agent » dessous (`menuReorganiser`) ;
+- **« un véhicule part au garage »** : après la création d'une immobilisation (ou les jours ajoutés
+  d'une prolongation) qui recouvre des propositions du véhicule, un avis le dit (« Elles ne pourront
+  pas être réservées ») et Réorganiser s'ouvre sur elles, période réglée — simulation d'abord.
+
+**Trouvé en recette et corrigé avant la mise en prod :**
+
+| Vu | Corrigé |
+|---|---|
+| démo : une maintenance « toute la journée » sans retour (00:00 → 00:00 le lendemain) se lisait « Période de l'immobilisation : du mer. 30 sept. au jeu. 1 oct. » | une fin à minuit pile appartient au jour d'avant : « le mer. 30 sept. » (`libellePeriode`, 5 tests ; vaut aussi pour le renvoi des réservations refusées) |
+| `pnpm verify` : 4737/4738, un test R3 (décaler, un courriel par demande) rouge — vert relancé seul | chaque ligne du test lisait l'horloge : sous charge, 1 ms d'écart inversait l'ordre d'écriture (T0). Un seul instant pour le lot (`576faecc`) |
+| relecture : le filtre société de l'écran est relu du navigateur **quel que soit le rôle** et jamais effacé à la déconnexion — un gestionnaire après une session super-admin sur le même poste aurait pris un 403 | le lot ignore `fleetId` hors super-admin (serveur) et ne l'envoie que pour un super-admin (écran). ⚠️ Le même défaut touche `GET /agenda/agent/proposals` (liste vide, en silence) : signalé à part, pas corrigé ici |
+
+**Recette démo (Transports Méridien, 449 propositions sur 30 véhicules) — écritures sur la démo :**
+
+| | Résultat |
+|---|---|
+| menu (1 réservation en cours) | actif, sans ligne |
+| feuille | « Réservations 1 · Propositions de l'agent 449 », ouverte sur Réservations |
+| onglet Propositions | 449 sur 30 véhicules, aperçu avec destination ; 7 jours → 258 ; FQ-639-GV → 4, « Réservations 0 » |
+| « Écarter ces 4 propositions » | « 4 propositions écartées sur FQ-639-GV », liste → 254, badge IA 449 → 445 ; en base 4 `dismissed`, les 2 hors fenêtre toujours `pending` |
+| journal | une ligne `propositions_ecartees` (4 ids) ; visible dans Activité de la flotte → Agenda (« Équipe Tracky », super-admin) |
+| maintenance immobilisante demain sur CY-240-VN | avis « 2 propositions de l'agent sur CY-240-VN pendant l'immobilisation », feuille sur l'onglet Propositions, période réglée ; écartées ; aucune reproposée sur ce jour |
+| effet de bord observé (existant) | créer la maintenance a déclenché un passage de l'agent (`triggerMaintenance`) : +78 propositions sur d'autres jours — le lot montré n'en contenait aucune |
+| 412 px | aucun débordement ; plafond dit (« 521 », « Écarter ces 500 propositions », « Plus de 500 propositions… ») |
+
+**Recette prod (20:11 – 20:13), Chrome :**
+
+| | Résultat |
+|---|---|
+| cdef31, menu | « Réorganiser des réservations » **actif**, « Aucune réservation à venir · 307 propositions de l'agent » |
+| cdef31, feuille (simulations seules, **rien écarté**) | ouverte sur « Propositions de l'agent 307 », 25 véhicules ; « Réservations » → carte « Rien à réorganiser… Les 307 propositions de l'agent, elles, se reprennent d'ici » ; GR-294-VW sur 7 jours → 11 |
+| cdef31, base après | 307 `pending`, 0 ligne `propositions_ecartees` |
+| Client test (IA coupée) | titre « Réorganiser des réservations », pas d'onglet, aucune mention de l'agent |
+
+Déploiement : 20:10 avec `--force`, `39187df5` — `deploy.sh` avait d'abord refusé (passage de 19:45
+en cours depuis 20 min) ; personne d'autre que le super-admin en ligne dans la demi-heure. Le
+passage de 19:45 a été **interrompu** (centre d'alerte : « Passage d'automatisation interrompu »,
+critique, poussé aux super-admins) — ses trajets passent au suivant. Aucun courriel.
+
+**Observé, laissé tel quel :** l'agent propose des créneaux qui se chevauchent pour UN véhicule le
+même jour (GR-294-VW le 30/09 : 08:03–17:15, 08:25–17:24, 08:47–17:24) — réserver l'une fera refuser
+les autres. Un dédoublonnage par véhicule dans `runForFleet` serait la suite logique.
+
 ---
 
 ## Ce qu'il ne faut pas défaire
@@ -1277,3 +1354,8 @@ passage en cours. Aucun courriel.
   `AiStatusService.societeActive()`), jamais `enabled` seul (qui exige aussi une clé au serveur) ;
   IA coupée, l'agenda ne montre plus rien de l'agent ni de l'Assistant IA, et Paramètres masque
   ses réglages. Un bouton qui appelle l'IA reste gardé par `can(feature)`.
+- **Un geste de masse n'écrit que le lot montré.** Réorganiser renvoie les identifiants de sa
+  simulation (`lotIds` → `ids`) : obligatoires pour écarter des propositions, liste blanche pour les
+  réservations (avec `attendu`). Sans eux, un passage de l'agent ou une demande du lien public arrivés
+  entre la simulation et le clic partiraient sans avoir été vus. Et un lot de propositions écrit UNE
+  ligne de journal, pas une par proposition.
