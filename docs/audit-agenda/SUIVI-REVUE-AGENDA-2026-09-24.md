@@ -1118,6 +1118,90 @@ reprise du jour (07:00) passée. Aucune migration nouvelle. Recréation à 08:12
 | 412 px (cadre injecté) | page Activité sans débordement, onglet « En ligne » présent sous 1 024 px |
 | `email_logs` | **0 courriel** sur les 4 dernières heures |
 
+## 2026-09-29, après-midi — le menu « ⋯ », Réorganiser vide chez cdef31, l'IA désactivée par le client
+
+### Le menu « ⋯ » sortait de l'écran (retour du propriétaire, capture) — en prod à 12:42 (Paris)
+
+`.ag-dd-menu--right { left: auto; right: 0 }` était déclarée AVANT la règle de base
+`.ag-dd-menu { left: 0 }` dans la feuille du composant : à spécificité égale, la dernière gagnait,
+et le menu s'ouvrait vers la droite depuis le bouton. Mesuré en prod à 1 536 px : de 1 468 à 1 698 px
+(162 px hors de l'écran) ; corrigé (deux classes) : de 1 274 à 1 504 px ; en 412 px : de 160 à 386.
+`deploy.sh --attendre` : recréation à 12:41:54 (juste avant la garde de HH:42), API saine en 15 s,
+passage de 12:45 parti normalement.
+
+### « Réorganiser est vide chez cdef31, on n'y comprend rien » — le diagnostic
+
+Réorganiser ne travaille QUE sur des réservations (fermes ou en attente) à venir. Chez cdef31, en
+base : **0 réservation à venir** ; 326 passées (324 posées par l'agent avant le 23/09) ; aucune
+réservation créée depuis le 16/09. Le 23/09, les 116 réservations fermes de l'agent ont été annulées
+(l'agent ne réserve plus : 57 % seulement avaient roulé sur leur créneau). Ce que cdef31 a, ce sont
+**317 propositions de l'agent** en attente (29/09 → 12/10) — des suggestions, pas des réservations :
+Réorganiser ne les voit pas.
+
+Ce que l'écran en disait : 30 véhicules à « (0) », « Toutes 0 », « Posées par l'agent 0 », deux
+conseils sans objet (« relisez la liste avant d'appliquer », « choisissez d'abord le véhicule qui part
+au garage »), et seulement tout en bas : « Aucune réservation à venir… C'est le bon état. »
+
+Relevé en passant : 59 propositions `auto_applied` à venir pointent des réservations qui n'existent
+plus (ménage du 23/09) — sans effet à l'écran.
+
+Refonte de la feuille : en attente de la décision du propriétaire (pistes dans la réponse du 29/09).
+
+### L'IA désactivée par le client : plus rien d'IA dans l'agenda
+
+Demande : « quand on désactive l'IA, il ne faut plus voir toutes les options IA ; c'est le client qui
+désactive, donc on enlève les suggestions ; dans les paramètres, tu grises ou fais disparaître les
+boutons de l'agent ».
+
+**La règle, en un endroit** : l'IA « coupée » = le choix du client (`Fleet.aiEnabled`).
+`/api/ai/status` le porte désormais seul (`fleetEnabled`, ajout sans rupture) ; `enabled` y mêlait
+la présence d'une clé au serveur — sur la démo (aucune clé, option imposée), la page, la feuille, la
+barre latérale et l'Activité en tiraient chacune une conclusion différente (trouvé par la revue).
+`AiStatusService.societeActive()` le lit ; un bouton qui APPELLE l'IA reste gardé par `can(feature)`.
+Rien d'autre ne change au serveur : l'agent peut tourner, on n'en montre plus rien, et tout revient à
+la réactivation, sans recharger.
+
+| Surface | IA coupée |
+|---|---|
+| Agenda | propositions non lues ni montrées (pointillés, légende, panneau du jour, badge) ; plus d'onglet « Assistant IA » (il restait dès qu'il y avait des propositions), `?vue=ia` → Calendrier ; pastille des travaux IA muette (sauf un travail lancé sur une autre société) ; « Posées par l'agent » absent de Réorganiser s'il ne compte rien ; plus de « suggestions de l'IA » ni d'« IA de placement » dans les textes |
+| Paramètres de l'agenda | tout le bloc de l'agent (activation, métier, analyse nocturne, fréquence, autonomie, auto-complétion, déclencheurs, coûts, passages, « Lancer un passage ») remplacé par une note ; restent « Assistance IA » (le chemin pour réactiver) et les sièges auto ; réglages conservés, jamais envoyés ; statut relu à chaque ouverture |
+| Barre latérale | plus de carte « Agent IA — Découvrir » |
+| Paramètres › Abonnement | carte « Agent IA » : « Désactivé », sans lien |
+| Activité › Agenda | plus de lignes « Passage de l'agent » |
+
+Aussi : `AiStatusService` ignore une réponse dépassée (deux changements de société rapprochés) et
+oublie le statut au changement de compte dans le même onglet.
+
+Méthode : trois lots relus et repris, puis une revue contradictoire transversale (3 confirmés,
+1 disputé, 8 réfutés — tous traités). Vérifié : `pnpm verify` — 4 719 tests API, 423 partagés,
+923 web — et `ng build`.
+
+### 🚀 Déployé le 29/09 à 17:06 (Paris) — `7d64b18c`, sur l'ordre du propriétaire
+
+Des clients travaillaient (un gestionnaire de cdef31, un administrateur d'A2R) : un guetteur côté
+serveur a d'abord attendu « aucun passage + aucun geste client depuis 10 min + minute ≤ 33 »
+(`deploy.sh` met 4 à 6 min avant de recréer) — de 14:57 à 17:00, sans fenêtre : les passages de
+journée durent 50 à 57 min. Sur « déploie maintenant, ne t'en fais pas », `deploy.sh --force` à
+17:00:49 : le passage de 16:45 a été **interrompu** (annoncé avant ; ses trajets repassent à 17:45),
+recréation à 17:06:09, **API saine en 15 s, 0 redémarrage**, démo à jour. La démo avait été mise à
+jour seule à 15:35 pour la préversion (IA active sans clé : note « aucun moteur », agent visible).
+
+### Recette prod (17:07 – 17:20) — Chrome, cdef31 en lecture seule puis Client test
+
+| | cdef31 (IA active) | Client test (IA coupée) |
+|---|---|---|
+| `/api/ai/status` | `fleetEnabled: true` | `fleetEnabled: false` |
+| Onglets de l'agenda | Calendrier · Missions · Parc · **Assistant IA 307** | Calendrier · Missions · Parc |
+| Légende « Proposé par l'agent » | oui | non |
+| Carte « Agent IA » (barre latérale) | oui | non |
+| Paramètres de l'agenda | bloc de l'agent complet, « Lancer un passage » | la note « L'IA est désactivée… ils reviennent dès que l'IA est réactivée » ; restent Assistance IA, sièges auto, liens publics, destinataires |
+| Réorganiser | — | origine « Toutes » seule, plus de « · N de l'agent » |
+| Feuille Réserver | — | pas de « Suggérer avec l'IA », aucune mention d'IA |
+| Vue Parc | — | plus d'« IA de placement » |
+| Paramètres › Abonnement | — | carte « Agent IA » sans le lien « Ouvrir l'agenda IA » |
+
+Aucune écriture sur cdef31 ; le bandeau remis sur cdef31 à la fin.
+
 ---
 
 ## Ce qu'il ne faut pas défaire
@@ -1142,3 +1226,7 @@ reprise du jour (07:00) passée. Aucune migration nouvelle. Recréation à 08:12
   client — c'était le cas de la création et de la modification jusqu'au 29/09.
 - **Un conducteur par véhicule** : « Places min. » compte le conducteur ; répartir un groupe sur N
   véhicules coûte N conducteurs (9 + 4 ne couvre pas 13). Serveur et feuille comptent pareil.
+- **« IA coupée » = le choix du client** (`Fleet.aiEnabled`, `fleetEnabled` dans `/api/ai/status`,
+  `AiStatusService.societeActive()`), jamais `enabled` seul (qui exige aussi une clé au serveur) ;
+  IA coupée, l'agenda ne montre plus rien de l'agent ni de l'Assistant IA, et Paramètres masque
+  ses réglages. Un bouton qui appelle l'IA reste gardé par `can(feature)`.
