@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { ConflictException } from '@nestjs/common';
+import { ConflictException, ForbiddenException } from '@nestjs/common';
 import { AutomationDisabledException } from '../common/automation-disabled.exception';
 import { AgendaAgentRunnerService } from './agenda-agent-runner.service';
 import { AGENDA_AGENT_SCHEMA } from './agenda-agent.prompt';
@@ -1691,5 +1691,69 @@ describe('AgendaAgentRunnerService.runForFleet — pas deux propositions qui se 
     const vehicules = proposalsOf(prisma).create.mock.calls.map((c) => c[0].data.vehicleId);
     expect(vehicules.filter((v) => v === 'v1')).toHaveLength(lundis().length);
     expect(vehicules.filter((v) => v === 'v9')).toHaveLength(lundis().length);
+  });
+});
+
+/**
+ * ── LE FILTRE SOCIÉTÉ RESTÉ D'UNE SESSION SUPER-ADMIN (défaut latent trouvé le 29/09) ──────────
+ *
+ * Le filtre société de l'écran vit dans le localStorage du NAVIGATEUR : il était relu quel que soit
+ * le rôle et jamais effacé à la déconnexion. Un gestionnaire qui se connectait après une session
+ * super-admin envoyait donc la société d'un AUTRE client ; `resolveFleetId` répondait 403 « Flotte
+ * hors périmètre », l'écran l'avalait, et le gestionnaire ne voyait plus AUCUNE proposition — grille
+ * sans pointillés, badge de l'Assistant IA et onglet des propositions de Réorganiser vides —, sans un
+ * mot. Comme pour les réservations (`scopedWhere`), `fleetId` est désormais ignoré pour tout autre
+ * rôle : c'est SA société qui est lue. `ecarterEnLot` le faisait déjà (voir son test « un
+ * gestionnaire : `fleetId` est ignoré »).
+ */
+describe('AgendaAgentRunnerService — un gestionnaire agit sur SA société, quel que soit le `fleetId` reçu (29/09)', () => {
+  const gestionnaire = { id: 'u1', role: 'FLEET_MANAGER', fleetId: 'f1' } as never;
+  const administrateur = { id: 'u2', role: 'FLEET_ADMIN', fleetId: 'f1' } as never;
+  const superAdmin = { id: 'u-sa', role: 'SUPER_ADMIN', fleetId: null } as never;
+
+  it('list : une société étrangère reçue ne fait plus échouer la lecture — ce sont les propositions de SA société', async () => {
+    const { svc, prisma } = monter();
+
+    await expect(svc.list(gestionnaire, 'f-autre')).resolves.toEqual([]);
+    expect(proposalsOf(prisma).findMany.mock.calls[0][0].where.fleetId).toBe('f1');
+  });
+
+  it('listRuns : l’historique des passages de SA société', async () => {
+    const { svc, prisma } = monter();
+
+    await expect(svc.listRuns(gestionnaire, 'f-autre')).resolves.toEqual([]);
+    expect(runsOf(prisma).findMany.mock.calls[0][0].where).toEqual({ fleetId: 'f1' });
+  });
+
+  it('runOnDemand : l’administrateur lance l’analyse de SA société, jamais celle du bandeau', async () => {
+    const { svc, prisma } = monter({ settings: makeSettings({ autonomy: 'suggest' }) });
+
+    await svc.runOnDemand(administrateur, 'f-autre');
+
+    expect(prisma.agendaAgentSettings.findUnique).toHaveBeenCalledWith({ where: { fleetId: 'f1' } });
+    expect(runsOf(prisma).create.mock.calls[0][0].data.fleetId).toBe('f1');
+  });
+
+  it('super-admin : la société reçue (le bandeau) est celle qui est lue ; sans société, rien à lister et l’analyse demande laquelle', async () => {
+    const { svc, prisma } = monter();
+
+    await svc.list(superAdmin, 'fCLIENT');
+    await svc.listRuns(superAdmin, 'fCLIENT');
+    expect(proposalsOf(prisma).findMany.mock.calls[0][0].where.fleetId).toBe('fCLIENT');
+    expect(runsOf(prisma).findMany.mock.calls[0][0].where).toEqual({ fleetId: 'fCLIENT' });
+
+    await expect(svc.list(superAdmin)).resolves.toEqual([]);
+    await expect(svc.listRuns(superAdmin)).resolves.toEqual([]);
+    await expect(svc.runOnDemand(superAdmin)).rejects.toThrow('Préciser la flotte');
+  });
+
+  it('un compte de flotte SANS société (anomalie) : 403, rien n’est lu — la société reçue ne lui en prête pas une', async () => {
+    const { svc, prisma } = monter();
+    const sansSociete = { id: 'u3', role: 'FLEET_MANAGER', fleetId: null } as never;
+
+    await expect(svc.list(sansSociete, 'f-autre')).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(svc.listRuns(sansSociete)).rejects.toBeInstanceOf(ForbiddenException);
+    expect(proposalsOf(prisma).findMany).not.toHaveBeenCalled();
+    expect(runsOf(prisma).findMany).not.toHaveBeenCalled();
   });
 });

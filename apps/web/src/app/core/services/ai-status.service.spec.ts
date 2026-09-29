@@ -1,9 +1,11 @@
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
+import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import type { AiStatusDto } from '@vizyo/tracky-shared';
 import { AiStatusService } from './ai-status.service';
+import { AuthService } from './auth.service';
 import { FleetFilterService } from './fleet-filter.service';
 
 /**
@@ -41,7 +43,19 @@ describe('AiStatusService', () => {
   beforeEach(() => {
     localStorage.removeItem('vizyo-fleet-filter');
     TestBed.configureTestingModule({
-      providers: [provideRouter([]), provideHttpClient(), provideHttpClientTesting()],
+      providers: [
+        provideRouter([]),
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        // Le filtre société n'existe que pour un super-admin (29/09) : le compte est déclaré, pas
+        // hérité d'un jeton qu'un spec précédent aurait laissé dans le stockage du navigateur.
+        {
+          provide: AuthService,
+          useValue: {
+            user: signal({ sub: 'u-sa', email: 'sa@exemple.fr', role: 'SUPER_ADMIN', fleetId: null, permissions: null }),
+          },
+        },
+      ],
     });
     svc = TestBed.inject(AiStatusService);
     http = TestBed.inject(HttpTestingController);

@@ -180,12 +180,25 @@ export class AgendaAgentRunnerService {
     private readonly aiAvail?: AiAvailabilityService,
   ) {}
 
+  /**
+   * La société visée. Un super-admin la CHOISIT (`fleetId` : la société du bandeau) et doit en préciser
+   * une s'il n'en a pas. Tout autre rôle agit sur LA SIENNE : le `fleetId` qu'il envoie est IGNORÉ,
+   * comme pour les réservations et les évènements (`scopedWhere`).
+   *
+   * Défaut latent trouvé le 29/09 (piste 3) : ce `fleetId` vient du filtre société de l'écran, relu du
+   * navigateur quel que soit le rôle et jamais effacé à la déconnexion. Après une session super-admin
+   * sur le même navigateur, un gestionnaire envoyait la société d'un AUTRE client → 403 « Flotte hors
+   * périmètre », avalé par l'écran : plus de pointillés dans la grille, badge de l'Assistant IA et
+   * onglet des propositions de Réorganiser vides, sans un mot. Le refus ne protégeait rien — le
+   * serveur connaît la société d'un gestionnaire, il n'a jamais à la lui demander.
+   */
   private resolveFleetId(user: AuthUser, fleetId?: string): string {
+    if (user.role !== UserRole.SUPER_ADMIN) {
+      if (!user.fleetId) throw new ForbiddenException('Aucune flotte associée');
+      return user.fleetId;
+    }
     const id = fleetId ?? user.fleetId ?? undefined;
     if (!id) throw new BadRequestException('Préciser la flotte (fleetId).');
-    if (user.role !== UserRole.SUPER_ADMIN && id !== user.fleetId) {
-      throw new ForbiddenException('Flotte hors périmètre.');
-    }
     return id;
   }
 
@@ -765,11 +778,11 @@ export class AgendaAgentRunnerService {
     // Relecture du 29/09 : un identifiant mal formé part en 400, pas en 500 (Prisma sur une colonne UUID).
     const vehicleId = typeof dto?.vehicleId === 'string' && dto.vehicleId.trim() ? dto.vehicleId.trim() : null;
     if (vehicleId && !UUID_RE.test(vehicleId)) throw new BadRequestException('Véhicule invalide.');
+    // La société du bandeau pour un super-admin ; la SIENNE pour les autres rôles, `fleetId` ignoré
+    // (`resolveFleetId`) : un filtre resté d'une session super-admin ne fait pas échouer leur geste.
+    // Validée (UUID) pour un super-admin seulement : celle d'un autre rôle n'est même pas lue.
     const fleetIdDemande = user.role === UserRole.SUPER_ADMIN ? dto?.fleetId : undefined;
     if (fleetIdDemande && !UUID_RE.test(fleetIdDemande)) throw new BadRequestException('Société invalide.');
-    // La société du bandeau pour un super-admin ; la SIENNE pour les autres rôles — `fleetId` leur est
-    // ignoré, comme pour les réservations : le filtre société de l'écran est relu du navigateur, et un
-    // filtre resté d'une session super-admin ne doit pas faire échouer (403) le geste d'un gestionnaire.
     const fleetId = this.resolveFleetId(user, fleetIdDemande);
     const from = new Date(dto?.from ?? '');
     const to = new Date(dto?.to ?? '');
@@ -1408,8 +1421,8 @@ export class AgendaAgentRunnerService {
 
   /**
    * Historique des passages (lecture). Même périmètre société que les propositions : un
-   * super-admin sans société ciblée ne voit rien (il doit choisir), un non-super est borné à
-   * la sienne par `resolveFleetId`.
+   * super-admin sans société ciblée ne voit rien (il doit choisir), un non-super lit la sienne,
+   * quel que soit le `fleetId` reçu (`resolveFleetId`).
    */
   async listRuns(user: AuthUser, fleetId?: string, limit = 30): Promise<AgendaAgentRunDto[]> {
     if (user.role === UserRole.SUPER_ADMIN && !fleetId && !user.fleetId) return [];
