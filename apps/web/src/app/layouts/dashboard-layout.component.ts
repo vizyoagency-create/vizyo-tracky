@@ -1,4 +1,4 @@
-import { Component, computed, HostListener, inject, signal } from '@angular/core';
+import { Component, computed, DestroyRef, effect, HostListener, inject, signal, untracked } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, RouterOutlet, RouterLink, RouterLinkActive, NavigationEnd, NavigationStart, NavigationCancel, NavigationError, Router } from '@angular/router';
 import {
@@ -37,6 +37,7 @@ import { ThemeService } from '../core/theme/theme.service';
 import { AlertsBellComponent } from '../shared/ui/alerts-bell/alerts-bell.component';
 import { FleetSelectorComponent } from '../shared/ui/super-admin-context/fleet-selector.component';
 import { AuthService } from '../core/services/auth.service';
+import { AiStatusService } from '../core/services/ai-status.service';
 import { DepotLiveStore } from '../features/depot/depot-live.store';
 import { NetworkStatusService } from '../core/services/network-status.service';
 import { RealtimeService } from '../core/services/realtime.service';
@@ -1069,12 +1070,21 @@ export class DashboardLayoutComponent {
   protected readonly TerminalIcon = Terminal;
   protected readonly SparklesIcon = Sparkles;
 
-  /** Carte promo « Agent IA » en pied de sidebar. L'agent IA est une fonction DE L'AGENDA
-   *  (on y accède via /agenda) → on l'affiche seulement si l'utilisateur a réellement accès
-   *  à l'agenda (`agenda_view`). Pas d'agenda = pas de carte IA. Masquée pour le veilleur. */
-  protected readonly showAiPromo = computed(() =>
+  private readonly aiStatus = inject(AiStatusService);
+  /** La carte promo « Agent IA » du pied de sidebar PEUT-elle s'afficher ? L'agent IA est une
+   *  fonction DE L'AGENDA (on y accède via /agenda) → seulement si l'utilisateur a réellement accès
+   *  à l'agenda (`agenda_view`). Pas d'agenda = pas de carte IA. Jamais pour le veilleur. */
+  private readonly promoIaPossible = computed(() =>
     !this.auth.isWatchman() && this.perms.can('agenda_view'),
   );
+  /**
+   * 29/09 — …et seulement si l'IA de la SOCIÉTÉ est active (interrupteur maître, `enabled()`) : un
+   * client qui a désactivé l'IA ne se voit plus proposer « Optimisez vos tournées » sur chaque page.
+   * Opt-in : faux tant que le statut n'est pas arrivé (jamais une carte montrée puis retirée). Suit le
+   * filtre société d'un super-admin (aucune société choisie = pas de carte) ; l'IA réactivée, la carte
+   * revient d'elle-même, sans recharger la page.
+   */
+  protected readonly showAiPromo = computed(() => this.promoIaPossible() && this.aiStatus.societeActive());
 
   protected isSuperAdmin(): boolean {
     return this.auth.user()?.role === 'SUPER_ADMIN';
@@ -1232,16 +1242,37 @@ export class DashboardLayoutComponent {
     // le cache localStorage restait stale jusqu'au prochain logout/login.
     void this.auth.refreshMe();
     document.addEventListener('visibilitychange', this.onVisibilityChange);
+    // 29/09 — l'écouteur n'était jamais retiré : après une déconnexion puis une reconnexion dans le
+    // même onglet, chaque ancien layout relançait encore ses relectures à chaque retour sur l'onglet.
+    inject(DestroyRef).onDestroy(() => document.removeEventListener('visibilitychange', this.onVisibilityChange));
     // V1.15 — Pre-charge la liste des flottes pour SUPER_ADMIN, afin que les
     // badges contextuels (Société) apparaissent partout dans les listes sans
     // un round-trip API par card. No-op si pas SA (cf. FleetCacheService).
     void this.fleetCache.loadIfNeeded();
+    // 29/09 — montage du layout = après connexion. La connexion se fait SANS recharger la page, et
+    // `AiStatusService` ne s'oublie pas à la déconnexion : un statut déjà présent a pu être lu pour
+    // le compte PRÉCÉDENT (une autre société, ou le « Toutes les sociétés » d'un super-admin). On le
+    // relit, comme le profil. Pas pour le dépôt, à qui `GET /ai/status` est fermé (403).
+    if (!this.auth.isDepot() && this.aiStatus.status() !== null) this.aiStatus.refresh();
+    // 29/09 — statut IA de la société, pour la carte « Agent IA » : chargé seulement quand la carte
+    // PEUT s'afficher (accès à l'agenda, pas veilleur) — aucun appel pour les autres comptes (le
+    // dépôt, à qui `GET /ai/status` est fermé, n'a jamais `agenda_view`). Idempotent ; le service
+    // se recharge de lui-même quand la société du bandeau change. `untracked` : l'effet ne suit que
+    // les conditions de la carte, pas le statut qu'il demande.
+    effect(() => {
+      if (this.promoIaPossible()) untracked(() => this.aiStatus.ensureLoaded());
+    });
   }
 
   /** Refresh au regain de focus de l'onglet (visible apres background). */
   private readonly onVisibilityChange = (): void => {
     if (document.visibilityState === 'visible') {
       void this.auth.refreshMe();
+      // 29/09 — l'IA a pu être coupée ou rétablie AILLEURS (super-admin via la facturation, autre
+      // onglet, autre poste) : on relit son statut au retour sur l'onglet, comme le profil et les
+      // droits — sans quoi la carte, le fil Activité et les feuilles gardaient l'ancien état jusqu'au
+      // rechargement. Seulement s'il sert : carte possible, ou statut déjà chargé par une page.
+      if (this.promoIaPossible() || (!this.auth.isDepot() && this.aiStatus.status() !== null)) this.aiStatus.refresh();
     }
   };
 

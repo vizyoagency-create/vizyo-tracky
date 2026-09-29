@@ -18,6 +18,7 @@ import type {
 } from '@vizyo/tracky-shared';
 import { AGENDA_ACTIVITY_ACTION_LABELS, statutActionAgenda } from '@vizyo/tracky-shared';
 import { firstValueFrom } from 'rxjs';
+import { AiStatusService } from '../../core/services/ai-status.service';
 import { AuthService } from '../../core/services/auth.service';
 import { FleetFilterService } from '../../core/services/fleet-filter.service';
 import { FleetActivityApiService, type CategorieAgenda } from './fleet-activity-api.service';
@@ -62,6 +63,29 @@ export function libelleTuileMoteurs(e: { erreur: boolean; charge: boolean; fenet
   if (!e.charge) return 'Commandes moteur';
   return e.fenetreComplete ? 'Commandes moteur · 7 j' : 'Commandes chargées';
 }
+
+/** Code d'un passage de l'agent d'agenda dans le journal (catégorie AI, « Passage de l'agent »). */
+const ACTION_PASSAGE_AGENT = 'agenda_agent_run';
+
+/**
+ * 29/09 — le fil Agenda tel qu'il s'affiche. IA de la société DÉSACTIVÉE (interrupteur maître,
+ * `AiStatusService.enabled()`, faux tant que le statut n'est pas arrivé) : les lignes « Passage de
+ * l'agent » sortent du fil. L'agent peut encore tourner côté serveur (ses passages déterministes),
+ * mais le client qui a coupé l'IA n'en voit plus la trace. Les gestes HUMAINS sur ses propositions
+ * (« réservée », « écartée ») restent : c'est l'historique de l'agenda. IA réactivée : les passages
+ * reviennent aussitôt — ils sont déjà chargés, rien n'est relu.
+ */
+export function filAgendaVisible<T extends { action: string }>(lignes: readonly T[], iaActive: boolean): readonly T[] {
+  return iaActive ? lignes : lignes.filter((l) => l.action !== ACTION_PASSAGE_AGENT);
+}
+
+/**
+ * 29/09 — pages lues AU PLUS par clic sur « Charger plus » quand elles n'ajoutent rien à l'écran
+ * (IA coupée : une page faite uniquement de passages de l'agent, masqués). Au-delà, le bouton reste
+ * et le clic suivant reprend où la lecture s'est arrêtée. 5 × 50 lignes, ce sont des mois de
+ * passages nocturnes sans un seul geste humain : la borne ne sert qu'à ne jamais boucler.
+ */
+export const PAGES_AGENDA_PAR_CLIC = 5;
 
 /** Une ligne du fil Agenda, prête à lire : tout ce qui se calcule l'est une fois, ici. */
 interface LigneAgenda {
@@ -274,14 +298,21 @@ const FENETRE_MS = FENETRE_JOURS * 24 * 60 * 60 * 1000;
             </div>
 
             <!-- Réessayer = Rafraîchir : une panne de l'API fait tomber l'agenda ET les commandes
-                 moteur ; ne relancer que l'agenda laissait les tuiles d'en haut en panne. -->
+                 moteur ; ne relancer que l'agenda laissait les tuiles d'en haut en panne.
+                 29/09 — IA de la société coupée : le fil n'affiche plus les passages de l'agent, et
+                 l'état vide ne les promet plus. Une page lue faite SEULEMENT de passages masqués
+                 peut précéder des gestes plus anciens : l'état vide garde alors « Charger plus »
+                 (bouton projeté dans la case action-vide de la zone), jamais une impasse. -->
             <app-zone
               [etat]="etatAgenda()"
               quoi="L'activité de l'agenda"
               [vide]="videAgenda()"
-              videDetail="Les réservations, maintenances, incidents et propositions de l'agent apparaîtront ici dès qu'un geste sera posé."
+              [videDetail]="videDetailAgenda()"
               erreur="Impossible de charger l'activité de l'agenda"
               (reessayer)="rafraichir()">
+              @if (agendaSuite()) {
+                <button action-vide type="button" class="fa-more" (click)="loadMoreAgenda()" [disabled]="loading()">Charger plus</button>
+              }
               <div class="fa-liste">
                 @for (g of groupesAgenda(); track g.cle) {
                   <div class="fa-groupe">
@@ -681,6 +712,11 @@ export class FleetActivityComponent implements OnInit, OnDestroy {
   private readonly toast = inject(ToastService);
   private readonly auth = inject(AuthService);
   private readonly fleetFilter = inject(FleetFilterService);
+  /**
+   * 29/09 — IA de la société (interrupteur maître) : décide si les passages de l'agent se lisent
+   * dans le fil Agenda. Suit le filtre société d'un super-admin, comme le reste de la page.
+   */
+  private readonly aiStatus = inject(AiStatusService);
   /** Optionnelle : la page doit rester utilisable hors routeur (test, intégration). */
   private readonly route = inject(ActivatedRoute, { optional: true });
 
@@ -778,17 +814,35 @@ export class FleetActivityComponent implements OnInit, OnDestroy {
     });
   }
 
+  /**
+   * Le fil tel qu'il s'affiche : sans les passages de l'agent quand l'IA de la société est coupée
+   * (29/09, `filAgendaVisible`). `agenda()` garde la page BRUTE du serveur : c'est elle qui porte le
+   * curseur de « Charger plus » et qui dit s'il reste une page.
+   */
+  protected readonly agendaVisible = computed(() => filAgendaVisible(this.agenda(), this.aiStatus.societeActive()));
+
   // ── Etats de zone ──────────────────────────────────────────────────────────
+  /** Rempli / vide se jugent sur ce qui S'AFFICHE : une page de passages masqués est un fil vide. */
   protected readonly etatAgenda = computed<EtatZone>(() => {
     if (this.agendaErreur()) return 'erreur';
     if (!this.agendaCharge()) return 'chargement';
-    return this.agenda().length ? 'rempli' : 'vide';
+    return this.agendaVisible().length ? 'rempli' : 'vide';
   });
   protected readonly videAgenda = computed(() => {
+    // 29/09 — rien à afficher alors que le serveur a une suite : la page lue n'était faite que de
+    // passages de l'agent, masqués (IA coupée). « Sur la période » dirait qu'il n'y a rien avant.
+    if (this.agendaSuite()) return "Aucune action d'agenda récente";
     switch (this.agendaCategorie()) {
       case 'RESERVATION': return 'Aucune action de réservation sur la période';
       default: return "Aucune action d'agenda sur la période";
     }
+  });
+  /** 29/09 — l'état vide ne promet les propositions de l'agent que si l'IA de la société est active. */
+  protected readonly videDetailAgenda = computed(() => {
+    if (this.agendaSuite()) return 'Les gestes plus anciens se lisent avec « Charger plus ».';
+    return this.aiStatus.societeActive()
+      ? "Les réservations, maintenances, incidents et propositions de l'agent apparaîtront ici dès qu'un geste sera posé."
+      : "Les réservations, maintenances et incidents apparaîtront ici dès qu'un geste sera posé.";
   });
   protected readonly etatMoteurs = computed<EtatZone>(() => {
     if (this.engineErreur()) return 'erreur';
@@ -910,7 +964,8 @@ export class FleetActivityComponent implements OnInit, OnDestroy {
   /**
    * Le fil Agenda, classe par JOUR DE PARIS (pas celui du poste : une validation a 00:30 a
    * Paris n'appartient pas a « hier » parce que le poste est en UTC). Le serveur sert du plus
-   * recent au plus ancien ; l'ordre est conserve.
+   * recent au plus ancien ; l'ordre est conserve. Lit le fil AFFICHE (29/09 : sans les passages
+   * de l'agent quand l'IA de la societe est coupee) — un jour qui n'aurait porte qu'eux disparait.
    */
   protected readonly groupesAgenda = computed<GroupeAgenda[]>(() => {
     const maintenant = new Date();
@@ -922,7 +977,7 @@ export class FleetActivityComponent implements OnInit, OnDestroy {
     const groupes: GroupeAgenda[] = [];
     let courant: GroupeAgenda | null = null;
     let cleCourante = '';
-    for (const dto of this.agenda()) {
+    for (const dto of this.agendaVisible()) {
       const d = new Date(dto.at);
       const valide = !Number.isNaN(d.getTime());
       const cle = valide ? cleJour(jourParis(d)) : 'sans-date';
@@ -974,6 +1029,11 @@ export class FleetActivityComponent implements OnInit, OnDestroy {
     // `?tab=engine` (lien « Voir l'historique » du bouton moteur) : on ouvre l'onglet demande.
     const demande = ongletDemande(this.route?.snapshot.queryParamMap.get('tab'), this.large());
     if (demande) this.tab.set(demande);
+
+    // 29/09 — statut IA de la société (passages de l'agent affichés ou non). Idempotent ; le
+    // service se recharge de lui-même quand la société du bandeau change. Opt-in : tant qu'il
+    // n'est pas arrivé, les passages restent masqués (pas de ligne montrée puis retirée).
+    this.aiStatus.ensureLoaded();
 
     // Agenda, moteurs et presence se chargent toujours : les tuiles et le bandeau d'echecs
     // (au-dessus des onglets) lisent `engine()`, la presence est une colonne sur grand ecran.
@@ -1069,32 +1129,51 @@ export class FleetActivityComponent implements OnInit, OnDestroy {
     }
   }
 
+  /**
+   * « Charger plus » du fil Agenda.
+   *
+   * 29/09 — IA de la société coupée, une page peut n'être faite QUE de passages de l'agent, masqués :
+   * le clic lisait 50 lignes, n'en affichait aucune, et il fallait recliquer sans savoir pourquoi.
+   * On enchaîne donc la page suivante tant que rien de nouveau ne s'affiche, que le serveur a une
+   * suite et que le curseur avance — au plus `PAGES_AGENDA_PAR_CLIC` pages. IA active, tout se voit :
+   * une page par clic, comme avant.
+   */
   protected async loadMoreAgenda(): Promise<void> {
-    const last = this.agenda()[this.agenda().length - 1];
-    if (!last) return;
+    if (!this.agenda().length) return;
     const seq = this.agendaSeq;
     this.loading.set(true);
     try {
-      const more = await firstValueFrom(this.api.agenda({
-        limit: this.pageSize,
-        before: last.at,
-        beforeId: last.id,
-        category: this.agendaCategorie(),
-        fleetId: this.societeCible(),
-      }));
-      // Filtre ou societe changes entre-temps : cette page appartient a une autre liste.
-      if (seq !== this.agendaSeq) return;
-      if (more.length) {
+      for (let lues = 0; lues < PAGES_AGENDA_PAR_CLIC; lues++) {
+        // Le curseur est la dernière ligne BRUTE lue (un passage masqué compris), pas la dernière affichée.
+        const last = this.agenda()[this.agenda().length - 1];
+        const visiblesAvant = this.agendaVisible().length;
+        const more = await firstValueFrom(this.api.agenda({
+          limit: this.pageSize,
+          before: last.at,
+          beforeId: last.id,
+          category: this.agendaCategorie(),
+          fleetId: this.societeCible(),
+        }));
+        // Filtre ou societe changes entre-temps : cette page appartient a une autre liste.
+        if (seq !== this.agendaSeq) return;
         // Filet contre un curseur qui se recouvre : une ligne deja affichee n'est pas reprise.
         const vus = new Set(this.agenda().map((a) => a.id));
-        this.agenda.update((cur) => [...cur, ...more.filter((a) => !vus.has(a.id))]);
+        const nouvelles = more.filter((a) => !vus.has(a.id));
+        if (nouvelles.length) this.agenda.update((cur) => [...cur, ...nouvelles]);
+        this.agendaSuite.set(more.length >= this.pageSize);
+        // Une page qui ne rapporte rien de neuf (curseur qui n'avance plus) arrête aussi la chaîne :
+        // la relire en boucle redonnerait la même.
+        if (!nouvelles.length || !this.agendaSuite() || this.agendaVisible().length > visiblesAvant) break;
       }
-      this.agendaSuite.set(more.length >= this.pageSize);
     } catch (err) {
       if (seq !== this.agendaSeq) return;
       swallow('fleet-activity:loadMoreAgenda', err);
       this.toast.error('Chargement impossible', httpFailureMessage(err, "l'activité de l'agenda"));
-    } finally { this.loading.set(false); }
+    } finally {
+      // Comme `loadAgenda` : un rechargement parti entre-temps (pastille, société) garde la main
+      // sur l'indicateur — la chaîne, plus longue qu'un seul appel, ne le coupe pas sous lui.
+      if (seq === this.agendaSeq) this.loading.set(false);
+    }
   }
 
   private async loadOnline(): Promise<void> {

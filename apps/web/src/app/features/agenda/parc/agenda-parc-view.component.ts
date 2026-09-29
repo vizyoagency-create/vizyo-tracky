@@ -310,7 +310,8 @@ function ficheAEcrire(e: Brouillon): { erreur: string } | { payload: Record<stri
               </label>
             </div>
             <label class="pv-f"><span>Équipements <em>séparés par des virgules</em></span><input type="text" class="pv-in" [disabled]="!canEditRow(e.row)" [value]="e.features" (input)="draftSet('features', $any($event.target).value)" placeholder="ex. climatisation, attelage, rampe PMR"></label>
-            <p class="pv-hint">Les places et les équipements servent aux critères des demandes (« 7 places, attelage ») et à l'IA de placement.</p>
+            <!-- 29/09 : « l'IA de placement » n'est citée que si l'IA de la société est active. -->
+            <p class="pv-hint">Les places et les équipements servent aux critères des demandes (« 7 places, attelage »)@if (iaActive()) { et à l'IA de placement}.</p>
             @if (canSeats()) {
               <div class="pv-grid2">
                 <label class="pv-f"><span>Sièges bébé à bord</span><input type="number" min="0" max="20" inputmode="numeric" class="pv-in" [value]="e.baby" (input)="draftSet('baby', $any($event.target).value)"></label>
@@ -451,6 +452,12 @@ export class AgendaParcViewComponent {
    * désormais le parc de la société lu en entier, et l'état se lit sur chaque ligne.
    */
   readonly vehicles = input<VehicleDetailDto[]>([]);
+  /**
+   * 29/09 — l'IA de la société du bandeau est-elle active ? La page le décide (`visibiliteIa`) et le
+   * passe ici ; coupée, le réglage d'un véhicule ne parle plus d'« IA de placement ». Faux par défaut
+   * (opt-in : rien d'IA sans confirmation).
+   */
+  readonly iaActive = input(false);
   /**
    * Déclarée pour la liaison de la page, mais PLUS ÉMISE (revue du 29/09) : une sortie émise après
    * la destruction de la vue (écriture longue, puis changement de vue) ne parvient plus à la page.

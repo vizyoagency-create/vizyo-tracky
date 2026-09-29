@@ -1,5 +1,6 @@
-import { Component, computed, effect, inject, OnDestroy, OnInit, signal } from '@angular/core';
+import { Component, computed, effect, inject, OnDestroy, OnInit, signal, untracked } from '@angular/core';
 import { PlanService } from '../../core/services/plan.service';
+import { AiStatusService } from '../../core/services/ai-status.service';
 import { Router, RouterLink } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import { firstValueFrom } from 'rxjs';
@@ -175,20 +176,28 @@ interface GroupeSection {
             }
           </div>
 
-          <!-- Agent IA : état RÉEL de la permission ai_optimize. -->
+          <!-- Agent IA : permission ai_optimize ET IA de la société active. 29/09 — la permission
+               seule ne suffit plus : elle est toujours vraie pour un administrateur, qui lisait
+               « Activé » et « Ouvrir l'agenda IA » sous une carte Assistance IA disant l'inverse.
+               IA coupée : carte grisée, sans lien — la réactivation passe par l'option Assistance IA
+               (pour un super-admin, par Coûts IA). -->
           <div class="s-opt">
             <div class="s-opt-top">
-              <span class="s-opt-ico" [class.on]="perms.can('ai_optimize')"><lucide-icon [img]="SparklesIcon" [size]="20"></lucide-icon></span>
-              @if (perms.can('ai_optimize')) {
+              <span class="s-opt-ico" [class.on]="agentIaActif()"><lucide-icon [img]="SparklesIcon" [size]="20"></lucide-icon></span>
+              @if (agentIaActif()) {
                 <span class="s-opt-status on">Activé</span>
+              } @else if (perms.can('ai_optimize')) {
+                <span class="s-opt-status">Désactivé</span>
               } @else {
                 <span class="s-opt-status">Sur demande</span>
               }
             </div>
             <h4>Agent IA</h4>
             <p>Optimisation des tournées et réaffectations véhicule / conducteur, avec propositions expliquées.</p>
-            @if (perms.can('ai_optimize')) {
+            @if (agentIaActif()) {
               <a routerLink="/agenda" class="s-opt-link">Ouvrir l'agenda IA <lucide-icon [img]="ArrowRightIcon" [size]="13"></lucide-icon></a>
+            } @else if (perms.can('ai_optimize')) {
+              <span class="s-opt-hint">Inclus dans l'option Assistance IA.</span>
             } @else {
               <span class="s-opt-hint">Disponible sur demande.</span>
             }
@@ -804,6 +813,25 @@ export class SettingsComponent implements OnInit, OnDestroy {
   protected readonly section = signal<Section>('apparence');
   /** Facturation & options : réservé aux admins par défaut (perm billing_manage). */
   protected readonly canBilling = computed(() => this.perms.can('billing_manage'));
+
+  private readonly aiStatus = inject(AiStatusService);
+  /**
+   * 29/09 — carte « Agent IA » des options : « Activé » et le lien vers l'agenda exigent l'IA de la
+   * SOCIÉTÉ active (interrupteur maître, `enabled()`), pas seulement la permission — `perms.can` est
+   * toujours vrai pour un administrateur (bypass). Faux tant que le statut n'est pas arrivé (opt-in) ;
+   * suit le filtre société d'un super-admin ; l'IA réactivée, la carte repasse à « Activé » sans
+   * recharger la page.
+   */
+  protected readonly agentIaActif = computed(() => this.perms.can('ai_optimize') && this.aiStatus.societeActive());
+  /**
+   * 29/09 — le statut n'est demandé qu'à l'ouverture de « Abonnement & options », la seule section qui
+   * le lit (le plus souvent déjà chargé par la barre latérale : l'appel est alors sans effet). Champ,
+   * pas `ngOnInit` : `effect()` exige un contexte d'injection. `untracked` : l'effet suit la section,
+   * pas le statut qu'il demande.
+   */
+  private readonly chargementStatutIa = effect(() => {
+    if (this.section() === 'abonnement' && this.canBilling()) untracked(() => this.aiStatus.ensureLoaded());
+  });
 
   /** Saisie de la recherche de réglage. */
   protected readonly recherche = signal('');

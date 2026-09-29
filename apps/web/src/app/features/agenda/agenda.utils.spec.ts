@@ -1,24 +1,33 @@
 import type { VehicleEventType } from '@vizyo/tracky-shared';
 import {
+  compteAgentMemorise,
   dansFenetreReorganisation,
   demandeNonReaffectable,
   dureeEnJours,
   estUneEcheance,
+  type EtatIaAgenda,
   eventTypeLabel,
   fenetreAReorganiser,
   fenetreImmobilisation,
   fenetresAjoutees,
   horsFenetrePreset,
   HORIZON_SANS_FIN_MS,
+  interrupteurSociete,
   joursDansFenetre,
   libelleVehiculesLibres,
   lotExactDeSimulation,
+  memeVisibiliteIa,
+  memoriserCompteAgent,
+  origineAgentVisible,
   placesMaxLibres,
+  propositionsDuPerimetre,
+  propositionsParJour,
   raisonsVideRefusees,
   rangDuJour,
   repliDefinitif,
   startOfMonth,
   startOfWeekMonday,
+  visibiliteIa,
 } from './agenda.utils';
 
 /**
@@ -353,6 +362,291 @@ describe('repliDefinitif — quand la vue demandée devient la vue affichée', (
 
   it('une autre vue montrée puis privée de son onglet (droit retiré) : définitif', () => {
     expect(repliDefinitif('parc', 'calendrier', false, 'parc')).toBe(true);
+  });
+});
+
+/**
+ * IA DÉSACTIVÉE PAR LE CLIENT (29/09) — « c'est le client qui désactive, donc on enlève les
+ * suggestions ». L'agenda lisait et montrait les propositions de l'agent quel que soit l'état de
+ * l'IA (pointillés, légende, panneau du jour, badge), et l'onglet « Assistant IA » restait tant
+ * qu'il en restait. La règle : l'interrupteur de la SOCIÉTÉ (`interrupteurSociete`, pas la clé API
+ * du serveur), pour un statut chargé ET de la société du bandeau.
+ */
+describe('visibiliteIa — ce que l’agenda montre de l’IA', () => {
+  const TOUTES = { capacity: true, agendaAgent: true, placement: true };
+  const AUCUNE = { capacity: false, agendaAgent: false, placement: false };
+  const etat = (over: Partial<EtatIaAgenda> = {}): EtatIaAgenda => ({
+    statutCharge: true,
+    interrupteur: true,
+    canOptimize: true,
+    fonctions: TOUTES,
+    nbPropositions: 0,
+    propositionsChargees: true,
+    ...over,
+  });
+
+  it('IA active : propositions et onglet, comme avant', () => {
+    expect(visibiliteIa(etat())).toEqual({ iaActive: true, propositions: true, vueIa: true, decide: true });
+  });
+
+  it('⚠️ IA coupée par le client : ni propositions ni onglet — même avec 12 propositions de l’agent en mémoire', () => {
+    const v = visibiliteIa(etat({ interrupteur: false, fonctions: AUCUNE, nbPropositions: 12 }));
+    expect(v.iaActive).toBe(false);
+    expect(v.propositions).toBe(false);
+    expect(v.vueIa).toBe(false);
+  });
+
+  it('⚠️ IA chargée ET coupée : le repli d’une vue « ia » est définitif tout de suite, sans attendre de propositions', () => {
+    // Les propositions ne sont plus lues quand l'IA est coupée : les attendre figerait la demande.
+    expect(visibiliteIa(etat({ interrupteur: false, fonctions: AUCUNE, propositionsChargees: false })).decide).toBe(true);
+  });
+
+  it('statut pas encore chargé (démarrage, changement de société) : rien d’IA, et l’on attend', () => {
+    // L'interrupteur lu à ce moment est celui de l'ANCIENNE société : il ne compte pas.
+    expect(visibiliteIa(etat({ statutCharge: false, nbPropositions: 3 }))).toEqual({
+      iaActive: false,
+      propositions: false,
+      vueIa: false,
+      decide: false,
+    });
+  });
+
+  it('IA active, propositions pas encore lues : elles peuvent encore ouvrir l’onglet — on attend (S2)', () => {
+    const avant = visibiliteIa(etat({ fonctions: AUCUNE, propositionsChargees: false }));
+    expect(avant.vueIa).toBe(false);
+    expect(avant.decide).toBe(false);
+    // … et, lues, elles l'ouvrent.
+    expect(visibiliteIa(etat({ fonctions: AUCUNE, nbPropositions: 2 })).vueIa).toBe(true);
+  });
+
+  it('IA active sans fonction ouverte ni proposition : pas d’onglet, et c’est définitif', () => {
+    expect(visibiliteIa(etat({ fonctions: AUCUNE }))).toEqual({ iaActive: true, propositions: true, vueIa: false, decide: true });
+  });
+
+  it('une seule fonction ouverte suffit à l’onglet', () => {
+    expect(visibiliteIa(etat({ fonctions: { ...AUCUNE, placement: true } })).vueIa).toBe(true);
+    expect(visibiliteIa(etat({ fonctions: { ...AUCUNE, capacity: true } })).vueIa).toBe(true);
+    expect(visibiliteIa(etat({ fonctions: { ...AUCUNE, agendaAgent: true } })).vueIa).toBe(true);
+  });
+
+  it('sans le droit « Voir les réservations » : ni propositions ni onglet, IA active ou non (inchangé)', () => {
+    const v = visibiliteIa(etat({ canOptimize: false, nbPropositions: 4, propositionsChargees: false }));
+    expect(v.iaActive).toBe(true);
+    expect(v.propositions).toBe(false);
+    expect(v.vueIa).toBe(false);
+    expect(v.decide).toBe(true);
+  });
+
+  it('⚠️ interrupteur de la société pas encore connu (serveur sans clé, réglage brut en lecture) : rien d’IA, et l’on attend', () => {
+    expect(visibiliteIa(etat({ interrupteur: null, nbPropositions: 5 }))).toEqual({ iaActive: false, propositions: false, vueIa: false, decide: false });
+  });
+
+  it('⚠️ revue du 29/09 — la démo (aucune clé API, IA de la société ACTIVE) : les propositions se montrent, l’onglet aussi', () => {
+    // Avant la revue, interrupteur = enabled() = faux sans clé : tout disparaissait, alors que le client
+    // n'avait rien coupé (453 propositions déterministes préparées sans clé à la recette du 28/09).
+    const interrupteur = interrupteurSociete({ configured: false, enabled: false }, true);
+    expect(visibiliteIa(etat({ interrupteur, fonctions: AUCUNE, nbPropositions: 453 }))).toEqual({
+      iaActive: true,
+      propositions: true,
+      vueIa: true,
+      decide: true,
+    });
+    // … et la même démo, IA coupée par le client : rien.
+    const coupee = interrupteurSociete({ configured: false, enabled: false }, false);
+    expect(visibiliteIa(etat({ interrupteur: coupee, fonctions: AUCUNE, nbPropositions: 453 })).propositions).toBe(false);
+  });
+
+  /**
+   * Revue du 29/09 : un super-admin sur l'Assistant IA de A (équipée) passe sur B (équipée aussi). Le
+   * statut de A ne comptait plus, celui de B n'était pas arrivé, et « pas connu » valait « coupée » :
+   * la vue se démontait, le Calendrier et son chargement s'affichaient, puis tout revenait.
+   */
+  describe('relecture de la société : une attente n’est pas une coupure', () => {
+    const EQUIPEE = { iaActive: true, propositions: true, vueIa: true, decide: true };
+
+    it('A équipée → B pas encore lue : onglet et pastille gardés ; propositions ni lues ni montrées ; rien de tranché', () => {
+      expect(visibiliteIa(etat({ statutCharge: false }), EQUIPEE)).toEqual({ iaActive: true, propositions: false, vueIa: true, decide: false });
+      // Serveur sans clé : le statut de B est là, son réglage brut encore en lecture — pareil.
+      expect(visibiliteIa(etat({ interrupteur: null }), EQUIPEE)).toEqual({ iaActive: true, propositions: false, vueIa: true, decide: false });
+    });
+
+    it('… puis B arrive COUPÉE : tout part, et c’est tranché (le ?vue=ia retombe pour de bon)', () => {
+      const pendant = visibiliteIa(etat({ statutCharge: false }), EQUIPEE);
+      expect(visibiliteIa(etat({ interrupteur: false, fonctions: AUCUNE }), pendant)).toEqual({
+        iaActive: false,
+        propositions: false,
+        vueIa: false,
+        decide: true,
+      });
+    });
+
+    it('… ou B arrive équipée sans fonction ouverte : l’onglet reste pendant la lecture de ses propositions', () => {
+      const pendant = visibiliteIa(etat({ statutCharge: false }), EQUIPEE);
+      const lecture = visibiliteIa(etat({ fonctions: AUCUNE, propositionsChargees: false }), pendant);
+      expect(lecture).toEqual({ iaActive: true, propositions: true, vueIa: true, decide: false });
+      // Lues : aucune → l'onglet part, pour de bon ; sinon il reste.
+      expect(visibiliteIa(etat({ fonctions: AUCUNE }), lecture)).toEqual({ iaActive: true, propositions: true, vueIa: false, decide: true });
+      expect(visibiliteIa(etat({ fonctions: AUCUNE, nbPropositions: 7 }), lecture).vueIa).toBe(true);
+    });
+
+    it('A sans IA → B pas encore lue : rien d’IA ne s’allume pendant l’attente', () => {
+      const a = visibiliteIa(etat({ interrupteur: false, fonctions: AUCUNE }));
+      expect(visibiliteIa(etat({ statutCharge: false }), a)).toEqual({ iaActive: false, propositions: false, vueIa: false, decide: false });
+    });
+
+    it('l’attente garde, elle ne retarde jamais : une fonction ouverte montre l’onglet tout de suite', () => {
+      const sansOnglet = visibiliteIa(etat({ interrupteur: false, fonctions: AUCUNE }));
+      expect(visibiliteIa(etat({ propositionsChargees: false }), sansOnglet).vueIa).toBe(true);
+    });
+
+    it('au démarrage (aucune visibilité d’avant) : rien d’IA avant confirmation — opt-in inchangé', () => {
+      expect(visibiliteIa(etat({ statutCharge: false }), null)).toEqual({ iaActive: false, propositions: false, vueIa: false, decide: false });
+    });
+  });
+
+  it('memeVisibiliteIa : les quatre drapeaux, et rien d’autre', () => {
+    const v = { iaActive: true, propositions: false, vueIa: true, decide: false };
+    expect(memeVisibiliteIa(v, { ...v })).toBe(true);
+    expect(memeVisibiliteIa(v, { ...v, decide: true })).toBe(false);
+    expect(memeVisibiliteIa(v, { ...v, iaActive: false })).toBe(false);
+    expect(memeVisibiliteIa(v, { ...v, propositions: true })).toBe(false);
+    expect(memeVisibiliteIa(v, { ...v, vueIa: false })).toBe(false);
+  });
+});
+
+/**
+ * REVUE DU 29/09 — `AiStatusDto.enabled` exige AUSSI une clé API au serveur (`isEnabledForFleet`) :
+ * sur la démo (clés vides, `aiEnabled: true`), il vaut faux alors que le client n'a rien coupé.
+ */
+describe('interrupteurSociete — l’interrupteur de la société, pas « une clé API et l’interrupteur »', () => {
+  it('serveur AVEC clé : enabled EST l’interrupteur — le réglage brut ne compte pas', () => {
+    expect(interrupteurSociete({ configured: true, enabled: true }, null)).toBe(true);
+    expect(interrupteurSociete({ configured: true, enabled: false }, null)).toBe(false);
+    expect(interrupteurSociete({ configured: true, enabled: false }, true)).toBe(false);
+    expect(interrupteurSociete({ configured: true, enabled: true }, 'illisible')).toBe(true);
+  });
+
+  it('⚠️ serveur SANS clé : enabled vaut faux quoi qu’ait choisi le client — le réglage brut décide', () => {
+    expect(interrupteurSociete({ configured: false, enabled: false }, true)).toBe(true);
+    expect(interrupteurSociete({ configured: false, enabled: false }, false)).toBe(false);
+  });
+
+  it('serveur sans clé, réglage en lecture : inconnu — on attend', () => {
+    expect(interrupteurSociete({ configured: false, enabled: false }, null)).toBeNull();
+  });
+
+  it('serveur sans clé, réglage illisible (rôle sans accès, super-admin sans société, échec) : coupée — opt-in', () => {
+    expect(interrupteurSociete({ configured: false, enabled: false }, 'illisible')).toBe(false);
+  });
+
+  // 29/09 — le statut porte le choix du client (`fleetEnabled`) : il décide, avec ou sans clé, et
+  // quoi que dise un réglage brut relu (qui n'est plus nécessaire).
+  it('`fleetEnabled` présent : c’est lui qui décide, avec ou sans clé', () => {
+    expect(interrupteurSociete({ configured: false, enabled: false, fleetEnabled: true }, null)).toBe(true);
+    expect(interrupteurSociete({ configured: true, enabled: true, fleetEnabled: false }, true)).toBe(false);
+    expect(interrupteurSociete({ configured: true, enabled: false, fleetEnabled: true }, 'illisible')).toBe(true);
+  });
+});
+
+/**
+ * LES PILULES POINTILLÉES DE LA GRILLE (29/09) : le câblage que la page passe au calendrier —
+ * `proposalsByDay` = `propositionsParJour(propositionsDuPerimetre(...))`. IA coupée, la carte est
+ * vide : ni pilule « N proposés », ni point creux sur téléphone.
+ */
+describe('propositionsDuPerimetre / propositionsParJour — les propositions que la page montre', () => {
+  const P = [
+    { id: 'p1', vehicleId: 'v1', startAt: '2026-10-05T07:00:00' },
+    { id: 'p2', vehicleId: 'v1', startAt: '2026-10-05T16:30:00' },
+    { id: 'p3', vehicleId: 'v2', startAt: '2026-10-06T07:00:00' },
+    { id: 'p4', vehicleId: 'v3', startAt: '2026-10-06T08:00:00' },
+  ];
+  const TOUT = { vehicleId: '', vehiculesDuGroupe: null };
+
+  it('⚠️ propositions non visibles (IA coupée) : aucune, donc aucune pilule — même si la liste n’est pas encore vidée', () => {
+    expect(propositionsDuPerimetre(P, false, TOUT)).toEqual([]);
+    expect(propositionsParJour(propositionsDuPerimetre(P, false, TOUT)).size).toBe(0);
+    expect(propositionsDuPerimetre(P, false, { vehicleId: 'v1', vehiculesDuGroupe: new Set(['v1']) })).toEqual([]);
+  });
+
+  it('visibles : toutes sans filtre, puis le périmètre de la grille (véhicule, groupe)', () => {
+    expect(propositionsDuPerimetre(P, true, TOUT).map((p) => p.id)).toEqual(['p1', 'p2', 'p3', 'p4']);
+    expect(propositionsDuPerimetre(P, true, { vehicleId: 'v1', vehiculesDuGroupe: null }).map((p) => p.id)).toEqual(['p1', 'p2']);
+    expect(propositionsDuPerimetre(P, true, { vehicleId: '', vehiculesDuGroupe: new Set(['v2', 'v3']) }).map((p) => p.id)).toEqual(['p3', 'p4']);
+  });
+
+  it('compte les propositions, pas les véhicules : deux tournées du même véhicule le même jour font 2', () => {
+    const parJour = propositionsParJour(propositionsDuPerimetre(P, true, TOUT));
+    expect(parJour.get('2026-10-05')).toBe(2);
+    expect(parJour.get('2026-10-06')).toBe(2);
+    expect(parJour.size).toBe(2);
+  });
+
+  it('une date illisible ne pose rien', () => {
+    expect(propositionsParJour([{ startAt: 'pas une date' }, { startAt: '2026-10-07T09:00:00' }])).toEqual(new Map([['2026-10-07', 1]]));
+  });
+});
+
+/**
+ * RÉORGANISER, IA COUPÉE (29/09) : « Posées par l'agent » n'est plus un geste de l'agent mais un
+ * filtre sur de vraies réservations — il reste s'il en compte, disparaît à 0.
+ */
+describe('origineAgentVisible — le bouton « Posées par l’agent » de Réorganiser', () => {
+  it('IA active : toujours là, compte connu ou non (inchangé)', () => {
+    expect(origineAgentVisible({ iaActive: true, compteAgent: 0, selectionnee: false })).toBe(true);
+    expect(origineAgentVisible({ iaActive: true, compteAgent: null, selectionnee: false })).toBe(true);
+  });
+
+  it('⚠️ IA coupée et aucune réservation de l’agent : masqué', () => {
+    expect(origineAgentVisible({ iaActive: false, compteAgent: 0, selectionnee: false })).toBe(false);
+  });
+
+  it('IA coupée, compte jamais connu pour cette société (première simulation en vol) : masqué', () => {
+    expect(origineAgentVisible({ iaActive: false, compteAgent: null, selectionnee: false })).toBe(false);
+  });
+
+  it('IA coupée mais des réservations posées par l’agent : gardé — c’est un filtre sur de vraies réservations', () => {
+    expect(origineAgentVisible({ iaActive: false, compteAgent: 3, selectionnee: false })).toBe(true);
+  });
+
+  it('sélectionné : jamais retiré sous le doigt, même à 0', () => {
+    expect(origineAgentVisible({ iaActive: false, compteAgent: 0, selectionnee: true })).toBe(true);
+    expect(origineAgentVisible({ iaActive: false, compteAgent: null, selectionnee: true })).toBe(true);
+  });
+});
+
+/**
+ * REVUE DU 29/09 — le compte qui décide de « Posées par l'agent » (IA coupée) était celui de la
+ * simulation AFFICHÉE : inconnu à chaque ouverture et après une erreur, celui du véhicule sinon. Le
+ * bouton surgissait au retour de la première simulation et disparaissait sur une erreur.
+ */
+describe('memoriserCompteAgent / compteAgentMemorise — le compte de la société, gardé', () => {
+  const totaux = (agent: number) => ({ totaux: { agent, public: 1, manuelle: 2 } });
+
+  it('une simulation réussie le pose pour SA société ; la suivante le remplace, 0 compris', () => {
+    const m = memoriserCompteAgent(null, 'cdef31', totaux(430));
+    expect(m).toEqual({ societe: 'cdef31', n: 430 });
+    expect(memoriserCompteAgent(m, 'cdef31', totaux(0))).toEqual({ societe: 'cdef31', n: 0 });
+  });
+
+  it('⚠️ une réponse sans totaux (API antérieure) ne l’efface pas', () => {
+    const m = { societe: 'cdef31', n: 430 };
+    expect(memoriserCompteAgent(m, 'cdef31', {})).toBe(m);
+    expect(memoriserCompteAgent(m, 'cdef31', { totaux: null })).toBe(m);
+  });
+
+  it('lu pour la société du bandeau seulement : celui d’une autre est inconnu', () => {
+    expect(compteAgentMemorise({ societe: 'cdef31', n: 4 }, 'cdef31')).toBe(4);
+    expect(compteAgentMemorise({ societe: 'cdef31', n: 4 }, 'client-test')).toBeNull();
+    expect(compteAgentMemorise(null, 'cdef31')).toBeNull();
+    expect(compteAgentMemorise({ societe: null, n: 2 }, null)).toBe(2);
+  });
+
+  it('⚠️ réouverture, IA coupée : le bouton est là DÈS l’ouverture — la feuille n’a encore rien relu, la mémoire sait', () => {
+    const memo = memoriserCompteAgent(null, 'cdef31', totaux(430));
+    expect(origineAgentVisible({ iaActive: false, compteAgent: compteAgentMemorise(memo, 'cdef31'), selectionnee: false })).toBe(true);
+    // Une société sans aucune réservation de l'agent : jamais de bouton, pas même un instant.
+    const vide = memoriserCompteAgent(null, 'client-test', totaux(0));
+    expect(origineAgentVisible({ iaActive: false, compteAgent: compteAgentMemorise(vide, 'client-test'), selectionnee: false })).toBe(false);
   });
 });
 

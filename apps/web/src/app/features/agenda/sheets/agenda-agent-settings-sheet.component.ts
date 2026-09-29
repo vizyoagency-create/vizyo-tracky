@@ -8,6 +8,7 @@ import {
   input,
   output,
   signal,
+  untracked,
 } from '@angular/core';
 import { DatePipe, DecimalPipe } from '@angular/common';
 import { apiErrorMessage } from '../../../core/error/api-error';
@@ -42,10 +43,51 @@ import { AgendaSyncService } from '../agenda-sync.service';
 import { lancerPassageAgent } from '../ia/agenda-ia-view.component';
 
 /**
+ * Ce que la feuille « Paramètres de l'agenda » montre de l'IA (29/09, revue) :
+ *  - 'active'      : le bloc de l'agent, ses passages, ses coûts ;
+ *  - 'coupee'      : l'option IA de la société est coupée (c'est le client qui l'a désactivée) ;
+ *  - 'sans-moteur' : l'option est active mais aucun moteur IA n'est configuré sur le serveur (la
+ *                    démo : option imposée, aucune clé) — l'agent reste, avec une note ;
+ *  - 'en-attente'  : le statut IA de l'application n'est pas encore chargé — l'agent reste : c'est le
+ *                    réglage de la société qui décide, et il est déjà relu ;
+ *  - 'illisible'   : le réglage de la société n'a pas pu être relu — on ne devine pas.
+ * 'coupee' et 'illisible' ne montrent qu'une note qui dit lequel.
+ */
+export type EtatIaFeuille = 'active' | 'coupee' | 'sans-moteur' | 'en-attente' | 'illisible';
+
+/**
+ * ── 29/09 — LA FEUILLE SUR LA RÈGLE DE LA PAGE : LE CHOIX DU CLIENT ─────────────────────────────
+ * « C'est le client qui désactive » : la page agenda (`interrupteurSociete`, `visibiliteIa`) et cette
+ * feuille décident sur le réglage de la société (`Fleet.aiEnabled`, relu ici à l'ouverture pour la
+ * société que la feuille RÈGLE — jamais le statut d'une autre société juste après un changement de
+ * bandeau). La présence d'un moteur IA sur le serveur ne masque rien : sans lui (la démo), l'agent
+ * propose quand même, à partir des habitudes, et une note le dit ; les boutons qui appellent
+ * vraiment l'IA restent gardés par `AiStatusService.can(...)`. L'ordre dit la cause la plus utile :
+ * un réglage illisible ne se devine pas ; une option coupée l'est par le client, moteur ou pas.
+ */
+export function etatIaFeuille(e: {
+  /** Le réglage brut de la société a été relu à cette ouverture. */
+  reglageLu: boolean;
+  /** Ce réglage : l'option IA de la société (`Fleet.aiEnabled`). */
+  interrupteur: boolean;
+  /** Le statut IA de l'application (`/ai/status`) est chargé. */
+  statutCharge: boolean;
+  /** Au moins un moteur IA configuré côté serveur (`AiStatusDto.configured`). */
+  moteurConfigure: boolean;
+}): EtatIaFeuille {
+  if (!e.reglageLu) return 'illisible';
+  if (!e.interrupteur) return 'coupee';
+  if (!e.statutCharge) return 'en-attente';
+  if (!e.moteurConfigure) return 'sans-moteur';
+  return 'active';
+}
+
+/**
  * Refonte agenda/IA (2026-07) — ⚙️ « Paramètres de l'agenda » (PAR FLOTTE).
  * Pilote l'agent d'optimisation : activation, analyse nocturne (heure/fréquence), autonomie
  * (suggestions vs auto si confiance haute), auto-complétion, déclencheurs, métier, + coût IA du mois.
  * Source de vérité de la société = le sélecteur global (FleetFilterService).
+ * 29/09 : IA de la société coupée, la feuille ne montre plus rien de l'IA — voir `etatIa`.
  */
 @Component({
   selector: 'app-agenda-agent-settings-sheet',
@@ -66,7 +108,11 @@ import { lancerPassageAgent } from '../ia/agenda-ia-view.component';
           <div class="aas-skel"></div><div class="aas-skel"></div><div class="aas-skel"></div>
         } @else {
           <div class="aas-body">
-            @if (error()) { <div class="aas-alert">{{ error() }}</div> }
+            <!-- 29/09 (revue) : l'alerte ne porte que sur les réglages de l'agent — leur lecture, leur
+                 enregistrement. IA masquée, rien de ce qui reste affiché n'en dépend : elle se tait
+                 (un « Erreur serveur. » en tête de feuille, au-dessus de réglages qu'on ne montre
+                 pas, n'apprenait rien à personne). -->
+            @if (iaVisible() && error(); as e) { <div class="aas-alert">{{ e }}</div> }
 
             <!-- Interrupteur MAÎTRE de l'IA (globale). Option PAYANTE : super-admin peut l'OFFRIR
                  (toggle → COMP) ; un fleet-admin l'active via son onglet Facturation (abonnement). -->
@@ -75,39 +121,79 @@ import { lancerPassageAgent } from '../ia/agenda-ia-view.component';
                 <span class="aas-lbl"><lucide-icon [img]="ZapIcon" [size]="13"></lucide-icon> Assistance IA</span>
                 <span class="aas-sub"><strong>Toute l'IA</strong> de cette société (récit de trajet, agent d'agenda, optimiseur, saisie vocale). Option payante (abonnement mensuel) ; l'app fonctionne parfaitement sans IA (analyse des trajets, stations, scores restent inclus).</span>
               </div>
+              <!-- 29/09 (revue) : réglage brut illisible (voir aiReglageLu), l'interrupteur n'est pas
+                   proposé du tout — ni coché ni décoché : un état inconnu ne s'affiche pas comme un
+                   état. « Offrir » ou « couper » l'IA change l'abonnement de la société ; on ne le
+                   fait pas depuis un état deviné. La note plus bas dit pourquoi. -->
               @if (isSuperAdmin()) {
-                <input type="checkbox" class="aas-sw" [checked]="aiMasterEnabled()" [disabled]="savingAi()" (change)="onToggleAi($any($event.target).checked)">
+                @if (aiReglageLu()) {
+                  <input type="checkbox" class="aas-sw" [checked]="aiMasterEnabled()" [disabled]="savingAi()" (change)="onToggleAi($any($event.target).checked)">
+                }
               } @else {
-                <a routerLink="/settings" (click)="closed.emit()" class="aas-manage">{{ aiMasterEnabled() ? 'Gérer' : 'Activer' }}</a>
+                <!-- Réglage illisible : « Gérer », neutre, plutôt qu'un « Activer » deviné. -->
+                <a routerLink="/settings" (click)="closed.emit()" class="aas-manage">{{ aiMasterEnabled() || !aiReglageLu() ? 'Gérer' : 'Activer' }}</a>
               }
             </label>
-            @if (!aiMasterEnabled()) {
-              <!-- Vrai, et rien de plus : la détection des habitudes est DÉTERMINISTE (elle ne passe
-                   pas par l'IA). L'ancienne note prétendait les réglages « sans effet », alors qu'un
-                   agent déjà activé continue ses passages planifiés sans avis de l'IA. -->
-              <div class="aas-note">L'IA est désactivée pour cette société : l'agent ne peut pas être activé d'ici. S'il l'était déjà, ses passages planifiés continuent sans avis de l'IA — détection déterministe des habitudes, propositions et réservations selon l'autonomie réglée.</div>
+            <!--
+              ── CE QUE LA FEUILLE MONTRE DE L'IA (29/09, demande du propriétaire ; revue du 29/09) ──
+              Décidé par etatIa (etatIaFeuille, en tête du fichier) : le réglage de la société relu à
+              cette ouverture ET un moteur IA configuré sur le serveur, la règle de la page agenda.
+              Hors « active », tout le bloc de l'agent — activation, métier, analyse nocturne,
+              fréquence, autonomie, auto-complétion, déclencheurs, coûts IA, derniers passages,
+              « Lancer un passage » — laisse la place à UNE note qui dit pourquoi. Restent la ligne
+              maîtresse ci-dessus (le chemin pour réactiver) et ce qui n'a rien d'IA : sièges auto,
+              liens publics, destinataires des demandes. Rien ne change côté serveur : les réglages de
+              l'agent restent en base, tels quels. L'ancienne note (« s'il l'était déjà, ses passages
+              planifiés continuent… ») décrivait un détail du serveur que l'écran ne montre plus.
+            -->
+            @if (etatIa() === 'illisible') {
+              <!-- Revue du 29/09 : la note affirmait « IA désactivée » juste sous « n'a pas pu être
+                   relu » — l'état deviné que le verrou venait de refuser. On dit ce qu'on sait. -->
+              <div class="aas-note">
+                @if (isSuperAdmin()) {
+                  Le réglage IA de cette société n'a pas pu être relu : l'interrupteur n'est pas proposé et les options de l'agent restent masquées, plutôt que d'agir sur un état deviné.
+                } @else {
+                  L'état de l'IA de cette société n'a pas pu être relu : les options de l'agent restent masquées plutôt que montrées sur un état deviné.
+                }
+                Rouvrez la feuille pour réessayer.
+              </div>
+            } @else if (etatIa() === 'coupee') {
+              <div class="aas-note">
+                L'IA est désactivée pour cette société : l'agent d'agenda, ses propositions et l'Assistant IA sont masqués. Ils reviennent dès que l'IA est réactivée.
+              </div>
+            } @else {
+              <!-- Raccord du 29/09 : le CHOIX DU CLIENT décide, comme la page agenda — pas la présence
+                   d'une clé IA sur le serveur. Sans moteur (la démo), l'agent propose quand même, à
+                   partir des habitudes : on le dit, et le bloc reste. -->
+              @if (etatIa() === 'sans-moteur') {
+                <div class="aas-note">Aucun moteur IA n'est configuré sur ce serveur : l'agent propose à partir des habitudes de trajets, sans relecture par l'IA.</div>
+              }
             }
+            @if (agentLisible()) {
+              <!-- Activation de l'agent d'agenda (sous-ensemble de l'IA). Le texte dit où l'IA
+                   intervient : APRÈS coup, par le poste (design/C3 point 7) — ni la nuit ni le clic
+                   n'appellent l'API. Plus de « [disabled] » sur l'IA coupée : le bloc n'existe
+                   alors plus (29/09). Réglages illisibles (IA active) : rien ici non plus — l'alerte
+                   en tête le dit, plutôt que des champs à des valeurs par défaut ou à celles de la
+                   société ouverte avant (revue du 29/09). -->
+              <label class="aas-row aas-row--switch">
+                <div><span class="aas-lbl">Activer l'agent IA</span><span class="aas-sub">L'agent détecte les habitudes de {{ fleetName() || 'cette société' }} et prépare les propositions ; l'IA les relit ensuite depuis le poste (06:30 et 14:30) pour écarter les douteuses et expliquer les autres.</span></div>
+                <input type="checkbox" class="aas-sw" [checked]="enabled()" (change)="enabled.set($any($event.target).checked)">
+              </label>
 
-            <!-- Activation de l'agent d'agenda (sous-ensemble de l'IA). Le texte dit où l'IA
-                 intervient : APRÈS coup, par le poste (design/C3 point 7) — ni la nuit ni le clic
-                 n'appellent l'API. -->
-            <label class="aas-row aas-row--switch">
-              <div><span class="aas-lbl">Activer l'agent IA</span><span class="aas-sub">L'agent détecte les habitudes de {{ fleetName() || 'cette société' }} et prépare les propositions ; l'IA les relit ensuite depuis le poste (06:30 et 14:30) pour écarter les douteuses et expliquer les autres.</span></div>
-              <input type="checkbox" class="aas-sw" [checked]="enabled()" [disabled]="!aiMasterEnabled()" (change)="enabled.set($any($event.target).checked)">
-            </label>
-
-            <!-- Métier -->
-            <div class="aas-row">
-              <div><span class="aas-lbl">Métier de la flotte</span><span class="aas-sub">Oriente l'objectif de l'IA (ex. sécurité enfants).</span></div>
-              <!-- « [value] » sur le select est posé AVANT que les options existent (elles naissent
-                   dans la boucle) : le navigateur retombe alors sur la première, « Transport
-                   d'enfants », quel que soit le métier enregistré — et quand la valeur chargée est
-                   déjà celle du signal (GENERIC), rien ne le rattrape. Recette du 28/09 sur la démo.
-                   « [selected] » sur chaque option est la liaison que le DOM honore ici. -->
-              <select class="aas-in" [value]="metier()" (change)="onMetierChange($any($event.target).value)">
-                @for (m of metiers; track m) { <option [value]="m" [selected]="m === metier()">{{ metierLabel(m) }}</option> }
-              </select>
-            </div>
+              <!-- Métier — il n'oriente que l'IA : masqué avec elle, sa valeur est conservée (29/09). -->
+              <div class="aas-row">
+                <div><span class="aas-lbl">Métier de la flotte</span><span class="aas-sub">Oriente l'objectif de l'IA (ex. sécurité enfants).</span></div>
+                <!-- « [value] » sur le select est posé AVANT que les options existent (elles naissent
+                     dans la boucle) : le navigateur retombe alors sur la première, « Transport
+                     d'enfants », quel que soit le métier enregistré — et quand la valeur chargée est
+                     déjà celle du signal (GENERIC), rien ne le rattrape. Recette du 28/09 sur la démo.
+                     « [selected] » sur chaque option est la liaison que le DOM honore ici. -->
+                <select class="aas-in" [value]="metier()" (change)="onMetierChange($any($event.target).value)">
+                  @for (m of metiers; track m) { <option [value]="m" [selected]="m === metier()">{{ metierLabel(m) }}</option> }
+                </select>
+              </div>
+            }
 
             <!--
               SIÈGES AUTO — le réglage vit dans la vue PARC de l'agenda depuis la refonte du 28/09
@@ -149,73 +235,78 @@ import { lancerPassageAgent } from '../ia/agenda-ia-view.component';
               }
             </div>
 
-            <!-- Analyse nocturne -->
-            <div class="aas-grid">
-              <label class="aas-row aas-row--col"><span class="aas-lbl">Heure d'analyse nocturne</span>
-                <input type="number" min="0" max="23" class="aas-in" [value]="nightlyHour()" (input)="nightlyHour.set(clampHour($any($event.target).value))"></label>
-              <label class="aas-row aas-row--col"><span class="aas-lbl">Fréquence</span>
-                <select class="aas-in" [value]="frequency()" (change)="frequency.set($any($event.target).value)">
-                  <option value="daily">Quotidienne</option><option value="weekly">Hebdomadaire</option>
-                </select></label>
-            </div>
-
-            <!-- Autonomie -->
-            <div class="aas-row aas-row--col">
-              <!--
-                ── L'AUTONOMIE NE SE RÈGLE PLUS (lot 3a, 2026-09-23) ──────────────────────────
-                Le segment proposait « Auto si confiance haute » et un curseur de seuil. Le
-                serveur ne réserve plus fermement, quel que soit le réglage : laisser le
-                contrôle actif promettrait un comportement que l'application n'a plus. On
-                affiche donc l'état, et le CHIFFRE qui l'a décidé — sinon « pourquoi ça ne
-                réserve plus ? » n'a pas de réponse à l'écran.
-              -->
-              <span class="aas-lbl">Niveau d'autonomie</span>
-              <div class="aas-fige">
-                <span class="aas-fige-etat">Suggestions seules</span>
-                <span class="aas-sub">
-                  L'agent <strong>propose</strong>, il ne réserve jamais. Ses propositions
-                  apparaissent en pointillé sur le calendrier et n'immobilisent aucun véhicule
-                  tant que tu ne les as pas validées.
-                </span>
-                <span class="aas-sub aas-fige-pourquoi">
-                  Mesuré le 23/09 sur 321 réservations automatiques passées : le véhicule avait
-                  réellement roulé sur le créneau <strong>57 fois sur 100</strong> — et pas du tout
-                  ce jour-là 23 fois sur 100. Le jour est juste, l'heure dérape de 47 min en
-                  médiane. Une réservation ferme bloquait donc le mauvais créneau.
-                </span>
+            <!-- 29/09 : la suite du bloc de l'agent, et les coûts IA, n'existent qu'IA visible (voir la
+                 note plus haut) et réglages relus : le coût du mois vient de la même lecture. Les
+                 sièges auto, juste au-dessus, restent. -->
+            @if (agentLisible()) {
+              <!-- Analyse nocturne -->
+              <div class="aas-grid">
+                <label class="aas-row aas-row--col"><span class="aas-lbl">Heure d'analyse nocturne</span>
+                  <input type="number" min="0" max="23" class="aas-in" [value]="nightlyHour()" (input)="nightlyHour.set(clampHour($any($event.target).value))"></label>
+                <label class="aas-row aas-row--col"><span class="aas-lbl">Fréquence</span>
+                  <select class="aas-in" [value]="frequency()" (change)="frequency.set($any($event.target).value)">
+                    <option value="daily">Quotidienne</option><option value="weekly">Hebdomadaire</option>
+                  </select></label>
               </div>
-            </div>
 
-            <!-- Auto-complétion -->
-            <label class="aas-row aas-row--switch">
-              <div><span class="aas-lbl">Auto-complétion après une réservation</span><span class="aas-sub">Quand quelqu'un réserve, l'IA optimise autour (mutualisation, coût).</span></div>
-              <input type="checkbox" class="aas-sw" [checked]="autoComplete()" (change)="autoComplete.set($any($event.target).checked)">
-            </label>
-
-            <!-- Déclencheurs -->
-            <div class="aas-row aas-row--col">
-              <span class="aas-lbl">Déclencheurs de (re)analyse</span>
-              <div class="aas-checks">
-                <label class="aas-chk"><input type="checkbox" [checked]="trigNightly()" (change)="trigNightly.set($any($event.target).checked)"> Analyse nocturne</label>
-                <label class="aas-chk"><input type="checkbox" [checked]="trigIncident()" (change)="trigIncident.set($any($event.target).checked)"> À un incident</label>
-                <label class="aas-chk"><input type="checkbox" [checked]="trigMaintenance()" (change)="trigMaintenance.set($any($event.target).checked)"> À une maintenance</label>
-                <label class="aas-chk"><input type="checkbox" [checked]="trigReservation()" (change)="trigReservation.set($any($event.target).checked)"> À une réservation</label>
+              <!-- Autonomie -->
+              <div class="aas-row aas-row--col">
+                <!--
+                  ── L'AUTONOMIE NE SE RÈGLE PLUS (lot 3a, 2026-09-23) ──────────────────────────
+                  Le segment proposait « Auto si confiance haute » et un curseur de seuil. Le
+                  serveur ne réserve plus fermement, quel que soit le réglage : laisser le
+                  contrôle actif promettrait un comportement que l'application n'a plus. On
+                  affiche donc l'état, et le CHIFFRE qui l'a décidé — sinon « pourquoi ça ne
+                  réserve plus ? » n'a pas de réponse à l'écran.
+                -->
+                <span class="aas-lbl">Niveau d'autonomie</span>
+                <div class="aas-fige">
+                  <span class="aas-fige-etat">Suggestions seules</span>
+                  <span class="aas-sub">
+                    L'agent <strong>propose</strong>, il ne réserve jamais. Ses propositions
+                    apparaissent en pointillé sur le calendrier et n'immobilisent aucun véhicule
+                    tant que tu ne les as pas validées.
+                  </span>
+                  <span class="aas-sub aas-fige-pourquoi">
+                    Mesuré le 23/09 sur 321 réservations automatiques passées : le véhicule avait
+                    réellement roulé sur le créneau <strong>57 fois sur 100</strong> — et pas du tout
+                    ce jour-là 23 fois sur 100. Le jour est juste, l'heure dérape de 47 min en
+                    médiane. Une réservation ferme bloquait donc le mauvais créneau.
+                  </span>
+                </div>
               </div>
-            </div>
 
-            <!-- Coûts IA -->
-            <div class="aas-cost">
-              <div class="aas-cost-top">
-                <span class="aas-lbl"><lucide-icon [img]="ZapIcon" [size]="13"></lucide-icon> Coûts IA · ce mois</span>
-                <span class="aas-cost-amount">≈ {{ monthCostEur() | number:'1.2-2' }} €</span>
+              <!-- Auto-complétion -->
+              <label class="aas-row aas-row--switch">
+                <div><span class="aas-lbl">Auto-complétion après une réservation</span><span class="aas-sub">Quand quelqu'un réserve, l'IA optimise autour (mutualisation, coût).</span></div>
+                <input type="checkbox" class="aas-sw" [checked]="autoComplete()" (change)="autoComplete.set($any($event.target).checked)">
+              </label>
+
+              <!-- Déclencheurs -->
+              <div class="aas-row aas-row--col">
+                <span class="aas-lbl">Déclencheurs de (re)analyse</span>
+                <div class="aas-checks">
+                  <label class="aas-chk"><input type="checkbox" [checked]="trigNightly()" (change)="trigNightly.set($any($event.target).checked)"> Analyse nocturne</label>
+                  <label class="aas-chk"><input type="checkbox" [checked]="trigIncident()" (change)="trigIncident.set($any($event.target).checked)"> À un incident</label>
+                  <label class="aas-chk"><input type="checkbox" [checked]="trigMaintenance()" (change)="trigMaintenance.set($any($event.target).checked)"> À une maintenance</label>
+                  <label class="aas-chk"><input type="checkbox" [checked]="trigReservation()" (change)="trigReservation.set($any($event.target).checked)"> À une réservation</label>
+                </div>
               </div>
-              @if (byAction().length > 0) {
-                <ul class="aas-cost-list">
-                  @for (r of byAction(); track r.key) { <li><span>{{ r.label }}</span><span>{{ r.costEur | number:'1.2-2' }} €</span></li> }
-                </ul>
-              }
-              <a routerLink="/admin/ai-usage" class="aas-cost-link" (click)="closed.emit()">Ouvrir le centre Coûts IA <lucide-icon [img]="ExternalLinkIcon" [size]="12"></lucide-icon></a>
-            </div>
+
+              <!-- Coûts IA -->
+              <div class="aas-cost">
+                <div class="aas-cost-top">
+                  <span class="aas-lbl"><lucide-icon [img]="ZapIcon" [size]="13"></lucide-icon> Coûts IA · ce mois</span>
+                  <span class="aas-cost-amount">≈ {{ monthCostEur() | number:'1.2-2' }} €</span>
+                </div>
+                @if (byAction().length > 0) {
+                  <ul class="aas-cost-list">
+                    @for (r of byAction(); track r.key) { <li><span>{{ r.label }}</span><span>{{ r.costEur | number:'1.2-2' }} €</span></li> }
+                  </ul>
+                }
+                <a routerLink="/admin/ai-usage" class="aas-cost-link" (click)="closed.emit()">Ouvrir le centre Coûts IA <lucide-icon [img]="ExternalLinkIcon" [size]="12"></lucide-icon></a>
+              </div>
+            }
 
             <!-- Liens publics de réservation (P4) -->
             <div class="aas-links">
@@ -280,70 +371,85 @@ import { lancerPassageAgent } from '../ia/agenda-ia-view.component';
           <!--
             Derniers passages de l'agent. C'est ici qu'on règle l'agent, c'est donc ici qu'on doit
             voir ce qu'il a RÉELLEMENT fait — sinon « rien ne se passe » reste sans explication.
+            29/09 : masqués avec l'IA (voir etatIa), comme tout ce qui vient de l'agent. Ils ne
+            dépendent pas des réglages : ils restent quand seuls ceux-ci n'ont pas pu être relus.
           -->
-          <div class="aas-runs">
-            <div class="aas-links-head">
-              <span class="aas-lbl"><lucide-icon [img]="HistoryIcon" [size]="13"></lucide-icon> Derniers passages</span>
-              @if (runs().length > 0) {
-                <button type="button" class="aas-mini" (click)="loadRuns()" [disabled]="runsLoading()" title="Rafraîchir">
-                  <lucide-icon [img]="LoaderIcon" [size]="12" [class.aas-spin]="runsLoading()"></lucide-icon>
-                </button>
+          @if (iaVisible()) {
+            <div class="aas-runs">
+              <div class="aas-links-head">
+                <span class="aas-lbl"><lucide-icon [img]="HistoryIcon" [size]="13"></lucide-icon> Derniers passages</span>
+                @if (runs().length > 0) {
+                  <button type="button" class="aas-mini" (click)="loadRuns()" [disabled]="runsLoading()" title="Rafraîchir">
+                    <lucide-icon [img]="LoaderIcon" [size]="12" [class.aas-spin]="runsLoading()"></lucide-icon>
+                  </button>
+                }
+              </div>
+
+              @if (runsLoading() && runs().length === 0) {
+                <div class="aas-skel"></div>
+              } @else if (runs().length === 0) {
+                <span class="aas-sub">Aucun passage enregistré pour l'instant. L'agent archive chaque passage dès qu'il tourne.</span>
+              } @else {
+                @for (r of runs(); track r.id) {
+                  <div class="aas-run" [class.aas-run--err]="r.status === 'error'">
+                    <div class="aas-run-main">
+                      <span class="aas-run-when">
+                        {{ r.startedAt | date: 'dd/MM HH:mm' }}
+                        <span class="aas-run-origin">{{ r.origin === 'manual' ? 'manuel' : 'auto' }}</span>
+                        @if (r.aiUsed) { <span class="aas-run-ai">IA</span> }
+                      </span>
+                      @if (r.status === 'error') {
+                        <span class="aas-run-detail aas-run-detail--err">Échec : {{ r.error }}</span>
+                      } @else if (r.patterns === 0) {
+                        <!-- Le cas le plus fréquent d'un « il n'a rien fait » : aucune habitude détectée. -->
+                        <span class="aas-run-detail">Aucune habitude récurrente détectée — rien à proposer.</span>
+                      } @else {
+                        <span class="aas-run-detail">
+                          {{ r.patterns }} habitude{{ r.patterns > 1 ? 's' : '' }} ·
+                          {{ r.created }} réservée{{ r.created > 1 ? 's' : '' }} ·
+                          {{ r.proposed }} proposée{{ r.proposed > 1 ? 's' : '' }} ·
+                          {{ r.skipped }} ignorée{{ r.skipped > 1 ? 's' : '' }}
+                        </span>
+                      }
+                    </div>
+                    <span class="aas-run-dur">{{ runDuration(r.durationMs) }}</span>
+                  </div>
+                }
               }
             </div>
-
-            @if (runsLoading() && runs().length === 0) {
-              <div class="aas-skel"></div>
-            } @else if (runs().length === 0) {
-              <span class="aas-sub">Aucun passage enregistré pour l'instant. L'agent archive chaque passage dès qu'il tourne.</span>
-            } @else {
-              @for (r of runs(); track r.id) {
-                <div class="aas-run" [class.aas-run--err]="r.status === 'error'">
-                  <div class="aas-run-main">
-                    <span class="aas-run-when">
-                      {{ r.startedAt | date: 'dd/MM HH:mm' }}
-                      <span class="aas-run-origin">{{ r.origin === 'manual' ? 'manuel' : 'auto' }}</span>
-                      @if (r.aiUsed) { <span class="aas-run-ai">IA</span> }
-                    </span>
-                    @if (r.status === 'error') {
-                      <span class="aas-run-detail aas-run-detail--err">Échec : {{ r.error }}</span>
-                    } @else if (r.patterns === 0) {
-                      <!-- Le cas le plus fréquent d'un « il n'a rien fait » : aucune habitude détectée. -->
-                      <span class="aas-run-detail">Aucune habitude récurrente détectée — rien à proposer.</span>
-                    } @else {
-                      <span class="aas-run-detail">
-                        {{ r.patterns }} habitude{{ r.patterns > 1 ? 's' : '' }} ·
-                        {{ r.created }} réservée{{ r.created > 1 ? 's' : '' }} ·
-                        {{ r.proposed }} proposée{{ r.proposed > 1 ? 's' : '' }} ·
-                        {{ r.skipped }} ignorée{{ r.skipped > 1 ? 's' : '' }}
-                      </span>
-                    }
-                  </div>
-                  <span class="aas-run-dur">{{ runDuration(r.durationMs) }}</span>
-                </div>
-              }
-            }
-          </div>
+          }
 
           <div class="aas-foot">
-            <!-- Grisé sur la valeur ENREGISTRÉE de l'interrupteur, pas sur la case cochée : le
-                 serveur juge le réglage en base (409 sinon), et un clic entre « cocher » et
-                 « enregistrer » serait refusé. Le motif est écrit sous les boutons.
-                 Revue du 29/09 : « Lancer l'analyse » devient « Lancer un passage de l'agent » —
-                 même geste, même nom, même pastille que dans l'Assistant IA, où « analyse »
-                 désigne l'analyse du parc (une par jour). -->
-            <button type="button" class="aas-btn aas-btn--ghost" [disabled]="running() || saving() || !lancementPossible()" (click)="runNow()" [title]="titreLancement()">
-              @if (running()) { <lucide-icon [img]="LoaderIcon" [size]="15" class="aas-spin"></lucide-icon> } @else { <lucide-icon [img]="ZapIcon" [size]="15"></lucide-icon> }
-              Lancer un passage de l'agent
-            </button>
-            <button type="button" class="aas-btn" [disabled]="saving()" (click)="save()">
-              @if (saving()) { <lucide-icon [img]="LoaderIcon" [size]="15" class="aas-spin"></lucide-icon> }
-              {{ saving() ? 'Enregistrement…' : 'Enregistrer' }}
-            </button>
-            @if (motifLancement(); as motif) {
-              <span class="aas-foot-note">{{ motif }}</span>
-            }
-            @if (modifie()) {
-              <span class="aas-foot-note aas-foot-note--modif">Réglages de l'agent modifiés, pas encore enregistrés : fermer la feuille les abandonne.</span>
+            @if (agentLisible()) {
+              <!-- Grisé sur la valeur ENREGISTRÉE de l'interrupteur, pas sur la case cochée : le
+                   serveur juge le réglage en base (409 sinon), et un clic entre « cocher » et
+                   « enregistrer » serait refusé. Le motif est écrit sous les boutons.
+                   Revue du 29/09 : « Lancer l'analyse » devient « Lancer un passage de l'agent » —
+                   même geste, même nom, même pastille que dans l'Assistant IA, où « analyse »
+                   désigne l'analyse du parc (une par jour). -->
+              <button type="button" class="aas-btn aas-btn--ghost" [disabled]="running() || saving() || !lancementPossible()" (click)="runNow()" [title]="titreLancement()">
+                @if (running()) { <lucide-icon [img]="LoaderIcon" [size]="15" class="aas-spin"></lucide-icon> } @else { <lucide-icon [img]="ZapIcon" [size]="15"></lucide-icon> }
+                Lancer un passage de l'agent
+              </button>
+              <!-- 29/09 : ce pied n'existe qu'avec des réglages relus (agentLisible) — illisibles, les
+                   champs porteraient des valeurs par défaut, voire celles d'une autre société ; le
+                   pied se réduit alors à « Fermer » et save() refuse de toute façon. -->
+              <button type="button" class="aas-btn" [disabled]="saving()" (click)="save()">
+                @if (saving()) { <lucide-icon [img]="LoaderIcon" [size]="15" class="aas-spin"></lucide-icon> }
+                {{ saving() ? 'Enregistrement…' : 'Enregistrer' }}
+              </button>
+              @if (motifLancement(); as motif) {
+                <span class="aas-foot-note">{{ motif }}</span>
+              }
+              @if (modifie()) {
+                <span class="aas-foot-note aas-foot-note--modif">Réglages de l'agent modifiés, pas encore enregistrés : fermer la feuille les abandonne.</span>
+              }
+            } @else {
+              <!-- 29/09 : IA masquée (coupée, sans moteur, pas encore confirmée, illisible) ou réglages
+                   de l'agent illisibles, la feuille n'a plus rien à « Enregistrer » — les réglages
+                   restent en base tels quels ; avis et liens publics s'enregistrent dès qu'on les
+                   touche. Un bouton qui promettrait un enregistrement mentirait : on ferme. -->
+              <button type="button" class="aas-btn aas-btn--ghost" (click)="closed.emit()">Fermer</button>
             }
           </div>
         }
@@ -494,8 +600,35 @@ export class AgendaAgentSettingsSheetComponent {
   protected readonly error = signal<string | null>(null);
   protected readonly fleetName = signal<string | null>(null);
 
-  // Interrupteur MAÎTRE de l'IA (globale) pour la flotte — distinct de l'agent d'agenda.
-  protected readonly aiMasterEnabled = signal(true);
+  /**
+   * Interrupteur MAÎTRE de l'IA (globale) pour la flotte — distinct de l'agent d'agenda : le réglage
+   * BRUT `Fleet.aiEnabled` (`/ai/fleet-enabled`), relu à chaque ouverture pour la société que la
+   * feuille règle. Il donne la position de l'interrupteur du super-admin et le libellé du lien de
+   * l'administrateur de flotte.
+   *
+   * ── 29/09 (demande du propriétaire) : IA COUPÉE = PLUS AUCUNE OPTION IA DANS LA FEUILLE ──
+   * Faux, la feuille ne garde que la ligne maîtresse (le chemin pour réactiver), une note, et ce
+   * qui n'a rien d'IA (sièges auto, liens publics, destinataires des demandes) : ni l'agent, ni le
+   * métier, ni les coûts IA, ni les passages, ni « Lancer un passage ». Rien ne change côté
+   * serveur ; tout revient dès qu'il repasse à vrai, sans recharger. Revue du 29/09 : ce que la
+   * feuille MONTRE se décide sur `etatIa`, qui y ajoute le moteur IA — la règle de la page.
+   *
+   * Faux par défaut (opt-in, comme `AiStatusService`) : il était vrai — « optimiste » — et lu
+   * APRÈS la sortie du squelette, si bien qu'une société sans IA voyait d'abord tout le bloc de
+   * l'agent, replié un aller-retour plus tard. Il est désormais lu AVEC les réglages (`load()`).
+   */
+  protected readonly aiMasterEnabled = signal(false);
+  /**
+   * Le réglage brut de la société a-t-il été relu à cette ouverture ? Faux quand `fleet-enabled`
+   * échoue : panne, délai, compte sans société (« Flotte non déterminée. »). Revue du 29/09 : ce
+   * n'était jamais un « administrateur sans Configurer l'IA » — le serveur laisse passer tout
+   * administrateur de flotte —, mais le bandeau d'une autre session envoyé par un administrateur
+   * de flotte (« Flotte hors périmètre. ») ; seul le super-admin l'envoie désormais
+   * (`currentFleetId`). Faux, la feuille ne devine rien : bloc de l'agent masqué, interrupteur du
+   * super-admin retiré — « offrir » ou « couper » l'IA change l'abonnement de la société —, et une
+   * note qui dit que l'état n'a pas pu être relu (`etatIa` = 'illisible').
+   */
+  protected readonly aiReglageLu = signal(false);
   protected readonly savingAi = signal(false);
 
   // Champs éditables
@@ -527,11 +660,54 @@ export class AgendaAgentSettingsSheetComponent {
    */
   private readonly instantane = signal<string | null>(null);
   protected readonly modifie = computed(() => {
+    // 29/09 : IA masquée, les réglages de l'agent le sont aussi — un champ caché ne compte jamais
+    // comme « modifié » : ni note « pas encore enregistrés », ni garde avant la vue Parc.
+    if (!this.iaVisible()) return false;
     const s = this.instantane();
     return s !== null && s !== this.reglagesCourants();
   });
+  /**
+   * 29/09 — les réglages de l'agent ont-ils été relus à cette ouverture ? Sans eux (erreur de
+   * chargement), les champs porteraient des valeurs par défaut, voire celles d'une AUTRE société
+   * ouverte avant (les signaux survivent d'une ouverture à l'autre) : « Enregistrer » les aurait
+   * écrites par-dessus les vraies. Revue du 29/09 : ils ne sont plus montrés du tout — voir
+   * `agentLisible` —, et `save()` refuse.
+   */
+  protected readonly reglagesLus = computed(() => this.instantane() !== null);
   /** « Ouvrir la vue Parc » cliqué avec des réglages non enregistrés : la feuille demande quoi faire. */
   protected readonly confirmerParc = signal(false);
+
+  /** Ce que la feuille montre de l'IA — voir `etatIaFeuille` (revue du 29/09). */
+  protected readonly etatIa = computed<EtatIaFeuille>(() =>
+    etatIaFeuille({
+      reglageLu: this.aiReglageLu(),
+      interrupteur: this.aiMasterEnabled(),
+      statutCharge: this.aiStatus.status() !== null,
+      moteurConfigure: this.aiStatus.configured(),
+    }),
+  );
+  /**
+   * L'IA se montre dans la feuille : l'agent, ses passages, ses coûts. Raccord du 29/09 : décidé par
+   * le CHOIX DU CLIENT (réglage relu, option active), comme la page agenda — un serveur sans moteur
+   * (la démo) ou un statut encore en chargement ne masquent plus l'agent : ses propositions sont
+   * déterministes, et la page les montre.
+   */
+  protected readonly iaVisible = computed(() => {
+    const e = this.etatIa();
+    return e === 'active' || e === 'sans-moteur' || e === 'en-attente';
+  });
+  /**
+   * Les réglages de l'agent se MONTRENT et s'enregistrent : IA visible ET réglages relus à cette
+   * ouverture. Revue du 29/09 : sans ces derniers, le bloc de l'agent restait affiché avec les
+   * signaux de l'ouverture précédente — « les habitudes de SOCIETE-A » et son coût du mois sous le
+   * bandeau de la société B. Désormais : l'alerte en tête, et « Fermer ».
+   */
+  protected readonly agentLisible = computed(() => this.iaVisible() && this.reglagesLus());
+  /**
+   * L'historique des passages et la répartition des coûts ont-ils été demandés à cette ouverture ?
+   * Remis à faux par `load()` ; voir le second effet du constructeur.
+   */
+  private suiviIaDemande = false;
 
   // Coûts
   protected readonly monthCostEur = signal(0);
@@ -562,16 +738,23 @@ export class AgendaAgentSettingsSheetComponent {
 
   /**
    * « Lancer un passage de l'agent » n'est proposé que si l'agent est activé EN BASE — c'est
-   * exactement ce que le serveur refuse (409). L'IA maître coupée ne grise PAS le bouton : le
-   * serveur accepte ce lancement et produit un passage déterministe (détection, propositions) sans
-   * avis de l'IA — comportement voulu, décrit dans design/C3. Griser ici ce que le serveur accepte
-   * aurait caché une fonction qui marche — c'est aussi pourquoi ce bouton reste ici alors que
-   * l'Assistant IA a le sien : quand l'IA de la société est coupée, l'onglet IA peut disparaître.
+   * exactement ce que le serveur refuse (409).
+   *
+   * 29/09 (demande du propriétaire) : l'IA de la société coupée, le bouton n'est plus AFFICHÉ du
+   * tout — le pied de la feuille se réduit à « Fermer ». Le serveur, lui, accepterait toujours ce
+   * lancement (passage déterministe, sans avis de l'IA — design/C3) et un agent déjà activé
+   * continue ses passages planifiés : rien ne change côté serveur, l'écran ne montre plus rien de
+   * l'agent tant que l'IA est coupée. (Jusqu'ici le bouton restait exprès, pour garder cette
+   * fonction à portée quand l'onglet IA disparaît ; le propriétaire a tranché l'inverse.)
+   *
+   * Revue du 29/09 : « inconnu » se lit sur `reglagesLus`, plus sur `error()` — qu'un
+   * enregistrement REFUSÉ remplit aussi : le bouton se grisait alors sous « impossible de savoir
+   * si l'agent est activé », alors que la valeur en base était connue et inchangée.
    */
-  protected readonly lancementPossible = computed(() => this.enregistre() && !this.error());
+  protected readonly lancementPossible = computed(() => this.reglagesLus() && this.enregistre());
   /** Le motif du bouton grisé — écrit sous le bouton, jamais deviné. `null` quand le lancement est possible. */
   protected readonly motifLancement = computed<string | null>(() => {
-    if (this.error()) return 'Réglage indisponible : impossible de savoir si l\'agent est activé.';
+    if (!this.reglagesLus()) return 'Réglage indisponible : impossible de savoir si l\'agent est activé.';
     if (!this.enregistre()) return 'L\'agent est désactivé : activez-le et enregistrez pour lancer un passage.';
     return null;
   });
@@ -590,6 +773,24 @@ export class AgendaAgentSettingsSheetComponent {
       if (!this.open() || this.needsFleet()) return;
       void this.load();
     });
+    // Revue du 29/09 : l'historique des passages et la répartition des coûts ne se lisent qu'IA
+    // visible — et DÈS qu'elle le devient, une fois par ouverture : à la fin du chargement, quand
+    // le statut IA de l'application arrive après la feuille, quand le super-admin rallume l'IA
+    // d'ici. IA masquée, on ne les demande pas. (Ils étaient demandés par load() et onToggleAi,
+    // qui ne voyaient pas un statut arrivé en retard : le bloc des passages serait apparu vide,
+    // « Aucun passage enregistré ».)
+    effect(() => {
+      if (!this.open() || this.needsFleet() || this.loading() || !this.iaVisible()) return;
+      untracked(() => this.chargerSuiviIa());
+    });
+  }
+
+  /** Historique des passages + répartition des coûts : une fois par ouverture (voir le constructeur). */
+  private chargerSuiviIa(): void {
+    if (this.suiviIaDemande) return;
+    this.suiviIaDemande = true;
+    void this.loadRuns();
+    void this.chargerCouts(this.currentFleetId());
   }
 
   /** Charge l'historique. Best-effort : jamais bloquant pour le reste de la feuille. */
@@ -620,8 +821,16 @@ export class AgendaAgentSettingsSheetComponent {
   }
   protected seatPolicyLabel(p: ChildSeatPolicy): string { return CHILD_SEAT_POLICY_LABELS[p]; }
 
+  /**
+   * Société à passer à l'API : celle du bandeau, pour un super-admin SEULEMENT — comme
+   * `jobFleetId()` et les vues Parc et Assistant IA. Revue du 29/09 : le filtre est relu du
+   * stockage local QUEL QUE SOIT le rôle ; envoyé par un administrateur de flotte, sur un
+   * navigateur où un super-admin avait choisi une autre société (une recette), il faisait répondre
+   * « Flotte hors périmètre. » à toute la feuille — réglage IA, réglages de l'agent, liens publics,
+   * sièges, destinataires. Sans lui, le serveur retombe sur la société du compte.
+   */
   private currentFleetId(): string | undefined {
-    return this.fleetFilter.selectedFleetId() ?? undefined;
+    return this.isSuperAdmin() ? (this.fleetFilter.selectedFleetId() ?? undefined) : undefined;
   }
 
   /**
@@ -646,9 +855,47 @@ export class AgendaAgentSettingsSheetComponent {
     this.instantane.set(null); // rien à comparer tant que la base n'est pas relue
     this.confirmerParc.set(false);
     this.enregistre.set(false); // inconnu tant que le réglage n'est pas relu : pas de bouton, pas de faux motif
+    this.aiReglageLu.set(false);
+    // 29/09 : l'historique et la répartition des coûts appartiennent à la société relue — ceux d'une
+    // ouverture précédente (une autre société, peut-être) ne restent pas affichés en attendant.
+    this.runs.set([]);
+    this.byAction.set([]);
+    this.suiviIaDemande = false;
+    // Revue du 29/09 : de même le nom et le coût du mois, lus avec les réglages — une lecture en
+    // échec ne laisse plus ceux de la société ouverte avant (et le bloc n'est plus montré).
+    this.fleetName.set(null);
+    this.monthCostEur.set(0);
+    // Revue du 29/09 : ce que la feuille montre de l'IA dépend aussi du statut de l'application (le
+    // moteur configuré, voir etatIa). Il est RELU à chaque ouverture, pas seulement demandé s'il
+    // manque : la feuille relit le réglage de la société juste en dessous, et la page derrière elle
+    // décide sur le statut — coupée depuis une autre fenêtre, l'IA disparaissait de la feuille mais
+    // restait sur la page jusqu'au prochain retour sur l'onglet. « untracked » : l'effet qui appelle
+    // load() ne doit pas se réabonner au statut, sans quoi chaque relecture rechargerait la feuille.
+    untracked(() => this.aiStatus.refresh());
     const fleetId = this.currentFleetId();
+    // ── 29/09 : L'INTERRUPTEUR MAÎTRE EST LU AVEC LES RÉGLAGES, AVANT DE QUITTER LE SQUELETTE ──
+    // Il était lu APRÈS, et valait vrai d'ici là : une société sans IA voyait tout le bloc de
+    // l'agent le temps d'un aller-retour, puis le voyait se replier. Les deux lectures partent
+    // ensemble ; la feuille ne s'affiche qu'une fois les deux revenues.
+    const [lectureReglages, lectureIa] = await Promise.allSettled([
+      firstValueFrom(this.agentApi.getSettings(fleetId)),
+      firstValueFrom(this.aiStatus.getFleetEnabled(fleetId)),
+    ]);
+    if (lectureIa.status === 'fulfilled') {
+      this.aiMasterEnabled.set(lectureIa.value.enabled);
+      this.aiReglageLu.set(true);
+    } else {
+      // Réglage brut illisible : on ne devine plus (revue du 29/09). Le repli sur le statut IA de
+      // l'application affirmait « IA désactivée » d'un état qui pouvait être celui de la société
+      // d'avant (relecture en vol après un changement de bandeau), ou faux faute de moteur. Faux
+      // (opt-in) ; `aiReglageLu` reste faux : etatIa = 'illisible', bloc de l'agent masqué, et
+      // la note dit que l'état n'a pas pu être relu.
+      swallow('agenda-agent-settings-sheet:load', lectureIa.reason);
+      this.aiMasterEnabled.set(false);
+    }
     try {
-      const s = await firstValueFrom(this.agentApi.getSettings(fleetId));
+      if (lectureReglages.status === 'rejected') throw lectureReglages.reason;
+      const s = lectureReglages.value;
       this.fleetName.set(s.fleetName);
       this.enabled.set(s.enabled);
       this.enregistre.set(s.enabled);
@@ -666,27 +913,15 @@ export class AgendaAgentSettingsSheetComponent {
       this.instantane.set(this.reglagesCourants());
     } catch (e) {
       swallow('agenda-agent-settings-sheet:load', e);
-      this.error.set(this.errMsg(e));
+      // Revue du 29/09 : l'alerte dit CE qui n'a pas pu être lu — seul, « Erreur serveur. » en tête
+      // de feuille ne disait pas de quoi. Elle ne s'affiche qu'IA visible (gabarit).
+      this.error.set(`Les réglages de l'agent n'ont pas pu être lus — rouvrez la feuille pour réessayer. Motif : ${this.errMsg(e)}`);
     } finally {
       this.loading.set(false);
     }
-    void this.loadRuns();
-    // Interrupteur maître IA de la flotte (best-effort : ne bloque pas les autres réglages).
-    try {
-      const ai = await firstValueFrom(this.aiStatus.getFleetEnabled(fleetId));
-      this.aiMasterEnabled.set(ai.enabled);
-    } catch (err) {
-      // garde l'optimiste
-      swallow('agenda-agent-settings-sheet:load', err);
-    }
-    // Répartition des coûts (best-effort : ne bloque pas les réglages).
-    try {
-      const sum = await firstValueFrom(this.usage.summary(undefined, undefined, fleetId));
-      this.byAction.set(sum.byAction.slice(0, 4).map((r) => ({ key: r.key, label: r.label, costEur: r.costEur })));
-    } catch (err) {
-      // le coût du mois (settings) suffit
-      swallow('agenda-agent-settings-sheet:load', err);
-    }
+    // 29/09 : IA masquée, l'historique des passages et la répartition des coûts ne s'affichent pas —
+    // on ne les demande pas. Revue du 29/09 : IA visible, c'est le second effet du constructeur
+    // qui les demande, dès la fin du chargement (et plus tard si le statut IA arrive en retard).
     // Liens publics de réservation (best-effort).
     try {
       this.links.set(await firstValueFrom(this.bookingApi.listLinks(fleetId)));
@@ -703,6 +938,17 @@ export class AgendaAgentSettingsSheetComponent {
       this.seatsError.set(apiErrorMessage(err, "Le stock de sièges auto n'a pas pu être lu."));
     }
     await this.chargerDestinataires(fleetId);
+  }
+
+  /** Répartition des coûts IA du mois (best-effort : le coût du mois, lu avec les réglages, suffit). */
+  private async chargerCouts(fleetId?: string): Promise<void> {
+    try {
+      const sum = await firstValueFrom(this.usage.summary(undefined, undefined, fleetId));
+      this.byAction.set(sum.byAction.slice(0, 4).map((r) => ({ key: r.key, label: r.label, costEur: r.costEur })));
+    } catch (err) {
+      // le coût du mois (settings) suffit
+      swallow('agenda-agent-settings-sheet:load', err);
+    }
   }
 
   /**
@@ -821,16 +1067,34 @@ export class AgendaAgentSettingsSheetComponent {
    * Interrupteur MAÎTRE (SUPER-ADMIN uniquement) : OFFRE (COMP) ou coupe TOUTE l'IA d'une société,
    * GRATUITEMENT, via /api/billing/comp. Un fleet-admin, lui, active l'IA en s'abonnant (onglet
    * Facturation) — d'où le lien « Gérer » à sa place dans le template.
+   *
+   * 29/09 : la feuille suit la bascule tout de suite (bloc de l'agent masqué ou revenu), et revient
+   * en arrière si le serveur refuse. Au succès, le statut IA GLOBAL est relu : la page agenda
+   * derrière la feuille (propositions, Assistant IA, entrées IA) le suit et se met à jour sans
+   * rechargement. Revue du 29/09 : sans moteur IA sur le serveur (la démo), rallumer l'option ne
+   * fait pas revenir le bloc — la page ne le montrerait pas non plus ; la note le dit (etatIa).
    */
   protected async onToggleAi(next: boolean): Promise<void> {
+    // Réglage brut illisible : l'interrupteur n'est pas proposé (gabarit) ; la garde couvre un état
+    // intermédiaire — on ne bascule pas l'abonnement d'une société depuis un état deviné.
+    if (!this.aiReglageLu()) return;
     const fleetId = this.currentFleetId();
     if (!fleetId) { this.toast.error('Société', 'Choisissez une société.'); return; }
     const prev = this.aiMasterEnabled();
     this.aiMasterEnabled.set(next);
+    // Une garde « réglages non enregistrés » ouverte avant la bascule n'a plus d'objet après.
+    this.confirmerParc.set(false);
+    // IA rallumée : l'historique des passages et les coûts réapparaissent — `load()` ne les a pas
+    // demandés tant que l'IA était masquée. Revue du 29/09 : c'est le second effet du constructeur
+    // qui les lit, dès que l'IA redevient visible (sans moteur configuré, elle ne l'est pas), sans
+    // attendre la réponse de « comp » : en cas de refus, le bloc repart et ces lectures n'auront
+    // rien coûté.
     this.savingAi.set(true);
     try {
       await firstValueFrom(this.billing.comp(fleetId, next)); // offert (COMP) + synchro aiEnabled
-      this.aiStatus.refresh(); // met à jour le masquage des boutons IA dans toute l'app
+      // Relit le statut IA de toute l'app (la page agenda comprise). Le serveur a vidé son cache de
+      // la société dans « comp » (AiAvailabilityService.setFleet) : la relecture voit le nouvel état.
+      this.aiStatus.refresh();
       this.toast.success(next ? 'IA offerte' : 'IA coupée', next ? 'L\'assistance IA est offerte à cette société.' : 'Toute l\'IA est coupée pour cette société.');
     } catch (e) {
       swallow('agenda-agent-settings-sheet:toggleAiMaster', e);
@@ -847,6 +1111,12 @@ export class AgendaAgentSettingsSheetComponent {
    * l'erreur affichée, et la page là où elle était. Rend `true` si c'est enregistré.
    */
   protected async save(apres?: () => void): Promise<boolean> {
+    // ── 29/09 : RIEN NE PART QUAND L'IA EST MASQUÉE, NI QUAND LES RÉGLAGES N'ONT PAS ÉTÉ RELUS ──
+    // IA masquée (coupée, sans moteur…) : les réglages de l'agent le sont aussi et restent en base
+    // tels quels — le pied de la feuille n'offre alors que « Fermer ». Réglages non relus : voir
+    // `reglagesLus`. Les boutons qui mènent ici n'existent pas dans ces deux cas (`agentLisible`) ;
+    // la garde couvre un état intermédiaire.
+    if (!this.agentLisible()) return false;
     this.saving.set(true);
     this.error.set(null);
     try {
@@ -919,8 +1189,9 @@ export class AgendaAgentSettingsSheetComponent {
    */
   protected runNow(): void {
     // Le bouton est grisé dans ce cas ; la garde évite un clic clavier ou un état intermédiaire.
-    // Le serveur refuserait de toute façon (409, design/C3 point 2).
-    if (!this.lancementPossible()) return;
+    // Le serveur refuserait de toute façon (409, design/C3 point 2). 29/09 : IA masquée (ou réglages
+    // illisibles), le bouton n'est même plus affiché — et la garde le dit aussi.
+    if (!this.agentLisible() || !this.lancementPossible()) return;
     // Anti-double-lancement (dans la fonction) : la feuille reste montée ~220 ms après fermeture
     // (animation de sortie) ; un double-tap ne crée pas deux passages.
     lancerPassageAgent(

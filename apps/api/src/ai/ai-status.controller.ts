@@ -51,6 +51,10 @@ export class AiStatusController {
     return {
       configured: this.aiAvail.isConfigured(),
       enabled: await this.aiAvail.isEnabledForFleet(scoped),
+      // 29/09 — le CHOIX DU CLIENT, seul (sans l'exigence d'une clé côté serveur) : l'écran masque
+      // toute l'IA quand la société l'a coupée. `enabled` le mélangeait avec la présence d'une clé —
+      // sur la démo (aucune clé, option imposée), chaque écran en tirait une conclusion différente.
+      fleetEnabled: await this.aiAvail.isFeatureOnForFleet(scoped),
       fleetId: scoped ?? null,
       features: Object.fromEntries(pairs) as Record<AiFeatureKey, boolean>,
     };

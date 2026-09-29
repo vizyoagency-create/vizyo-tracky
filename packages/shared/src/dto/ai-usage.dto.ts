@@ -313,6 +313,13 @@ export interface AiStatusDto {
   configured: boolean;
   /** IA utilisable pour la flotte de l'utilisateur (config + interrupteur maître ON). */
   enabled: boolean;
+  /**
+   * 29/09 — l'option IA de la société, SEULE : le choix du client (`Fleet.aiEnabled`), sans
+   * l'exigence d'une clé côté serveur. C'est elle qui décide de MONTRER ou non l'IA (propositions de
+   * l'agent, Assistant IA, cartes « Agent IA ») ; un bouton qui APPELLE l'IA se garde sur `features`.
+   * Optionnel : un serveur d'avant le 29/09 ne l'envoie pas (le front retombe alors sur `enabled`).
+   */
+  fleetEnabled?: boolean;
   fleetId: string | null;
   /**
    * Disponibilité RÉELLE par fonctionnalité, telle que le serveur l'appliquera.

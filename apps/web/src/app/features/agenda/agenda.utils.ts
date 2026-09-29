@@ -569,6 +569,228 @@ export function repliDefinitif(
   return demandee === 'ia' ? etatIaAJour : derniereMontree === demandee;
 }
 
+// ─── IA désactivée par le client (29/09) : ce que l'agenda montre encore de l'IA ─────────────
+
+/**
+ * Le réglage BRUT de la société (`GET /api/ai/fleet-enabled`, soit `Fleet.aiEnabled`) tel que la page
+ * a pu le lire : `true` / `false` ; `'illisible'` (rôle qui n'y a pas accès, super-admin sans société,
+ * lecture en échec) ; `null` tant que la lecture n'est pas revenue.
+ */
+export type ReglageIaBrut = boolean | 'illisible' | null;
+
+/**
+ * ── L'INTERRUPTEUR DE LA SOCIÉTÉ — PAS « UNE CLÉ API ET L'INTERRUPTEUR » (revue du 29/09) ──────
+ *
+ * `AiStatusDto.enabled` n'est PAS l'interrupteur de la société seul : le serveur le calcule par
+ * `isEnabledForFleet`, qui rend faux dès qu'il n'a aucune clé API (« config + interrupteur maître ON »,
+ * dit le DTO). La démo en est le cas d'école : clés vides, société importée avec `aiEnabled: true`.
+ * Lire `enabled` comme « le client a coupé l'IA » y masquait tout ce que l'agent produit — des
+ * propositions DÉTERMINISTES (453 préparées sans aucune clé à la recette du 28/09) —, pendant que la
+ * feuille Paramètres, qui lit le réglage brut, disait l'IA active. Et un serveur privé de sa clé aurait
+ * éteint les propositions de cdef31, contre C3 (« un serveur sans clé ne doit pas éteindre le poste »).
+ *
+ *  - serveur AVEC clé (`configured`) : `enabled` EST l'interrupteur de la société — le serveur n'y
+ *    ajoute que la clé, présente. Aucun appel de plus (la production) ;
+ *  - serveur SANS clé : `enabled` ne dit rien du choix du client, le réglage brut le dit. En lecture :
+ *    `null`, on attend (rien d'IA d'ici là). Illisible : faux — opt-in, rien d'IA sans confirmation ;
+ *    un rôle qui ne peut pas le lire voit l'agenda sans IA sur un serveur sans clé, comme le reste de
+ *    l'application (tout y suit `enabled` / `can`).
+ *
+ * Correctif de fond, le même jour : le statut porte désormais l'interrupteur de la société à part
+ * (`AiStatusDto.fleetEnabled`, le choix du client sans l'exigence d'une clé). Quand il est là, il
+ * décide, sans aucune lecture de plus ; le réglage brut ne sert plus qu'avec un serveur d'avant.
+ */
+export function interrupteurSociete(
+  statut: { configured: boolean; enabled: boolean; fleetEnabled?: boolean },
+  reglageBrut: ReglageIaBrut,
+): boolean | null {
+  if (typeof statut.fleetEnabled === 'boolean') return statut.fleetEnabled;
+  if (statut.configured) return statut.enabled;
+  if (reglageBrut === null) return null;
+  return reglageBrut === true;
+}
+
+/** Les faits dont la page dispose pour décider de ce qu'elle montre de l'IA. */
+export interface EtatIaAgenda {
+  /**
+   * Un statut IA est chargé ET c'est celui de la société du bandeau. Faux au démarrage, et juste
+   * après un changement de société tant que le statut de la nouvelle n'est pas arrivé : l'interrupteur
+   * lu à ce moment-là est celui de l'ANCIENNE société.
+   */
+  statutCharge: boolean;
+  /**
+   * L'interrupteur de la SOCIÉTÉ (`Fleet.aiEnabled`) : la société a-t-elle l'IA ? C'est
+   * `interrupteurSociete`, pas `AiStatusService.enabled()` seul, qui exige aussi une clé API au
+   * serveur (revue du 29/09). `null` : pas encore connu (serveur sans clé, réglage brut en lecture) —
+   * on attend, comme pour un statut pas encore chargé.
+   */
+  interrupteur: boolean | null;
+  /** Droit « Voir les réservations » (`reservations_view`) : sans lui, ni propositions ni Assistant IA. */
+  canOptimize: boolean;
+  /** Fonctions IA ouvertes par le serveur (`AiStatusService.can`, kill-switch par fonction compris). */
+  fonctions: { capacity: boolean; agendaAgent: boolean; placement: boolean };
+  /** Propositions de l'agent en mémoire (0 tant qu'elles ne sont pas lues). */
+  nbPropositions: number;
+  /** Les propositions en mémoire ont été lues pour la société du bandeau. */
+  propositionsChargees: boolean;
+}
+
+/** Ce que l'agenda montre de l'IA — décidé en UN endroit (`visibiliteIa`). */
+export interface VisibiliteIa {
+  /**
+   * L'IA est active pour la société du bandeau : statut chargé ET interrupteur de la société ouvert —
+   * pendant une relecture (changement de société d'un super-admin), la dernière valeur décidée.
+   */
+  iaActive: boolean;
+  /**
+   * Les propositions de l'agent se LISENT (appel au serveur) et se MONTRENT : pilules pointillées de
+   * la grille, entrée de légende, section du panneau du jour, badge de l'onglet.
+   */
+  propositions: boolean;
+  /** L'onglet « Assistant IA ». */
+  vueIa: boolean;
+  /**
+   * Plus rien à attendre pour trancher l'onglet : une vue « ia » demandée mais pas affichée (lien
+   * ?vue=ia, onglet perdu quand l'IA est coupée) retombe POUR DE BON — voir `repliDefinitif`.
+   */
+  decide: boolean;
+}
+
+/**
+ * ── IA DÉSACTIVÉE PAR LE CLIENT : L'AGENDA N'EN MONTRE PLUS RIEN (29/09) ─────────────────────
+ *
+ * Demande du propriétaire : « c'est le client qui désactive, donc on enlève les suggestions ». La
+ * règle unique est l'interrupteur de la SOCIÉTÉ (`interrupteurSociete` — pas la clé API du serveur,
+ * revue du 29/09), pour un statut chargé ET qui est celui de la société du bandeau — opt-in : rien
+ * d'IA avant confirmation, jamais le statut de l'ancienne société juste après un changement de
+ * bandeau. Le serveur ne change pas : un agent déjà activé poursuit ses passages DÉTERMINISTES ; on
+ * ne montre plus ce qu'il propose.
+ *
+ *  - propositions : IA active et droit `reservations_view`. Avant, elles se lisaient et
+ *    s'affichaient (pointillés, légende, panneau du jour, badge) quel que soit l'état de l'IA ;
+ *  - onglet « Assistant IA » : IA active, droit, et une fonction ouverte OU des propositions à
+ *    traiter. Avant, des propositions suffisaient — l'onglet restait, IA coupée comprise ;
+ *  - `decide` : statut chargé et IA coupée (ou droit absent), plus rien ne peut ouvrir l'onglet — le
+ *    repli est définitif tout de suite. IA active : des propositions peuvent encore l'ouvrir, on
+ *    attend leur lecture (contre-revue S2). Statut (ou interrupteur) pas encore connu : on attend.
+ *
+ * ── UNE RELECTURE N'EST PAS UNE COUPURE (revue du 29/09) ──
+ * `precedente` est la visibilité rendue au passage d'avant. Un super-admin qui passait de A à B, deux
+ * sociétés équipées, voyait l'Assistant IA se démonter, le Calendrier et son chargement s'afficher le
+ * temps d'un aller-retour, puis l'Assistant revenir — pastille « IA en cours… » rejouée comprise : le
+ * statut de A ne comptait plus, celui de B n'était pas arrivé, et « pas connu » valait « coupée ».
+ * Désormais, tant que l'interrupteur de la société du bandeau n'est pas connu, l'onglet et la pastille
+ * gardent leur DERNIÈRE valeur ; les propositions, elles, ne se lisent ni ne se montrent avant
+ * confirmation (celles de A ne sont pas celles de B, qui a peut-être coupé l'IA), et rien n'est
+ * tranché. De même, IA active, l'onglet ne retombe pas le temps que des propositions en lecture le
+ * rouvrent : une attente ne fait jamais DISPARAÎTRE un onglet, elle peut seulement tarder à en montrer
+ * un. Au démarrage (rien d'avant), rien d'IA.
+ */
+export function visibiliteIa(e: EtatIaAgenda, precedente: VisibiliteIa | null = null): VisibiliteIa {
+  const connu = e.statutCharge && e.interrupteur !== null;
+  const ouverte = connu && e.interrupteur === true;
+  const iaActive = connu ? ouverte : (precedente?.iaActive ?? false);
+  const propositions = ouverte && e.canOptimize;
+  const fonctionOuverte = e.fonctions.capacity || e.fonctions.agendaAgent || e.fonctions.placement;
+  const vueIaTranchee = propositions && (fonctionOuverte || e.nbPropositions > 0);
+  const decide = connu && (!propositions || e.propositionsChargees);
+  const vueIa = decide ? vueIaTranchee : vueIaTranchee || (precedente?.vueIa ?? false);
+  return { iaActive, propositions, vueIa, decide };
+}
+
+/** Deux visibilités identiques — pour ne pas propager un objet neuf qui ne change rien. */
+export function memeVisibiliteIa(a: VisibiliteIa, b: VisibiliteIa): boolean {
+  return a.iaActive === b.iaActive && a.propositions === b.propositions && a.vueIa === b.vueIa && a.decide === b.decide;
+}
+
+/**
+ * Les propositions de l'agent que la page MONTRE (29/09) : aucune quand elles ne sont pas visibles
+ * (IA coupée, statut pas encore chargé) — même le temps que la liste en mémoire soit vidée —, sinon
+ * celles du périmètre de la grille (véhicule, puis véhicules du groupe), comme les évènements.
+ * Le filtre de TYPE ne s'y applique pas : une proposition n'a pas de type, elle deviendra une
+ * réservation si on la valide.
+ */
+export function propositionsDuPerimetre<T extends { vehicleId: string }>(
+  propositions: readonly T[],
+  visibles: boolean,
+  perimetre: { vehicleId: string; vehiculesDuGroupe: ReadonlySet<string> | null },
+): T[] {
+  if (!visibles) return [];
+  const { vehicleId, vehiculesDuGroupe } = perimetre;
+  return propositions.filter(
+    (p) => (!vehicleId || p.vehicleId === vehicleId) && (!vehiculesDuGroupe || vehiculesDuGroupe.has(p.vehicleId)),
+  );
+}
+
+/**
+ * Nb de propositions par jour (clé ISO locale) — la couche POINTILLÉE de la grille.
+ *
+ * Compte les PROPOSITIONS, pas les véhicules distincts : deux tournées prévues le même jour sur le
+ * même véhicule sont deux créneaux à valider, et les fondre en « 1 » cacherait du travail (l'inverse
+ * des couches activité et prévision, qui répondent à « combien de véhicules »). Une date illisible
+ * ne pose rien.
+ */
+export function propositionsParJour(propositions: readonly { startAt: string }[]): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (const p of propositions) {
+    const d = new Date(p.startAt);
+    if (Number.isNaN(d.getTime())) continue;
+    const key = localIso(d);
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+  return counts;
+}
+
+/**
+ * Le bouton d'origine « Posées par l'agent » de Réorganiser est-il montré (29/09) ?
+ *
+ * IA active : toujours, comme avant. IA coupée : ce n'est plus un geste de l'agent mais un filtre sur
+ * de VRAIES réservations — posées jadis par l'agent, ou par ses passages déterministes en mode
+ * automatique. Il reste tant qu'il en compte au moins une ; à 0, ou tant que le compte n'est pas
+ * connu, il disparaît (rien de l'agent avant de savoir qu'il y a quelque chose). Sélectionné, il
+ * n'est jamais retiré sous le doigt : le filtre actif doit rester visible, et se quitter.
+ *
+ * Revue du 29/09 : le compte est celui de la SOCIÉTÉ, mémorisé (`CompteAgentMemorise`) — pas celui
+ * de la dernière simulation, remis à « inconnu » à chaque ouverture et à chaque erreur.
+ */
+export function origineAgentVisible(e: { iaActive: boolean; compteAgent: number | null; selectionnee: boolean }): boolean {
+  if (e.iaActive || e.selectionnee) return true;
+  return e.compteAgent !== null && e.compteAgent > 0;
+}
+
+/**
+ * Le dernier compte CONNU des réservations posées par l'agent sur une société (revue du 29/09) — ce
+ * qui décide du bouton « Posées par l'agent » de Réorganiser quand l'IA est coupée.
+ *
+ * Le bouton lisait le compte de la simulation AFFICHÉE : `null` à chaque ouverture (la feuille oublie
+ * sa lecture), `null` après une simulation en erreur, et celui du VÉHICULE choisi. Chaque ouverture
+ * le montrait donc en retard — « Toutes » seul et pleine largeur, puis « Posées par l'agent »
+ * surgissant au retour de la simulation —, une erreur le retirait, un véhicule sans réservation de
+ * l'agent aussi. Désormais : `totaux.agent` (toute la société sur la fenêtre simulée, avant les
+ * filtres de véhicule et d'origine), gardé par société du bandeau tant que la page vit — la feuille y
+ * reste montée : rouverte, elle sait déjà. Seule une simulation qui rend des totaux le remplace ; une
+ * erreur ou une réponse sans totaux (API antérieure) ne l'efface pas.
+ */
+export interface CompteAgentMemorise {
+  /** Société du bandeau lors de la simulation qui l'a donné (`null` : aucune — hors super-admin, le plus souvent). */
+  societe: string | null;
+  n: number;
+}
+
+/** La mémoire après une simulation RÉUSSIE de la société `societe`. */
+export function memoriserCompteAgent(
+  memo: CompteAgentMemorise | null,
+  societe: string | null,
+  r: { totaux?: { agent: number } | null },
+): CompteAgentMemorise | null {
+  return r.totaux ? { societe, n: r.totaux.agent } : memo;
+}
+
+/** Le compte à montrer pour la société du bandeau — `null` (inconnu) s'il est celui d'une autre. */
+export function compteAgentMemorise(memo: CompteAgentMemorise | null, societe: string | null): number | null {
+  return memo !== null && memo.societe === societe ? memo.n : null;
+}
+
 /**
  * Sur QUELLE fenêtre ajoutée ouvrir Réorganiser après une prolongation, et quelles réservations
  * restent en dehors (contre-revue du 29/09, R18).
