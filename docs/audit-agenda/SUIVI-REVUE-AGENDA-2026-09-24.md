@@ -1326,6 +1326,52 @@ critique, poussé aux super-admins) — ses trajets passent au suivant. Aucun co
 même jour (GR-294-VW le 30/09 : 08:03–17:15, 08:25–17:24, 08:47–17:24) — réserver l'une fera refuser
 les autres. Un dédoublonnage par véhicule dans `runForFleet` serait la suite logique.
 
+### Le filtre société resté d'une session super-admin — corrigé sur branche, **NON DÉPLOYÉ**
+
+Le défaut signalé en relisant la piste 3 (dernière ligne du tableau ci-dessus). Le filtre société
+(`vizyo-fleet-filter`) vit dans le localStorage du **navigateur** : il était relu **quel que soit le
+rôle** et jamais effacé à la déconnexion. Un gestionnaire qui se connectait après une session
+super-admin sur le même poste envoyait donc la société d'un AUTRE client. `GET /agenda/agent/proposals`
+répondait 403, et l'écran avalait l'erreur : grille sans pointillés, badge de l'Assistant IA et
+onglet des propositions de Réorganiser vides, sans un mot. Le même 403 guettait
+`GET /agenda/agent/runs` et `POST /agenda/agent/run`.
+
+**Serveur.** L'agent (`list`, `listRuns`, `runOnDemand`, `ecarterEnLot`) et ses réglages (`get`,
+`set`, `destinatairesAvis`) **ignorent `fleetId` hors super-admin**, comme les réservations
+(`scopedWhere`) : un gestionnaire lit et règle SA société, et le 403 lui devient impossible. Un
+compte de flotte sans société (anomalie) prend 403 « Aucune flotte associée » au lieu de 400.
+**Le 403 reste là où la société vient d'une DONNÉE**, dans `reglerAvis` (la société du compte dont
+on bascule l'avis) : l'ignorer écrirait sur le compte d'un autre client.
+
+**Écran.** Correction à la source, dans `FleetFilterService`. Pour un compte connecté qui n'est pas
+super-admin, `selectedFleetId()` vaut null **dès la première lecture** (sans attendre d'effet), la
+valeur restée est effacée (mémoire et stockage), et `set()` n'en pose plus. Les 35 fichiers qui
+lisent ce service sont couverts d'un coup. Les gardes posées une à une (feuille de réservation,
+Paramètres, Parc, Assistant IA) restent : elles sont désormais redondantes, mais toujours justes.
+Déconnecté, rien ne bouge : une page encore ouverte ne recharge rien, et un super-admin qui se
+reconnecte retrouve sa société.
+
+**Vérifié.** Les nouveaux tests échouent sur le code d'avant (API : 4 × « Flotte hors périmètre » ;
+web : 4 × « Expected 'aaaa…' to be null ») et passent après. Mutation de `reglerAvis` (société du
+compte ignorée) : son test du 403 rougit. `ng build --configuration development` : aucune erreur.
+`pnpm verify` (second passage) : tout vert — types 3/3, 153 migrations rejouées sur base vierge,
+smoke 5/5, shared 423, web 954, api 4 746.
+
+**Trouvé en vérifiant — un test qui laissait un compte fantôme.** Le premier `pnpm verify` a
+échoué sur 1 test web sur 954, « Page Rapports — bascule de société », selon l'ordre aléatoire
+de Jasmine. `auth-retour-onglet.spec` laissait, APRÈS son nettoyage, un jeton réécrit par le
+renouvellement qu'il avait lancé (charge utile : `exp` seul). Le vrai `AuthService` des specs
+suivants le décodait en compte connecté SANS rôle, pour qui le filtre société n'existe plus. Le
+défaut a été reproduit à l'identique en posant ce jeton, puis corrigé des deux côtés : le test du
+jeton expiré attend son renouvellement (`await auth.tryRefresh()`) ; les deux specs qui changent
+de société (Rapports, `AiStatusService`) déclarent un compte super-admin au lieu d'hériter du
+stockage, et celui des Rapports efface le filtre qu'il pose.
+
+**Reste, hors de ce lot.** Les autres `resolveFleetId` stricts de l'API (sièges, liens de
+réservation, optimiseur IA, alertes de vitesse, rapport hebdomadaire) répondent toujours 403 à un
+`fleetId` étranger venant d'un non-super-admin. L'écran ne leur en envoie plus, mais un autre client
+de l'API le pourrait.
+
 ---
 
 ## Ce qu'il ne faut pas défaire
@@ -1359,3 +1405,7 @@ les autres. Un dédoublonnage par véhicule dans `runForFleet` serait la suite l
   réservations (avec `attendu`). Sans eux, un passage de l'agent ou une demande du lien public arrivés
   entre la simulation et le clic partiraient sans avoir été vus. Et un lot de propositions écrit UNE
   ligne de journal, pas une par proposition.
+- **Le filtre société n'existe que pour un super-admin.** Pour tout autre compte connecté,
+  `FleetFilterService.selectedFleetId()` vaut null et le stockage est effacé ; l'agent et ses
+  réglages ignorent `fleetId` hors super-admin. Le 403 ne reste que là où la société vient d'une
+  donnée (le compte visé par `reglerAvis`).
