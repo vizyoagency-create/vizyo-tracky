@@ -1789,6 +1789,23 @@ verifie_chaine_repli() {
     printf 'image nee %s UTC PENDANT le deploiement de %s (fin %s, %ss) — l image en service avant le dernier deploiement' "${cree#*T}" "$sha" "$at" "$dur"
   fi
 }
+# VPS-M129 : plausibilite du repli quand la chaine M116 ne se prouve pas (image reutilisee par le
+# cache, ou nom portant le sha entrant). $1 = image du repere, $2 = image en service.
+# Rend une phrase si : image presente, differente de celle en service, et nee AVANT la fin de
+# l avant-dernier deploiement journalise (elle existait donc quand celui-ci l a mise en service).
+# COUT : 1 docker image inspect (timeout 15) + 1 tail du journal.
+verifie_repli_plausible() {
+  local avid="$1" now="$2" cree l_prec at_prec t_img t_prec sha_prec
+  [ -n "$avid" ] && [ "$avid" != "$now" ] && [ -s "$JDEP" ] || return 0
+  cree=$(timeout 15 docker image inspect --format '{{.Created}}' "$avid" 2>/dev/null | cut -c1-19)
+  l_prec=$(tail -2 "$JDEP" 2>/dev/null | head -1)
+  at_prec=$(printf '%s' "$l_prec" | sed -n 's/.*"at":"\([^"]*\)".*/\1/p')
+  sha_prec=$(printf '%s' "$l_prec" | sed -n 's/.*"sha":"\([^"]*\)".*/\1/p')
+  [ -n "$cree" ] && [ -n "$at_prec" ] || return 0
+  t_img=$(date -u -d "$cree" +%s 2>/dev/null); t_prec=$(date -u -d "$at_prec" +%s 2>/dev/null)
+  [ -n "$t_img" ] && [ -n "$t_prec" ] && [ "$t_img" -le "$t_prec" ] || return 0
+  printf 'image nee %s UTC, AVANT la fin du deploiement precedent (%s, %s) et differente de l image en service' "${cree#*T}" "$sha_prec" "$at_prec"
+}
 IMG_PROD_NOW=""
 for c in tracky-api tracky-web; do
   _run=$(timeout 15 docker inspect --format '{{.Image}}' "$c" 2>/dev/null); IMG_PROD_NOW="$IMG_PROD_NOW${IMG_PROD_NOW:+,}$c=${_run:7:12}"
@@ -1822,6 +1839,22 @@ if [ -r "$MANIF" ] && command -v jq >/dev/null 2>&1; then
         printf '  %-11s ✅ repli REEL (chaine) : %s = %s = %s\n' "$c" "$_avtag" "$_avid" "$_vch"
         printf '              (l image du passage du %s, %s, n est plus reperee : %s deploiement(s) en 24 h,\n' "$REF_DATE" "$_prev" "${NDEP24:-?}"
         printf '               deploy.sh n en garde que 3 — voulu, VPS-M116. Le repli va 3 deploiements en arriere, pas a hier.)\n'
+      elif _vpl=$(verifie_repli_plausible "$_avid" "$_now"); [ -n "$_vpl" ]; then
+        # ⚠️ AJOUTE LE 2026-09-29 (VPS-M129) : le 28/09 a porte 6 deploiements, et ce bloc a crie
+        # « 🔴 le repli MENT » a tort, pour la 2e fois (1re : VPS-M116). Deux hypotheses de M116 sont
+        # fausses depuis que les builds se font AVANT deploy.sh (preversion sur la demo) :
+        #  1. le <sha> du repere n est PAS forcement le code qui tournait : etiqueter_repli lit HEAD
+        #     AVANT son propre pull, mais le pull de la preversion l a deja avance → le nom porte le
+        #     code ENTRANT (avant-…-ee134038 pour le deploiement de ee134038) ;
+        #  2. une image n est PAS forcement « nee pendant » son deploiement : sans changement de code
+        #     pour ce service, compose reutilise le cache et rend l image d un build anterieur
+        #     (72f95e127711, nee 12:51, deployee 15:42 avec 436d9ffe, qui ne touchait que le web).
+        # Ce qui reste prouvable sans l image de chaque conteneur (le journal T33 ne porte que des
+        # containerId) : le repere pointe une image PRESENTE, DIFFERENTE de celle en service, et
+        # EXISTANT deja a la fin du deploiement precedent. C est une PLAUSIBILITE, dite comme telle.
+        printf '  %-11s ✅ repli PLAUSIBLE : %s = %s — %s\n' "$c" "$_avtag" "$_avid" "$_vpl"
+        printf '              ⚠️ PAS une preuve d identite : le journal T33 ne porte pas l image de chaque deploiement.\n'
+        printf '                 Et le NOM du repere peut porter le sha ENTRANT (preversion tiree avant deploy.sh) — VPS-M129.\n'
       else
         printf '  %-11s 🔴 le repli MENT : %s = %s, mais le conteneur tournait sur %s le %s (image PRE-construite ou etiquette effacee — VPS-044)\n' "$c" "$_avtag" "$_avid" "$_prev" "$REF_DATE"
       fi
@@ -2697,6 +2730,39 @@ section "6. SECURITE"
 # ─────────────────────────────────────────────────────────────────────────────────────────────
 sub "Ports en ecoute"
 ss -tulpn 2>/dev/null | grep -E "LISTEN|UNCONN" | awk '{print "  "$1, $5, $7}' | sed 's/users:((//' | sort -u
+# ⚠️ AJOUTE LE 2026-09-29 (VPS-M128, angle mort n° 1 du 28/09) — LES ECOUTES SE COMPARENT A CELLES
+# DU PASSAGE PRECEDENT. M127 qualifie une ecoute tenue par l HOTE ; un port NEUF publie par un
+# conteneur (un docker-proxy de plus) passait encore sans un mot. Meme mecanique que conteneursListe
+# (VPS-M92) : difference d ENSEMBLES contre le dernier manifeste publie, jamais un cardinal.
+# Cle = proto/port, adresse publique seulement (0.0.0.0, [::], ou une IP non locale) ; les ecoutes
+# en 127.x / [::1] / 172.x (ponts docker) ne sont pas exposees et changeraient a chaque recreation.
+# COUT : un `ss` de plus et un `jq` sur un fichier local. 0 commande docker.
+sub "Ecoutes publiques : qu est-ce qui est NEUF ou DISPARU depuis le dernier manifeste ? (VPS-M128)"
+MANIF=${MANIF:-/opt/tracky-vps-audit/app/wiki.json}
+[ -n "$REF_DATE" ] || REF_DATE=$(jq -r '.passages[0].date // empty' "$MANIF" 2>/dev/null)
+PORTS_NOW=$(ss -Htuln 2>/dev/null | awk '{ l=$5; if (l ~ /^(127\.|\[::1\]|\[::ffff:127\.|172\.|10\.|\[fe80)/) next;
+            n=split(l,a,":"); p=a[n]; if (p ~ /^[0-9]+$/) print $1"/"p }' | sort -u)
+echo "  portsEcouteListe (a reporter tel quel dans chiffres) : $(printf '%s\n' "$PORTS_NOW" | paste -sd, -)"
+if [ -z "$PORTS_NOW" ]; then
+  echo "  ⚠️ liste courante VIDE (ss sans reponse) : comparaison NON FAITE — ne PAS lire « tout a disparu »"
+elif [ -r "$MANIF" ] && command -v jq >/dev/null 2>&1; then
+  REF_PORTS=$(jq -r '.passages[0].chiffres.portsEcouteListe // empty' "$MANIF" 2>/dev/null | tr ',' '\n' | sed '/^$/d' | sort -u)
+  if [ -z "$REF_PORTS" ]; then
+    echo "  ⚠️ le manifeste publie (passage du ${REF_DATE:-?}) ne porte pas encore portsEcouteListe :"
+    echo "     comparaison NON FAITE ce passage (premiere pose), PAS « ecoutes inchangees »."
+  else
+    P_NEUFS=$(comm -13 <(printf '%s\n' "$REF_PORTS") <(printf '%s\n' "$PORTS_NOW") | paste -sd, -)
+    P_PARTIS=$(comm -23 <(printf '%s\n' "$REF_PORTS") <(printf '%s\n' "$PORTS_NOW") | paste -sd, -)
+    if [ -z "$P_NEUFS" ] && [ -z "$P_PARTIS" ]; then
+      echo "  ✅ ecoutes publiques IDENTIQUES au manifeste du $REF_DATE ($(printf '%s\n' "$PORTS_NOW" | grep -c .) ports)"
+    else
+      [ -n "$P_NEUFS" ]  && echo "  🟠 NEUVE(S) depuis le manifeste du $REF_DATE : $P_NEUFS — qui l ecoute (ligne ci-dessus), et le pare-feu l ouvre-t-il ?"
+      [ -n "$P_PARTIS" ] && echo "  ℹ️ DISPARUE(S) depuis le manifeste du $REF_DATE : $P_PARTIS — une ecoute refermee ; verifier que sa regle ufw l est aussi"
+    fi
+  fi
+else
+  echo "  ⚠️ manifeste $MANIF illisible ou jq absent : comparaison NON FAITE (pas « inchange »)"
+fi
 # ⚠️ AJOUTE LE 2026-09-28 (VPS-M127, VPS-050) — UNE ECOUTE PUBLIQUE TENUE PAR UN PROCESSUS DE L HOTE.
 # Depuis le 27/09 12:05 UTC, la liste ci-dessus portait « tcp 0.0.0.0:5027 "node" » et rien n en
 # disait rien : un node en ROOT, hors conteneur, lance dans un tmux, sur un port que le pare-feu
