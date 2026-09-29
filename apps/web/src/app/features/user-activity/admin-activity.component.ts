@@ -1404,6 +1404,8 @@ export class AdminActivityComponent implements OnInit, OnDestroy {
       case 'reservation_retiree':
       case 'evenement_supprime':
       case 'proposition_ecartee':
+      // Écart en lot depuis Réorganiser (29/09, piste 3) : gris comme sur le fil client (tonAction).
+      case 'propositions_ecartees':
         return 'bg-bg-tertiary text-fg-tertiary';
       default:
         return 'bg-sky-500/15 text-sky-400';

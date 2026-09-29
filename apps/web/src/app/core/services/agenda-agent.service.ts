@@ -6,10 +6,13 @@ import type {
   AgendaAgentRunResultDto,
   AgendaAgentSettingsDto,
   DestinatairesAvisDto,
+  EcarterPropositionsDto,
+  EcartPropositionsResultDto,
   ReglerAvisDto,
   SetAgendaAgentSettingsDto,
 } from '@vizyo/tracky-shared';
 import { Observable } from 'rxjs';
+import { QUIET_ERRORS_HEADER } from '../interceptors/auth.interceptor';
 
 /**
  * Refonte agenda/IA (2026-07) — Client HTTP des réglages de l'agent d'optimisation d'agenda
@@ -75,5 +78,19 @@ export class AgendaAgentApiService {
   /** POST /api/agenda/agent/proposals/:id/dismiss — refuse la proposition. */
   dismissProposal(id: string): Observable<AgendaAgentProposalDto> {
     return this.http.post<AgendaAgentProposalDto>(`/api/agenda/agent/proposals/${id}/dismiss`, {});
+  }
+
+  /**
+   * POST /api/agenda/agent/proposals/ecarter en SIMULATION — ce que Réorganiser écarterait (29/09,
+   * piste 3). La page s'en sert pour le compte du menu « ⋯ » : un appel de FOND, que l'utilisateur n'a
+   * pas déclenché — silencieux côté intercepteur (`QUIET_ERRORS_HEADER`) ; en échec, le compte reste
+   * inconnu et l'entrée active.
+   */
+  simulerEcart(body: EcarterPropositionsDto): Observable<EcartPropositionsResultDto> {
+    return this.http.post<EcartPropositionsResultDto>(
+      '/api/agenda/agent/proposals/ecarter',
+      { ...body, simulation: true },
+      { headers: { [QUIET_ERRORS_HEADER]: '1' } },
+    );
   }
 }

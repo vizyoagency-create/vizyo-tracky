@@ -225,10 +225,20 @@ export interface EcartPropositionsResultDto {
   /** Écartées pour de bon (0 en simulation). */
   ecartees: number;
   /**
-   * À l'application : visées mais plus en attente au moment d'écrire — réservées ou écartées
-   * ailleurs entre-temps, ou déjà commencées. Laissées telles quelles, et comptées ici.
+   * À l'application : montrées mais traitées AILLEURS entre-temps — écartées par quelqu'un d'autre,
+   * réservées, expirées (statut relu après l'écriture). Laissées telles quelles, et comptées ici.
    */
   dejaTraitees: number;
+  /**
+   * À l'application : montrées, et toujours EN ATTENTE sans avoir été écartées — commencées
+   * entre-temps, ou sorties du périmètre (droit retiré). 0 en simulation.
+   */
+  restees: number;
+  /**
+   * Simulation sur un véhicule dont l'appelant ne gère pas les réservations : lot vide, et c'est la
+   * raison (pas un 403 — la feuille simule en arrière-plan dès qu'un véhicule est choisi).
+   */
+  vehiculeNonGere?: boolean;
   /** Les 8 premières du lot, dans l'ordre chronologique. */
   apercu: PropositionLotApercuDto[];
   /**
@@ -236,7 +246,10 @@ export interface EcartPropositionsResultDto {
    * l'application, ce qui RESTE en attente après l'écriture (le lot en est retiré).
    */
   parVehicule: { vehicleId: string; plate: string | null; n: number }[];
-  /** Propositions de la fenêtre sur des véhicules dont l'appelant ne gère pas les réservations (jamais prises). */
+  /**
+   * Propositions de la fenêtre, dans le périmètre demandé (le véhicule choisi, sinon tout le parc),
+   * sur des véhicules dont l'appelant ne gère pas les réservations — jamais prises.
+   */
   horsGestion: number;
   /** Plus de propositions que le plafond : seules les premières sont prises, et on le dit. */
   plafonne: boolean;

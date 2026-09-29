@@ -4,7 +4,7 @@ import { ConflictException } from '@nestjs/common';
 import { AutomationDisabledException } from '../common/automation-disabled.exception';
 import { AgendaAgentRunnerService } from './agenda-agent-runner.service';
 import { AGENDA_AGENT_SCHEMA } from './agenda-agent.prompt';
-import { fleetTzFormatter, localParts } from './fleet-tz.util';
+import { fleetTzFormatter, localParts, localWallToUtc } from './fleet-tz.util';
 import type { RecurringPattern } from './recurrence-detector.service';
 
 const PATTERN: RecurringPattern = {
@@ -1330,41 +1330,69 @@ describe('AgendaAgentRunnerService.ecarterEnLot — Réorganiser écarte les pro
   const H = 60 * 60 * 1000;
   const admin = { id: 'u1', role: 'FLEET_ADMIN', fleetId: 'f1' } as never;
   const superAdmin = { id: 'u-sa', role: 'SUPER_ADMIN', fleetId: null } as never;
+  // Des identifiants au format des colonnes (UUID) : le service refuse les autres (400, relecture du 29/09).
+  const V1 = '10000000-0000-4000-8000-000000000001';
+  const V2 = '10000000-0000-4000-8000-000000000002';
+  const V3 = '10000000-0000-4000-8000-000000000003';
+  const P = (n: number) => `a0000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
+  const SOCIETE_CLIENT = 'c0000000-0000-4000-8000-000000000001';
   const dans = (h: number) => new Date(Date.now() + h * H);
   const prop = (id: string, vehicleId: string, hDebut: number) => ({
     id, vehicleId, startAt: dans(hDebut), endAt: dans(hDebut + 3), destinationLabel: 'Carcassonne',
   });
   const fenetre = (hDebut: number, hFin: number) => ({ from: dans(hDebut).toISOString(), to: dans(hFin).toISOString() });
-  const PLAQUES = [{ id: 'v1', plate: 'AA-1' }, { id: 'v2', plate: 'BB-2' }, { id: 'v3', plate: 'CC-3' }];
+  const PLAQUES = [{ id: V1, plate: 'AA-1' }, { id: V2, plate: 'BB-2' }, { id: V3, plate: 'CC-3' }];
 
-  /** Le lot tel que la base le rend (déjà filtré par la requête) ; `gere` = règle par véhicule. */
-  function monterLot(opts: { lignes?: unknown[]; gere?: (vid: string) => boolean; societeVehicule?: string } = {}) {
+  /**
+   * Le lot tel que la base le rend (déjà filtré par la requête). `gere` = la règle par véhicule, servie
+   * aux deux chemins : `vehiculesGeres` (le lot, en une requête) et `gereLesReservationsDe` (le véhicule
+   * choisi). `statuts` = ce que la relecture d'après l'écriture trouve pour les propositions montrées.
+   */
+  function monterLot(
+    opts: { lignes?: unknown[]; gere?: (vid: string) => boolean; societeVehicule?: string; statuts?: { status: string }[] } = {},
+  ) {
+    const gere = opts.gere ?? (() => true);
     const reservations = makeReservations({
-      gereLesReservationsDe: jest.fn(async (_u: unknown, vid: string) => (opts.gere ? opts.gere(vid) : true)),
+      gereLesReservationsDe: jest.fn(async (_u: unknown, vid: string) => gere(vid)),
+      vehiculesGeres: jest.fn(async (_u: unknown, ids: string[]) => new Set(ids.filter(gere))),
     });
     const events = { assertVehicleAccess: jest.fn().mockResolvedValue(opts.societeVehicule ?? 'f1') };
     const m = monter({ reservations, events });
-    proposalsOf(m.prisma).findMany.mockResolvedValue(opts.lignes ?? []);
+    // 1er appel : le lot ; 2e (à l'application seulement) : les statuts relus.
+    proposalsOf(m.prisma).findMany.mockResolvedValueOnce(opts.lignes ?? []).mockResolvedValueOnce(opts.statuts ?? []);
     m.prisma.vehicle.findMany.mockResolvedValue(PLAQUES);
     return m;
   }
-  const LIGNES = [prop('p1', 'v2', 2), prop('p2', 'v1', 5), prop('p3', 'v2', 26)];
+  const LIGNES = [prop(P(1), V2, 2), prop(P(2), V1, 5), prop(P(3), V2, 26)];
+  const ecartee = { status: 'dismissed' };
 
   it('simulation (défaut) : le lot, ses véhicules et son aperçu — RIEN n’est écrit ni journalisé', async () => {
-    const { svc, prisma, activity } = monterLot({ lignes: LIGNES });
+    const { svc, prisma, activity, reservations } = monterLot({ lignes: LIGNES });
 
     const r = await svc.ecarterEnLot(admin, fenetre(0, 7 * 24));
 
-    expect(r).toMatchObject({ simulation: true, concernees: 3, ecartees: 0, dejaTraitees: 0, horsGestion: 0, plafonne: false });
-    expect(r.lotIds).toEqual(['p1', 'p2', 'p3']);
+    expect(r).toMatchObject({ simulation: true, concernees: 3, ecartees: 0, dejaTraitees: 0, restees: 0, horsGestion: 0, plafonne: false });
+    expect(r.vehiculeNonGere).toBeUndefined();
+    expect(r.lotIds).toEqual([P(1), P(2), P(3)]);
     // Triés par plaque, pour la liste « Véhicule ».
     expect(r.parVehicule).toEqual([
-      { vehicleId: 'v1', plate: 'AA-1', n: 1 },
-      { vehicleId: 'v2', plate: 'BB-2', n: 2 },
+      { vehicleId: V1, plate: 'AA-1', n: 1 },
+      { vehicleId: V2, plate: 'BB-2', n: 2 },
     ]);
-    expect(r.apercu[0]).toMatchObject({ id: 'p1', plate: 'BB-2', destinationLabel: 'Carcassonne' });
+    expect(r.apercu[0]).toMatchObject({ id: P(1), plate: 'BB-2', destinationLabel: 'Carcassonne' });
+    // Les droits de tout le lot en UNE fois (relecture du 29/09 : une requête par véhicule avant).
+    expect((reservations as unknown as { vehiculesGeres: jest.Mock }).vehiculesGeres).toHaveBeenCalledTimes(1);
     expect(proposalsOf(prisma).updateMany).not.toHaveBeenCalled();
     expect(activity.record).not.toHaveBeenCalled();
+  });
+
+  it('`simulation: "false"` (une chaîne, pas le booléen) reste une simulation : rien n’est écrit', async () => {
+    const { svc, prisma } = monterLot({ lignes: LIGNES });
+
+    const r = await svc.ecarterEnLot(admin, { ...fenetre(0, 7 * 24), simulation: 'false' as never, ids: [P(1)] });
+
+    expect(r.simulation).toBe(true);
+    expect(proposalsOf(prisma).updateMany).not.toHaveBeenCalled();
   });
 
   it('la requête : la société de l’appelant, EN ATTENTE, encore à venir, qui CHEVAUCHE la fenêtre', async () => {
@@ -1394,47 +1422,89 @@ describe('AgendaAgentRunnerService.ecarterEnLot — Réorganiser écarte les pro
     await expect(svc.ecarterEnLot(admin, fenetre(24, 2))).rejects.toThrow('Fenêtre invalide');
   });
 
+  it('identifiants mal formés : 400, avant toute lecture (pas un 500 de la base)', async () => {
+    const { svc, prisma } = monterLot({ lignes: LIGNES });
+
+    await expect(svc.ecarterEnLot(admin, { ...fenetre(0, 24), vehicleId: 'v2' })).rejects.toThrow('Véhicule invalide');
+    await expect(svc.ecarterEnLot(superAdmin, { ...fenetre(0, 24), fleetId: 'fCLIENT' })).rejects.toThrow('Société invalide');
+    await expect(svc.ecarterEnLot(admin, { ...fenetre(0, 24), simulation: false, ids: ['p1'] })).rejects.toThrow('« ids » invalide');
+    expect(proposalsOf(prisma).findMany).not.toHaveBeenCalled();
+  });
+
   it('un véhicule choisi : lui seul dans le lot, mais la liste garde tous les véhicules gérés', async () => {
     const { svc, events } = monterLot({ lignes: LIGNES });
 
-    const r = await svc.ecarterEnLot(admin, { ...fenetre(0, 7 * 24), vehicleId: 'v2' });
+    const r = await svc.ecarterEnLot(admin, { ...fenetre(0, 7 * 24), vehicleId: V2 });
 
-    expect(events.assertVehicleAccess).toHaveBeenCalledWith(admin, 'v2');
-    expect(r.lotIds).toEqual(['p1', 'p3']);
+    expect(events.assertVehicleAccess).toHaveBeenCalledWith(admin, V2);
+    expect(r.lotIds).toEqual([P(1), P(3)]);
     expect(r.concernees).toBe(2);
-    expect(r.parVehicule.map((v) => v.vehicleId)).toEqual(['v1', 'v2']);
+    expect(r.parVehicule.map((v) => v.vehicleId)).toEqual([V1, V2]);
   });
 
   it('un véhicule d’une autre société que celle visée : 400, rien lu', async () => {
     const { svc, prisma } = monterLot({ lignes: LIGNES, societeVehicule: 'f-autre' });
 
-    await expect(svc.ecarterEnLot(admin, { ...fenetre(0, 24), vehicleId: 'v9' })).rejects.toThrow('pas de la société');
+    await expect(svc.ecarterEnLot(admin, { ...fenetre(0, 24), vehicleId: V3 })).rejects.toThrow('pas de la société');
     expect(proposalsOf(prisma).findMany).not.toHaveBeenCalled();
   });
 
-  it('les véhicules dont on ne gère pas les réservations : jamais dans le lot, comptés à part ; choisi : 403 qui le nomme', async () => {
-    const { svc } = monterLot({ lignes: LIGNES, gere: (vid) => vid !== 'v2' });
+  it('les véhicules dont on ne gère pas les réservations : jamais dans le lot, comptés à part', async () => {
+    const { svc } = monterLot({ lignes: LIGNES, gere: (vid) => vid !== V2 });
 
     const r = await svc.ecarterEnLot(admin, fenetre(0, 7 * 24));
-    expect(r.lotIds).toEqual(['p2']);
+
+    expect(r.lotIds).toEqual([P(2)]);
     expect(r.horsGestion).toBe(2);
-    expect(r.parVehicule).toEqual([{ vehicleId: 'v1', plate: 'AA-1', n: 1 }]);
+    expect(r.parVehicule).toEqual([{ vehicleId: V1, plate: 'AA-1', n: 1 }]);
+  });
+
+  it('`horsGestion` se borne au véhicule choisi : 0 pour un véhicule géré, même si d’autres ne le sont pas', async () => {
+    const { svc } = monterLot({ lignes: LIGNES, gere: (vid) => vid !== V2 });
+
+    const r = await svc.ecarterEnLot(admin, { ...fenetre(0, 7 * 24), vehicleId: V1 });
+
+    expect(r).toMatchObject({ concernees: 1, horsGestion: 0 });
+    expect(r.vehiculeNonGere).toBeUndefined();
+  });
+
+  it('un véhicule choisi qu’on ne gère pas : en simulation, un lot VIDE qui le dit (pas de 403) ; à l’écriture, 403 qui le nomme', async () => {
+    const { svc, prisma } = monterLot({ lignes: LIGNES, gere: (vid) => vid !== V2 });
+
+    const r = await svc.ecarterEnLot(admin, { ...fenetre(0, 7 * 24), vehicleId: V2 });
+    expect(r).toMatchObject({ simulation: true, concernees: 0, horsGestion: 2, vehiculeNonGere: true });
+    expect(r.lotIds).toEqual([]);
 
     // La plaque vient de `vehicle.findUnique` (mock : AA-1), comme pour un « Écarter » à l'unité.
-    await expect(svc.ecarterEnLot(admin, { ...fenetre(0, 24), vehicleId: 'v2' })).rejects.toThrow(
+    await expect(svc.ecarterEnLot(admin, { ...fenetre(0, 7 * 24), vehicleId: V2, simulation: false, ids: [P(1)] })).rejects.toThrow(
       'Vous ne gérez pas les réservations de AA-1',
     );
+    expect(proposalsOf(prisma).updateMany).not.toHaveBeenCalled();
+  });
+
+  it('`ids` ne peut pas ÉLARGIR le lot : ni à un autre véhicule que celui choisi, ni à un véhicule qu’on ne gère pas', async () => {
+    // Un appel forgé : les propositions de V1 glissées dans `ids` alors que le lot vise V2.
+    const { svc, prisma } = monterLot({ lignes: LIGNES, statuts: [ecartee, ecartee, { status: 'pending' }] });
+    proposalsOf(prisma).updateMany.mockResolvedValueOnce({ count: 2 });
+    await svc.ecarterEnLot(admin, { ...fenetre(0, 7 * 24), vehicleId: V2, simulation: false, ids: [P(1), P(2), P(3)] });
+    expect(proposalsOf(prisma).updateMany.mock.calls[0][0].where.id).toEqual({ in: [P(1), P(3)] });
+
+    // V2 non géré : ses propositions, même listées dans `ids`, ne sont jamais écrites.
+    const nonGere = monterLot({ lignes: LIGNES, gere: (vid) => vid !== V2, statuts: [ecartee] });
+    proposalsOf(nonGere.prisma).updateMany.mockResolvedValueOnce({ count: 1 });
+    await nonGere.svc.ecarterEnLot(admin, { ...fenetre(0, 7 * 24), simulation: false, ids: [P(1), P(2), P(3)] });
+    expect(proposalsOf(nonGere.prisma).updateMany.mock.calls[0][0].where.id).toEqual({ in: [P(2)] });
   });
 
   it('super-admin : une société est exigée (400) ; avec celle du bandeau, c’est elle qui est lue', async () => {
     const { svc, prisma } = monterLot({ lignes: LIGNES });
 
     await expect(svc.ecarterEnLot(superAdmin, fenetre(0, 24))).rejects.toThrow('Préciser la flotte');
-    await svc.ecarterEnLot(superAdmin, { ...fenetre(0, 24), fleetId: 'fCLIENT' });
-    expect(proposalsOf(prisma).findMany.mock.calls[0][0].where.fleetId).toBe('fCLIENT');
+    await svc.ecarterEnLot(superAdmin, { ...fenetre(0, 24), fleetId: SOCIETE_CLIENT });
+    expect(proposalsOf(prisma).findMany.mock.calls[0][0].where.fleetId).toBe(SOCIETE_CLIENT);
   });
 
-  it('un gestionnaire : `fleetId` est ignoré, c’est SA société qui est lue (filtre resté d’une session super-admin)', async () => {
+  it('un gestionnaire : `fleetId` est ignoré (même mal formé), c’est SA société qui est lue', async () => {
     const { svc, prisma } = monterLot({ lignes: LIGNES });
 
     await svc.ecarterEnLot(admin, { ...fenetre(0, 24), fleetId: 'f-autre' });
@@ -1452,21 +1522,23 @@ describe('AgendaAgentRunnerService.ecarterEnLot — Réorganiser écarte les pro
   });
 
   it('application : écrit SOUS CONDITION les seules propositions montrées, et UNE ligne de journal pour le lot', async () => {
-    // p9 est arrivée depuis la simulation (passage de l'agent) : elle n'est pas dans `ids`.
-    const { svc, prisma, activity } = monterLot({ lignes: [...LIGNES, prop('p9', 'v2', 30)] });
+    // P(9) est arrivée depuis la simulation (passage de l'agent) : elle n'est pas dans `ids`.
+    const { svc, prisma, activity } = monterLot({ lignes: [...LIGNES, prop(P(9), V2, 30)], statuts: [ecartee, ecartee] });
     proposalsOf(prisma).updateMany.mockResolvedValueOnce({ count: 2 });
 
-    const r = await svc.ecarterEnLot(admin, { ...fenetre(0, 7 * 24), vehicleId: 'v2', simulation: false, ids: ['p1', 'p3'] });
+    const r = await svc.ecarterEnLot(admin, { ...fenetre(0, 7 * 24), vehicleId: V2, simulation: false, ids: [P(1), P(3)] });
 
     expect(proposalsOf(prisma).updateMany).toHaveBeenCalledWith({
-      where: { id: { in: ['p1', 'p3'] }, fleetId: 'f1', status: 'pending' },
+      where: { id: { in: [P(1), P(3)] }, fleetId: 'f1', status: 'pending' },
       data: { status: 'dismissed' },
     });
-    expect(r).toMatchObject({ simulation: false, concernees: 2, ecartees: 2, dejaTraitees: 0 });
-    // La liste « Véhicule » d'après : ce qui RESTE en attente — p2, et p9 qui n'a jamais été montrée.
+    // La relecture des statuts se borne à la société.
+    expect(proposalsOf(prisma).findMany.mock.calls[1][0].where).toEqual({ id: { in: [P(1), P(3)] }, fleetId: 'f1' });
+    expect(r).toMatchObject({ simulation: false, concernees: 2, ecartees: 2, dejaTraitees: 0, restees: 0 });
+    // La liste « Véhicule » d'après : ce qui RESTE en attente — P(2), et P(9) qui n'a jamais été montrée.
     expect(r.parVehicule).toEqual([
-      { vehicleId: 'v1', plate: 'AA-1', n: 1 },
-      { vehicleId: 'v2', plate: 'BB-2', n: 1 },
+      { vehicleId: V1, plate: 'AA-1', n: 1 },
+      { vehicleId: V2, plate: 'BB-2', n: 1 },
     ]);
     expect(activity.record).toHaveBeenCalledTimes(1);
     const ligne = activity.record.mock.calls[0][0];
@@ -1478,33 +1550,63 @@ describe('AgendaAgentRunnerService.ecarterEnLot — Réorganiser écarte les pro
       fleetId: 'f1',
       triggeredByUserId: 'u1',
     });
-    expect(ligne.detail).toContain("2 propositions de l'agent écartées en lot — BB-2");
-    expect(ligne.meta).toMatchObject({ vehicleId: 'v2', concernees: 2, ecartees: 2, dejaTraitees: 0, ids: ['p1', 'p3'] });
+    expect(ligne.detail).toBe(`2 propositions de l'agent écartées en lot — BB-2, ${ligne.detail.split('— BB-2, ')[1]}`);
+    expect(ligne.detail).not.toContain('déjà traitée');
+    expect(ligne.meta).toMatchObject({ vehicleId: V2, concernees: 2, ecartees: 2, dejaTraitees: 0, restees: 0, ids: [P(1), P(3)] });
   });
 
-  it('une proposition réservée (ou écartée) ailleurs entre-temps : non touchée, comptée « déjà traitée », dite au journal', async () => {
-    // p3 a été réservée depuis : la base ne la rend plus en attente ; p1 perd la course de l'écriture.
-    const { svc, prisma, activity } = monterLot({ lignes: [prop('p1', 'v2', 2)] });
+  it('le bilan relit les statuts : écartée AILLEURS ou réservée = « déjà traitée » ; toujours en attente = « restée »', async () => {
+    // Montrées : P(1), P(2), P(3), P(4), P(5). Ce geste en écrit 2 (P(1), P(2)).
+    //  - P(3) écartée par quelqu'un d'autre pendant ce temps (statut dismissed, mais pas par ce geste),
+    //  - P(4) réservée depuis l'Assistant IA (applied),
+    //  - P(5) prise par « Réserver » puis RENDUE (créneau occupé) : de nouveau en attente.
+    const lignes = [prop(P(1), V1, 2), prop(P(2), V1, 4), prop(P(5), V1, 8)];
+    const statuts = [ecartee, ecartee, ecartee, { status: 'applied' }, { status: 'pending' }];
+    const { svc, prisma, activity } = monterLot({ lignes, statuts });
+    proposalsOf(prisma).updateMany.mockResolvedValueOnce({ count: 2 });
+
+    const r = await svc.ecarterEnLot(admin, { ...fenetre(0, 7 * 24), simulation: false, ids: [P(1), P(2), P(3), P(4), P(5)] });
+
+    expect(r).toMatchObject({ ecartees: 2, dejaTraitees: 2, restees: 1 });
+    expect(activity.record.mock.calls[0][0].detail).toContain('(2 déjà traitées entre-temps, laissées telles quelles ; 1 restée en attente)');
+    // Un seul véhicule : sa plaque en cible.
+    expect(activity.record.mock.calls[0][0].target).toBe('AA-1');
+  });
+
+  it('rien d’écrit (tout était déjà traité) : aucune ligne de journal', async () => {
+    const { svc, prisma, activity } = monterLot({ lignes: [prop(P(1), V2, 2)], statuts: [ecartee, { status: 'applied' }] });
     proposalsOf(prisma).updateMany.mockResolvedValueOnce({ count: 0 });
 
-    const r = await svc.ecarterEnLot(admin, { ...fenetre(0, 7 * 24), simulation: false, ids: ['p1', 'p3'] });
+    const r = await svc.ecarterEnLot(admin, { ...fenetre(0, 7 * 24), simulation: false, ids: [P(1), P(3)] });
 
-    expect(proposalsOf(prisma).updateMany.mock.calls[0][0].where.id).toEqual({ in: ['p1'] });
-    expect(r).toMatchObject({ ecartees: 0, dejaTraitees: 2 });
-    // Rien n'a changé : aucune ligne.
+    expect(proposalsOf(prisma).updateMany.mock.calls[0][0].where.id).toEqual({ in: [P(1)] });
+    expect(r).toMatchObject({ ecartees: 0, dejaTraitees: 2, restees: 0 });
     expect(activity.record).not.toHaveBeenCalled();
+  });
 
-    proposalsOf(prisma).findMany.mockResolvedValue(LIGNES);
+  it('des véhicules non gérés dans « tous » : le journal ne dit pas « tous les véhicules »', async () => {
+    const { svc, prisma, activity } = monterLot({ lignes: LIGNES, gere: (vid) => vid !== V2, statuts: [ecartee] });
+    proposalsOf(prisma).updateMany.mockResolvedValueOnce({ count: 1 });
+
+    await svc.ecarterEnLot(admin, { ...fenetre(0, 7 * 24), simulation: false, ids: [P(2)] });
+
+    expect(activity.record.mock.calls[0][0].detail).toContain("— les véhicules dont l'auteur gère les réservations,");
+    expect(activity.record.mock.calls[0][0].meta).toMatchObject({ horsGestion: 2 });
+  });
+
+  it('la relecture des statuts échoue : l’écriture a eu lieu, le compte approché est rendu', async () => {
+    const { svc, prisma } = monterLot({ lignes: LIGNES });
+    proposalsOf(prisma).findMany.mockReset();
+    proposalsOf(prisma).findMany.mockResolvedValueOnce(LIGNES).mockRejectedValueOnce(new Error('verrou'));
     proposalsOf(prisma).updateMany.mockResolvedValueOnce({ count: 2 });
-    const r2 = await svc.ecarterEnLot(admin, { ...fenetre(0, 7 * 24), simulation: false, ids: ['p1', 'p2', 'p3'] });
-    expect(r2).toMatchObject({ ecartees: 2, dejaTraitees: 1 });
-    expect(activity.record.mock.calls[0][0].detail).toContain('(1 déjà traitée entre-temps, laissée telle quelle)');
-    // Plusieurs véhicules : pas de plaque unique en cible.
-    expect(activity.record.mock.calls[0][0].target).toBeNull();
+
+    const r = await svc.ecarterEnLot(admin, { ...fenetre(0, 7 * 24), simulation: false, ids: [P(1), P(2), P(3)] });
+
+    expect(r).toMatchObject({ ecartees: 2, dejaTraitees: 1, restees: 0 });
   });
 
   it('plus de 500 propositions : les 500 premières, et la réponse le DIT', async () => {
-    const beaucoup = Array.from({ length: 501 }, (_, i) => prop(`p${i}`, 'v1', 2 + i / 100));
+    const beaucoup = Array.from({ length: 501 }, (_, i) => prop(P(i + 1), V1, 2 + i / 100));
     const { svc } = monterLot({ lignes: beaucoup });
 
     const r = await svc.ecarterEnLot(admin, fenetre(0, 30 * 24));
@@ -1517,14 +1619,77 @@ describe('AgendaAgentRunnerService.ecarterEnLot — Réorganiser écarte les pro
 
   it('un journal en panne ne fait pas échouer le lot', async () => {
     const activity = { record: jest.fn(() => { throw new Error('journal HS'); }) };
-    const reservations = makeReservations({ gereLesReservationsDe: jest.fn().mockResolvedValue(true) });
+    const reservations = makeReservations({
+      gereLesReservationsDe: jest.fn().mockResolvedValue(true),
+      vehiculesGeres: jest.fn(async (_u: unknown, ids: string[]) => new Set(ids)),
+    });
     const { svc, prisma } = monter({ reservations, activity });
-    proposalsOf(prisma).findMany.mockResolvedValue(LIGNES);
+    proposalsOf(prisma).findMany.mockResolvedValueOnce(LIGNES).mockResolvedValueOnce([ecartee, ecartee, ecartee]);
     prisma.vehicle.findMany.mockResolvedValue(PLAQUES);
     proposalsOf(prisma).updateMany.mockResolvedValueOnce({ count: 3 });
 
     await expect(
-      svc.ecarterEnLot(admin, { ...fenetre(0, 7 * 24), simulation: false, ids: ['p1', 'p2', 'p3'] }),
+      svc.ecarterEnLot(admin, { ...fenetre(0, 7 * 24), simulation: false, ids: [P(1), P(2), P(3)] }),
     ).resolves.toMatchObject({ ecartees: 3 });
+  });
+});
+
+describe('AgendaAgentRunnerService.runForFleet — pas deux propositions qui se chevauchent pour un véhicule (relecture du 29/09)', () => {
+  const DAY = 24 * 60 * 60 * 1000;
+  /** Les lundis (jour du motif PATTERN) de l'horizon de 14 jours, en clés de date Paris. */
+  const lundis = (): string[] => {
+    const fmt = fleetTzFormatter();
+    const vus = new Set<string>();
+    for (let t = Date.now(); t < Date.now() + 14 * DAY; t += 12 * 60 * 60 * 1000) {
+      const p = localParts(fmt, t);
+      if (p.dow === 1) vus.add(p.dateKey);
+    }
+    return [...vus].filter((k) => localWallToUtc(k, 9 * 60).getTime() > Date.now() + 60 * 60 * 1000);
+  };
+  const reglages = makeSettings({ autonomy: 'suggest' });
+
+  it('une proposition ÉCARTÉE décalée de 2 min (le motif a dérivé) : la même occurrence n’est pas recréée', async () => {
+    const { svc, prisma } = monter({ settings: reglages, patterns: [PATTERN] });
+    const jours = lundis();
+    // Ce que la base connaît déjà : chaque lundi, 09:02–12:00 (écartées ou en attente, peu importe).
+    proposalsOf(prisma).findMany.mockResolvedValueOnce(
+      jours.map((k) => ({ vehicleId: 'v1', startAt: localWallToUtc(k, 9 * 60 + 2), endAt: localWallToUtc(k, 12 * 60) })),
+    );
+
+    const r = await svc.runForFleet('f1', 'scheduled');
+
+    expect(jours.length).toBeGreaterThan(0);
+    expect(proposalsOf(prisma).create).not.toHaveBeenCalled();
+    expect(r.proposed).toBe(0);
+    // La lecture préalable : toute la société, sur l'horizon, TOUS statuts.
+    expect(proposalsOf(prisma).findMany.mock.calls[0][0].where).toEqual(
+      expect.objectContaining({ fleetId: 'f1', startAt: { lt: expect.any(Date) }, endAt: { gt: expect.any(Date) } }),
+    );
+    expect(proposalsOf(prisma).findMany.mock.calls[0][0].where.status).toBeUndefined();
+  });
+
+  it('deux motifs du même véhicule qui se chevauchent : seul le premier (le plus confiant) est proposé', async () => {
+    const MOINS_SUR: RecurringPattern = { ...PATTERN, startMinutes: 10 * 60, endMinutes: 11 * 60, confidence: 0.6, destinationLabel: 'Narbonne' };
+    const { svc, prisma } = monter({ settings: reglages, patterns: [PATTERN, MOINS_SUR] });
+
+    const r = await svc.runForFleet('f1', 'scheduled');
+
+    const jours = lundis();
+    expect(proposalsOf(prisma).create).toHaveBeenCalledTimes(jours.length);
+    for (const appel of proposalsOf(prisma).create.mock.calls) {
+      expect(appel[0].data.destinationLabel).toBe(PATTERN.destinationLabel);
+    }
+    expect(r.proposed).toBe(jours.length);
+  });
+
+  it('un motif d’un AUTRE véhicule au même créneau reste proposé', async () => {
+    const AUTRE: RecurringPattern = { ...PATTERN, vehicleId: 'v9', vehiclePlate: 'ZZ-9' };
+    const { svc, prisma } = monter({ settings: reglages, patterns: [PATTERN, AUTRE] });
+
+    await svc.runForFleet('f1', 'scheduled');
+
+    const vehicules = proposalsOf(prisma).create.mock.calls.map((c) => c[0].data.vehicleId);
+    expect(vehicules.filter((v) => v === 'v1')).toHaveLength(lundis().length);
+    expect(vehicules.filter((v) => v === 'v9')).toHaveLength(lundis().length);
   });
 });

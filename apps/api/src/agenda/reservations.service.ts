@@ -2196,6 +2196,11 @@ export class ReservationsService {
     return this.permissions.canOnVehicle(user, vehicleId, 'reservations_manage');
   }
 
+  /** La même règle pour plusieurs véhicules, en une requête (relecture du 29/09 : une par véhicule avant). */
+  async vehiculesGeres(user: AuthUser, vehicleIds: string[]): Promise<Set<string>> {
+    return this.permissions.vehiculesAutorises(user, vehicleIds, 'reservations_manage');
+  }
+
   /** « Vous ne gérez pas les réservations de AA-111-BB : vous ne pouvez pas les <verbe>. » */
   private messageNonGeree(
     resa: { vehicle?: { plate: string | null } | null },

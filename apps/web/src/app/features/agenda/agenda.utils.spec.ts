@@ -13,6 +13,7 @@ import {
   fenetreAReorganiser,
   fenetreImmobilisation,
   fenetresAjoutees,
+  finDuPreset,
   horsFenetrePreset,
   HORIZON_SANS_FIN_MS,
   interrupteurSociete,
@@ -28,6 +29,7 @@ import {
   placesMaxLibres,
   propositionsDuPerimetre,
   propositionsParJour,
+  propositionsSousImmobilisation,
   propositionsSurPeriode,
   quoiALOuverture,
   raisonsVideRefusees,
@@ -1032,22 +1034,40 @@ describe('Réorganiser agit aussi sur les propositions de l’agent (29/09, pist
     const menu = (over: Partial<Parameters<typeof menuReorganiser>[0]> = {}) =>
       menuReorganiser({ reservations: 0, jours: 30, iaActive: true, propositions: 0, ...over });
 
-    it('cdef31 le 29/09 : aucune réservation, 307 propositions → ACTIVE, et elle dit ce qu’elle trouvera', () => {
-      expect(menu({ propositions: 307 })).toEqual({ grisee: false, ligne: "Aucune réservation à venir · 307 propositions de l'agent" });
+    it('cdef31 le 29/09 : aucune réservation, 307 propositions → ACTIVE, « Réorganiser », et elle dit ce qu’elle trouvera', () => {
+      expect(menu({ propositions: 307 })).toEqual({
+        grisee: false,
+        ligne: "Aucune réservation à venir · 307 propositions de l'agent",
+        libelle: 'Réorganiser',
+      });
       expect(menu({ propositions: 1 }).ligne).toBe("Aucune réservation à venir · 1 proposition de l'agent");
     });
 
     it('ni réservation ni proposition : grisée, et la raison les nomme toutes les deux', () => {
-      expect(menu()).toEqual({ grisee: true, ligne: "Aucune réservation à venir sur 30 jours, ni proposition de l'agent" });
+      expect(menu()).toEqual({
+        grisee: true,
+        ligne: "Aucune réservation à venir sur 30 jours, ni proposition de l'agent",
+        libelle: 'Réorganiser des réservations',
+      });
     });
 
     it('IA coupée par le client : les propositions ne comptent pas, et l’agent n’est pas nommé', () => {
-      expect(menu({ iaActive: false, propositions: 307 })).toEqual({ grisee: true, ligne: 'Aucune réservation à venir sur 30 jours' });
+      expect(menu({ iaActive: false, propositions: 307 })).toEqual({
+        grisee: true,
+        ligne: 'Aucune réservation à venir sur 30 jours',
+        libelle: 'Réorganiser des réservations',
+      });
     });
 
-    it('des réservations, ou un compte inconnu : active, sans ligne', () => {
-      expect(menu({ reservations: 3, propositions: 307 })).toEqual({ grisee: false, ligne: null });
-      expect(menu({ reservations: null })).toEqual({ grisee: false, ligne: null });
+    it('des réservations, ou un compte de réservations inconnu : active, sans ligne', () => {
+      expect(menu({ reservations: 3, propositions: 307 })).toEqual({ grisee: false, ligne: null, libelle: 'Réorganiser' });
+      expect(menu({ reservations: null })).toEqual({ grisee: false, ligne: null, libelle: 'Réorganiser des réservations' });
+    });
+
+    it('IA active, propositions pas encore lues : jamais grisée sur une supposition', () => {
+      expect(menu({ propositions: null })).toEqual({ grisee: false, ligne: null, libelle: 'Réorganiser des réservations' });
+      // IA coupée : l'inconnu ne compte pas, seules les réservations décident.
+      expect(menu({ iaActive: false, propositions: null }).grisee).toBe(true);
     });
   });
 
@@ -1150,5 +1170,38 @@ describe('libellePeriode — la période d’un pré-réglage en toutes lettres 
 
   it('sans date de fin : « à partir du …, HH:mm (30 jours) »', () => {
     expect(libellePeriode({ from: iso(2026, 10, 2, 9), to: iso(2026, 11, 1, 9), sansFin: true }, maintenant, 30)).toBe('à partir du ven. 2 oct., 09:00 (30 jours)');
+  });
+});
+
+describe('Après une immobilisation : la période proposée à Réorganiser (relecture du 29/09)', () => {
+  const H = 3_600_000;
+  const maintenant = Date.UTC(2026, 9, 1, 8, 0);
+  const prop = (vehicleId: string, hDebut: number, hFin: number) => ({
+    vehicleId, startAt: new Date(maintenant + hDebut * H).toISOString(), endAt: new Date(maintenant + hFin * H).toISOString(),
+  });
+  const a = { from: maintenant + 24 * H, to: maintenant + 48 * H };
+  const b = { from: maintenant + 72 * H, to: maintenant + 96 * H };
+
+  it('la fenêtre qui porte le PLUS de propositions du véhicule, et leur nombre', () => {
+    const liste = [prop('v1', 30, 33), prop('v1', 75, 78), prop('v1', 80, 82), prop('v2', 30, 33)];
+    expect(propositionsSousImmobilisation(liste, 'v1', [a, b], false, maintenant)).toEqual({
+      n: 2, from: new Date(b.from).toISOString(), to: new Date(b.to).toISOString(),
+    });
+  });
+
+  it('aucune proposition du véhicule sur les fenêtres : rien à proposer', () => {
+    expect(propositionsSousImmobilisation([prop('v2', 30, 33)], 'v1', [a, b], false, maintenant)).toBeNull();
+  });
+
+  it('incident SANS fin : la fenêtre qui court jusqu’à l’horizon part sans fin (la feuille dit « à partir du … »)', () => {
+    expect(propositionsSousImmobilisation([prop('v1', 75, 78)], 'v1', [a, b], true, maintenant)?.to).toBeNull();
+    // … mais une fenêtre ajoutée AVANT l'immobilisation (début avancé) garde sa vraie fin.
+    expect(propositionsSousImmobilisation([prop('v1', 30, 33)], 'v1', [a, b], true, maintenant)?.to).toBe(new Date(a.to).toISOString());
+  });
+
+  it('finDuPreset : la même règle pour le renvoi des réservations refusées', () => {
+    expect(finDuPreset(b, [a, b], true)).toBeNull();
+    expect(finDuPreset(a, [a, b], true)).toBe(new Date(a.to).toISOString());
+    expect(finDuPreset(b, [a, b], false)).toBe(new Date(b.to).toISOString());
   });
 });
