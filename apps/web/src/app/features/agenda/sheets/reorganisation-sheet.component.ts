@@ -437,8 +437,15 @@ interface Lecture {
                          liste, et « Rien à venir sur AB-123 » juste dessous. -->
                     <p><strong>Rien à {{ l.corps.action === 'decaler' ? 'décaler' : 'annuler' }}{{ surPlaque() }}</strong> {{ l.fenetre }} :
                       {{ k }} réservation{{ k > 1 ? 's débordent' : ' déborde' }} sur la fenêtre mais commence{{ k > 1 ? 'nt' : '' }} avant — Annuler et Décaler ne prennent que ce qui commence dedans.
-                      Réaffecter {{ k > 1 ? 'les reprend' : 'la reprend' }} à partir du début de la fenêtre ; la partie d'avant reste{{ surPlaque() }}.</p>
-                    <button type="button" class="ro-lien" (click)="action.set('reaffecter')">Réaffecter plutôt</button>
+                      Réaffecter {{ k > 1 ? 'les reprend' : 'la reprend' }} à partir du début de la fenêtre ; la partie d'avant reste{{ plaqueLue() ? surPlaque() : ' sur son véhicule' }}.</p>
+                    @if (plaqueLue()) {
+                      <button type="button" class="ro-lien" (click)="action.set('reaffecter')">Réaffecter plutôt</button>
+                    } @else if (optionsVehicule().length === 1) {
+                      <!-- Réaffecter demande UN véhicule : quand un seul en porte, le bouton le choisit. -->
+                      <button type="button" class="ro-lien" (click)="reaffecterDepuis(optionsVehicule()[0].vehicleId)">Réaffecter celle{{ k > 1 ? 's' : '' }} de {{ optionsVehicule()[0].plate || 'ce véhicule' }}</button>
+                    } @else {
+                      <p>Pour réaffecter, choisissez d'abord le véhicule dans la liste « Véhicule ».</p>
+                    }
                   } @else if (refusSurVehiculeLu()) {
                     <p><strong>Rien d'autre à reprendre</strong>{{ surPlaque() }} {{ l.fenetre }} : les réservations refusées ci-dessus restent sur leur véhicule, avec leur motif.</p>
                   } @else if (plaqueLue(); as p) {
@@ -912,10 +919,20 @@ export class ReorganisationSheetComponent {
     const l = this.lue();
     // Lot limité aux refusées (T3) : la liste compte tout le véhicule, le lot quelques ids — la
     // différence n'a rien à voir avec ce qui « déborde » sur la fenêtre.
-    if (!l || l.corps.ids || !l.corps.vehicleId || l.corps.action === 'reaffecter' || l.corps.origine !== 'toutes' || !l.r.parVehicule) return 0;
-    const n = l.r.parVehicule.find((v) => v.vehicleId === l.corps.vehicleId)?.n ?? 0;
+    if (!l || l.corps.ids || l.corps.action === 'reaffecter' || l.corps.origine !== 'toutes' || !l.r.parVehicule) return 0;
+    // Recette démo du 29/09 : aussi sur « Tous les véhicules ». La liste disait « 1 véhicule a des
+    // réservations » et, juste dessous, « Aucune réservation à venir » — la réservation était EN COURS,
+    // qu'Annuler ne prend pas. On compte alors tout ce qui chevauche la fenêtre.
+    const n = l.corps.vehicleId
+      ? (l.r.parVehicule.find((v) => v.vehicleId === l.corps.vehicleId)?.n ?? 0)
+      : l.r.parVehicule.reduce((s, v) => s + v.n, 0);
     return Math.max(0, n - l.r.concernees);
   });
+  /** « Réaffecter » depuis le vide de « Tous les véhicules » : on choisit LE véhicule concerné, et l'action. */
+  protected reaffecterDepuis(vehicleId: string): void {
+    this.choisirVehicule(vehicleId);
+    this.action.set('reaffecter');
+  }
   /**
    * Lignes de l'aperçu (par index) qui figurent parmi les refus RENDUS PAR LE SERVEUR — prévus en
    * simulation (T4 : une demande en attente qui déborde sur la coupe), constatés après l'application.
@@ -1085,7 +1102,11 @@ export class ReorganisationSheetComponent {
     const total = this.reorganisables()?.total ?? 0;
     if (total <= 0 || this.fenetreFixeActive() || l.corps.origine !== 'toutes' || l.corps.vehicleId || l.corps.ids) return 0;
     const jours = Math.round((Date.parse(l.corps.to) - Date.parse(l.corps.from)) / 86_400_000);
-    return jours < 30 ? total : 0;
+    if (jours >= 30) return 0;
+    // Recette démo du 29/09 : « Une réservation plus loin » comptait AUSSI celle qui chevauche déjà la
+    // fenêtre courte (en cours) — la même, annoncée deux fois. Plus loin = les 30 jours moins la fenêtre.
+    const dansLaFenetre = (l.r.parVehicule ?? []).reduce((s, v) => s + v.n, 0);
+    return Math.max(0, total - dansLaFenetre);
   }
 
   protected choisirDuree(jours: number): void {
