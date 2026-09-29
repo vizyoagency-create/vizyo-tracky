@@ -918,3 +918,106 @@ export function rienAReorganiser(e: EtatRienAReorganiser): boolean {
   if (l.chevauchantes > 0) return false;
   return l.jours >= 30 || e.compteMenu === 0;
 }
+
+/**
+ * ── RÉORGANISER AGIT AUSSI SUR LES PROPOSITIONS DE L'AGENT (29/09, piste 3 du propriétaire) ─────
+ *
+ * Chez cdef31, l'agenda porte les propositions de l'agent (307 le 29/09) et aucune réservation à
+ * venir : Réorganiser, qui ne prenait que des réservations, n'y trouvait rien. Il écarte désormais un
+ * LOT de propositions (une fenêtre, un véhicule ou tous — `POST /agenda/agent/proposals/ecarter`).
+ * Les décisions de la page et de la feuille, écrites ici pour être testées :
+ *  - l'entrée du menu « ⋯ » n'est grisée que s'il n'y a NI réservation NI proposition ; s'il n'y a
+ *    que des propositions, elle le dit sous son libellé (`menuReorganiser`) ;
+ *  - la feuille s'ouvre sur les propositions quand il n'y a qu'elles (`quoiALOuverture`) ;
+ *  - l'onglet « Propositions de l'agent » n'existe qu'IA active : IA coupée par le client, rien de
+ *    l'agent nulle part (`ongletPropositionsVisible`).
+ */
+export type QuoiReorganiser = 'reservations' | 'propositions';
+
+export interface EtatMenuReorganiser {
+  /** Réservations qui chevauchent les 30 prochains jours (`reorganisables.total`), `null` = inconnu. */
+  reservations: number | null;
+  /** Fenêtre de ce compte, en jours. */
+  jours: number;
+  /** IA active pour la société du bandeau : sinon, les propositions ne comptent pas. */
+  iaActive: boolean;
+  /** Propositions de l'agent en attente, montrées par la page. */
+  propositions: number;
+}
+
+/** L'entrée « Réorganiser » du menu : grisée ou non, et la ligne sous son libellé (`null` = rien à dire). */
+export function menuReorganiser(e: EtatMenuReorganiser): { grisee: boolean; ligne: string | null } {
+  const n = e.iaActive ? Math.max(0, e.propositions) : 0;
+  // Compte inconnu (pas encore lu, lecture en échec) ou des réservations : active, sans rien dire.
+  if (e.reservations !== 0) return { grisee: false, ligne: null };
+  if (n > 0) {
+    return { grisee: false, ligne: `Aucune réservation à venir · ${n} proposition${n > 1 ? 's' : ''} de l'agent` };
+  }
+  return {
+    grisee: true,
+    ligne: e.iaActive
+      ? `Aucune réservation à venir sur ${e.jours} jours, ni proposition de l'agent`
+      : `Aucune réservation à venir sur ${e.jours} jours`,
+  };
+}
+
+/**
+ * Sur quoi la feuille s'ouvre. Les propositions quand il n'y a QU'elles : aucune réservation sur 30
+ * jours (compte du menu connu, à 0) et des propositions visibles. Ouverte depuis un geste (des
+ * réservations refusées à reprendre), elle garde les réservations — le geste en a apporté.
+ */
+export function quoiALOuverture(e: {
+  ouverteDepuisUnGeste: boolean;
+  reservations: number | null;
+  iaActive: boolean;
+  propositions: number;
+}): QuoiReorganiser {
+  if (e.ouverteDepuisUnGeste || !e.iaActive || e.propositions <= 0) return 'reservations';
+  return e.reservations === 0 ? 'propositions' : 'reservations';
+}
+
+/**
+ * L'onglet « Réservations | Propositions de l'agent » en tête de la feuille. Jamais IA coupée, jamais
+ * sans société (super-admin sur « Toutes ») ; sinon dès que des propositions existent — dans la page
+ * ou dans la dernière liste de la feuille —, et toujours quand on y est.
+ */
+export function ongletPropositionsVisible(e: {
+  iaActive: boolean;
+  sansSociete: boolean;
+  quoi: QuoiReorganiser;
+  propositionsPage: number;
+  /** Total de la dernière liste par véhicule des propositions (`null` = pas encore lue). */
+  propositionsListe: number | null;
+}): boolean {
+  if (!e.iaActive || e.sansSociete) return false;
+  return e.quoi === 'propositions' || e.propositionsPage > 0 || (e.propositionsListe ?? 0) > 0;
+}
+
+/** Le compte d'une liste par véhicule : celui du véhicule choisi (0 s'il n'y est pas), sinon le total ; `null` = liste inconnue. */
+export function compteDeLaListe(
+  liste: readonly { vehicleId: string; n: number }[] | null,
+  vehicleId: string,
+): number | null {
+  if (!liste) return null;
+  return vehicleId ? (liste.find((v) => v.vehicleId === vehicleId)?.n ?? 0) : liste.reduce((s, v) => s + v.n, 0);
+}
+
+/**
+ * Propositions encore à venir d'UN véhicule qui chevauchent une période — celle d'une immobilisation
+ * qu'on vient de poser : « un véhicule part au garage, ses propositions n'ont plus lieu d'être » (il
+ * n'est plus réservable, « Réserver » les refuserait). Même règle que le serveur : une proposition
+ * commencée ne compte pas (elle ne se réserve plus).
+ */
+export function propositionsSurPeriode(
+  propositions: readonly { vehicleId: string; startAt: string; endAt: string }[],
+  vehicleId: string,
+  periode: { from: number; to: number },
+  maintenantMs: number,
+): number {
+  return propositions.filter((p) => {
+    if (p.vehicleId !== vehicleId) return false;
+    const debut = Date.parse(p.startAt);
+    const fin = Date.parse(p.endAt);
+    return debut >= maintenantMs && debut < periode.to && fin > periode.from;
+  }).length;
+}

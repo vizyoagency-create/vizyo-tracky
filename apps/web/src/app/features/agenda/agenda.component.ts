@@ -80,9 +80,11 @@ import {
   libelleVehiculesLibres,
   localIso,
   memeVisibiliteIa,
+  menuReorganiser,
   placesMaxLibres,
   propositionsDuPerimetre,
   propositionsParJour,
+  propositionsSurPeriode,
   rangDuJour,
   type ReglageIaBrut,
   repliDefinitif,
@@ -208,14 +210,15 @@ function groupeReservationId(ev: VehicleEventDto): string | null {
                       <!-- 29/09 (piste 4 du propriétaire) : rien ne chevauche les 30 prochains jours → l'entrée
                            est grisée ET dit pourquoi (« Réorganiser est vide chez cdef31, on n'y comprend
                            rien »). Compte inconnu (pas encore lu, lecture en échec) : elle reste active, la
-                           feuille l'expliquera elle-même. -->
+                           feuille l'expliquera elle-même. Piste 3 (même soir) : des propositions de l'agent
+                           suffisent à la garder active — elle le dit sous son libellé. -->
                       <button type="button" class="ag-dd-item" [disabled]="rienAReorganiser()" [attr.aria-disabled]="rienAReorganiser()"
                               [attr.title]="rienAReorganiser() ? raisonRienAReorganiser() : null"
                               (click)="plusOpen.set(false); reorgSheetOpen.set(true)">
                         <span class="ag-dd-item-content">
                           <span class="ag-dd-item-row"><lucide-icon [img]="ShuffleIcon" [size]="14"></lucide-icon><span>Réorganiser des réservations</span></span>
-                          @if (rienAReorganiser()) {
-                            <span class="ag-dd-item-meta ag-dd-item-raison">{{ raisonRienAReorganiser() }}</span>
+                          @if (raisonRienAReorganiser(); as raison) {
+                            <span class="ag-dd-item-meta ag-dd-item-raison">{{ raison }}</span>
                           }
                         </span>
                       </button>
@@ -1990,22 +1993,23 @@ export class AgendaComponent implements OnInit {
    * échoué — l'entrée reste alors active, et la feuille l'expliquera elle-même.
    */
   protected readonly reorganisables = signal<ReservationsReorganisablesDto | null>(null);
-  /** Rien ne chevauche les 30 prochains jours : l'entrée du menu est grisée, avec sa raison. */
-  protected readonly rienAReorganiser = computed(() => this.reorganisables()?.total === 0);
   /**
-   * La raison, sous l'entrée grisée. Quand l'agenda n'a que des PROPOSITIONS de l'agent (cdef31 le
-   * 29/09 : 0 réservation à venir, 317 propositions), elle dit où elles se traitent — c'était
-   * exactement la confusion : des pointillés partout, et « Réorganiser » qui ne trouvait rien.
+   * L'entrée « Réorganiser » du menu (29/09, pistes 3 et 4) : grisée seulement s'il n'y a NI
+   * réservation sur 30 jours NI proposition de l'agent (IA active) — Réorganiser écarte désormais un
+   * lot de propositions. Quand l'agenda n'a QUE des propositions (cdef31 le 29/09 : 0 réservation à
+   * venir, 307 propositions), elle reste active et le dit sous son libellé. Voir `menuReorganiser`.
    */
-  protected readonly raisonRienAReorganiser = computed(() => {
-    const jours = this.reorganisables()?.jours ?? 30;
-    const base = `Aucune réservation à venir sur ${jours} jours`;
-    const n = this.iaActive() ? this.agentProposalCount() : 0;
-    if (n > 0) {
-      return `${base} — ${n > 1 ? `les ${n} propositions de l'agent se traitent` : `la proposition de l'agent se traite`} dans l'Assistant IA`;
-    }
-    return base;
-  });
+  protected readonly menuReorg = computed(() =>
+    menuReorganiser({
+      reservations: this.reorganisables()?.total ?? null,
+      jours: this.reorganisables()?.jours ?? 30,
+      iaActive: this.iaActive(),
+      propositions: this.agentProposalCount(),
+    }),
+  );
+  protected readonly rienAReorganiser = computed(() => this.menuReorg().grisee);
+  /** La ligne sous l'entrée : pourquoi elle est grisée, ou ce qu'elle trouvera (`null` = rien à dire). */
+  protected readonly raisonRienAReorganiser = computed(() => this.menuReorg().ligne);
 
   /** Ouvre / ferme le menu « ⋯ » — à l'ouverture, le compte de Réorganiser est relu (il suit l'agenda). */
   protected basculerPlus(): void {
@@ -3882,7 +3886,11 @@ export class AgendaComponent implements OnInit {
       return;
     }
     const choix = fenetreAReorganiser(fenetres, parFenetre);
-    if (!choix) return;
+    if (!choix) {
+      // Aucune réservation sur les jours ajoutés — mais peut-être des propositions de l'agent (piste 3).
+      this.proposerEcarterSousImmobilisation(apres, fenetres);
+      return;
+    }
     const parDebut = (a: VehicleEventDto, b: VehicleEventDto) => new Date(a.startAt).getTime() - new Date(b.startAt).getTime();
     const detail = (l: VehicleEventDto[]) => l.slice(0, 3).map((r) => fmt(new Date(r.startAt).getTime())).join(' · ') + (l.length > 3 ? '…' : '');
     const dedans = [...choix.dedans].sort(parDebut);
@@ -4020,6 +4028,49 @@ export class AgendaComponent implements OnInit {
     this.saving.set(false);
     void this.loadSummary();
     if (lot) await this.appliquerDecisions(created, lot);
+    // 29/09 (piste 3) : ses propositions de l'agent sur la période — après les réservations, qui passent d'abord.
+    this.proposerEcarterSousImmobilisation(created, fenetresAjoutees(null, created, Date.now()));
+  }
+
+  /**
+   * ── 29/09 (piste 3 du propriétaire) — UN VÉHICULE PART AU GARAGE, SES PROPOSITIONS N'ONT PLUS LIEU D'ÊTRE ──
+   *
+   * Une immobilisation posée (ou étendue) sur un véhicule qui porte des propositions de l'agent sur la
+   * période : elles ne se réserveront plus (« Réserver » les refuserait — le véhicule n'est pas libre),
+   * et elles restaient en pointillé sur un véhicule au garage. Réorganiser s'ouvre sur elles —
+   * véhicule et période réglés, onglet « Propositions de l'agent » —, une simulation d'abord : rien
+   * n'est écarté sans que la personne l'ait vu et voulu. `fenetres` : la période immobilisée (ou les
+   * jours AJOUTÉS d'une prolongation) ; la feuille s'ouvre sur celle qui porte le plus de propositions.
+   *
+   * Rien si la feuille est déjà ouverte (des réservations refusées à reprendre : son onglet montre les
+   * propositions de la même période), sans le droit de gérer les réservations, ni IA coupée (les
+   * propositions sont alors invisibles partout).
+   */
+  private proposerEcarterSousImmobilisation(ev: VehicleEventDto, fenetres: { from: number; to: number }[]): void {
+    if (fenetres.length === 0 || !this.canValidate() || !this.iaActive() || this.reorgSheetOpen()) return;
+    const maintenant = Date.now();
+    let periode: { from: number; to: number } | null = null;
+    let n = 0;
+    for (const w of fenetres) {
+      const k = propositionsSurPeriode(this.agentProposals(), ev.vehicleId, w, maintenant);
+      if (k > n) {
+        n = k;
+        periode = w;
+      }
+    }
+    if (!periode) return;
+    const plaque = ev.vehiclePlate || 'le véhicule';
+    this.toast.info(
+      `${n} proposition${n > 1 ? 's' : ''} de l'agent sur ${plaque} pendant l'immobilisation`,
+      `${n > 1 ? 'Elles ne pourront pas être réservées' : 'Elle ne pourra pas être réservée'} : Réorganiser s'ouvre sur ${n > 1 ? 'elles' : 'elle'} — rien n'est écarté sans votre accord.`,
+    );
+    this.reorgPreset.set({
+      vehicleId: ev.vehicleId,
+      from: new Date(periode.from).toISOString(),
+      to: new Date(periode.to).toISOString(),
+      quoi: 'propositions',
+    });
+    this.reorgSheetOpen.set(true);
   }
 
   // ─── Sprint 9 (consolidation) — feuilles Réservation / Optimisation ─────────

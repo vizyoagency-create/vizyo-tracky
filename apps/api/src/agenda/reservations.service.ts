@@ -2182,9 +2182,18 @@ export class ReservationsService {
    * l'union des droits).
    */
   private async exigerGestion(user: AuthUser, vehicleId: string, message: string): Promise<void> {
-    if (!(await this.permissions.canOnVehicle(user, vehicleId, 'reservations_manage'))) {
+    if (!(await this.gereLesReservationsDe(user, vehicleId))) {
       throw new ForbiddenException(message);
     }
+  }
+
+  /**
+   * L'appelant GÈRE-t-il les réservations de ce véhicule ? La règle d'`exigerGestion`, sans lever :
+   * l'agent d'agenda s'en sert pour écarter un lot de propositions (piste 3 du 29/09) — un véhicule
+   * dont on ne gère pas les réservations n'a pas de propositions à écarter pour vous.
+   */
+  async gereLesReservationsDe(user: AuthUser, vehicleId: string): Promise<boolean> {
+    return this.permissions.canOnVehicle(user, vehicleId, 'reservations_manage');
   }
 
   /** « Vous ne gérez pas les réservations de AA-111-BB : vous ne pouvez pas les <verbe>. » */

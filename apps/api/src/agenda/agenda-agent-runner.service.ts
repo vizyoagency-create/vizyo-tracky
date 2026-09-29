@@ -9,11 +9,14 @@ import {
 import { OnEvent } from '@nestjs/event-emitter';
 import { Cron } from '@nestjs/schedule';
 import { Prisma, UserRole, VehicleEventStatus, VehicleEventType } from '@prisma/client';
+import { randomUUID } from 'crypto';
 import type {
   AgendaAgentProposalDto,
   AgendaAgentProposalStatus,
   AgendaAgentRunDto,
   AgendaAgentRunResultDto,
+  EcarterPropositionsDto,
+  EcartPropositionsResultDto,
   FleetMetier,
 } from '@vizyo/tracky-shared';
 import type { AuthUser } from '../auth/types/auth-user';
@@ -60,6 +63,11 @@ const RATTRAPAGE_LOT_MAX = 200;
  * couvre un horizon d'un mois ; quand le plafond mord, le journal le dit avec la société.
  */
 export const PROPOSITIONS_LISTE_MAX = 1_000;
+/**
+ * Plafond d'un lot de propositions écartées depuis Réorganiser (piste 3 du 29/09) : celui des
+ * réservations (`MAX_REORGANISATION`). Au-delà, le lot est tronqué et la réponse le dit (`plafonne`).
+ */
+export const MAX_LOT_PROPOSITIONS = 500;
 /** Anti-storm : au plus une (re)analyse ÉVÉNEMENTIELLE par flotte toutes les 5 min. */
 const EVENT_THROTTLE_MS = 5 * 60 * 1000;
 /** Type du travail de la file du poste qui porte le jugement de l'IA (design/C3 point 7). */
@@ -676,6 +684,189 @@ export class AgendaAgentRunnerService {
       meta: { propositionId: id, vehicleId: p.vehicleId },
     }));
     return this.toDto({ ...p, status: 'dismissed' }, null);
+  }
+
+  /**
+   * ── ÉCARTER UN LOT DE PROPOSITIONS (29/09, piste 3 du propriétaire) ─────────────────────────
+   *
+   * Réorganiser ne prenait que des réservations ; l'agenda de cdef31 porte des PROPOSITIONS (307 le
+   * 29/09, aucune réservation à venir). Un véhicule part au garage, une journée tombe : ses
+   * propositions doivent partir aussi — l'Assistant IA les écarte une à une ou par motif, jamais
+   * par période ni par véhicule.
+   *
+   * Les garde-fous de Réorganiser, appliqués aux propositions :
+   *  1. SIMULATION par défaut : on montre le lot (nombre, aperçu, véhicules) avant d'écrire.
+   *  2. À VENIR seulement : une proposition dont le départ est passé ne se réserve plus (le cron
+   *     horaire l'expire, la liste ne la montre plus) — le lot ne la prend pas. Une proposition est
+   *     prise si elle CHEVAUCHE la fenêtre : une immobilisation qui commence jeudi 10:00 emporte le
+   *     trajet de 08:00 à 12:00.
+   *  3. LE LOT APPLIQUÉ EST CELUI QU'ON A VU : à l'application, `ids` est OBLIGATOIRE (les `lotIds` de
+   *     la simulation) ; le lot est recalculé avec les mêmes filtres, puis restreint à `ids`. Une
+   *     proposition arrivée depuis (un passage de l'agent) n'est jamais écartée sans avoir été montrée.
+   *  4. ÉCRITURE SOUS CONDITION (`status: 'pending'`) : une proposition réservée ou écartée ailleurs
+   *     entre-temps n'est pas touchée — comptée `dejaTraitees`, jamais « écartée ».
+   *  5. PÉRIMÈTRE : la société de l'appelant (celle du bandeau pour un super-admin), et les seuls
+   *     véhicules dont il GÈRE les réservations (`gereLesReservationsDe`, la règle des réservations :
+   *     réserver une proposition la demande aussi). Les autres sont comptées à part (`horsGestion`).
+   *  6. PLAFOND de {@link MAX_LOT_PROPOSITIONS} : au-delà, on tronque et on le DIT (`plafonne`).
+   *
+   * Journal : UNE ligne par lot (`propositions_ecartees`), pas une par proposition — 307 lignes
+   * « Proposition de l'agent écartée » noieraient l'activité de la société. Un lot sans effet (tout
+   * était déjà traité) n'écrit rien. Aucun courriel : une proposition n'en a jamais envoyé.
+   * Définitif : l'agent ne repropose jamais un créneau déjà traité (unicité société × véhicule ×
+   * début, quel que soit le statut — voir `runForFleet`).
+   */
+  async ecarterEnLot(user: AuthUser, dto: EcarterPropositionsDto): Promise<EcartPropositionsResultDto> {
+    const simulation = dto?.simulation !== false;
+    // La société du bandeau pour un super-admin ; la SIENNE pour les autres rôles — `fleetId` leur est
+    // ignoré, comme pour les réservations : le filtre société de l'écran est relu du navigateur, et un
+    // filtre resté d'une session super-admin ne doit pas faire échouer (403) le geste d'un gestionnaire.
+    const fleetId = this.resolveFleetId(user, user.role === UserRole.SUPER_ADMIN ? dto?.fleetId : undefined);
+    const from = new Date(dto?.from ?? '');
+    const to = new Date(dto?.to ?? '');
+    if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime()) || to.getTime() <= from.getTime()) {
+      throw new BadRequestException('Fenêtre invalide.');
+    }
+    const maintenant = Date.now();
+    // Jamais le passé : une proposition commencée ne se réserve plus, l'écarter ne change rien.
+    const debut = new Date(Math.max(from.getTime(), maintenant));
+    if (debut.getTime() >= to.getTime()) {
+      throw new BadRequestException('La fenêtre est entièrement passée : rien à écarter.');
+    }
+    let listeBlanche: Set<string> | null = null;
+    if (dto?.ids !== undefined && dto?.ids !== null) {
+      const ids: unknown = dto.ids;
+      if (
+        !Array.isArray(ids) ||
+        ids.length > MAX_LOT_PROPOSITIONS ||
+        ids.some((x) => typeof x !== 'string' || !x.trim())
+      ) {
+        throw new BadRequestException('« ids » invalide : une liste d’identifiants de propositions est attendue.');
+      }
+      listeBlanche = new Set((ids as string[]).map((x) => x.trim()));
+    }
+    // Garde 3 : jamais « sans liste = tout » à l'écriture — on n'écarte que ce qui a été montré.
+    if (!simulation && (!listeBlanche || listeBlanche.size === 0)) {
+      throw new BadRequestException('« ids » est obligatoire pour écarter : renvoyez le lot de la simulation.');
+    }
+
+    const vehicleId = typeof dto?.vehicleId === 'string' && dto.vehicleId.trim() ? dto.vehicleId.trim() : null;
+    if (vehicleId) {
+      const societeDuVehicule = await this.events.assertVehicleAccess(user, vehicleId); // 404 / 403 hors périmètre
+      if (societeDuVehicule !== fleetId) {
+        throw new BadRequestException('Ce véhicule n’est pas de la société choisie.');
+      }
+      if (!(await this.reservations.gereLesReservationsDe(user, vehicleId))) {
+        const plaque = await this.plaque(vehicleId);
+        throw new ForbiddenException(
+          `Vous ne gérez pas les réservations de ${plaque ?? 'ce véhicule'} : vous ne pouvez pas écarter ses propositions.`,
+        );
+      }
+    }
+
+    // Garde 2 : encore à venir (réservable) ET qui chevauche la fenêtre.
+    const lignes = await this.prisma.agendaAgentProposal.findMany({
+      where: {
+        fleetId,
+        status: 'pending',
+        startAt: { gte: new Date(maintenant), lt: to },
+        endAt: { gt: debut },
+      },
+      orderBy: [{ startAt: 'asc' }, { id: 'asc' }],
+      select: { id: true, vehicleId: true, startAt: true, endAt: true, destinationLabel: true },
+    });
+
+    // Garde 5 : seuls les véhicules dont l'appelant gère les réservations (règle par véhicule).
+    const vehicules = [...new Set(lignes.map((l) => l.vehicleId))];
+    const geres = new Set<string>();
+    for (const v of vehicules) {
+      if (await this.reservations.gereLesReservationsDe(user, v)) geres.add(v);
+    }
+    const gerees = lignes.filter((l) => geres.has(l.vehicleId));
+    const horsGestion = lignes.length - gerees.length;
+    const plaques = new Map(
+      vehicules.length
+        ? (await this.prisma.vehicle.findMany({ where: { id: { in: vehicules } }, select: { id: true, plate: true } })).map(
+            (v) => [v.id, v.plate] as const,
+          )
+        : [],
+    );
+    const plaqueDe = (id: string): string | null => plaques.get(id) ?? null;
+
+    // Par véhicule géré, AVANT le filtre véhicule : la liste où l'on choisit celui qui part au garage.
+    const compterParVehicule = (liste: typeof gerees) => {
+      const m = new Map<string, number>();
+      for (const l of liste) m.set(l.vehicleId, (m.get(l.vehicleId) ?? 0) + 1);
+      return [...m]
+        .map(([id, n]) => ({ vehicleId: id, plate: plaqueDe(id), n }))
+        .sort((a, b) => (a.plate ?? '').localeCompare(b.plate ?? '', 'fr', { numeric: true }));
+    };
+
+    const candidates = gerees.filter(
+      (l) => (!vehicleId || l.vehicleId === vehicleId) && (!listeBlanche || listeBlanche.has(l.id)),
+    );
+    const plafonne = candidates.length > MAX_LOT_PROPOSITIONS;
+    const lot = candidates.slice(0, MAX_LOT_PROPOSITIONS);
+    const lotIds = lot.map((l) => l.id);
+    const apercu = lot.slice(0, 8).map((l) => ({
+      id: l.id,
+      vehicleId: l.vehicleId,
+      plate: plaqueDe(l.vehicleId),
+      startAt: l.startAt.toISOString(),
+      endAt: l.endAt.toISOString(),
+      destinationLabel: l.destinationLabel,
+    }));
+    const commun = { concernees: lot.length, apercu, horsGestion, plafonne, lotIds };
+    if (simulation) return { simulation: true, ecartees: 0, dejaTraitees: 0, parVehicule: compterParVehicule(gerees), ...commun };
+
+    // Garde 4 : sous condition — une proposition réservée (prise par `apply`) ou écartée ailleurs
+    // entre la lecture et l'écriture n'est pas touchée.
+    const ecartees =
+      lot.length > 0
+        ? (
+            await this.prisma.agendaAgentProposal.updateMany({
+              where: { id: { in: lotIds }, fleetId, status: 'pending' },
+              data: { status: 'dismissed' },
+            })
+          ).count
+        : 0;
+    // Tout ce qui a été montré et n'est pas parti : réservé, écarté ou commencé depuis la simulation.
+    const dejaTraitees = Math.max(0, (listeBlanche?.size ?? 0) - ecartees);
+
+    if (ecartees > 0) {
+      const plaquesDuLot = [...new Set(lot.map((l) => plaqueDe(l.vehicleId)).filter((p): p is string => !!p))];
+      const qui = vehicleId ? (plaqueDe(vehicleId) ?? 'un véhicule') : 'tous les véhicules';
+      const s = ecartees > 1 ? 's' : '';
+      const d = dejaTraitees > 1 ? 's' : '';
+      this.journaliser(() => ({
+        category: 'AGENDA',
+        action: 'propositions_ecartees',
+        target: vehicleId ? plaqueDe(vehicleId) : plaquesDuLot.length === 1 ? plaquesDuLot[0] : null,
+        detail:
+          `${ecartees} proposition${s} de l'agent écartée${s} en lot — ${qui}, ${creneauParis(debut, to)}` +
+          (dejaTraitees > 0 ? ` (${dejaTraitees} déjà traitée${d} entre-temps, laissée${d} telle${d} quelle${d})` : '') +
+          '.',
+        fleetId,
+        triggeredByUserId: user.id,
+        meta: {
+          lot: randomUUID(),
+          vehicleId,
+          from: debut.toISOString(),
+          to: to.toISOString(),
+          concernees: lot.length,
+          ecartees,
+          dejaTraitees,
+          plaques: plaquesDuLot,
+          ids: lotIds,
+        },
+      }));
+    }
+    // Après l'écriture, la liste « Véhicule » compte ce qui RESTE en attente : chaque proposition du
+    // lot est écartée, ou n'était déjà plus en attente (réservée, écartée ailleurs, commencée). Sinon
+    // « Tous les véhicules (307) » resterait affiché sous « 307 propositions écartées ».
+    const dansLeLot = new Set(lotIds);
+    const parVehicule = compterParVehicule(gerees.filter((l) => !dansLeLot.has(l.id)));
+    return { simulation: false, ecartees, dejaTraitees, parVehicule, ...commun };
   }
 
   /**

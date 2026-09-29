@@ -153,20 +153,23 @@ function monter(opts: {
   faits?: unknown[];
   /** `null` = aucun journal injecté (le geste doit passer quand même). */
   activity?: { record: jest.Mock } | null;
+  /** Périmètre véhicule (piste 3 du 29/09) : la société rendue par `assertVehicleAccess`. */
+  events?: ReturnType<typeof makeEvents>;
 } = {}) {
   const prisma = makePrisma(opts.settings === undefined ? makeSettings() : opts.settings, opts.existing ?? null);
   const detector = opts.detector ?? makeDetector(opts.patterns ?? [PATTERN], opts.excluded);
   const reservations = opts.reservations ?? makeReservations();
+  const events = opts.events ?? makeEvents();
   const activity = opts.activity === null ? (undefined as unknown as ReturnType<typeof makeActivity>) : (opts.activity ?? makeActivity());
   const errors = makeErrors();
   const aiUsage = makeAiUsage();
   const travauxIa = makeTravauxIa(opts.faits);
   const aiAvail = opts.aiOn === undefined ? undefined : makeAiAvail(opts.aiOn);
   const svc = new AgendaAgentRunnerService(
-    prisma as never, detector as never, reservations as never, makeEvents() as never, activity as never,
+    prisma as never, detector as never, reservations as never, events as never, activity as never,
     travauxIa as never, aiUsage as never, errors as never, aiAvail as never,
   );
-  return { svc, prisma, detector, reservations, activity, errors, aiUsage, travauxIa, aiAvail };
+  return { svc, prisma, detector, reservations, events, activity, errors, aiUsage, travauxIa, aiAvail };
 }
 
 /** Un travail `jugement-agenda` tel que le courrier le laisse en `fait` (nouveau format de résultat). */
@@ -1320,5 +1323,208 @@ describe('AgendaAgentRunnerService — journal métier et rattrapage D0 (29/09)'
       expect(proposalsOf(prisma).updateMany).toHaveBeenCalledWith(expect.objectContaining({ data: { status: 'expired' } }));
       expect(prisma.agendaAgentSettings.findMany).toHaveBeenCalledTimes(1);
     });
+  });
+});
+
+describe('AgendaAgentRunnerService.ecarterEnLot — Réorganiser écarte les propositions (29/09, piste 3)', () => {
+  const H = 60 * 60 * 1000;
+  const admin = { id: 'u1', role: 'FLEET_ADMIN', fleetId: 'f1' } as never;
+  const superAdmin = { id: 'u-sa', role: 'SUPER_ADMIN', fleetId: null } as never;
+  const dans = (h: number) => new Date(Date.now() + h * H);
+  const prop = (id: string, vehicleId: string, hDebut: number) => ({
+    id, vehicleId, startAt: dans(hDebut), endAt: dans(hDebut + 3), destinationLabel: 'Carcassonne',
+  });
+  const fenetre = (hDebut: number, hFin: number) => ({ from: dans(hDebut).toISOString(), to: dans(hFin).toISOString() });
+  const PLAQUES = [{ id: 'v1', plate: 'AA-1' }, { id: 'v2', plate: 'BB-2' }, { id: 'v3', plate: 'CC-3' }];
+
+  /** Le lot tel que la base le rend (déjà filtré par la requête) ; `gere` = règle par véhicule. */
+  function monterLot(opts: { lignes?: unknown[]; gere?: (vid: string) => boolean; societeVehicule?: string } = {}) {
+    const reservations = makeReservations({
+      gereLesReservationsDe: jest.fn(async (_u: unknown, vid: string) => (opts.gere ? opts.gere(vid) : true)),
+    });
+    const events = { assertVehicleAccess: jest.fn().mockResolvedValue(opts.societeVehicule ?? 'f1') };
+    const m = monter({ reservations, events });
+    proposalsOf(m.prisma).findMany.mockResolvedValue(opts.lignes ?? []);
+    m.prisma.vehicle.findMany.mockResolvedValue(PLAQUES);
+    return m;
+  }
+  const LIGNES = [prop('p1', 'v2', 2), prop('p2', 'v1', 5), prop('p3', 'v2', 26)];
+
+  it('simulation (défaut) : le lot, ses véhicules et son aperçu — RIEN n’est écrit ni journalisé', async () => {
+    const { svc, prisma, activity } = monterLot({ lignes: LIGNES });
+
+    const r = await svc.ecarterEnLot(admin, fenetre(0, 7 * 24));
+
+    expect(r).toMatchObject({ simulation: true, concernees: 3, ecartees: 0, dejaTraitees: 0, horsGestion: 0, plafonne: false });
+    expect(r.lotIds).toEqual(['p1', 'p2', 'p3']);
+    // Triés par plaque, pour la liste « Véhicule ».
+    expect(r.parVehicule).toEqual([
+      { vehicleId: 'v1', plate: 'AA-1', n: 1 },
+      { vehicleId: 'v2', plate: 'BB-2', n: 2 },
+    ]);
+    expect(r.apercu[0]).toMatchObject({ id: 'p1', plate: 'BB-2', destinationLabel: 'Carcassonne' });
+    expect(proposalsOf(prisma).updateMany).not.toHaveBeenCalled();
+    expect(activity.record).not.toHaveBeenCalled();
+  });
+
+  it('la requête : la société de l’appelant, EN ATTENTE, encore à venir, qui CHEVAUCHE la fenêtre', async () => {
+    const { svc, prisma } = monterLot();
+    const f = fenetre(48, 72);
+
+    await svc.ecarterEnLot(admin, f);
+
+    const where = proposalsOf(prisma).findMany.mock.calls[0][0].where;
+    expect(where.fleetId).toBe('f1');
+    expect(where.status).toBe('pending');
+    // Commencée = plus réservable : jamais prise, même si la fenêtre commence avant maintenant.
+    expect(Math.abs(where.startAt.gte.getTime() - Date.now())).toBeLessThan(5_000);
+    expect(where.startAt.lt.toISOString()).toBe(f.to);
+    // Chevauchement : un trajet 08:00–12:00 sous une immobilisation qui commence à 10:00 est pris.
+    expect(where.endAt.gt.toISOString()).toBe(f.from);
+  });
+
+  it('une fenêtre commencée dans le passé est ramenée à maintenant ; entièrement passée ou invalide : 400', async () => {
+    const { svc, prisma } = monterLot();
+    await svc.ecarterEnLot(admin, fenetre(-48, 24));
+    const where = proposalsOf(prisma).findMany.mock.calls[0][0].where;
+    expect(Math.abs(where.endAt.gt.getTime() - Date.now())).toBeLessThan(5_000);
+
+    await expect(svc.ecarterEnLot(admin, fenetre(-48, -24))).rejects.toThrow('entièrement passée');
+    await expect(svc.ecarterEnLot(admin, { from: 'n’importe quoi', to: dans(2).toISOString() })).rejects.toThrow('Fenêtre invalide');
+    await expect(svc.ecarterEnLot(admin, fenetre(24, 2))).rejects.toThrow('Fenêtre invalide');
+  });
+
+  it('un véhicule choisi : lui seul dans le lot, mais la liste garde tous les véhicules gérés', async () => {
+    const { svc, events } = monterLot({ lignes: LIGNES });
+
+    const r = await svc.ecarterEnLot(admin, { ...fenetre(0, 7 * 24), vehicleId: 'v2' });
+
+    expect(events.assertVehicleAccess).toHaveBeenCalledWith(admin, 'v2');
+    expect(r.lotIds).toEqual(['p1', 'p3']);
+    expect(r.concernees).toBe(2);
+    expect(r.parVehicule.map((v) => v.vehicleId)).toEqual(['v1', 'v2']);
+  });
+
+  it('un véhicule d’une autre société que celle visée : 400, rien lu', async () => {
+    const { svc, prisma } = monterLot({ lignes: LIGNES, societeVehicule: 'f-autre' });
+
+    await expect(svc.ecarterEnLot(admin, { ...fenetre(0, 24), vehicleId: 'v9' })).rejects.toThrow('pas de la société');
+    expect(proposalsOf(prisma).findMany).not.toHaveBeenCalled();
+  });
+
+  it('les véhicules dont on ne gère pas les réservations : jamais dans le lot, comptés à part ; choisi : 403 qui le nomme', async () => {
+    const { svc } = monterLot({ lignes: LIGNES, gere: (vid) => vid !== 'v2' });
+
+    const r = await svc.ecarterEnLot(admin, fenetre(0, 7 * 24));
+    expect(r.lotIds).toEqual(['p2']);
+    expect(r.horsGestion).toBe(2);
+    expect(r.parVehicule).toEqual([{ vehicleId: 'v1', plate: 'AA-1', n: 1 }]);
+
+    // La plaque vient de `vehicle.findUnique` (mock : AA-1), comme pour un « Écarter » à l'unité.
+    await expect(svc.ecarterEnLot(admin, { ...fenetre(0, 24), vehicleId: 'v2' })).rejects.toThrow(
+      'Vous ne gérez pas les réservations de AA-1',
+    );
+  });
+
+  it('super-admin : une société est exigée (400) ; avec celle du bandeau, c’est elle qui est lue', async () => {
+    const { svc, prisma } = monterLot({ lignes: LIGNES });
+
+    await expect(svc.ecarterEnLot(superAdmin, fenetre(0, 24))).rejects.toThrow('Préciser la flotte');
+    await svc.ecarterEnLot(superAdmin, { ...fenetre(0, 24), fleetId: 'fCLIENT' });
+    expect(proposalsOf(prisma).findMany.mock.calls[0][0].where.fleetId).toBe('fCLIENT');
+  });
+
+  it('un gestionnaire : `fleetId` est ignoré, c’est SA société qui est lue (filtre resté d’une session super-admin)', async () => {
+    const { svc, prisma } = monterLot({ lignes: LIGNES });
+
+    await svc.ecarterEnLot(admin, { ...fenetre(0, 24), fleetId: 'f-autre' });
+
+    expect(proposalsOf(prisma).findMany.mock.calls[0][0].where.fleetId).toBe('f1');
+  });
+
+  it('application SANS la liste montrée : 400 — on n’écarte jamais « tout » sans l’avoir vu', async () => {
+    const { svc, prisma } = monterLot({ lignes: LIGNES });
+
+    await expect(svc.ecarterEnLot(admin, { ...fenetre(0, 24), simulation: false })).rejects.toThrow('« ids » est obligatoire');
+    await expect(svc.ecarterEnLot(admin, { ...fenetre(0, 24), simulation: false, ids: [] })).rejects.toThrow('« ids » est obligatoire');
+    await expect(svc.ecarterEnLot(admin, { ...fenetre(0, 24), simulation: false, ids: [''] })).rejects.toThrow('« ids » invalide');
+    expect(proposalsOf(prisma).updateMany).not.toHaveBeenCalled();
+  });
+
+  it('application : écrit SOUS CONDITION les seules propositions montrées, et UNE ligne de journal pour le lot', async () => {
+    // p9 est arrivée depuis la simulation (passage de l'agent) : elle n'est pas dans `ids`.
+    const { svc, prisma, activity } = monterLot({ lignes: [...LIGNES, prop('p9', 'v2', 30)] });
+    proposalsOf(prisma).updateMany.mockResolvedValueOnce({ count: 2 });
+
+    const r = await svc.ecarterEnLot(admin, { ...fenetre(0, 7 * 24), vehicleId: 'v2', simulation: false, ids: ['p1', 'p3'] });
+
+    expect(proposalsOf(prisma).updateMany).toHaveBeenCalledWith({
+      where: { id: { in: ['p1', 'p3'] }, fleetId: 'f1', status: 'pending' },
+      data: { status: 'dismissed' },
+    });
+    expect(r).toMatchObject({ simulation: false, concernees: 2, ecartees: 2, dejaTraitees: 0 });
+    // La liste « Véhicule » d'après : ce qui RESTE en attente — p2, et p9 qui n'a jamais été montrée.
+    expect(r.parVehicule).toEqual([
+      { vehicleId: 'v1', plate: 'AA-1', n: 1 },
+      { vehicleId: 'v2', plate: 'BB-2', n: 1 },
+    ]);
+    expect(activity.record).toHaveBeenCalledTimes(1);
+    const ligne = activity.record.mock.calls[0][0];
+    expect(ligne).toMatchObject({
+      category: 'AGENDA',
+      action: 'propositions_ecartees',
+      actor: 'utilisateur',
+      target: 'BB-2',
+      fleetId: 'f1',
+      triggeredByUserId: 'u1',
+    });
+    expect(ligne.detail).toContain("2 propositions de l'agent écartées en lot — BB-2");
+    expect(ligne.meta).toMatchObject({ vehicleId: 'v2', concernees: 2, ecartees: 2, dejaTraitees: 0, ids: ['p1', 'p3'] });
+  });
+
+  it('une proposition réservée (ou écartée) ailleurs entre-temps : non touchée, comptée « déjà traitée », dite au journal', async () => {
+    // p3 a été réservée depuis : la base ne la rend plus en attente ; p1 perd la course de l'écriture.
+    const { svc, prisma, activity } = monterLot({ lignes: [prop('p1', 'v2', 2)] });
+    proposalsOf(prisma).updateMany.mockResolvedValueOnce({ count: 0 });
+
+    const r = await svc.ecarterEnLot(admin, { ...fenetre(0, 7 * 24), simulation: false, ids: ['p1', 'p3'] });
+
+    expect(proposalsOf(prisma).updateMany.mock.calls[0][0].where.id).toEqual({ in: ['p1'] });
+    expect(r).toMatchObject({ ecartees: 0, dejaTraitees: 2 });
+    // Rien n'a changé : aucune ligne.
+    expect(activity.record).not.toHaveBeenCalled();
+
+    proposalsOf(prisma).findMany.mockResolvedValue(LIGNES);
+    proposalsOf(prisma).updateMany.mockResolvedValueOnce({ count: 2 });
+    const r2 = await svc.ecarterEnLot(admin, { ...fenetre(0, 7 * 24), simulation: false, ids: ['p1', 'p2', 'p3'] });
+    expect(r2).toMatchObject({ ecartees: 2, dejaTraitees: 1 });
+    expect(activity.record.mock.calls[0][0].detail).toContain('(1 déjà traitée entre-temps, laissée telle quelle)');
+    // Plusieurs véhicules : pas de plaque unique en cible.
+    expect(activity.record.mock.calls[0][0].target).toBeNull();
+  });
+
+  it('plus de 500 propositions : les 500 premières, et la réponse le DIT', async () => {
+    const beaucoup = Array.from({ length: 501 }, (_, i) => prop(`p${i}`, 'v1', 2 + i / 100));
+    const { svc } = monterLot({ lignes: beaucoup });
+
+    const r = await svc.ecarterEnLot(admin, fenetre(0, 30 * 24));
+
+    expect(r.concernees).toBe(500);
+    expect(r.plafonne).toBe(true);
+    expect(r.lotIds).toHaveLength(500);
+    expect(r.apercu).toHaveLength(8);
+  });
+
+  it('un journal en panne ne fait pas échouer le lot', async () => {
+    const activity = { record: jest.fn(() => { throw new Error('journal HS'); }) };
+    const reservations = makeReservations({ gereLesReservationsDe: jest.fn().mockResolvedValue(true) });
+    const { svc, prisma } = monter({ reservations, activity });
+    proposalsOf(prisma).findMany.mockResolvedValue(LIGNES);
+    prisma.vehicle.findMany.mockResolvedValue(PLAQUES);
+    proposalsOf(prisma).updateMany.mockResolvedValueOnce({ count: 3 });
+
+    await expect(
+      svc.ecarterEnLot(admin, { ...fenetre(0, 7 * 24), simulation: false, ids: ['p1', 'p2', 'p3'] }),
+    ).resolves.toMatchObject({ ecartees: 3 });
   });
 });

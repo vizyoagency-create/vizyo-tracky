@@ -177,3 +177,69 @@ export interface ReglerAvisDto {
   userId: string;
   notifie: boolean;
 }
+
+/**
+ * ── ÉCARTER UN LOT DE PROPOSITIONS DEPUIS « RÉORGANISER » (29/09, piste 3 du propriétaire) ──
+ *
+ * cdef31 n'a (presque) pas de réservations à venir : son agenda porte les PROPOSITIONS de l'agent
+ * (307 le 29/09). Quand un véhicule part au garage ou qu'une journée tombe, ce sont elles qu'il
+ * faut retirer — une par une dans l'Assistant IA, ou groupées par motif, jamais par période ni par
+ * véhicule. Réorganiser les prend désormais : même fenêtre, même choix du véhicule, simulation
+ * d'abord, et l'on n'écarte que le lot affiché (`ids`).
+ *
+ * Une proposition écartée ne revient pas : l'agent ne repropose jamais un créneau déjà traité
+ * (unicité société × véhicule × début, quel que soit le statut).
+ */
+export interface EcarterPropositionsDto {
+  /** Fenêtre visée (ISO). Seules les propositions encore à venir qui la CHEVAUCHENT sont prises. */
+  from: string;
+  to: string;
+  /** Un véhicule (celui qui part au garage) ; absent = tous les véhicules dont on gère les réservations. */
+  vehicleId?: string;
+  /** Société visée (SUPER_ADMIN) ; ignoré pour les autres rôles. */
+  fleetId?: string;
+  /** `true` (défaut) = on calcule et on montre, sans rien écrire. */
+  simulation?: boolean;
+  /**
+   * À l'APPLICATION (obligatoire) : les identifiants EXACTS du lot montré (`lotIds` de la
+   * simulation). Une proposition arrivée depuis n'y est pas : elle n'est jamais écartée sans avoir
+   * été vue. En simulation, facultatif : restreint le lot à ces propositions.
+   */
+  ids?: string[];
+}
+
+/** Une ligne de l'aperçu d'un lot de propositions. */
+export interface PropositionLotApercuDto {
+  id: string;
+  vehicleId: string;
+  plate: string | null;
+  startAt: string; // ISO
+  endAt: string; // ISO
+  destinationLabel: string | null;
+}
+
+export interface EcartPropositionsResultDto {
+  simulation: boolean;
+  /** Propositions du lot : celles qui seraient écartées (simulation), celles visées (application). */
+  concernees: number;
+  /** Écartées pour de bon (0 en simulation). */
+  ecartees: number;
+  /**
+   * À l'application : visées mais plus en attente au moment d'écrire — réservées ou écartées
+   * ailleurs entre-temps, ou déjà commencées. Laissées telles quelles, et comptées ici.
+   */
+  dejaTraitees: number;
+  /** Les 8 premières du lot, dans l'ordre chronologique. */
+  apercu: PropositionLotApercuDto[];
+  /**
+   * Par véhicule géré, AVANT le filtre véhicule : la liste « Véhicule » de la feuille. À
+   * l'application, ce qui RESTE en attente après l'écriture (le lot en est retiré).
+   */
+  parVehicule: { vehicleId: string; plate: string | null; n: number }[];
+  /** Propositions de la fenêtre sur des véhicules dont l'appelant ne gère pas les réservations (jamais prises). */
+  horsGestion: number;
+  /** Plus de propositions que le plafond : seules les premières sont prises, et on le dit. */
+  plafonne: boolean;
+  /** Les identifiants exacts du lot — à renvoyer en `ids` pour appliquer. */
+  lotIds: string[];
+}

@@ -1,5 +1,6 @@
 import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
+import type { EcarterPropositionsDto } from '@vizyo/tracky-shared';
 import { RequirePermissions } from '../auth/decorators/permissions.decorator';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { AuthenticatedRequest, JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -82,5 +83,17 @@ export class AgendaAgentController {
   @RequirePermissions('reservations_manage')
   dismiss(@Req() req: AuthenticatedRequest, @Param('id', ParseUUIDPipe) id: string) {
     return this.runner.dismiss(req.user, id);
+  }
+
+  /**
+   * Écarte un LOT de propositions depuis « Réorganiser » (piste 3 du 29/09) : une fenêtre, un
+   * véhicule ou tous. Simulation par défaut ; à l'application, `ids` = le lot montré. Même garde
+   * que `dismiss`, et le serveur ne prend que les véhicules dont l'appelant gère les réservations.
+   */
+  @Post('proposals/ecarter')
+  @Roles(...ALL_ROLES)
+  @RequirePermissions('reservations_manage')
+  ecarterEnLot(@Req() req: AuthenticatedRequest, @Body() dto: EcarterPropositionsDto) {
+    return this.runner.ecarterEnLot(req.user, dto);
   }
 }
