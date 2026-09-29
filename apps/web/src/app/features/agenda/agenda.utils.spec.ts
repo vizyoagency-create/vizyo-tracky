@@ -1,3 +1,5 @@
+import { registerLocaleData } from '@angular/common';
+import localeFr from '@angular/common/locales/fr';
 import type { VehicleEventType } from '@vizyo/tracky-shared';
 import {
   compteAgentMemorise,
@@ -15,6 +17,7 @@ import {
   HORIZON_SANS_FIN_MS,
   interrupteurSociete,
   joursDansFenetre,
+  libellePeriode,
   libelleVehiculesLibres,
   lotExactDeSimulation,
   memeVisibiliteIa,
@@ -1118,5 +1121,34 @@ describe('Réorganiser agit aussi sur les propositions de l’agent (29/09, pist
       const enCours = { from: maintenant - 2 * H, to: maintenant + 5 * H };
       expect(propositionsSurPeriode([prop('v1', -1, 2), prop('v1', 1, 3)], 'v1', enCours, maintenant)).toBe(1);
     });
+  });
+});
+
+describe('libellePeriode — la période d’un pré-réglage en toutes lettres (recette démo du 29/09)', () => {
+  beforeAll(() => registerLocaleData(localeFr));
+  const iso = (y: number, m: number, d: number, h = 0, min = 0) => new Date(y, m - 1, d, h, min).toISOString();
+  const maintenant = new Date(2026, 8, 29, 19, 50).getTime(); // mar. 29 sept., 19:50 (heure locale)
+
+  it('une journée entière (00:00 → 00:00 le lendemain) : « le mer. 30 sept. », pas « du 30 au 1er »', () => {
+    expect(libellePeriode({ from: iso(2026, 9, 30), to: iso(2026, 10, 1), sansFin: false }, maintenant, 30)).toBe('le mer. 30 sept.');
+  });
+
+  it('plusieurs journées entières : la fin à minuit compte pour la veille', () => {
+    expect(libellePeriode({ from: iso(2026, 9, 30), to: iso(2026, 10, 2), sansFin: false }, maintenant, 30)).toBe('du mer. 30 sept. au jeu. 1 oct.');
+  });
+
+  it('dans une journée : les heures ; déjà commencée, le début est ramené à maintenant (et minuit se dit 24:00)', () => {
+    expect(libellePeriode({ from: iso(2026, 9, 30, 8), to: iso(2026, 9, 30, 12, 30), sansFin: false }, maintenant, 30)).toBe('le mer. 30 sept. de 08:00 à 12:30');
+    expect(libellePeriode({ from: iso(2026, 9, 29), to: iso(2026, 9, 30), sansFin: false }, maintenant, 30)).toBe('le mar. 29 sept. de 19:50 à 24:00');
+  });
+
+  it('une fin qui n’est pas à minuit (retour le 2, 23:59:59) : telle quelle', () => {
+    expect(
+      libellePeriode({ from: iso(2026, 9, 30), to: new Date(2026, 9, 2, 23, 59, 59).toISOString(), sansFin: false }, maintenant, 30),
+    ).toBe('du mer. 30 sept. au ven. 2 oct.');
+  });
+
+  it('sans date de fin : « à partir du …, HH:mm (30 jours) »', () => {
+    expect(libellePeriode({ from: iso(2026, 10, 2, 9), to: iso(2026, 11, 1, 9), sansFin: true }, maintenant, 30)).toBe('à partir du ven. 2 oct., 09:00 (30 jours)');
   });
 });

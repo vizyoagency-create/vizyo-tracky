@@ -11,7 +11,7 @@ import {
   signal,
   untracked,
 } from '@angular/core';
-import { DatePipe, formatDate } from '@angular/common';
+import { DatePipe } from '@angular/common';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import type { Subscription } from 'rxjs';
 import { AlertTriangle, ArrowRightLeft, Check, Loader, LucideAngularModule, Shuffle, X } from 'lucide-angular';
@@ -35,6 +35,7 @@ import {
   type CompteAgentMemorise,
   compteDeLaListe,
   horsFenetrePreset,
+  libellePeriode,
   lotExactDeSimulation,
   memoriserCompteAgent,
   ongletPropositionsVisible,
@@ -1409,18 +1410,11 @@ export class ReorganisationSheetComponent {
   /**
    * « du lun. 5 oct. au mer. 7 oct. » — le début est ramené à maintenant, comme le fait le serveur
    * (il ne regarde jamais le passé) : afficher un début passé décrirait une fenêtre non examinée.
-   * Sans date de fin : « à partir du ven. 10 oct., 09:00 (30 jours) ».
+   * Sans date de fin : « à partir du ven. 10 oct., 09:00 (30 jours) ». Une fin à minuit pile appartient
+   * au jour d'avant (recette démo du 29/09) : voir `libellePeriode`.
    */
   private periodeTexte(fx: FenetreImposee): string {
-    const debut = new Date(Math.max(new Date(fx.from).getTime(), Date.now()));
-    if (fx.sansFin) {
-      return `à partir du ${formatDate(debut, 'EEE d MMM', 'fr')}, ${formatDate(debut, 'HH:mm', 'fr')} (${JOURS_SANS_FIN} jours)`;
-    }
-    const fin = new Date(fx.to);
-    if (debut.toDateString() === fin.toDateString()) {
-      return `le ${formatDate(debut, 'EEE d MMM', 'fr')} de ${formatDate(debut, 'HH:mm', 'fr')} à ${formatDate(fin, 'HH:mm', 'fr')}`;
-    }
-    return `du ${formatDate(debut, 'EEE d MMM', 'fr')} au ${formatDate(fin, 'EEE d MMM', 'fr')}`;
+    return libellePeriode(fx, Date.now(), JOURS_SANS_FIN);
   }
 
   /**
