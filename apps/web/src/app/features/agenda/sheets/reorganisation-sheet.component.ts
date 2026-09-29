@@ -16,6 +16,8 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import type { Subscription } from 'rxjs';
 import { AlertTriangle, ArrowRightLeft, Check, Loader, LucideAngularModule, Shuffle, X } from 'lucide-angular';
 import type {
+  EcarterPropositionsDto,
+  EcartPropositionsResultDto,
   OrigineReservation,
   ReorganisationResultDto,
   ReorganiserReservationsDto,
@@ -27,13 +29,18 @@ import { AuthService } from '../../../core/services/auth.service';
 import { FleetFilterService } from '../../../core/services/fleet-filter.service';
 import { ToastService } from '../../../shared/ui/toast/toast.service';
 import { BottomSheetComponent } from '../../../shared/ui/bottom-sheet/bottom-sheet.component';
+import { AgendaSyncService } from '../agenda-sync.service';
 import {
   compteAgentMemorise,
   type CompteAgentMemorise,
+  compteDeLaListe,
   horsFenetrePreset,
   lotExactDeSimulation,
   memoriserCompteAgent,
+  ongletPropositionsVisible,
   origineAgentVisible,
+  type QuoiReorganiser,
+  quoiALOuverture,
   raisonsVideRefusees,
   rienAReorganiser,
 } from '../agenda.utils';
@@ -46,6 +53,8 @@ const FENETRES = [
 ] as const;
 
 const URL_REORGANISER = '/api/reservations/reorganiser';
+/** 29/09 (piste 3) — simuler / écarter un lot de propositions de l'agent. */
+const URL_ECARTER_PROPOSITIONS = '/api/agenda/agent/proposals/ecarter';
 
 /** Durée examinée quand le pré-réglage a un début mais pas de fin (immobilisation sans date de fin). */
 const JOURS_SANS_FIN = 30;
@@ -81,6 +90,12 @@ export interface PresetReorganisation {
    */
   nonReprises?: { id?: string | null; plate: string | null; startAt: string; endAt: string | null; motif: string }[];
   /**
+   * 29/09 (piste 3) — l'onglet d'ouverture. `propositions` : ouverte après une immobilisation qui
+   * tombe sur des propositions de l'agent (le véhicule part au garage, ses trajets proposés n'ont
+   * plus lieu d'être). Absent : décidé par `quoiALOuverture`.
+   */
+  quoi?: QuoiReorganiser | null;
+  /**
    * Troisième passe (T3) — liste BLANCHE : les ids des réservations refusées que la feuille doit
    * reprendre, et elles SEULES. Présente, elle part dans le corps (simulation ET application ; le
    * serveur filtre avant plafond, aperçu et `attendu`) et la feuille le dit. Sans elle, la feuille
@@ -115,6 +130,23 @@ interface CorpsReorganisation {
   fleetId?: string;
   /** Liste blanche (T3) : seulement ces réservations — renvoyée à l'identique à l'application. */
   ids?: string[];
+}
+
+/** 29/09 (piste 3) — ce qui part au serveur pour les propositions : la fenêtre et le véhicule, rien d'autre. */
+interface CorpsPropositions {
+  from: string;
+  to: string;
+  vehicleId?: string;
+  fleetId?: string;
+}
+
+/** La lecture courante des propositions (simulation, ou compte-rendu d'un « Écarter »). */
+interface LecturePropositions {
+  corps: CorpsPropositions;
+  fenetre: string;
+  /** Faux après application : le compte-rendu ne se réapplique pas. */
+  applicable: boolean;
+  r: EcartPropositionsResultDto;
 }
 
 /** Une lecture COURANTE : le corps envoyé, la fenêtre qu'il couvre, et la réponse du serveur. */
@@ -179,6 +211,13 @@ interface Lecture {
  * Quatrième revue du 29/09 : lot limité aux refusées puis durée changée, le vide cite « hors de la
  * fenêtre choisie » et propose de revenir à la période de l'immobilisation (C7) ; sous cette limite,
  * les boutons d'origine et la plaque du lot ne portent plus de nombres qui comptaient tout le véhicule (D1).
+ *
+ * 29/09 (piste 3 du propriétaire) — LES PROPOSITIONS DE L'AGENT. L'agenda de cdef31 n'a que des
+ * propositions (307, aucune réservation à venir) : un onglet « Réservations | Propositions de l'agent »
+ * (IA active seulement) les reprend sur la même fenêtre et le même véhicule. Un seul geste : les
+ * écarter — un véhicule part au garage, une journée tombe. Même discipline : simulation d'abord, et
+ * l'on n'écarte que le lot affiché (ses identifiants). La feuille s'ouvre sur les propositions quand il
+ * n'y a qu'elles, et la page l'ouvre sur elles après une immobilisation qui en recouvre.
  */
 @Component({
   selector: 'app-reorganisation-sheet',
@@ -186,15 +225,29 @@ interface Lecture {
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [DatePipe, LucideAngularModule, BottomSheetComponent],
   template: `
-    <app-bottom-sheet [open]="open()" ariaLabel="Réorganiser des réservations" (closed)="closed.emit()">
+    <app-bottom-sheet [open]="open()" [ariaLabel]="titre()" (closed)="closed.emit()">
       <div class="ro">
         <div class="ro-head">
-          <h3 class="ro-title"><lucide-icon [img]="ShuffleIcon" [size]="15"></lucide-icon> Réorganiser des réservations</h3>
+          <h3 class="ro-title"><lucide-icon [img]="ShuffleIcon" [size]="15"></lucide-icon> {{ titre() }}</h3>
           <button type="button" class="ro-x" (click)="closed.emit()" aria-label="Fermer"><lucide-icon [img]="XIcon" [size]="18"></lucide-icon></button>
         </div>
 
         <div class="ro-body">
-          @if (rien()) {
+          @if (ongletVisible()) {
+            <!-- 29/09 (piste 3 du propriétaire) : Réorganiser reprend AUSSI les propositions de l'agent —
+                 l'agenda de cdef31 n'a qu'elles. Chaque bouton porte son compte sur la fenêtre et le
+                 véhicule choisis (dernière liste lue). IA coupée : pas d'onglet, rien de l'agent. -->
+            <div class="ro-f">
+              <span>Quoi</span>
+              <div class="ro-seg">
+                <button type="button" class="ro-seg-btn" [class.ro-seg-btn--on]="quoiEffectif() === 'reservations'" [disabled]="envoi() || envoiP()"
+                        (click)="choisirQuoi('reservations')">Réservations@if (compteOngletReservations() !== null) { <span class="ro-n">{{ compteOngletReservations() }}</span> }</button>
+                <button type="button" class="ro-seg-btn" [class.ro-seg-btn--on]="quoiEffectif() === 'propositions'" [disabled]="envoi() || envoiP()"
+                        (click)="choisirQuoi('propositions')">Propositions de l'agent@if (compteOngletPropositions() !== null) { <span class="ro-n">{{ compteOngletPropositions() }}</span> }</button>
+              </div>
+            </div>
+          }
+          @if (quoiEffectif() === 'reservations' && rien()) {
             <!-- 29/09 (piste 1 du propriétaire) : « Réorganiser est vide chez cdef31 et on n'y comprend
                  rien ». Quand aucune réservation ne chevauche les 30 prochains jours, la feuille le dit
                  EN TÊTE — ce qu'elle fait, pourquoi il n'y a rien, où sont les propositions de l'agent —
@@ -207,12 +260,20 @@ interface Lecture {
                 une journée tombe, les horaires glissent. Il n'y en a aucune à reprendre pour l'instant.
               </p>
               @if (textePropositions(); as tp) {
+                <!-- 29/09 (piste 3) : elles ne se traitaient que dans l'Assistant IA ; elles se reprennent d'ici. -->
                 <p class="ro-rien-s"><strong>{{ tp }}</strong> : {{ suitePropositions() }}</p>
-                <button type="button" class="ro-lien" (click)="ouvrirIa.emit()">Ouvrir l'Assistant IA</button>
+                <button type="button" class="ro-lien" (click)="choisirQuoi('propositions')">Voir les propositions de l'agent</button>
               } @else {
                 <p class="ro-rien-s">Une réservation se pose avec « Réserver » : dès qu'il y en aura, elle se réorganisera d'ici.</p>
               }
             </div>
+          } @else {
+          @if (quoiEffectif() === 'propositions') {
+            <p class="ro-intro">
+              Écarter d'un coup les <strong>propositions de l'agent</strong> — les réservations qu'il suggère,
+              en pointillé dans le calendrier. Un véhicule part au garage, une journée tombe : elles n'ont plus
+              lieu d'être. Rien n'est écarté avant que vous ayez vu la liste.
+            </p>
           } @else {
           <p class="ro-intro">
             Reprendre d'un coup les réservations <strong>à venir</strong>. Le passé n'est jamais touché,
@@ -223,6 +284,7 @@ interface Lecture {
             <li><strong>Une journée tombe</strong> (sortie annulée, fermeture) → <em>Annuler</em> le lot.</li>
             <li><strong>Les horaires glissent</strong> → <em>Décaler</em> le lot de quelques minutes ou heures.</li>
           </ul>
+          }
 
           @if (needsFleet()) {
             <!-- Super-admin sur « Toutes les sociétés » : un lot mêlerait les réservations de plusieurs
@@ -232,8 +294,10 @@ interface Lecture {
               <span>Choisissez une société dans le bandeau en haut de page : on réorganise le parc d'une société à la fois.</span>
             </p>
           } @else {
-            <!-- Critères figés pendant l'application : la réponse doit décrire le lot qu'on vient d'écrire. -->
-            <fieldset class="ro-criteres" [disabled]="envoi()">
+            <!-- Critères figés pendant l'application : la réponse doit décrire le lot qu'on vient d'écrire.
+                 « Quand » et le véhicule choisi sont COMMUNS aux deux onglets : un véhicule part au garage,
+                 on voit ses réservations puis ses propositions sur la même période. -->
+            <fieldset class="ro-criteres" [disabled]="envoi() || envoiP()">
               <div class="ro-f">
                 <span>Quand</span>
                 @if (fenetrePreset()) {
@@ -252,6 +316,25 @@ interface Lecture {
                 </div>
               </div>
 
+              @if (quoiEffectif() === 'propositions') {
+                <div class="ro-f">
+                  <span>Véhicule</span>
+                  <!-- Seuls les véhicules qui ont des propositions sur la fenêtre (dernière liste lue) ; le
+                       véhicule choisi reste toujours dans la liste, même à 0. -->
+                  <select class="ro-in" [value]="vehicleId()" (change)="choisirVehicule($any($event.target).value)" aria-label="Véhicule concerné">
+                    <option value="" [selected]="vehicleId() === ''">Tous les véhicules@if (totalP() !== null) { ({{ totalP() }}) }</option>
+                    @for (v of optionsVehiculeP(); track v.vehicleId) {
+                      <option [value]="v.vehicleId" [selected]="v.vehicleId === vehicleId()">{{ v.plate || '—' }} ({{ v.n }})</option>
+                    }
+                    @if (vehicleId() && !vehiculeDansListeP()) {
+                      <option [value]="vehicleId()" selected>{{ plaqueDe(vehicleId()) }}@if (totalP() !== null) { (0) }</option>
+                    }
+                  </select>
+                  @if (texteListeVehiculesP(); as tl) {
+                    <span class="ro-detail">{{ tl }}</span>
+                  }
+                </div>
+              } @else {
               <div class="ro-f">
                 <span>Véhicule</span>
                 <!-- 29/09 (piste 2 du propriétaire) : seuls les véhicules qui ONT des réservations sur la
@@ -370,8 +453,79 @@ interface Lecture {
                          [value]="decalage()" (input)="decalage.set(+$any($event.target).value || 0)">
                 </label>
               }
+              }
             </fieldset>
 
+            @if (quoiEffectif() === 'propositions') {
+              <!-- 29/09 (piste 3) : la simulation des propositions — même discipline que les réservations :
+                   on voit le lot, on écarte CE lot (ses identifiants repartent au serveur), rien d'autre. -->
+              @if (chargementP()) {
+                <div class="ro-sk"></div>
+              } @else if (erreurP(); as e) {
+                <p class="ro-err"><lucide-icon [img]="AlertIcon" [size]="13"></lucide-icon> {{ e }}</p>
+              } @else if (lueP(); as l) {
+                @if (l.r.simulation && l.r.concernees === 0) {
+                  <div class="ro-vide">
+                    <p><strong>Aucune proposition de l'agent{{ surPlaqueP(l) }}</strong> {{ l.fenetre }} : rien à écarter.</p>
+                    @if (l.r.horsGestion > 0) {
+                      <p>{{ horsGestionTexte(l.r.horsGestion) }}</p>
+                    }
+                    @if (l.corps.vehicleId && (totalP() ?? 0) > 0) {
+                      <button type="button" class="ro-lien" (click)="choisirVehicule('')">Voir tous les véhicules ({{ totalP() }})</button>
+                    } @else if (plusLoinP(l)) {
+                      <button type="button" class="ro-lien" (click)="choisirDuree(30)">Voir sur 30 jours</button>
+                    }
+                  </div>
+                } @else {
+                  <div class="ro-bilan" [class.ro-bilan--fait]="!l.r.simulation">
+                    <span class="ro-bilan-n">{{ l.r.simulation ? l.r.concernees : l.r.ecartees }}</span>
+                    <span class="ro-bilan-l">
+                      @if (l.r.simulation) {
+                        proposition{{ l.r.concernees > 1 ? 's' : '' }} de l'agent {{ l.r.concernees > 1 ? 'seraient écartées' : 'serait écartée' }}{{ surPlaqueP(l) }} {{ l.fenetre }}
+                      } @else {
+                        proposition{{ l.r.ecartees > 1 ? 's' : '' }} écartée{{ l.r.ecartees > 1 ? 's' : '' }}{{ surPlaqueP(l) }}
+                        @if (l.r.dejaTraitees > 0) {
+                          · {{ dejaTraiteesTexte(l.r.dejaTraitees) }}
+                        }
+                      }
+                    </span>
+                  </div>
+
+                  @if (l.r.plafonne) {
+                    <p class="ro-avert ro-avert--bloc">
+                      <lucide-icon [img]="AlertIcon" [size]="12"></lucide-icon>
+                      Plus de 500 propositions : seules les 500 premières sont prises. Relancez ensuite.
+                    </p>
+                  }
+
+                  @if (l.r.apercu.length > 0) {
+                    <ul class="ro-apercu">
+                      @for (a of l.r.apercu; track a.id) {
+                        <li>
+                          <span class="ro-plate">{{ a.plate || '—' }}</span>
+                          <span class="ro-when">{{ a.startAt | date:'EEE d MMM · HH:mm' }}–{{ a.endAt | date:'HH:mm' }}</span>
+                          @if (a.destinationLabel) { <span class="ro-dest">{{ a.destinationLabel }}</span> }
+                        </li>
+                      }
+                      @if (l.r.concernees > l.r.apercu.length) {
+                        <li class="ro-reste">… et {{ l.r.concernees - l.r.apercu.length }} autre{{ l.r.concernees - l.r.apercu.length > 1 ? 's' : '' }}</li>
+                      }
+                    </ul>
+                  }
+
+                  @if (l.r.horsGestion > 0) {
+                    <span class="ro-detail">{{ horsGestionTexte(l.r.horsGestion) }}</span>
+                  }
+                  @if (l.r.simulation) {
+                    <span class="ro-detail">
+                      Une proposition écartée ne revient pas : l'agent ne repropose jamais un créneau déjà traité.
+                      Elle n'immobilisait aucun véhicule, et personne n'est prévenu.
+                    </span>
+                    <button type="button" class="ro-lien" (click)="ouvrirIa.emit()">Les revoir une par une dans l'Assistant IA</button>
+                  }
+                }
+              }
+            } @else {
             @if (nonReprises().length > 0) {
               <!-- Les VRAIS refus du geste d'origine, avec le motif du serveur (contre-revue du 29/09).
                    Plus de « hors de portée » deviné ici : Réaffecter scinde une réservation en cours,
@@ -533,12 +687,33 @@ interface Lecture {
                 }
               }
             }
+            }
           }
           }
         </div>
 
         <div class="ro-foot">
-          @if (rien()) {
+          @if (quoiEffectif() === 'propositions') {
+            @if (!needsFleet()) {
+              @if (lueP(); as l) {
+                @if (l.r.simulation && l.applicable && l.r.concernees > 0) {
+                  <!-- Nomme ce qu'il fait et combien — le lot de la simulation LUE, renvoyé par ses identifiants. -->
+                  <button type="button" class="ro-btn ro-btn--go" [disabled]="envoiP() || chargementP()" (click)="ecarterPropositions()">
+                    @if (envoiP() || chargementP()) { <lucide-icon [img]="LoaderIcon" [size]="15" class="ro-spin"></lucide-icon> }
+                    @if (chargementP()) {
+                      Simulation en cours…
+                    } @else {
+                      Écarter {{ l.r.concernees > 1 ? 'ces ' + l.r.concernees + ' propositions' : 'cette proposition' }}
+                    }
+                  </button>
+                } @else if (!l.r.simulation) {
+                  <button type="button" class="ro-btn ro-btn--ok" (click)="closed.emit()">
+                    <lucide-icon [img]="CheckIcon" [size]="15"></lucide-icon> Terminé
+                  </button>
+                }
+              }
+            }
+          } @else if (rien()) {
             <button type="button" class="ro-btn ro-btn--ok" (click)="closed.emit()">Fermer</button>
           } @else if (!needsFleet() && !reaffecterSansVehicule()) {
             @if (lue(); as l) {
@@ -604,6 +779,8 @@ interface Lecture {
     .ro-apercu li { display: flex; align-items: baseline; gap: 8px; font-size: 12px; color: var(--fg-secondary); }
     .ro-plate { font-weight: 700; color: var(--fg-primary); font-family: var(--font-mono, monospace); }
     .ro-when { color: var(--fg-tertiary); text-transform: capitalize; }
+    /* 29/09 (piste 3) : la destination d'une proposition — coupée plutôt que de pousser la ligne hors de l'écran. */
+    .ro-dest { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--fg-tertiary); }
     .ro-tag { font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 999px; color: var(--texte-violet); border: 1px dashed color-mix(in srgb, var(--violet) 45%, transparent); }
     .ro-tag--public { color: var(--fg-secondary); border-style: solid; border-color: var(--border-strong); }
     .ro-tag--coupe { color: var(--texte-attente); border-style: solid; border-color: color-mix(in srgb, var(--warning) 45%, transparent); }
@@ -681,6 +858,8 @@ export class ReorganisationSheetComponent {
   private readonly fleetFilter = inject(FleetFilterService);
   private readonly toast = inject(ToastService);
   private readonly destroyRef = inject(DestroyRef);
+  /** Propositions écartées : la page (calendrier, badge, Assistant IA) relit ses propositions. */
+  private readonly sync = inject(AgendaSyncService);
 
   protected readonly ShuffleIcon = Shuffle;
   protected readonly SwapIcon = ArrowRightLeft;
@@ -816,20 +995,105 @@ export class ReorganisationSheetComponent {
     const s = this.reorganisables()?.societe;
     return `Aucune réservation à venir${s ? ` chez ${s}` : ''} dans les 30 prochains jours.`;
   });
-  /** Les propositions de l'agent, quand il y en a (IA active) : ce ne sont pas des réservations. */
+  /**
+   * Les propositions de l'agent, quand il y en a (IA active) : ce ne sont pas des réservations — mais,
+   * depuis la piste 3 (29/09), elles se reprennent d'ici, dans l'onglet « Propositions de l'agent ».
+   */
   protected readonly textePropositions = computed(() => {
     const n = this.iaActive() ? this.nbPropositions() : 0;
     if (n <= 0) return null;
     return n > 1
-      ? `Les ${n} propositions de l'agent ne sont pas des réservations`
-      : `La proposition de l'agent n'est pas une réservation`;
+      ? `Les ${n} propositions de l'agent, elles, se reprennent d'ici`
+      : `La proposition de l'agent, elle, se reprend d'ici`;
   });
   /** La suite de la phrase, accordée. */
   protected readonly suitePropositions = computed(() =>
     this.nbPropositions() > 1
-      ? "elles n'immobilisent aucun véhicule tant qu'on ne les a pas réservées, et se traitent dans l'Assistant IA."
-      : "elle n'immobilise aucun véhicule tant qu'on ne l'a pas réservée, et se traite dans l'Assistant IA.",
+      ? "un véhicule part au garage, une journée tombe — écartez-les d'un coup, après avoir vu la liste."
+      : "un véhicule part au garage, une journée tombe — écartez-la, après l'avoir vue.",
   );
+
+  // ─── 29/09 (piste 3 du propriétaire) — les propositions de l'agent ───────────────────────────
+
+  /** L'onglet choisi : les réservations, ou les propositions de l'agent (voir `quoiALOuverture`). */
+  protected readonly quoi = signal<QuoiReorganiser>('reservations');
+  /** IA coupée (ou statut perdu) pendant qu'on est sur les propositions : retour aux réservations. */
+  protected readonly quoiEffectif = computed<QuoiReorganiser>(() => (this.iaActive() ? this.quoi() : 'reservations'));
+  protected readonly chargementP = signal(false);
+  protected readonly envoiP = signal(false);
+  protected readonly erreurP = signal<string | null>(null);
+  /** La simulation (ou le compte-rendu) des propositions, AVEC le corps qui l'a produite. */
+  protected readonly lueP = signal<LecturePropositions | null>(null);
+  /** Dernière liste par véhicule des propositions (`null` = pas encore reçue) — tenue à part, comme `parVehiculeConnu`. */
+  private readonly parVehiculePConnu = signal<EcartPropositionsResultDto['parVehicule'] | null>(null);
+  private lectureP = 0;
+  private enVolP: Subscription | null = null;
+
+  /** « Réorganiser des réservations » sans onglet ; « Réorganiser » quand l'onglet dit sur quoi. */
+  protected readonly titre = computed(() => (this.ongletVisible() ? 'Réorganiser' : 'Réorganiser des réservations'));
+  protected readonly ongletVisible = computed(() =>
+    ongletPropositionsVisible({
+      iaActive: this.iaActive(),
+      sansSociete: this.needsFleet(),
+      quoi: this.quoi(),
+      propositionsPage: this.nbPropositions(),
+      propositionsListe: this.totalP(),
+    }),
+  );
+  /** Le nombre du bouton « Réservations » : ce que chevauche la fenêtre lue (véhicule choisi, ou tous). */
+  protected readonly compteOngletReservations = computed(() =>
+    this.rien() ? 0 : compteDeLaListe(this.parVehiculeConnu(), this.vehicleId()),
+  );
+  /** Le nombre du bouton « Propositions de l'agent », sur la même fenêtre et le même véhicule. */
+  protected readonly compteOngletPropositions = computed(() => compteDeLaListe(this.parVehiculePConnu(), this.vehicleId()));
+  /** Total de la dernière liste des propositions, tous véhicules (`null` = pas encore lue). */
+  protected readonly totalP = computed(() => compteDeLaListe(this.parVehiculePConnu(), ''));
+  /** La liste « Véhicule » de l'onglet : seuls les véhicules qui ont des propositions sur la fenêtre. */
+  protected readonly optionsVehiculeP = computed(() => {
+    const liste = this.parVehiculePConnu();
+    if (!liste) return [];
+    const plaques = new Map(this.vehicles().map((v) => [v.id, v.plate] as const));
+    return liste
+      .filter((v) => v.n > 0)
+      .map((v) => ({ vehicleId: v.vehicleId, plate: plaques.get(v.vehicleId) ?? v.plate, n: v.n }))
+      .sort((a, b) => (a.plate ?? '').localeCompare(b.plate ?? '', 'fr', { numeric: true }));
+  });
+  protected readonly vehiculeDansListeP = computed(() => this.optionsVehiculeP().some((v) => v.vehicleId === this.vehicleId()));
+  protected readonly texteListeVehiculesP = computed(() => {
+    const l = this.lueP();
+    const n = this.optionsVehiculeP().length;
+    if (!l || n === 0) return null; // le vide le dit lui-même
+    return n > 1
+      ? `${n} véhicules ont des propositions ${l.fenetre} : seuls ceux-là sont proposés.`
+      : `1 véhicule a des propositions ${l.fenetre} : seul celui-là est proposé.`;
+  });
+
+  protected choisirQuoi(q: QuoiReorganiser): void {
+    this.quoi.set(q);
+  }
+
+  protected surPlaqueP(l: LecturePropositions): string {
+    return l.corps.vehicleId ? ` sur ${this.plaqueDe(l.corps.vehicleId)}` : '';
+  }
+
+  /** Des propositions hors de ce que l'appelant gère : dit, jamais pris. */
+  protected horsGestionTexte(n: number): string {
+    return n > 1
+      ? `${n} autres propositions portent sur des véhicules dont vous ne gérez pas les réservations : elles ne se retirent pas d'ici.`
+      : `Une autre proposition porte sur un véhicule dont vous ne gérez pas les réservations : elle ne se retire pas d'ici.`;
+  }
+
+  protected dejaTraiteesTexte(n: number): string {
+    return n > 1
+      ? `${n} déjà traitées entre-temps (réservées ou écartées ailleurs, ou commencées) : laissées telles quelles`
+      : `1 déjà traitée entre-temps (réservée ou écartée ailleurs, ou commencée) : laissée telle quelle`;
+  }
+
+  /** Vide sur une fenêtre courte, tous véhicules : l'agent propose jusqu'à 14 jours — proposer d'élargir. */
+  protected plusLoinP(l: LecturePropositions): boolean {
+    if (l.corps.vehicleId || this.fenetreFixeActive() || this.nbPropositions() <= 0) return false;
+    return Math.round((Date.parse(l.corps.to) - Date.parse(l.corps.from)) / 86_400_000) < 30;
+  }
   protected readonly vehiculeDansListe = computed(() => this.optionsVehicule().some((v) => v.vehicleId === this.vehicleId()));
   protected readonly totalOrigine = computed(() => this.parVehicule().reduce((n, v) => n + v.n, 0));
 
@@ -1006,6 +1270,28 @@ export class ReorganisationSheetComponent {
         this.simuler(corps, fenetre, !comptageSeul);
       });
     });
+
+    /**
+     * 29/09 (piste 3) — la simulation des PROPOSITIONS, sur la même fenêtre et le même véhicule, dans
+     * les deux onglets : le bouton « Propositions de l'agent » porte son compte même quand on regarde
+     * les réservations. Elle ne dépend QUE de la fenêtre, du véhicule et de la société — ni de l'onglet,
+     * ni des critères des réservations, ni du nombre de propositions de la page : après un « Écarter »,
+     * la page relit ses propositions, et le compte-rendu doit rester affiché. IA coupée : rien.
+     * Créé APRÈS l'effet d'ouverture : les pré-réglages sont posés quand celui-ci lit les critères.
+     */
+    effect(() => {
+      if (!this.open() || this.needsFleet() || !this.iaActive()) {
+        untracked(() => {
+          this.oublierLecturesP();
+          this.lueP.set(null);
+          this.erreurP.set(null);
+          this.parVehiculePConnu.set(null);
+        });
+        return;
+      }
+      const { corps, fenetre } = this.preparerP();
+      untracked(() => this.simulerP(corps, fenetre));
+    });
   }
 
   private appliquerPreset(): void {
@@ -1033,6 +1319,19 @@ export class ReorganisationSheetComponent {
     const ids = Array.isArray(brut) ? [...new Set(brut.filter((id): id is string => typeof id === 'string' && id !== ''))] : [];
     this.idsPreset.set(ids);
     this.limiteeAuxRefus.set(ids.length > 0);
+    // 29/09 (piste 3) : l'onglet d'ouverture est celui qui a quelque chose — les propositions quand il
+    // n'y a qu'elles (cdef31), ou celui du geste. Leur lecture, elle, n'est PAS remise à zéro ici :
+    // l'effet des propositions l'a vidée à la fermeture et la relance à l'ouverture — l'oublier ici,
+    // selon l'ordre des effets, jetterait la simulation qu'il vient de lancer sans la relancer.
+    this.quoi.set(
+      p?.quoi ??
+        quoiALOuverture({
+          ouverteDepuisUnGeste: this.ouverteDepuisUnGeste(),
+          reservations: this.reorganisables()?.total ?? null,
+          iaActive: this.iaActive(),
+          propositions: this.nbPropositions(),
+        }),
+    );
   }
 
   /**
@@ -1059,12 +1358,10 @@ export class ReorganisationSheetComponent {
    * semaine plus tard visait une fenêtre déjà passée.
    */
   private preparer(action: ActionReorganisation): { corps: CorpsReorganisation; fenetre: string } {
-    const maintenant = Date.now();
-    const fixe = this.fenetreFixeActive() ? this.fenetrePreset() : null;
-    const jours = this.fenetre();
+    const { from, to, fenetre } = this.bornes();
     const corps: CorpsReorganisation = {
-      from: fixe?.from ?? new Date(maintenant).toISOString(),
-      to: fixe?.to ?? new Date(maintenant + jours * 86_400_000).toISOString(),
+      from,
+      to,
       origine: this.origine(),
       action,
       decalageMinutes: action === 'decaler' ? this.decalage() : undefined,
@@ -1074,7 +1371,39 @@ export class ReorganisationSheetComponent {
       // T3 : la liste blanche part dans le corps SIMULÉ — `appliquer()` le renvoie à l'identique.
       ids: this.limiteeAuxRefus() && this.idsPreset().length > 0 ? [...this.idsPreset()] : undefined,
     };
-    return { corps, fenetre: fixe ? this.periodeTexte(fixe) : `dans les ${jours} prochains jours` };
+    return { corps, fenetre };
+  }
+
+  /**
+   * La fenêtre courante — la période imposée si elle est en vigueur, sinon N jours à partir de
+   * maintenant, relu ICI (voir `preparer`) — et ses mots. Une seule règle pour les deux onglets
+   * (29/09, piste 3) : réservations et propositions d'un même véhicule se lisent sur la même période.
+   */
+  private bornes(): { from: string; to: string; fenetre: string } {
+    const maintenant = Date.now();
+    const fixe = this.fenetreFixeActive() ? this.fenetrePreset() : null;
+    const jours = this.fenetre();
+    return {
+      from: fixe?.from ?? new Date(maintenant).toISOString(),
+      to: fixe?.to ?? new Date(maintenant + jours * 86_400_000).toISOString(),
+      fenetre: fixe ? this.periodeTexte(fixe) : `dans les ${jours} prochains jours`,
+    };
+  }
+
+  /** Le corps d'une simulation de propositions : la fenêtre, le véhicule et la société, rien d'autre. */
+  private preparerP(): { corps: CorpsPropositions; fenetre: string } {
+    const { from, to, fenetre } = this.bornes();
+    return {
+      corps: {
+        from,
+        to,
+        vehicleId: this.vehicleId() || undefined,
+        // Super-admin seulement : le filtre est relu du navigateur, quel que soit le rôle (le serveur
+        // l'ignore aussi pour les autres).
+        fleetId: this.isSuperAdmin() ? (this.fleetFilter.selectedFleetId() ?? undefined) : undefined,
+      },
+      fenetre,
+    };
   }
 
   /**
@@ -1308,6 +1637,81 @@ export class ReorganisationSheetComponent {
             return;
           }
           this.toast.error('Échec', apiErrorMessage(err, 'La réorganisation n’a pas abouti.'));
+        },
+      });
+  }
+
+  // ─── 29/09 (piste 3) — simuler / écarter un lot de propositions ─────────────────────────────
+
+  /** Périme toute simulation de propositions en vol (numéro + désabonnement). */
+  private oublierLecturesP(): void {
+    this.lectureP++;
+    this.enVolP?.unsubscribe();
+    this.enVolP = null;
+    this.chargementP.set(false);
+  }
+
+  private simulerP(corps: CorpsPropositions, fenetre: string): void {
+    this.enVolP?.unsubscribe();
+    const n = ++this.lectureP;
+    this.chargementP.set(true);
+    this.erreurP.set(null);
+    this.enVolP = this.http
+      .post<EcartPropositionsResultDto>(URL_ECARTER_PROPOSITIONS, { ...corps, simulation: true } satisfies EcarterPropositionsDto)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: (r) => {
+          if (n !== this.lectureP) return; // périmée : un critère a changé, ou la feuille s'est refermée
+          this.lueP.set({ corps, fenetre, applicable: true, r });
+          this.parVehiculePConnu.set(r.parVehicule);
+          this.chargementP.set(false);
+        },
+        error: (err) => {
+          swallow('reorganisation:simulerPropositions', err);
+          if (n !== this.lectureP) return;
+          this.lueP.set(null);
+          this.erreurP.set(apiErrorMessage(err, 'Simulation impossible.'));
+          this.chargementP.set(false);
+        },
+      });
+  }
+
+  /**
+   * Écarte le lot de la simulation AFFICHÉE : ses identifiants (`lotIds`) repartent en `ids` — le
+   * serveur n'écarte que ceux-là, encore en attente. Une proposition arrivée depuis n'est pas dans le
+   * lot ; une proposition réservée ou écartée ailleurs entre-temps n'est pas touchée, et le compte-rendu
+   * le dit (`dejaTraitees`). La page relit ensuite ses propositions (calendrier, badge, Assistant IA).
+   */
+  protected ecarterPropositions(): void {
+    const l = this.lueP();
+    if (this.envoiP() || this.chargementP() || !l || !l.applicable || !l.r.simulation || l.r.concernees === 0) return;
+    this.enVolP?.unsubscribe();
+    this.enVolP = null;
+    const n = ++this.lectureP;
+    this.envoiP.set(true);
+    const corps: EcarterPropositionsDto = { ...l.corps, simulation: false, ids: [...l.r.lotIds] };
+    this.http
+      .post<EcartPropositionsResultDto>(URL_ECARTER_PROPOSITIONS, corps)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: (r) => {
+          this.envoiP.set(false);
+          // L'écriture a eu lieu : la page relit et le toast le dit, même si la feuille a été
+          // refermée entre-temps — seul l'écran n'est pas réécrit.
+          if (n === this.lectureP) {
+            this.lueP.set({ ...l, applicable: false, r });
+            this.parVehiculePConnu.set(r.parVehicule);
+          }
+          this.sync.propositionsModifiees();
+          this.toast.success(
+            `${r.ecartees} proposition${r.ecartees > 1 ? 's' : ''} écartée${r.ecartees > 1 ? 's' : ''}`,
+            r.dejaTraitees > 0 ? `${this.dejaTraiteesTexte(r.dejaTraitees)}.` : '',
+          );
+        },
+        error: (err) => {
+          swallow('reorganisation:ecarterPropositions', err);
+          this.envoiP.set(false);
+          this.toast.error('Échec', apiErrorMessage(err, 'Les propositions n’ont pas été écartées.'));
         },
       });
   }

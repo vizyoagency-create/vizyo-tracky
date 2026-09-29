@@ -119,6 +119,8 @@ export const AGENDA_ACTIVITY_ACTION_LABELS: Record<string, string> = {
   evenement_supprime: 'Événement supprimé',
   proposition_reservee: "Proposition de l'agent réservée",
   proposition_ecartee: "Proposition de l'agent écartée",
+  /** 29/09 (piste 3) — un lot écarté depuis Réorganiser : UNE ligne pour le lot, pas une par proposition. */
+  propositions_ecartees: "Propositions de l'agent écartées en lot",
   agenda_agent_run: "Passage de l'agent",
   sieges_modifies: 'Sièges auto modifiés',
   capacites_appliquees: 'Capacités du parc appliquées',

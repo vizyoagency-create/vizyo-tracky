@@ -1,6 +1,7 @@
 import type { VehicleEventType } from '@vizyo/tracky-shared';
 import {
   compteAgentMemorise,
+  compteDeLaListe,
   dansFenetreReorganisation,
   demandeNonReaffectable,
   dureeEnJours,
@@ -17,11 +18,15 @@ import {
   libelleVehiculesLibres,
   lotExactDeSimulation,
   memeVisibiliteIa,
+  menuReorganiser,
   memoriserCompteAgent,
+  ongletPropositionsVisible,
   origineAgentVisible,
   placesMaxLibres,
   propositionsDuPerimetre,
   propositionsParJour,
+  propositionsSurPeriode,
+  quoiALOuverture,
   raisonsVideRefusees,
   rangDuJour,
   repliDefinitif,
@@ -1016,5 +1021,102 @@ describe('rienAReorganiser — la feuille dit d’emblée qu’il n’y a rien',
 
   it('le compte-rendu d’une application n’est jamais remplacé par « rien »', () => {
     expect(rienAReorganiser({ ouverteDepuisUnGeste: false, lecture: simulation({ simulation: false }), compteMenu: 0 })).toBe(false);
+  });
+});
+
+describe('Réorganiser agit aussi sur les propositions de l’agent (29/09, piste 3)', () => {
+  describe('menuReorganiser — l’entrée du menu « ⋯ »', () => {
+    const menu = (over: Partial<Parameters<typeof menuReorganiser>[0]> = {}) =>
+      menuReorganiser({ reservations: 0, jours: 30, iaActive: true, propositions: 0, ...over });
+
+    it('cdef31 le 29/09 : aucune réservation, 307 propositions → ACTIVE, et elle dit ce qu’elle trouvera', () => {
+      expect(menu({ propositions: 307 })).toEqual({ grisee: false, ligne: "Aucune réservation à venir · 307 propositions de l'agent" });
+      expect(menu({ propositions: 1 }).ligne).toBe("Aucune réservation à venir · 1 proposition de l'agent");
+    });
+
+    it('ni réservation ni proposition : grisée, et la raison les nomme toutes les deux', () => {
+      expect(menu()).toEqual({ grisee: true, ligne: "Aucune réservation à venir sur 30 jours, ni proposition de l'agent" });
+    });
+
+    it('IA coupée par le client : les propositions ne comptent pas, et l’agent n’est pas nommé', () => {
+      expect(menu({ iaActive: false, propositions: 307 })).toEqual({ grisee: true, ligne: 'Aucune réservation à venir sur 30 jours' });
+    });
+
+    it('des réservations, ou un compte inconnu : active, sans ligne', () => {
+      expect(menu({ reservations: 3, propositions: 307 })).toEqual({ grisee: false, ligne: null });
+      expect(menu({ reservations: null })).toEqual({ grisee: false, ligne: null });
+    });
+  });
+
+  describe('quoiALOuverture — la feuille s’ouvre sur ce qu’il y a', () => {
+    const quoi = (over: Partial<Parameters<typeof quoiALOuverture>[0]> = {}) =>
+      quoiALOuverture({ ouverteDepuisUnGeste: false, reservations: 0, iaActive: true, propositions: 307, ...over });
+
+    it('rien que des propositions : sur les propositions', () => {
+      expect(quoi()).toBe('propositions');
+    });
+
+    it('des réservations, un compte inconnu, IA coupée, aucune proposition : sur les réservations', () => {
+      expect(quoi({ reservations: 2 })).toBe('reservations');
+      expect(quoi({ reservations: null })).toBe('reservations');
+      expect(quoi({ iaActive: false })).toBe('reservations');
+      expect(quoi({ propositions: 0 })).toBe('reservations');
+    });
+
+    it('ouverte depuis un geste (réservations refusées à reprendre) : sur les réservations', () => {
+      expect(quoi({ ouverteDepuisUnGeste: true })).toBe('reservations');
+    });
+  });
+
+  describe('ongletPropositionsVisible — l’onglet « Propositions de l’agent »', () => {
+    const onglet = (over: Partial<Parameters<typeof ongletPropositionsVisible>[0]> = {}) =>
+      ongletPropositionsVisible({ iaActive: true, sansSociete: false, quoi: 'reservations', propositionsPage: 0, propositionsListe: null, ...over });
+
+    it('IA coupée, ou super-admin sans société : jamais', () => {
+      expect(onglet({ iaActive: false, propositionsPage: 5, quoi: 'propositions' })).toBe(false);
+      expect(onglet({ sansSociete: true, propositionsPage: 5 })).toBe(false);
+    });
+
+    it('des propositions dans la page ou dans la liste de la feuille : visible', () => {
+      expect(onglet({ propositionsPage: 5 })).toBe(true);
+      expect(onglet({ propositionsListe: 2 })).toBe(true);
+    });
+
+    it('aucune proposition nulle part : caché — sauf si l’on y est (la page vient de les écarter toutes)', () => {
+      expect(onglet({ propositionsListe: 0 })).toBe(false);
+      expect(onglet({ quoi: 'propositions', propositionsListe: 0 })).toBe(true);
+    });
+  });
+
+  it('compteDeLaListe : le véhicule choisi (0 s’il n’y est pas), sinon le total ; inconnu = null', () => {
+    const liste = [{ vehicleId: 'v1', n: 2 }, { vehicleId: 'v2', n: 5 }];
+    expect(compteDeLaListe(liste, '')).toBe(7);
+    expect(compteDeLaListe(liste, 'v2')).toBe(5);
+    expect(compteDeLaListe(liste, 'v9')).toBe(0);
+    expect(compteDeLaListe(null, 'v1')).toBeNull();
+  });
+
+  describe('propositionsSurPeriode — un véhicule part au garage', () => {
+    const H = 3_600_000;
+    const maintenant = Date.UTC(2026, 9, 1, 8, 0);
+    const prop = (vehicleId: string, hDebut: number, hFin: number) => ({
+      vehicleId, startAt: new Date(maintenant + hDebut * H).toISOString(), endAt: new Date(maintenant + hFin * H).toISOString(),
+    });
+    const periode = { from: maintenant + 48 * H, to: maintenant + 72 * H };
+
+    it('celles du véhicule qui chevauchent la période — y compris celle qui déborde sur son début', () => {
+      const liste = [prop('v1', 50, 53), prop('v1', 46, 50), prop('v1', 70, 75), prop('v2', 50, 53)];
+      expect(propositionsSurPeriode(liste, 'v1', periode, maintenant)).toBe(3);
+    });
+
+    it('ni avant, ni après, ni un autre véhicule', () => {
+      const liste = [prop('v1', 40, 48), prop('v1', 72, 75), prop('v2', 50, 53)];
+      expect(propositionsSurPeriode(liste, 'v1', periode, maintenant)).toBe(0);
+    });
+
+    it('une proposition déjà commencée ne compte pas (elle ne se réserve plus) — comme le serveur', () => {
+      const enCours = { from: maintenant - 2 * H, to: maintenant + 5 * H };
+      expect(propositionsSurPeriode([prop('v1', -1, 2), prop('v1', 1, 3)], 'v1', enCours, maintenant)).toBe(1);
+    });
   });
 });
