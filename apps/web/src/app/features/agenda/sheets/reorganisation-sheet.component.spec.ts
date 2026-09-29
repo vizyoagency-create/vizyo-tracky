@@ -1,4 +1,6 @@
+import { registerLocaleData } from '@angular/common';
 import { provideHttpClient } from '@angular/common/http';
+import localeFr from '@angular/common/locales/fr';
 import { HttpTestingController, provideHttpClientTesting, type TestRequest } from '@angular/common/http/testing';
 import { TestBed, type ComponentFixture } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
@@ -44,6 +46,10 @@ describe('Réorganiser — onglet « Propositions de l’agent » (29/09, piste 
     parVehicule: [{ vehicleId: 'v1', plate: 'AA-1', n: 2 }],
     horsGestion: 0, plafonne: false, lotIds: ['p1', 'p2'], ...over,
   });
+
+  // La période d'un pré-réglage se dit en français (`libellePeriode`) : l'application enregistre la locale
+  // dans `main.ts`, un spec l'enregistre lui-même — sinon il dépend de l'ordre (aléatoire) des fichiers.
+  beforeAll(() => registerLocaleData(localeFr));
 
   beforeEach(() => {
     localStorage.removeItem('vizyo-fleet-filter');
