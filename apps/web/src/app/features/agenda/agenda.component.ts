@@ -29,6 +29,7 @@ import type {
   AgendaSummaryDto,
   CreateVehicleEventDto,
   ForecastSlotDto,
+  ReservationsReorganisablesDto,
   UpdateVehicleEventDto,
   VehicleActivitySlotDto,
   VehicleEventDto,
@@ -192,7 +193,7 @@ function groupeReservationId(ev: VehicleEventDto): string | null {
             }
             @if (canValidate() || canConfigureAgent()) {
               <div class="ag-dd-wrapper">
-                <button type="button" (click)="plusOpen.set(!plusOpen())" class="ag-icon-btn ag-icon-btn--plus" [class.ag-icon-btn--on]="plusOpen()"
+                <button type="button" (click)="basculerPlus()" class="ag-icon-btn ag-icon-btn--plus" [class.ag-icon-btn--on]="plusOpen()"
                         title="Plus d'actions" aria-label="Plus d'actions" [attr.aria-expanded]="plusOpen()">
                   <lucide-icon [img]="MoreIcon" [size]="18"></lucide-icon>
                 </button>
@@ -204,8 +205,19 @@ function groupeReservationId(ev: VehicleEventDto): string | null {
                       <button type="button" class="ag-dd-item" (click)="plusOpen.set(false); qrDialogOpen.set(true)">
                         <span class="ag-dd-item-row"><lucide-icon [img]="QrCodeIcon" [size]="14"></lucide-icon><span>QR de réservation</span></span>
                       </button>
-                      <button type="button" class="ag-dd-item" (click)="plusOpen.set(false); reorgSheetOpen.set(true)">
-                        <span class="ag-dd-item-row"><lucide-icon [img]="ShuffleIcon" [size]="14"></lucide-icon><span>Réorganiser des réservations</span></span>
+                      <!-- 29/09 (piste 4 du propriétaire) : rien ne chevauche les 30 prochains jours → l'entrée
+                           est grisée ET dit pourquoi (« Réorganiser est vide chez cdef31, on n'y comprend
+                           rien »). Compte inconnu (pas encore lu, lecture en échec) : elle reste active, la
+                           feuille l'expliquera elle-même. -->
+                      <button type="button" class="ag-dd-item" [disabled]="rienAReorganiser()" [attr.aria-disabled]="rienAReorganiser()"
+                              [attr.title]="rienAReorganiser() ? raisonRienAReorganiser() : null"
+                              (click)="plusOpen.set(false); reorgSheetOpen.set(true)">
+                        <span class="ag-dd-item-content">
+                          <span class="ag-dd-item-row"><lucide-icon [img]="ShuffleIcon" [size]="14"></lucide-icon><span>Réorganiser des réservations</span></span>
+                          @if (rienAReorganiser()) {
+                            <span class="ag-dd-item-meta ag-dd-item-raison">{{ raisonRienAReorganiser() }}</span>
+                          }
+                        </span>
                       </button>
                     }
                     @if (canConfigureAgent()) {
@@ -1094,7 +1106,10 @@ function groupeReservationId(ev: VehicleEventDto): string | null {
       [vehicles]="scopedVehicles()"
       [preset]="reorgPreset()"
       [iaActive]="iaActive()"
+      [reorganisables]="reorganisables()"
+      [nbPropositions]="iaActive() ? agentProposalCount() : 0"
       (closed)="reorgSheetOpen.set(false); reorgPreset.set(null)"
+      (ouvrirIa)="reorgSheetOpen.set(false); reorgPreset.set(null); vue.set('ia')"
       (applique)="onReservationChanged()" />
   `,
   styles: [`
@@ -1304,6 +1319,10 @@ function groupeReservationId(ev: VehicleEventDto): string | null {
     .ag-dd-item-content { display: flex; flex-direction: column; min-width: 0; flex: 1; }
     .ag-dd-item-plate { font-family: var(--font-mono, monospace); font-weight: 700; font-size: 13px; color: inherit; }
     .ag-dd-item-meta { font-size: 11px; color: var(--fg-tertiary); font-weight: 400; margin-top: 2px; }
+    /* 29/09 (piste 4) : une entrée grisée DIT pourquoi, sous son libellé, aligné sur le texte. */
+    .ag-dd-item:disabled { opacity: .62; cursor: not-allowed; }
+    .ag-dd-item:disabled:hover { background: transparent; color: var(--fg-secondary); }
+    .ag-dd-item-raison { padding-left: 23px; white-space: normal; line-height: 1.35; }
     .ag-dd-divider { height: 1px; background: var(--border-subtle); margin: 6px 4px; }
 
     /* Segmented (type) */
@@ -1733,6 +1752,9 @@ export class AgendaComponent implements OnInit {
     void this.loadForecast();
     void this.loadAgentProposals();
     void this.loadPendingRequests();
+    // 29/09 : le compte de l'ancienne société ne grise jamais le menu de la nouvelle.
+    this.reorganisables.set(null);
+    void this.loadReorganisables();
   }
 
   /**
@@ -1754,7 +1776,7 @@ export class AgendaComponent implements OnInit {
    * 29/09 : les propositions de l'agent ont rejoint le compteur — le chemin « IA coupée » vide la
    * liste, et une lecture partie juste avant ne doit pas la remplir derrière lui.
    */
-  private readonly lecture = { events: 0, summary: 0, activity: 0, forecast: 0, pending: 0, propositions: 0 };
+  private readonly lecture = { events: 0, summary: 0, activity: 0, forecast: 0, pending: 0, propositions: 0, reorganisables: 0 };
 
   // ─── Icônes ───────────────────────────────────────────────────────────────
   protected readonly CalendarDaysIcon = CalendarDays;
@@ -1960,6 +1982,35 @@ export class AgendaComponent implements OnInit {
   protected readonly vue = signal<VueAgenda>('calendrier');
   /** Menu « ⋯ » de l'en-tête (QR, réorganiser, paramètres). */
   protected readonly plusOpen = signal(false);
+  /**
+   * 29/09 (pistes 1 et 4 du propriétaire) — ce que « Réorganiser » trouverait sur les 30 prochains
+   * jours (`GET /reservations/reorganisables`) : `null` tant qu'il n'est pas lu, ou si la lecture a
+   * échoué — l'entrée reste alors active, et la feuille l'expliquera elle-même.
+   */
+  protected readonly reorganisables = signal<ReservationsReorganisablesDto | null>(null);
+  /** Rien ne chevauche les 30 prochains jours : l'entrée du menu est grisée, avec sa raison. */
+  protected readonly rienAReorganiser = computed(() => this.reorganisables()?.total === 0);
+  /**
+   * La raison, sous l'entrée grisée. Quand l'agenda n'a que des PROPOSITIONS de l'agent (cdef31 le
+   * 29/09 : 0 réservation à venir, 317 propositions), elle dit où elles se traitent — c'était
+   * exactement la confusion : des pointillés partout, et « Réorganiser » qui ne trouvait rien.
+   */
+  protected readonly raisonRienAReorganiser = computed(() => {
+    const jours = this.reorganisables()?.jours ?? 30;
+    const base = `Aucune réservation à venir sur ${jours} jours`;
+    const n = this.iaActive() ? this.agentProposalCount() : 0;
+    if (n > 0) {
+      return `${base} — ${n > 1 ? `les ${n} propositions de l'agent se traitent` : `la proposition de l'agent se traite`} dans l'Assistant IA`;
+    }
+    return base;
+  });
+
+  /** Ouvre / ferme le menu « ⋯ » — à l'ouverture, le compte de Réorganiser est relu (il suit l'agenda). */
+  protected basculerPlus(): void {
+    const ouvert = !this.plusOpen();
+    this.plusOpen.set(ouvert);
+    if (ouvert && this.canValidate()) void this.loadReorganisables();
+  }
   /**
    * La vue Assistant IA n'a de sens qu'avec une fonction IA ouverte, ou des propositions à traiter —
    * et, depuis le 29/09, seulement IA ACTIVE : IA coupée par le client, des propositions restées à
@@ -2735,6 +2786,7 @@ export class AgendaComponent implements OnInit {
     void this.loadForecast();
     void this.loadAgentProposals();
     void this.loadPendingRequests();
+    void this.loadReorganisables();
     this.initialised = true; // à partir d'ici, un changement de société recharge tout
     // Les lectures relancées prennent de nouveaux numéros : celles de l'ancienne société sont ignorées.
     const finale = this.fleetFilter.selectedFleetId();
@@ -4066,6 +4118,25 @@ export class AgendaComponent implements OnInit {
    * celle qui commande le bouton. Demander ce compte sans le droit ne produirait qu'un 403 et
    * une notification rouge sur un écran qui, lui, fonctionne.
    */
+  /**
+   * 29/09 (pistes 1 et 4) — ce que Réorganiser trouverait sur 30 jours, pour la société du bandeau.
+   * Même garde que les autres chargeurs (T15) : une réponse d'une autre société ou d'une lecture
+   * dépassée ne s'écrit pas. En échec : inconnu (`null`), l'entrée du menu reste active.
+   */
+  protected async loadReorganisables(): Promise<void> {
+    const n = ++this.lecture.reorganisables;
+    if (!this.canValidate()) { this.reorganisables.set(null); return; }
+    try {
+      const r = await firstValueFrom(this.api.reorganisables(this.currentFleetId()));
+      if (n !== this.lecture.reorganisables) return;
+      this.reorganisables.set(r);
+    } catch (err) {
+      swallow('agenda:loadReorganisables', err);
+      if (n !== this.lecture.reorganisables) return;
+      this.reorganisables.set(null);
+    }
+  }
+
   protected async loadPendingRequests(): Promise<void> {
     const n = ++this.lecture.pending; // T15 : même course que les autres chargeurs (changement de société)
     if (!this.canValidate()) { this.pendingCount.set(0); return; }
@@ -4182,5 +4253,7 @@ export class AgendaComponent implements OnInit {
     void this.loadActivity();
     // Le badge suit la file : valider ou refuser une demande doit le faire tomber tout de suite.
     void this.loadPendingRequests();
+    // 29/09 : la dernière réservation annulée grise « Réorganiser », la première posée le rallume.
+    void this.loadReorganisables();
   }
 }

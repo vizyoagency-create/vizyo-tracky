@@ -15,6 +15,7 @@ import type {
   ReaffecterReservationDto,
   RequestReservationDto,
   ReservationGroupDto,
+  ReservationsReorganisablesDto,
   SuggestReservationResultDto,
   SuggestedVehicleDto,
   UpdateReservationDto,
@@ -63,6 +64,27 @@ const UNDERUTILIZED_RATIO = 0.12;
  * ET l'écran le dit : un lot silencieusement incomplet serait pire qu'un refus franc.
  */
 const MAX_REORGANISATION = 500;
+/**
+ * 29/09 (pistes 1 et 4 du propriétaire) — la fenêtre la plus large de Réorganiser (7 / 14 / 30 jours).
+ * Rien ne la chevauche : il n'y a rien à réorganiser, quel que soit le choix dans la feuille.
+ */
+const JOURS_REORGANISABLES = 30;
+const JOUR_MS = 24 * 60 * 60 * 1000;
+/**
+ * Une réservation que Réorganiser peut reprendre sur [debutMs, finMs) : VIVANTE (ni close ni annulée)
+ * et qui CHEVAUCHE la fenêtre, commencée avant ou non — le lot de « réaffecter » et ce que compte
+ * `parVehicule`. Une seule règle pour la simulation et pour le compte du menu (`reorganisables`) :
+ * le menu ne grise jamais une feuille qui aurait trouvé quelque chose.
+ */
+function chevaucheFenetre(e: VehicleEventDto, debutMs: number, finMs: number): boolean {
+  return (
+    e.status !== VehicleEventStatus.DONE &&
+    e.status !== VehicleEventStatus.CANCELLED &&
+    !!e.endAt &&
+    new Date(e.endAt).getTime() > debutMs &&
+    new Date(e.startAt).getTime() < finMs
+  );
+}
 /**
  * Revue du 29/09 (C4/C43) — une réservation NE CHANGE PAS de société. Un super-admin en « Toutes
  * les sociétés » se voyait proposer les plaques de tous les clients : réaffecter une réservation de
@@ -2383,6 +2405,44 @@ export class ReservationsService {
     return ecrite;
   }
 
+  /**
+   * ── CE QUE RÉORGANISER TROUVERAIT, SANS SIMULER (29/09, pistes 1 et 4 du propriétaire) ───────
+   *
+   * « Réorganiser est vide chez cdef31 et on n'y comprend rien » : la feuille alignait 30 véhicules à
+   * « (0) » et des conseils sans objet, et ne disait qu'en dernière ligne qu'il n'y avait aucune
+   * réservation à venir — cdef31 n'avait que des PROPOSITIONS de l'agent, qui ne sont pas des
+   * réservations. Ce compte permet à la page de griser « Réorganiser » dans le menu « ⋯ » en disant
+   * pourquoi, et à la feuille de l'expliquer d'emblée.
+   *
+   * Même périmètre et même règle que la simulation : les réservations vivantes qui CHEVAUCHENT les
+   * 30 prochains jours (`chevaucheFenetre`), dans la société de l'utilisateur (ou celle du bandeau
+   * d'un super-admin) et ses véhicules accessibles — ce que compterait `parVehicule` d'une simulation
+   * « Toutes » sur 30 jours. Le nom de la société n'est rendu que quand il n'y en a qu'une.
+   */
+  async reorganisables(user: AuthUser, fleetId?: string): Promise<ReservationsReorganisablesDto> {
+    const maintenant = Date.now();
+    const fin = maintenant + JOURS_REORGANISABLES * JOUR_MS;
+    const toutes = await this.events.list(user, {
+      from: new Date(maintenant),
+      to: new Date(fin),
+      type: VehicleEventType.RESERVATION,
+      fleetId,
+    });
+    const total = toutes.filter((e) => chevaucheFenetre(e, maintenant, fin)).length;
+    // Un non-super-admin est borné à SA société (le périmètre de `events.list` fait de même) ; un
+    // super-admin n'a de société que celle du bandeau.
+    const societeId = user.role === UserRole.SUPER_ADMIN ? (fleetId ?? null) : (user.fleetId ?? null);
+    let societe: string | null = null;
+    if (societeId) {
+      try {
+        societe = (await this.prisma.fleet.findUnique({ where: { id: societeId }, select: { name: true } }))?.name ?? null;
+      } catch {
+        societe = null; // le nom n'est qu'un confort de texte : jamais une erreur pour lui
+      }
+    }
+    return { total, jours: JOURS_REORGANISABLES, societe };
+  }
+
   async reorganiser(user: AuthUser, dto: ReorganiserReservationsDto): Promise<ReorganisationResultDto> {
     const simulation = dto?.simulation !== false;
     const action = dto?.action;
@@ -2456,13 +2516,7 @@ export class ReservationsService {
      *  - « annuler » et « décaler » : seulement ce qui COMMENCE dans la fenêtre — annuler ou décaler une
      *    réservation en cours réécrirait sa partie écoulée.
      */
-    const chevauchantes = toutes.filter(
-      (e) =>
-        vivante(e) &&
-        !!e.endAt &&
-        new Date(e.endAt).getTime() > debut.getTime() &&
-        new Date(e.startAt).getTime() < to.getTime(),
-    );
+    const chevauchantes = toutes.filter((e) => chevaucheFenetre(e, debut.getTime(), to.getTime()));
     const vivantes =
       action === 'reaffecter'
         ? chevauchantes

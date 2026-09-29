@@ -15,7 +15,12 @@ import { DatePipe, formatDate } from '@angular/common';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import type { Subscription } from 'rxjs';
 import { AlertTriangle, ArrowRightLeft, Check, Loader, LucideAngularModule, Shuffle, X } from 'lucide-angular';
-import type { OrigineReservation, ReorganisationResultDto, ReorganiserReservationsDto } from '@vizyo/tracky-shared';
+import type {
+  OrigineReservation,
+  ReorganisationResultDto,
+  ReorganiserReservationsDto,
+  ReservationsReorganisablesDto,
+} from '@vizyo/tracky-shared';
 import { apiErrorMessage } from '../../../core/error/api-error';
 import { swallow } from '../../../core/error/swallow';
 import { AuthService } from '../../../core/services/auth.service';
@@ -30,6 +35,7 @@ import {
   memoriserCompteAgent,
   origineAgentVisible,
   raisonsVideRefusees,
+  rienAReorganiser,
 } from '../agenda.utils';
 
 /** Fenêtres proposées — celles qu'on veut réellement reprendre, pas un sélecteur de dates. */
@@ -188,6 +194,26 @@ interface Lecture {
         </div>
 
         <div class="ro-body">
+          @if (rien()) {
+            <!-- 29/09 (piste 1 du propriétaire) : « Réorganiser est vide chez cdef31 et on n'y comprend
+                 rien ». Quand aucune réservation ne chevauche les 30 prochains jours, la feuille le dit
+                 EN TÊTE — ce qu'elle fait, pourquoi il n'y a rien, où sont les propositions de l'agent —
+                 au lieu d'aligner des « (0) » au-dessus d'une dernière ligne. -->
+            <div class="ro-rien" role="status">
+              <p class="ro-rien-t"><lucide-icon [img]="CheckIcon" [size]="16"></lucide-icon> Rien à réorganiser</p>
+              <p class="ro-rien-l">{{ texteRien() }}</p>
+              <p class="ro-rien-s">
+                Réorganiser reprend d'un coup des réservations déjà posées — un véhicule part au garage,
+                une journée tombe, les horaires glissent. Il n'y en a aucune à reprendre pour l'instant.
+              </p>
+              @if (textePropositions(); as tp) {
+                <p class="ro-rien-s"><strong>{{ tp }}</strong> : {{ suitePropositions() }}</p>
+                <button type="button" class="ro-lien" (click)="ouvrirIa.emit()">Ouvrir l'Assistant IA</button>
+              } @else {
+                <p class="ro-rien-s">Une réservation se pose avec « Réserver » : dès qu'il y en aura, elle se réorganisera d'ici.</p>
+              }
+            </div>
+          } @else {
           <p class="ro-intro">
             Reprendre d'un coup les réservations <strong>à venir</strong>. Le passé n'est jamais touché,
             et rien n'est appliqué avant que vous ayez vu la liste.
@@ -228,8 +254,10 @@ interface Lecture {
 
               <div class="ro-f">
                 <span>Véhicule</span>
-                <!-- TOUT le parc, pas seulement les véhicules comptés : celui qui tombe en panne en
-                     pleine réservation doit pouvoir se choisir (contre-revue du 29/09). -->
+                <!-- 29/09 (piste 2 du propriétaire) : seuls les véhicules qui ONT des réservations sur la
+                     fenêtre (optionsVehicule) — plus 30 lignes à « (0) ». Le véhicule qui tombe en panne
+                     en pleine réservation y est, par sa réservation en cours (le compte porte sur ce qui
+                     chevauche la fenêtre) ; le véhicule choisi reste toujours dans la liste. -->
                 <select class="ro-in" [value]="vehicleId()" (change)="choisirVehicule($any($event.target).value)" aria-label="Véhicule concerné">
                   <option value="" [selected]="vehicleId() === ''">Tous les véhicules@if (listeConnue()) { ({{ totalOrigine() }}) }</option>
                   @for (v of optionsVehicule(); track v.vehicleId) {
@@ -241,6 +269,9 @@ interface Lecture {
                     <option [value]="vehicleId()" selected>{{ plaqueDe(vehicleId()) }}@if (compteVehiculeVisible(vehicleId())) { (0) }</option>
                   }
                 </select>
+                @if (texteListeVehicules(); as tl) {
+                  <span class="ro-detail">{{ tl }}</span>
+                }
               </div>
 
               <div class="ro-f">
@@ -286,7 +317,8 @@ interface Lecture {
                 @if (comptes(); as c) {
                   <span class="ro-detail">{{ plaqueLue() ? 'Sur ' + plaqueLue() : 'Sur la fenêtre' }}{{ lotLimite() ? ', toute la période (pas seulement les refusées)' : '' }} : {{ c.manuelle }} saisie{{ c.manuelle > 1 ? 's' : '' }} à la main · {{ c.public }} du lien public@if (boutonAgentVisible()) { · {{ c.agent }} de l'agent}.</span>
                 }
-                @if (origine() === 'toutes') {
+                <!-- 29/09 : l'avertissement ne parle que d'une liste qui contient quelque chose. -->
+                @if (origine() === 'toutes' && lotNonVide()) {
                   <span class="ro-avert">
                     <lucide-icon [img]="AlertIcon" [size]="12"></lucide-icon>
                     Inclut les réservations saisies par des personnes : relisez la liste avant d'appliquer.
@@ -304,7 +336,8 @@ interface Lecture {
                   <button type="button" class="ro-seg-btn" [class.ro-seg-btn--on]="action() === 'decaler'"
                           (click)="action.set('decaler')">Décaler</button>
                 </div>
-                @if (!vehicleId() && action() !== 'reaffecter') {
+                <!-- 29/09 : seulement s'il y a un véhicule à choisir — sans réservation, rien à réaffecter. -->
+                @if (!vehicleId() && action() !== 'reaffecter' && optionsVehicule().length > 0) {
                   <span class="ro-detail">Réaffecter demande un véhicule : choisissez d'abord celui qui part au garage.</span>
                 }
               </div>
@@ -411,7 +444,12 @@ interface Lecture {
                   } @else if (plaqueLue(); as p) {
                     <p><strong>Rien à venir sur {{ p }}</strong> {{ l.fenetre }} : aucune réservation à reprendre.</p>
                   } @else {
-                    <p><strong>Aucune réservation à venir</strong> {{ l.fenetre }} : rien à réorganiser. C'est le bon état.</p>
+                    <p><strong>Aucune réservation à venir</strong> {{ l.fenetre }} : rien à réorganiser.</p>
+                    <!-- 29/09 : une fenêtre courte vide ne dit rien des jours d'après — le compte des 30 jours, si. -->
+                    @if (plusLoin(l); as n) {
+                      <p>{{ n > 1 ? n + ' réservations' : 'Une réservation' }} plus loin, dans les 30 prochains jours.</p>
+                      <button type="button" class="ro-lien" (click)="choisirDuree(30)">Voir sur 30 jours</button>
+                    }
                   }
                 </div>
               } @else {
@@ -489,10 +527,13 @@ interface Lecture {
               }
             }
           }
+          }
         </div>
 
         <div class="ro-foot">
-          @if (!needsFleet() && !reaffecterSansVehicule()) {
+          @if (rien()) {
+            <button type="button" class="ro-btn ro-btn--ok" (click)="closed.emit()">Fermer</button>
+          } @else if (!needsFleet() && !reaffecterSansVehicule()) {
             @if (lue(); as l) {
               @if (l.r.simulation && l.applicable && prevues(l.r) > 0) {
                 <!-- Le bouton d'application NOMME ce qu'il fait et COMBIEN — ceux de la simulation LUE,
@@ -574,6 +615,16 @@ interface Lecture {
     .ro-refus-n { font-size: 11.5px; color: var(--fg-primary); line-height: 1.4; margin-top: 3px; }
     /* Le vide s'explique : ce qu'il y a, ce qu'il n'y a pas, et le geste pour sortir de là. */
     .ro-vide { display: flex; flex-direction: column; gap: 6px; padding: 12px 13px; border-radius: 12px; background: var(--bg-tertiary); font-size: 12.5px; color: var(--fg-secondary); line-height: 1.45; }
+    /* 29/09 (piste 1) : rien à réorganiser — dit en tête, en clair, et rien d'autre à l'écran. */
+    .ro-rien { display: flex; flex-direction: column; gap: 8px; padding: 16px 16px 14px; border-radius: 14px;
+               background: color-mix(in srgb, var(--tracky-light) 7%, var(--bg-tertiary));
+               border: 1px solid color-mix(in srgb, var(--tracky-light) 30%, transparent); }
+    .ro-rien p { margin: 0; }
+    .ro-rien-t { display: flex; align-items: center; gap: 7px; font-family: var(--font-display, inherit); font-size: 16px; font-weight: 800; color: var(--fg-primary); }
+    .ro-rien-t lucide-icon { color: var(--texte-succes); }
+    .ro-rien-l { font-size: 14px; font-weight: 600; color: var(--fg-primary); line-height: 1.45; }
+    .ro-rien-s { font-size: 12.5px; color: var(--fg-secondary); line-height: 1.5; }
+    .ro-rien-s strong { color: var(--fg-primary); }
     .ro-vide p { margin: 0; }
     .ro-vide strong { color: var(--fg-primary); }
     .ro-lien { align-self: flex-start; font-size: 12.5px; font-weight: 700; color: var(--texte-succes); text-decoration: underline; padding: 2px 0; }
@@ -604,9 +655,19 @@ export class ReorganisationSheetComponent {
    * confirmation (opt-in, comme `AiStatusService`).
    */
   readonly iaActive = input(false);
+  /**
+   * 29/09 (pistes 1 et 4 du propriétaire) — ce que la page sait de la société sans simuler
+   * (`GET /reservations/reorganisables`) : réservations vivantes qui chevauchent les 30 prochains
+   * jours, et le nom de la société. `null` = inconnu.
+   */
+  readonly reorganisables = input<ReservationsReorganisablesDto | null>(null);
+  /** Propositions de l'agent en attente, montrées par la page (0 si l'IA est coupée). */
+  readonly nbPropositions = input(0);
   readonly closed = output<void>();
   /** Émis après une application réelle — l'agenda recharge ses couches. */
   readonly applique = output<void>();
+  /** « Ouvrir l'Assistant IA » depuis le vide : la page ferme la feuille et change de vue. */
+  readonly ouvrirIa = output<void>();
 
   private readonly http = inject(HttpClient);
   private readonly auth = inject(AuthService);
@@ -680,22 +741,88 @@ export class ReorganisationSheetComponent {
   protected readonly parVehicule = computed(() => this.parVehiculeConnu() ?? []);
   protected readonly listeConnue = computed(() => this.parVehiculeConnu() !== null);
   /**
-   * La liste « Véhicule » = le PARC reçu en entrée, chaque plaque avec son compte de la dernière
-   * simulation (0 si elle n'y figure pas). Contre-revue du 29/09 : elle ne listait que `parVehicule`
-   * — les véhicules que le dernier comptage avait trouvés. Un véhicule en panne en pleine réservation
-   * (sa seule réservation, déjà commencée, écartée par un comptage « annuler ») n'y était pas ; or
-   * Réaffecter demande un véhicule : depuis le menu, le cas même du véhicule qui part au garage
-   * était injoignable. Un véhicule compté par le serveur mais absent du parc reçu reste choisissable.
+   * La liste « Véhicule » — 29/09 (piste 2 du propriétaire) : SEULS les véhicules qui ont des
+   * réservations sur la fenêtre lue (compte > 0 de la dernière simulation). Chez cdef31, elle alignait
+   * les 30 véhicules du parc à « (0) » : une liste à parcourir pour ne rien trouver.
+   *
+   * Pourquoi c'est sûr aujourd'hui (la contre-revue du 29/09 avait fait l'inverse) : `parVehicule`
+   * compte ce qui CHEVAUCHE la fenêtre, quelle que soit l'action — le véhicule qui tombe en panne en
+   * pleine réservation y figure donc, par sa réservation en cours. Un véhicule sans aucune réservation
+   * n'a rien à reprendre. Le véhicule CHOISI (ou celui du pré-réglage) reste toujours dans la liste,
+   * même à 0 (option ajoutée par le gabarit). Avant la première simulation : rien que « Tous ».
    */
   protected readonly optionsVehicule = computed(() => {
-    const comptes = new Map(this.parVehicule().map((v) => [v.vehicleId, v.n] as const));
-    const options = this.vehicles().map((v) => ({ vehicleId: v.id, plate: v.plate, n: comptes.get(v.id) ?? 0 }));
-    const connus = new Set(options.map((o) => o.vehicleId));
-    for (const v of this.parVehicule()) {
-      if (!connus.has(v.vehicleId)) options.push({ vehicleId: v.vehicleId, plate: v.plate, n: v.n });
-    }
-    return options.sort((a, b) => (a.plate ?? '').localeCompare(b.plate ?? '', 'fr', { numeric: true }));
+    if (!this.listeConnue()) return [];
+    const plaques = new Map(this.vehicles().map((v) => [v.id, v.plate] as const));
+    return this.parVehicule()
+      .filter((v) => v.n > 0)
+      .map((v) => ({ vehicleId: v.vehicleId, plate: plaques.get(v.vehicleId) ?? v.plate, n: v.n }))
+      .sort((a, b) => (a.plate ?? '').localeCompare(b.plate ?? '', 'fr', { numeric: true }));
   });
+  /** 29/09 (piste 2) — sous la liste : combien de véhicules ont des réservations, et que seuls ceux-là sont proposés. */
+  protected readonly texteListeVehicules = computed(() => {
+    const l = this.lue();
+    if (!this.listeConnue() || !l) return null;
+    const n = this.optionsVehicule().length;
+    const agent = l.corps.origine === 'auto';
+    const quoi = agent ? "des réservations posées par l'agent" : 'des réservations';
+    if (n === 0) return `Aucun véhicule n'a de réservation${agent ? " posée par l'agent" : ''} ${l.fenetre}.`;
+    return n > 1
+      ? `${n} véhicules ont ${quoi} ${l.fenetre} : seuls ceux-là sont proposés.`
+      : `1 véhicule a ${quoi} ${l.fenetre} : seul celui-là est proposé.`;
+  });
+  /** La simulation lue a au moins une réservation dans son lot (l'avertissement « relisez la liste » n'a de sens qu'alors). */
+  protected readonly lotNonVide = computed(() => {
+    const l = this.lue();
+    return !!l && l.r.concernees > 0;
+  });
+  /** Ouverte depuis un geste de la page (véhicule, période, refusées) : son vide garde ses propres mots. */
+  private readonly ouverteDepuisUnGeste = computed(() => {
+    const p = this.preset();
+    return !!p && (!!p.vehicleId || !!p.from || (p.ids?.length ?? 0) > 0 || (p.nonReprises?.length ?? 0) > 0);
+  });
+  /**
+   * 29/09 (piste 1) — RIEN À RÉORGANISER : aucune réservation vivante ne chevauche les 30 prochains
+   * jours dans la société. La feuille le dit en tête et ne montre rien d'autre (voir `rienAReorganiser`).
+   */
+  protected readonly rien = computed(() => {
+    if (this.needsFleet()) return false;
+    const l = this.lue();
+    return rienAReorganiser({
+      ouverteDepuisUnGeste: this.ouverteDepuisUnGeste(),
+      lecture: l
+        ? {
+            simulation: l.r.simulation,
+            origine: l.corps.origine,
+            avecVehicule: !!l.corps.vehicleId,
+            avecListeBlanche: !!l.corps.ids,
+            jours: Math.round((Date.parse(l.corps.to) - Date.parse(l.corps.from)) / 86_400_000),
+            // Sans `parVehicule` (API d'avant), on ne conclut pas au vide.
+            chevauchantes: l.r.parVehicule ? l.r.parVehicule.reduce((n, v) => n + v.n, 0) : 1,
+          }
+        : null,
+      compteMenu: this.reorganisables()?.total ?? null,
+    });
+  });
+  /** « Aucune réservation à venir chez cdef31 dans les 30 prochains jours. » */
+  protected readonly texteRien = computed(() => {
+    const s = this.reorganisables()?.societe;
+    return `Aucune réservation à venir${s ? ` chez ${s}` : ''} dans les 30 prochains jours.`;
+  });
+  /** Les propositions de l'agent, quand il y en a (IA active) : ce ne sont pas des réservations. */
+  protected readonly textePropositions = computed(() => {
+    const n = this.iaActive() ? this.nbPropositions() : 0;
+    if (n <= 0) return null;
+    return n > 1
+      ? `Les ${n} propositions de l'agent ne sont pas des réservations`
+      : `La proposition de l'agent n'est pas une réservation`;
+  });
+  /** La suite de la phrase, accordée. */
+  protected readonly suitePropositions = computed(() =>
+    this.nbPropositions() > 1
+      ? "elles n'immobilisent aucun véhicule tant qu'on ne les a pas réservées, et se traitent dans l'Assistant IA."
+      : "elle n'immobilise aucun véhicule tant qu'on ne l'a pas réservée, et se traite dans l'Assistant IA.",
+  );
   protected readonly vehiculeDansListe = computed(() => this.optionsVehicule().some((v) => v.vehicleId === this.vehicleId()));
   protected readonly totalOrigine = computed(() => this.parVehicule().reduce((n, v) => n + v.n, 0));
 
@@ -948,6 +1075,17 @@ export class ReorganisationSheetComponent {
       return `le ${formatDate(debut, 'EEE d MMM', 'fr')} de ${formatDate(debut, 'HH:mm', 'fr')} à ${formatDate(fin, 'HH:mm', 'fr')}`;
     }
     return `du ${formatDate(debut, 'EEE d MMM', 'fr')} au ${formatDate(fin, 'EEE d MMM', 'fr')}`;
+  }
+
+  /**
+   * 29/09 — la simulation lue (« Toutes », sans véhicule ni liste blanche) est vide sur une fenêtre de
+   * moins de 30 jours, et le compte du menu en trouve sur 30 : combien, pour proposer d'élargir. 0 sinon.
+   */
+  protected plusLoin(l: Lecture): number {
+    const total = this.reorganisables()?.total ?? 0;
+    if (total <= 0 || this.fenetreFixeActive() || l.corps.origine !== 'toutes' || l.corps.vehicleId || l.corps.ids) return 0;
+    const jours = Math.round((Date.parse(l.corps.to) - Date.parse(l.corps.from)) / 86_400_000);
+    return jours < 30 ? total : 0;
   }
 
   protected choisirDuree(jours: number): void {

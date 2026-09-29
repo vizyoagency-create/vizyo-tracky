@@ -870,3 +870,51 @@ export function fenetresAjoutees(
     })
     .filter((w) => Number.isFinite(w.from) && w.to > w.from);
 }
+
+/**
+ * ── RÉORGANISER : « RIEN À RÉORGANISER » (29/09, piste 1 du propriétaire) ───────────────────────
+ *
+ * « Réorganiser est vide chez cdef31 et on n'y comprend rien » : la feuille alignait 30 véhicules à
+ * « (0) », des compteurs à 0 et deux conseils sans objet, et ne disait qu'en DERNIÈRE ligne qu'il n'y
+ * avait aucune réservation à venir — cdef31 n'avait que des propositions de l'agent, qui ne sont pas
+ * des réservations. Quand il n'y a vraiment rien, la feuille le dit EN TÊTE et ne montre rien d'autre.
+ *
+ * « Vraiment rien » = aucune réservation vivante ne chevauche les 30 prochains jours (la fenêtre la
+ * plus large de la feuille), dans la société. Deux sources, la même règle côté serveur :
+ *  - la simulation LUE, quand elle couvre tout (origine « Toutes », sans véhicule ni liste blanche) :
+ *    son `parVehicule` compte tout ce qui chevauche sa fenêtre — sur 30 jours c'est la réponse ; sur
+ *    une fenêtre plus courte, un vide ne dit rien des jours d'après : seul le compte du menu le dit ;
+ *  - avant toute simulation, le compte du menu (`GET /reservations/reorganisables`) — la feuille
+ *    s'ouvre alors directement sur l'explication, sans clignoter.
+ * Jamais pour une feuille ouverte DEPUIS un geste (véhicule, période ou refusées du formulaire
+ * d'indisponibilité) : son vide a ses propres mots, et ses critères restent utiles. Jamais sur un
+ * compte-rendu d'application : il dit ce qui vient d'être fait.
+ */
+export interface EtatRienAReorganiser {
+  /** Ouverte depuis un geste de la page (pré-réglage : véhicule, période, refusées). */
+  ouverteDepuisUnGeste: boolean;
+  /** La dernière lecture de la feuille, `null` avant la première réponse. */
+  lecture: {
+    /** Vrai pour une simulation ; faux pour le compte-rendu d'une application. */
+    simulation: boolean;
+    origine: string;
+    avecVehicule: boolean;
+    avecListeBlanche: boolean;
+    /** Durée de la fenêtre lue, en jours. */
+    jours: number;
+    /** Réservations qui chevauchent la fenêtre lue (somme de `parVehicule`). */
+    chevauchantes: number;
+  } | null;
+  /** Compte du menu sur 30 jours (`reorganisables.total`), `null` = inconnu. */
+  compteMenu: number | null;
+}
+
+export function rienAReorganiser(e: EtatRienAReorganiser): boolean {
+  if (e.ouverteDepuisUnGeste) return false;
+  const l = e.lecture;
+  if (!l) return e.compteMenu === 0;
+  if (!l.simulation) return false;
+  if (l.origine !== 'toutes' || l.avecVehicule || l.avecListeBlanche) return false;
+  if (l.chevauchantes > 0) return false;
+  return l.jours >= 30 || e.compteMenu === 0;
+}

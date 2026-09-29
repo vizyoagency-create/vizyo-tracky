@@ -25,6 +25,7 @@ import {
   raisonsVideRefusees,
   rangDuJour,
   repliDefinitif,
+  rienAReorganiser,
   startOfMonth,
   startOfWeekMonday,
   visibiliteIa,
@@ -963,5 +964,57 @@ describe('lotExactDeSimulation — le lot vu, renvoyé tel quel à l’applicati
 
   it('un lot vide reste un lot vide (l’écran n’applique de toute façon rien sans réservation)', () => {
     expect(lotExactDeSimulation({ concernees: 0, lotIds: [] })).toEqual([]);
+  });
+});
+
+/**
+ * « RIEN À RÉORGANISER » (29/09, piste 1 du propriétaire). Chez cdef31 : 0 réservation à venir, 317
+ * propositions de l'agent — la feuille alignait 30 véhicules à « (0) » et ne le disait qu'en bas.
+ */
+describe('rienAReorganiser — la feuille dit d’emblée qu’il n’y a rien', () => {
+  const simulation = (over: Partial<NonNullable<Parameters<typeof rienAReorganiser>[0]['lecture']>> = {}) => ({
+    simulation: true,
+    origine: 'toutes',
+    avecVehicule: false,
+    avecListeBlanche: false,
+    jours: 30,
+    chevauchantes: 0,
+    ...over,
+  });
+
+  it('avant toute simulation : le compte du menu décide (0 → l’explication tout de suite, sans clignoter)', () => {
+    expect(rienAReorganiser({ ouverteDepuisUnGeste: false, lecture: null, compteMenu: 0 })).toBe(true);
+    expect(rienAReorganiser({ ouverteDepuisUnGeste: false, lecture: null, compteMenu: 3 })).toBe(false);
+    expect(rienAReorganiser({ ouverteDepuisUnGeste: false, lecture: null, compteMenu: null })).toBe(false);
+  });
+
+  it('simulation « Toutes » sur 30 jours sans rien qui chevauche : rien — même si le compte du menu était périmé', () => {
+    expect(rienAReorganiser({ ouverteDepuisUnGeste: false, lecture: simulation(), compteMenu: null })).toBe(true);
+    expect(rienAReorganiser({ ouverteDepuisUnGeste: false, lecture: simulation(), compteMenu: 2 })).toBe(true);
+  });
+
+  it('une réservation qui chevauche (même en cours) : il y a quelque chose — le compte périmé du menu ne l’efface pas', () => {
+    expect(rienAReorganiser({ ouverteDepuisUnGeste: false, lecture: simulation({ chevauchantes: 1 }), compteMenu: 0 })).toBe(false);
+  });
+
+  it('fenêtre plus courte vide : « rien » seulement si les 30 jours le sont aussi (compte du menu)', () => {
+    expect(rienAReorganiser({ ouverteDepuisUnGeste: false, lecture: simulation({ jours: 7 }), compteMenu: 4 })).toBe(false);
+    expect(rienAReorganiser({ ouverteDepuisUnGeste: false, lecture: simulation({ jours: 7 }), compteMenu: 0 })).toBe(true);
+    expect(rienAReorganiser({ ouverteDepuisUnGeste: false, lecture: simulation({ jours: 7 }), compteMenu: null })).toBe(false);
+  });
+
+  it('une lecture filtrée (agent seul, un véhicule, liste blanche) ne dit rien de toute la société', () => {
+    for (const over of [{ origine: 'auto' }, { avecVehicule: true }, { avecListeBlanche: true }]) {
+      expect(rienAReorganiser({ ouverteDepuisUnGeste: false, lecture: simulation(over), compteMenu: 0 })).toBe(false);
+    }
+  });
+
+  it('ouverte depuis un geste (véhicule, période, refusées) : jamais — son vide a ses propres mots', () => {
+    expect(rienAReorganiser({ ouverteDepuisUnGeste: true, lecture: null, compteMenu: 0 })).toBe(false);
+    expect(rienAReorganiser({ ouverteDepuisUnGeste: true, lecture: simulation(), compteMenu: 0 })).toBe(false);
+  });
+
+  it('le compte-rendu d’une application n’est jamais remplacé par « rien »', () => {
+    expect(rienAReorganiser({ ouverteDepuisUnGeste: false, lecture: simulation({ simulation: false }), compteMenu: 0 })).toBe(false);
   });
 });
