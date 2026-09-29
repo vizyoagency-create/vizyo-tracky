@@ -65,8 +65,18 @@ d'une section à l'autre sans le dire, ou cocher `[x]` sur la foi d'une fiche pl
 
 ## 🗂️ Tableau de bord — 125 tâches, l'avancement d'un coup d'œil
 
-**Au 2026-09-28 (02 h 55 UTC) : 70 faites ·
+**Au 2026-09-29 (01 h 30 UTC) : 70 faites ·
 16 déployées, preuve attendue · 0 commitée · 39 ouvertes** *(125 tâches — dont 3 ouvertes en gravité 1)* — *le compte fait foi dans `app/taches.json`.*
+
+> 🟢🔴 **LE FAIT DU 29/09 (centre d'alerte, collecte 01 h 14 UTC) : TREIZIÈME NUIT PROPRE, LE RAPPORT HEBDO DE CDEF31 ENFIN REMIS — ET LE
+> S21 MUET DEUX FOIS EN PLEINE JOURNÉE.** Preuve 3 / 3, 0 refus d'interlock, **28 coupes à l'heure** (3 par le secours SMS), **29 / 29
+> reprises acquittées, HM-787-GA comprise** ; T65 : 6 OK · 1 rouge. 🔴 **T55 / T76** : S21 muet le 28/09 de 11:11 à ~12:20 puis de 15:04 à
+> ~15:15 UTC — **7ᵉ et 8ᵉ silences en 14 jours**, hors plage de coupe, 6 `CRITICAL` sans ligne de sortie, **T69 exercé** (3 pushs). ✅ **T80,
+> volet humain PROUVÉ** : `weekly_report` cdef31 du 28/09 06:05 `DELIVERED` vers la nouvelle adresse — première remise depuis le 27/07 ; 0
+> `email-bloque` ; `email_logs` reparle (22 lignes). La tâche reste ouverte pour le code (rebond → ligne). 📏 T81 : **8 passages > 45 min**
+> le lundi (série … 0 · 8). 📏 T74 : HM-769-GA a retrouvé un fix 2 h 25 → lignes arrêtées, reprise attendue vers 29/09 17:45. 2 déploiements
+> agenda par `deploy.sh`, 0 passage interrompu. 0 signature nouvelle. **La seule chose à faire en premier : le téléphone (T55) — deux silences
+> en journée, la prochaine fois tombera peut-être à 22:00.**
 
 > 🟢🟠 **LE FAIT VPS DU 28/09 (02 h 30 UTC, À L'HEURE) : LA MACHINE VA BIEN, 8ᵉ JOUR — LA DÉMO FERME SA FICHE, ET UN PROCESSUS NEUF
 > TOURNE EN ROOT HORS DE TOUT CATALOGUE.** 27/09 complet : idle **85,33 %**, steal **3,17 %** moy (max 8,85 à 03:10), `/api/health` 35 ms,
