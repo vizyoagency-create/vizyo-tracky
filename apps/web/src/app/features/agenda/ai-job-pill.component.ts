@@ -1,6 +1,7 @@
 import { ChangeDetectionStrategy, Component, inject, output } from '@angular/core';
 import { LucideAngularModule, Sparkles, Check, AlertTriangle, ArrowRight, X, Loader } from 'lucide-angular';
 import { AiJobService, type AiJob } from '../../core/services/ai-job.service';
+import { FleetFilterService } from '../../core/services/fleet-filter.service';
 
 /**
  * Refonte agenda/IA — Pastille de suivi des opérations IA lancées « en arrière-plan ».
@@ -8,9 +9,11 @@ import { AiJobService, type AiJob } from '../../core/services/ai-job.service';
  * Affichée en haut de l'agenda. Trois états, tous EXPLICITES pour un non-expert :
  *  - EN COURS  : animation « scan IA » + « L'IA travaille… » + ce qu'elle fait précisément.
  *  - PRÊT      : ✓ + résumé du résultat + bouton « Voir » (le parent ouvre les résultats).
- *  - ERREUR    : ⚠ + message lisible + fermer.
+ *  - ERREUR    : ⚠ + message lisible + fermer ; « Refusé » plutôt qu'« Échec » quand le serveur a
+ *                refusé (droit, quota — revue du 29/09), avec son motif.
  *
- * Ne fait AUCUN appel : elle lit le `AiJobService` (signals) et émet `view`/`dismiss` au parent.
+ * Ne fait AUCUN appel HTTP : elle lit le `AiJobService` (signals) et émet `view`/`dismiss` au
+ * parent — seul « Voir » remet le bandeau sur la société du travail (voir `voir()`).
  */
 @Component({
   selector: 'app-ai-job-pill',
@@ -42,6 +45,7 @@ import { AiJobService, type AiJob } from '../../core/services/ai-job.service';
                 <span class="ajp-title">{{ j.title }}</span>
                 @if (j.status === 'running') { <span class="ajp-badge">IA en cours…</span> }
                 @else if (j.status === 'done') { <span class="ajp-badge ajp-badge--ok">Résultats prêts</span> }
+                @else if (j.refused) { <span class="ajp-badge ajp-badge--refus">Refusé</span> }
                 @else { <span class="ajp-badge ajp-badge--err">Échec</span> }
               </div>
               <p class="ajp-sub">
@@ -56,7 +60,7 @@ import { AiJobService, type AiJob } from '../../core/services/ai-job.service';
 
             <div class="ajp-actions">
               @if (j.status === 'done') {
-                <button type="button" class="ajp-view" (click)="view.emit(j)">
+                <button type="button" class="ajp-view" (click)="voir(j)">
                   Voir <lucide-icon [img]="ArrowRightIcon" [size]="14"></lucide-icon>
                 </button>
               }
@@ -124,6 +128,8 @@ import { AiJobService, type AiJob } from '../../core/services/ai-job.service';
     }
     .ajp-badge--ok { background: color-mix(in srgb, var(--tracky-light) 20%, transparent); }
     .ajp-badge--err { background: color-mix(in srgb, var(--danger) 14%, transparent); color: var(--texte-alerte); }
+    /* Un refus (droit, quota) n'est pas une panne : ton d'attente, pas d'alerte. */
+    .ajp-badge--refus { background: color-mix(in srgb, var(--warning) 16%, transparent); color: var(--texte-attente); }
     .ajp-sub { margin: 3px 0 0; font-size: 12px; color: var(--fg-secondary); line-height: 1.4; }
 
     /* Barre de progression indéterminée (va-et-vient) → « quelque chose se passe ». */
@@ -149,10 +155,22 @@ import { AiJobService, type AiJob } from '../../core/services/ai-job.service';
 })
 export class AiJobPillComponent {
   protected readonly jobSvc = inject(AiJobService);
+  private readonly fleetFilter = inject(FleetFilterService);
   protected readonly jobs = this.jobSvc.jobs;
 
   /** Émis au clic « Voir » d'un job PRÊT — le parent (agenda) ouvre les résultats selon `kind`. */
   readonly view = output<AiJob>();
+
+  /**
+   * « Voir » ramène d'abord le bandeau sur la société du travail (revue du 29/09). Un super-admin
+   * qui lance l'analyse du parc de A puis passe sur B lisait « N fiches à appliquer » et arrivait
+   * sur l'Assistant IA de B, qui ne les montre pas. `fleetId` n'est posé que pour un super-admin :
+   * pour les autres rôles, rien ne change.
+   */
+  protected voir(j: AiJob): void {
+    if (j.fleetId && j.fleetId !== this.fleetFilter.selectedFleetId()) this.fleetFilter.set(j.fleetId);
+    this.view.emit(j);
+  }
 
   protected readonly SparklesIcon = Sparkles;
   protected readonly CheckIcon = Check;

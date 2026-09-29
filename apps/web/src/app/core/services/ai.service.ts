@@ -2,6 +2,7 @@ import { HttpClient } from '@angular/common/http';
 import { inject, Injectable } from '@angular/core';
 import type {
   AiCapacityApplyDto,
+  AiCapacityApplyResultDto,
   AiCapacityInputDto,
   AiCapacityLatestDto,
   AiCapacityResultDto,
@@ -34,9 +35,15 @@ export class AiApiService {
     return this.http.get<AiCapacityLatestDto>('/api/ai/capacity/latest', { params: fleetId ? { fleetId } : {} });
   }
 
-  /** POST /api/ai/capacity/apply — applique les propositions acceptées (écrit les véhicules). */
-  capacityApply(body: AiCapacityApplyDto): Observable<{ updated: number }> {
-    return this.http.post<{ updated: number }>('/api/ai/capacity/apply', body);
+  /**
+   * POST /api/ai/capacity/apply — applique les propositions acceptées (écrit les véhicules).
+   * Revue du 29/09 : porte `analysisId` (l'analyse d'où viennent les propositions) et rend, en plus
+   * du nombre de fiches écrites, celles ÉCARTÉES avec leur motif (fiche modifiée depuis l'analyse…).
+   * Contre-revue : chaque item ne porte que les équipements À AJOUTER (le serveur fait l'union), et
+   * `forcer` pour le seul geste « Appliquer quand même » d'une fiche modifiée depuis l'analyse.
+   */
+  capacityApply(body: AiCapacityApplyDto): Observable<AiCapacityApplyResultDto> {
+    return this.http.post<AiCapacityApplyResultDto>('/api/ai/capacity/apply', body);
   }
 
   /** POST /api/ai/placement/suggest — classement raisonné parmi les disponibles (DRY-RUN). */

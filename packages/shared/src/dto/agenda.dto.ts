@@ -182,6 +182,18 @@ export interface ReorganiserReservationsDto {
   fleetId?: string;
   /** `true` (défaut) = on calcule et on montre, sans rien écrire. */
   simulation?: boolean;
+  /**
+   * Contre-revue du 29/09 — à l'APPLICATION, le nombre de réservations que la simulation affichée
+   * annonçait. Si le lot recalculé au moment d'écrire n'a plus ce nombre, rien n'est écrit (409) :
+   * on n'applique jamais un geste de masse sur un lot que personne n'a vu.
+   */
+  attendu?: number;
+  /**
+   * Troisième relecture du 29/09 — liste BLANCHE : ne reprendre que ces réservations (ids). Sert au
+   * renvoi depuis le formulaire d'immobilisation : seules les réservations refusées sont reprises,
+   * jamais celles que le gestionnaire a choisi de « Laisser », ni celles arrivées depuis.
+   */
+  ids?: string[];
 }
 
 /** Une réservation que le lot n'a pas pu reprendre, et pourquoi. */
@@ -211,6 +223,8 @@ export interface ReorganisationResultDto {
     endAt: string | null;
     source: string;
     origine: 'agent' | 'public' | 'manuelle';
+    /** Statut de la réservation (REQUESTED, CONFIRMED…) — l'écran n'annonce « scindée » que pour une réservation ferme. */
+    status?: string;
   }[];
   /** Vrai si le périmètre dépasse le plafond de sûreté et a été tronqué. */
   plafonne: boolean;
@@ -219,6 +233,8 @@ export interface ReorganisationResultDto {
    * que l'écran écrive les comptes sur ses choix et explique un lot vide au lieu de le montrer.
    */
   totaux?: { agent: number; public: number; manuelle: number };
+  /** Mêmes comptes, restreints au véhicule choisi (`vehicleId`) — absent sans véhicule. */
+  totauxVehicule?: { agent: number; public: number; manuelle: number };
   /** Réservations à venir par véhicule (pour l'origine choisie), toutes plaques confondues. */
   parVehicule?: { vehicleId: string; plate: string | null; n: number }[];
 }
@@ -226,6 +242,13 @@ export interface ReorganisationResultDto {
 /** Réaffecter UNE réservation à un autre véhicule (`auto` = premier libre et conforme). */
 export interface ReaffecterReservationDto {
   versVehicleId?: string;
+  /**
+   * Contre-revue du 29/09 — à partir de quand le véhicule d'origine n'est plus disponible (ISO), par
+   * exemple le début d'une immobilisation. La coupe se fait à max(maintenant, aPartirDe) : une
+   * réservation qui déborde sur ce moment est SCINDÉE là (avant : reste sur son véhicule ; après :
+   * part sur la cible), une réservation qui commence après part en entier. Absent = maintenant.
+   */
+  aPartirDe?: string;
 }
 
 /**

@@ -9,6 +9,7 @@ import type {
   UpdateVehicleEventDto,
   VehicleEventDto,
 } from '@vizyo/tracky-shared';
+import { IMMOBILIZING_STATUSES } from '@vizyo/tracky-shared';
 import type { AuthUser } from '../auth/types/auth-user';
 import { resolveReportVehicleScope } from '../common/report-vehicle-scope';
 import { PrismaService } from '../prisma/prisma.service';
@@ -121,12 +122,35 @@ export class VehicleEventsService {
     }
 
     const where = await this.scopedWhere(user, requested, q.fleetId);
-    // Fenêtre temporelle : événements qui chevauchent [from, to].
+    /**
+     * Fenêtre temporelle : événements qui chevauchent [from, to].
+     *
+     * Troisième relecture du 29/09 (T16) — une IMMOBILISATION SANS FIN commencée AVANT la fenêtre, et
+     * toujours active, la chevauche aussi. Un incident OPEN bloquant signalé le 20/08, jamais résolu,
+     * n'était rendu à aucune grille de septembre : le panneau du jour annonçait le véhicule disponible
+     * (« Tous les véhicules du périmètre sont disponibles ») pendant que la réservation répondait 409.
+     * Même prédicat que `ReservationsService.findImmobilized` (bloquant, hors réservation, statut
+     * immobilisant) et même fin effective que `effectiveBlockingEndMs` : un INCIDENT sans fin bloque
+     * jusqu'à résolution, les autres (maintenance…) leur journée — 24 h après leur début.
+     * La grille n'en dessine rien (un évènement d'un jour commencé avant la fenêtre n'a aucun jour
+     * dedans) ; la disponibilité et le panneau du jour le voient chaque jour, comme prévu.
+     */
+    const immobilisantSansFin: Prisma.VehicleEventWhereInput = {
+      endAt: null,
+      blocksVehicle: true,
+      status: { in: IMMOBILIZING_STATUSES },
+    };
     where.AND = [
       {
         OR: [
           { endAt: null, startAt: { gte: q.from, lte: q.to } },
           { startAt: { lte: q.to }, endAt: { gte: q.from } },
+          { ...immobilisantSansFin, type: VehicleEventType.INCIDENT, startAt: { lt: q.from } },
+          {
+            ...immobilisantSansFin,
+            type: { notIn: [VehicleEventType.INCIDENT, VehicleEventType.RESERVATION] },
+            startAt: { gt: new Date(q.from.getTime() - DAY_MS), lt: q.from },
+          },
         ],
       },
     ];

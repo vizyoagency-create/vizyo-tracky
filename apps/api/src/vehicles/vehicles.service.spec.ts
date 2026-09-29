@@ -7,6 +7,8 @@ import { PrismaService } from '../prisma/prisma.service';
 import { UnlockTokenService } from '../driver-unlock/unlock-token.service';
 import { SystemActivityService } from '../system-activity/system-activity.service';
 import { GpsDeadZonesService } from '../gps-dead-zones/gps-dead-zones.service';
+import { VEHICLE_PERMISSIONS_KEY } from '../auth/decorators/vehicle-permissions.decorator';
+import { VehiclesController } from './vehicles.controller';
 import { VehiclesService } from './vehicles.service';
 
 const FLEET_ID = '00000000-0000-0000-0000-000000000001';
@@ -380,6 +382,45 @@ describe('VehiclesService', () => {
     expect(rows[0].divergentFields.slice().sort()).toEqual(['brand', 'energy', 'model']);
   });
 
+  // Revue du 29/09 — la vue Parc de l'agenda demande le parc de la société du bandeau.
+  describe('capacityOverview — société du bandeau (fleetId)', () => {
+    beforeEach(() => {
+      prisma.vehicle.findMany.mockResolvedValue([
+        vehicleRecord({ features: [], groups: [], outOfServiceReason: 'ACCIDENT' }),
+      ]);
+    });
+    const whereDuFindMany = () => (prisma.vehicle.findMany.mock.calls[0]![0] as { where: Prisma.VehicleWhereInput }).where;
+
+    it('(a) super-admin + fleetId : seule la société demandée est lue (le plafond de 500 ne mêle plus les sociétés)', async () => {
+      await service.capacityOverview(superAdmin, OTHER_FLEET);
+      expect(whereDuFindMany().fleetId).toBe(OTHER_FLEET);
+    });
+
+    it('(b) super-admin sans fleetId : toutes les sociétés, comme avant', async () => {
+      await service.capacityOverview(superAdmin, null);
+      expect(whereDuFindMany().fleetId).toBeUndefined();
+    });
+
+    it('(c) non-super : le fleetId demandé est IGNORÉ, sa propre flotte est imposée (aucun passage inter-sociétés)', async () => {
+      await service.capacityOverview(fleetAdmin, OTHER_FLEET);
+      expect(whereDuFindMany().fleetId).toBe(FLEET_ID);
+    });
+
+    it('(d) la ligne porte l\'état hors service du véhicule', async () => {
+      const rows = await service.capacityOverview(fleetAdmin);
+      expect(rows[0]!.outOfServiceReason).toBe('ACCIDENT');
+      expect(prisma.vehicle.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ select: expect.objectContaining({ outOfServiceReason: true }) }),
+      );
+    });
+
+    it('(e) un véhicule en service a outOfServiceReason null (jamais undefined)', async () => {
+      prisma.vehicle.findMany.mockResolvedValue([vehicleRecord({ features: [], groups: [] })]);
+      const rows = await service.capacityOverview(fleetAdmin);
+      expect(rows[0]!.outOfServiceReason).toBeNull();
+    });
+  });
+
   // 17. syncFromInstallation recopie (écrase) les champs choisis non-vides depuis le planning.
   it('syncFromInstallation overwrites the chosen non-empty fields from the planning', async () => {
     prisma.vehicle.findFirst.mockResolvedValue(vehicleRecord());
@@ -415,6 +456,52 @@ describe('VehiclesService', () => {
 
     await expect(service.syncFromInstallation(VEHICLE_ID, ['model'], fleetAdmin)).rejects.toThrow(NotFoundException);
     expect(prisma.installationTask.findFirst).not.toHaveBeenCalled();
+  });
+
+  // Revue du 29/09 (T9) — le contrôleur passe désormais `accessibleVehicleIds` aux écritures
+  // (`buildRequestedBy`) : un compte limité au groupe Nord ne modifie plus, par son UUID, un
+  // véhicule de sa société hors de son périmètre. Le service refuse AVANT toute lecture en base.
+  describe('T9 : écritures bornées au périmètre (accessibleVehicleIds)', () => {
+    const gestionnaireNord = {
+      userId: USER_ID,
+      role: UserRole.FLEET_MANAGER,
+      fleetId: FLEET_ID,
+      accessibleVehicleIds: ['00000000-0000-0000-0000-0000000000aa'],
+    };
+
+    it('update : véhicule de la société hors périmètre -> 404, rien d\'écrit', async () => {
+      await expect(service.update(VEHICLE_ID, { seats: 9 }, gestionnaireNord)).rejects.toThrow(NotFoundException);
+      expect(prisma.vehicle.findFirst).not.toHaveBeenCalled();
+      expect(prisma.vehicle.update).not.toHaveBeenCalled();
+    });
+
+    it('syncFromInstallation : véhicule hors périmètre -> 404, planning non lu, rien d\'écrit', async () => {
+      prisma.installationTask.findFirst.mockResolvedValue(taskRecord());
+      await expect(service.syncFromInstallation(VEHICLE_ID, ['model'], gestionnaireNord)).rejects.toThrow(NotFoundException);
+      expect(prisma.installationTask.findFirst).not.toHaveBeenCalled();
+      expect(prisma.vehicle.update).not.toHaveBeenCalled();
+    });
+
+    it('remove : véhicule hors périmètre -> 404, rien de supprimé', async () => {
+      await expect(service.remove(VEHICLE_ID, gestionnaireNord)).rejects.toThrow(NotFoundException);
+      expect(prisma.vehicle.delete).not.toHaveBeenCalled();
+    });
+
+    it('update : véhicule DANS le périmètre -> écrit', async () => {
+      await service.update(VEHICLE_ID, { seats: 9 }, { ...gestionnaireNord, accessibleVehicleIds: [VEHICLE_ID] });
+      expect(prisma.vehicle.update).toHaveBeenCalledWith(expect.objectContaining({ where: { id: VEHICLE_ID }, data: { seats: 9 } }));
+    });
+
+    // La garde par véhicule : sans elle, `@RequirePermissions` seul lit l'UNION des scopes et un
+    // droit « modifier » sur Nord ouvrait l'écriture d'un véhicule Sud en lecture seule.
+    it.each([
+      ['update', 'vehicles_edit'],
+      ['syncFromInstallation', 'vehicles_edit'],
+      ['remove', 'vehicles_delete'],
+    ] as const)('le contrôleur exige %s -> %s résolu sur le véhicule de la route (:id)', (handler, key) => {
+      const spec = Reflect.getMetadata(VEHICLE_PERMISSIONS_KEY, VehiclesController.prototype[handler]);
+      expect(spec).toEqual({ keys: [key], paramName: 'id' });
+    });
   });
 
   // ─────────────────────── Lot « dénominateurs — flotte » (dormance, seuil 7 j) ───────────────────────

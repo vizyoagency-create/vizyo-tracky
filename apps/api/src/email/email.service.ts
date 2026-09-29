@@ -1877,35 +1877,67 @@ Ouvrir les demandes : ${opts.agendaUrl}`;
   /**
    * Lien public de réservation — CONFIRMATION (→ demandeur) quand un gestionnaire valide. Le véhicule
    * attribué est indiqué (post-validation : le demandeur doit savoir quel véhicule il utilisera).
+   *
+   * `modifiee` (revue du 29/09, C5) : la MÊME confirmation, renvoyée quand une réservation déjà
+   * confirmée change de véhicule ou de créneau (le véhicule part au garage, la réservation passe sur
+   * un autre). Sans elle, le seul écrit du demandeur nommait une voiture au garage. Sujet et première
+   * phrase le disent ; le récapitulatif est celui d'aujourd'hui. Même modèle journalisé
+   * (`reservation_confirmed`) : c'est une confirmation, mise à jour.
+   *
+   * `lignes` (contre-revue du 29/09, R3) : une demande groupée dont les véhicules n'ont plus le même
+   * créneau (une ligne décalée seule, une voiture gardée jusqu'à jeudi puis relayée). Le récapitulatif
+   * écrit alors UNE ligne par véhicule avec SON créneau, au lieu d'un créneau et de toutes les
+   * plaques — qui annonçait au nouvel horaire un véhicule resté à l'ancien. Ignoré sous deux lignes.
    */
   buildReservationConfirmedEmail(opts: {
     fleetName: string;
     slotLabel: string;
     destination?: string | null;
     vehicle?: string | null;
+    modifiee?: boolean;
+    lignes?: { vehicle: string; slotLabel: string }[];
   }): { subject: string; html: string; text: string } {
-    const subject = `Votre réservation est confirmée`;
-    const rows = [
-      this.kvRow('Créneau', opts.slotLabel),
-      opts.destination ? this.kvRow('Destination', opts.destination) : '',
-      this.kvRow('Véhicule', opts.vehicle || 'attribué par la société'),
-    ].filter(Boolean);
+    const modifiee = opts.modifiee === true;
+    const subject = modifiee ? `Votre réservation a été modifiée` : `Votre réservation est confirmée`;
+    const parVehicule = (opts.lignes ?? []).filter((l) => l.vehicle && l.slotLabel);
+    const detaille = parVehicule.length > 1;
+    const rows = detaille
+      ? [
+          opts.destination ? this.kvRow('Destination', opts.destination) : '',
+          ...parVehicule.map((l) => this.kvRow(`Véhicule ${l.vehicle}`, l.slotLabel)),
+        ].filter(Boolean)
+      : [
+          this.kvRow('Créneau', opts.slotLabel),
+          opts.destination ? this.kvRow('Destination', opts.destination) : '',
+          this.kvRow('Véhicule', opts.vehicle || 'attribué par la société'),
+        ].filter(Boolean);
+    const phrase = modifiee
+      ? `Bonjour, votre réservation auprès de <span style="color:${EMAIL_ACCENT_TEXTE};font-weight:600;">${escapeHtml(opts.fleetName)}</span> a été <span class="m-title" style="color:#0A1311;font-weight:600;">modifiée</span> : le véhicule ou le créneau a changé. Elle reste confirmée ; voici le récapitulatif à jour :`
+      : `Bonjour, votre demande auprès de <span style="color:${EMAIL_ACCENT_TEXTE};font-weight:600;">${escapeHtml(opts.fleetName)}</span> a été <span class="m-title" style="color:#0A1311;font-weight:600;">validée</span>. Voici le récapitulatif :`;
     const body = `
         <tr><td style="padding:28px 36px 0;">
-          <h1 class="m-title" style="margin:0 0 12px;font-family:${EMAIL_FONT};font-size:25px;line-height:1.15;font-weight:800;letter-spacing:-0.025em;color:#0A1311;">Votre réservation est confirmée</h1>
-          <p class="m-text" style="margin:0 0 20px;font-family:${EMAIL_FONT};font-size:15px;line-height:1.65;color:#56635E;">Bonjour, votre demande auprès de <span style="color:${EMAIL_ACCENT_TEXTE};font-weight:600;">${escapeHtml(opts.fleetName)}</span> a été <span class="m-title" style="color:#0A1311;font-weight:600;">validée</span>. Voici le récapitulatif :</p>
+          <h1 class="m-title" style="margin:0 0 12px;font-family:${EMAIL_FONT};font-size:25px;line-height:1.15;font-weight:800;letter-spacing:-0.025em;color:#0A1311;">${subject}</h1>
+          <p class="m-text" style="margin:0 0 20px;font-family:${EMAIL_FONT};font-size:15px;line-height:1.65;color:#56635E;">${phrase}</p>
           <table class="m-panel" role="presentation" width="100%" style="background:#F6F9F7;border:1px solid rgba(255,255,255,.07);border-radius:12px;border-collapse:separate;">
             ${rows.join('')}
           </table>
           <p class="m-text" style="margin:20px 0 0;font-family:${EMAIL_FONT};font-size:13px;line-height:1.6;color:${EMAIL_TEXTE_SECOND};">Un imprévu ? Répondez à cet e-mail pour prévenir la société. À très bientôt.</p>
         </td></tr>`;
-    const html = this.shell({ eyebrow: 'Réservation · Confirmée',
-      preheader: 'Le véhicule, le créneau et le point de retrait sont fixés.', footer: 'VIZYO TRACKY · RÉSERVATION DE VÉHICULES · E-mail automatique, ne pas répondre.', body });
+    const html = this.shell({ eyebrow: modifiee ? 'Réservation · Modifiée' : 'Réservation · Confirmée',
+      preheader: modifiee
+        ? 'Le véhicule ou le créneau de votre réservation a changé : voici le récapitulatif à jour.'
+        : 'Le véhicule, le créneau et le point de retrait sont fixés.',
+      footer: 'VIZYO TRACKY · RÉSERVATION DE VÉHICULES · E-mail automatique, ne pas répondre.', body });
+    const recap = detaille
+      ? `${opts.destination ? `Destination : ${opts.destination}\n` : ''}${parVehicule.map((l) => `Véhicule ${l.vehicle} : ${l.slotLabel}`).join('\n')}`
+      : `Créneau : ${opts.slotLabel}${opts.destination ? `\nDestination : ${opts.destination}` : ''}
+Véhicule : ${opts.vehicle || 'attribué par la société'}`;
     const text = `Bonjour,
 
-Votre réservation auprès de ${opts.fleetName} est confirmée.
-Créneau : ${opts.slotLabel}${opts.destination ? `\nDestination : ${opts.destination}` : ''}
-Véhicule : ${opts.vehicle || 'attribué par la société'}
+${modifiee
+    ? `Votre réservation auprès de ${opts.fleetName} a été modifiée : le véhicule ou le créneau a changé. Elle reste confirmée.`
+    : `Votre réservation auprès de ${opts.fleetName} est confirmée.`}
+${recap}
 
 Un imprévu ? Répondez à cet e-mail. À bientôt.
 — L'équipe Vizyo`;
@@ -1916,32 +1948,50 @@ Un imprévu ? Répondez à cet e-mail. À bientôt.
    * F16 (recette du 28/09) — refus d'une demande publique. Le demandeur recevait l'accusé de
    * réception puis la confirmation ; un refus ne lui disait rien, et il attendait. Même gabarit
    * que la confirmation, l'autre verbe, et une porte de sortie : redemander sur un autre créneau.
+   *
+   * `annulee` (troisième relecture du 29/09, T2) : la réservation avait été CONFIRMÉE, puis la société
+   * l'a annulée. « Votre demande n'a pas pu être retenue » serait faux — elle l'avait été, et le
+   * demandeur s'apprêtait à venir. Sujet, titre et première phrase le disent ; même porte de sortie.
+   * Même modèle journalisé (`reservation_refused`, l'issue négative d'une demande publique), comme
+   * « modifiée » partage celui de la confirmation : le sujet les distingue dans le journal des envois.
    */
   buildReservationRefusedEmail(opts: {
     fleetName: string;
     slotLabel: string;
     destination?: string | null;
+    annulee?: boolean;
   }): { subject: string; html: string; text: string } {
-    const subject = `Votre demande de réservation n'a pas pu être retenue`;
+    const annulee = opts.annulee === true;
+    const subject = annulee ? `Votre réservation a été annulée` : `Votre demande de réservation n'a pas pu être retenue`;
+    const titre = annulee ? `Votre réservation a été annulée` : `Votre demande n'a pas pu être retenue`;
     const rows = [
-      this.kvRow('Créneau demandé', opts.slotLabel),
+      this.kvRow(annulee ? 'Créneau' : 'Créneau demandé', opts.slotLabel),
       opts.destination ? this.kvRow('Destination', opts.destination) : '',
     ].filter(Boolean);
+    const phrase = annulee
+      ? `Bonjour, <span style="color:${EMAIL_ACCENT_TEXTE};font-weight:600;">${escapeHtml(opts.fleetName)}</span> a <span class="m-title" style="color:#0A1311;font-weight:600;">annulé</span> votre réservation de véhicule, qui avait été confirmée. Aucun véhicule ne vous attend sur ce créneau. Voici le rappel de la réservation annulée :`
+      : `Bonjour, <span style="color:${EMAIL_ACCENT_TEXTE};font-weight:600;">${escapeHtml(opts.fleetName)}</span> n'a pas pu retenir votre demande de véhicule sur ce créneau. Voici le rappel de ce que vous aviez demandé :`;
     const body = `
         <tr><td style="padding:28px 36px 0;">
-          <h1 class="m-title" style="margin:0 0 12px;font-family:${EMAIL_FONT};font-size:25px;line-height:1.15;font-weight:800;letter-spacing:-0.025em;color:#0A1311;">Votre demande n'a pas pu être retenue</h1>
-          <p class="m-text" style="margin:0 0 20px;font-family:${EMAIL_FONT};font-size:15px;line-height:1.65;color:#56635E;">Bonjour, <span style="color:${EMAIL_ACCENT_TEXTE};font-weight:600;">${escapeHtml(opts.fleetName)}</span> n'a pas pu retenir votre demande de véhicule sur ce créneau. Voici le rappel de ce que vous aviez demandé :</p>
+          <h1 class="m-title" style="margin:0 0 12px;font-family:${EMAIL_FONT};font-size:25px;line-height:1.15;font-weight:800;letter-spacing:-0.025em;color:#0A1311;">${titre}</h1>
+          <p class="m-text" style="margin:0 0 20px;font-family:${EMAIL_FONT};font-size:15px;line-height:1.65;color:#56635E;">${phrase}</p>
           <table class="m-panel" role="presentation" width="100%" style="background:#F6F9F7;border:1px solid rgba(255,255,255,.07);border-radius:12px;border-collapse:separate;">
             ${rows.join('')}
           </table>
           <p class="m-text" style="margin:20px 0 0;font-family:${EMAIL_FONT};font-size:13px;line-height:1.6;color:${EMAIL_TEXTE_SECOND};">Vous pouvez déposer une nouvelle demande sur un autre créneau depuis le même lien. Répondez à cet e-mail pour joindre la société.</p>
         </td></tr>`;
-    const html = this.shell({ eyebrow: 'Réservation · Non retenue',
-      preheader: 'Votre demande de véhicule n\'a pas pu être retenue sur ce créneau.', footer: 'VIZYO TRACKY · RÉSERVATION DE VÉHICULES · E-mail automatique, ne pas répondre.', body });
+    const html = this.shell({ eyebrow: annulee ? 'Réservation · Annulée' : 'Réservation · Non retenue',
+      preheader: annulee
+        ? 'Votre réservation confirmée a été annulée par la société : aucun véhicule ne vous attend sur ce créneau.'
+        : 'Votre demande de véhicule n\'a pas pu être retenue sur ce créneau.',
+      footer: 'VIZYO TRACKY · RÉSERVATION DE VÉHICULES · E-mail automatique, ne pas répondre.', body });
     const text = `Bonjour,
 
-${opts.fleetName} n'a pas pu retenir votre demande de véhicule.
-Créneau demandé : ${opts.slotLabel}${opts.destination ? `\nDestination : ${opts.destination}` : ''}
+${annulee
+    ? `${opts.fleetName} a annulé votre réservation de véhicule, qui avait été confirmée. Aucun véhicule ne vous attend sur ce créneau.
+Créneau : ${opts.slotLabel}`
+    : `${opts.fleetName} n'a pas pu retenir votre demande de véhicule.
+Créneau demandé : ${opts.slotLabel}`}${opts.destination ? `\nDestination : ${opts.destination}` : ''}
 
 Vous pouvez déposer une nouvelle demande sur un autre créneau depuis le même lien.
 — L'équipe Vizyo`;

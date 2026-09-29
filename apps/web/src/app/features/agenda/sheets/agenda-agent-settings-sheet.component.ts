@@ -21,7 +21,6 @@ import {
   type AgendaAgentAutonomy,
   type AgendaAgentFrequency,
   type AgendaAgentRunDto,
-  type AgendaAgentRunResultDto,
   type DestinataireAvisDto,
   type FleetMetier,
   type ReservationBookingLinkDto,
@@ -39,6 +38,8 @@ import { AuthService } from '../../../core/services/auth.service';
 import { FleetFilterService } from '../../../core/services/fleet-filter.service';
 import { ToastService } from '../../../shared/ui/toast/toast.service';
 import { BottomSheetComponent } from '../../../shared/ui/bottom-sheet/bottom-sheet.component';
+import { AgendaSyncService } from '../agenda-sync.service';
+import { lancerPassageAgent } from '../ia/agenda-ia-view.component';
 
 /**
  * Refonte agenda/IA (2026-07) — ⚙️ « Paramètres de l'agenda » (PAR FLOTTE).
@@ -117,8 +118,23 @@ import { BottomSheetComponent } from '../../../shared/ui/bottom-sheet/bottom-she
             <div class="aas-sieges">
               <div class="aas-links-head">
                 <span class="aas-lbl"><lucide-icon [img]="BabyIcon" [size]="13"></lucide-icon> Sièges auto de la société</span>
-                <button type="button" class="aas-mini aas-mini--accent" (click)="parc.emit(); closed.emit()">Ouvrir la vue Parc</button>
+                <button type="button" class="aas-mini aas-mini--accent" (click)="ouvrirParc()">Ouvrir la vue Parc</button>
               </div>
+              <!-- Revue du 29/09 : ouvrir la vue Parc FERME cette feuille. Des réglages de l'agent
+                   cochés mais pas enregistrés disparaissaient sans un mot ; on demande d'abord. -->
+              @if (confirmerParc() && modifie()) {
+                <div class="aas-garde" role="alert">
+                  <span class="aas-garde-t">Réglages non enregistrés</span>
+                  <span class="aas-sub">L'activation, l'heure, la fréquence, l'auto-complétion ou les déclencheurs ont changé depuis l'ouverture de cette feuille. Ouvrir la vue Parc la ferme.</span>
+                  @if (error(); as e) { <span class="aas-avis-err">{{ e }}</span> }
+                  <div class="aas-garde-act">
+                    <button type="button" class="aas-mini aas-mini--accent" [disabled]="saving()" (click)="enregistrerPuisParc()">
+                      @if (saving()) { <lucide-icon [img]="LoaderIcon" [size]="12" class="aas-spin"></lucide-icon> } Enregistrer et ouvrir
+                    </button>
+                    <button type="button" class="aas-mini" [disabled]="saving()" (click)="parcSansEnregistrer()">Ouvrir sans enregistrer</button>
+                  </div>
+                </div>
+              }
               @if (seatsError(); as e) { <p class="aas-avis-err">{{ e }}</p> }
               @else if (seatsEtat(); as st) {
                 <span class="aas-sub aas-sieges-etat">
@@ -278,7 +294,7 @@ import { BottomSheetComponent } from '../../../shared/ui/bottom-sheet/bottom-she
             @if (runsLoading() && runs().length === 0) {
               <div class="aas-skel"></div>
             } @else if (runs().length === 0) {
-              <span class="aas-sub">Aucun passage enregistré pour l'instant. L'agent archive chaque analyse dès qu'il tourne.</span>
+              <span class="aas-sub">Aucun passage enregistré pour l'instant. L'agent archive chaque passage dès qu'il tourne.</span>
             } @else {
               @for (r of runs(); track r.id) {
                 <div class="aas-run" [class.aas-run--err]="r.status === 'error'">
@@ -311,10 +327,13 @@ import { BottomSheetComponent } from '../../../shared/ui/bottom-sheet/bottom-she
           <div class="aas-foot">
             <!-- Grisé sur la valeur ENREGISTRÉE de l'interrupteur, pas sur la case cochée : le
                  serveur juge le réglage en base (409 sinon), et un clic entre « cocher » et
-                 « enregistrer » serait refusé. Le motif est écrit sous les boutons. -->
+                 « enregistrer » serait refusé. Le motif est écrit sous les boutons.
+                 Revue du 29/09 : « Lancer l'analyse » devient « Lancer un passage de l'agent » —
+                 même geste, même nom, même pastille que dans l'Assistant IA, où « analyse »
+                 désigne l'analyse du parc (une par jour). -->
             <button type="button" class="aas-btn aas-btn--ghost" [disabled]="running() || saving() || !lancementPossible()" (click)="runNow()" [title]="titreLancement()">
               @if (running()) { <lucide-icon [img]="LoaderIcon" [size]="15" class="aas-spin"></lucide-icon> } @else { <lucide-icon [img]="ZapIcon" [size]="15"></lucide-icon> }
-              Lancer l'analyse
+              Lancer un passage de l'agent
             </button>
             <button type="button" class="aas-btn" [disabled]="saving()" (click)="save()">
               @if (saving()) { <lucide-icon [img]="LoaderIcon" [size]="15" class="aas-spin"></lucide-icon> }
@@ -322,6 +341,9 @@ import { BottomSheetComponent } from '../../../shared/ui/bottom-sheet/bottom-she
             </button>
             @if (motifLancement(); as motif) {
               <span class="aas-foot-note">{{ motif }}</span>
+            }
+            @if (modifie()) {
+              <span class="aas-foot-note aas-foot-note--modif">Réglages de l'agent modifiés, pas encore enregistrés : fermer la feuille les abandonne.</span>
             }
           </div>
         }
@@ -413,6 +435,13 @@ import { BottomSheetComponent } from '../../../shared/ui/bottom-sheet/bottom-she
     .aas-foot { position: sticky; bottom: 0; z-index: 1; background: var(--bg-secondary); display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; padding: 12px 0 max(6px, env(safe-area-inset-bottom)); margin-top: 2px; border-top: 1px solid var(--border-subtle); }
     /* Le motif d'un bouton grisé, sous les boutons, sur toute la largeur. */
     .aas-foot-note { flex-basis: 100%; font-size: 11.5px; line-height: 1.4; color: var(--fg-tertiary); text-align: right; }
+    .aas-foot-note--modif { color: var(--texte-attente); font-weight: 600; }
+    /* Garde « réglages non enregistrés » avant de quitter pour la vue Parc. */
+    .aas-garde { display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; border-radius: 10px;
+                 background: color-mix(in srgb, var(--warning) 10%, transparent);
+                 border: 1px solid color-mix(in srgb, var(--warning) 35%, transparent); }
+    .aas-garde-t { font-size: 12.5px; font-weight: 700; color: var(--texte-attente); }
+    .aas-garde-act { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; }
     .aas-btn { display: inline-flex; align-items: center; gap: 6px; padding: 10px 18px; border-radius: 10px; font-size: 13px; font-weight: 700; background: var(--tracky, #10B981); color: #fff; }
     .aas-btn--ghost { background: var(--bg-tertiary); color: var(--fg-secondary); border: 1px solid var(--border-subtle); }
     .aas-btn:disabled { opacity: .55; }
@@ -433,6 +462,7 @@ export class AgendaAgentSettingsSheetComponent {
   private readonly fleetFilter = inject(FleetFilterService);
   private readonly toast = inject(ToastService);
   private readonly aiJob = inject(AiJobService);
+  private readonly sync = inject(AgendaSyncService);
 
   readonly open = input(false);
   readonly closed = output<void>();
@@ -473,7 +503,7 @@ export class AgendaAgentSettingsSheetComponent {
   /**
    * Valeur ENREGISTRÉE de l'interrupteur de l'agent (chargée par `load()`, mise à jour après
    * `save()`), distincte de la case `enabled()` en cours d'édition. C'est elle que le serveur
-   * juge : « Lancer l'analyse » répond 409 quand l'agent est désactivé en base (design/C3
+   * juge : « Lancer un passage » répond 409 quand l'agent est désactivé en base (design/C3
    * point 2). Griser sur la case cochée aurait laissé cliquer entre « cocher » et
    * « enregistrer », pour un refus.
    */
@@ -488,6 +518,20 @@ export class AgendaAgentSettingsSheetComponent {
   protected readonly trigMaintenance = signal(true);
   protected readonly trigReservation = signal(false);
   protected readonly metier = signal<FleetMetier>('GENERIC');
+
+  /**
+   * ── RÉGLAGES NON ENREGISTRÉS (revue du 29/09) ────────────────────────────────────────────
+   * Les réglages de l'agent ne partent qu'à « Enregistrer ». Instantané pris au chargement (et
+   * après un enregistrement réussi) : `modifie()` dit si la feuille diffère de la base. Le métier,
+   * les avis et les liens publics n'y sont pas — ils s'enregistrent dès qu'on les touche.
+   */
+  private readonly instantane = signal<string | null>(null);
+  protected readonly modifie = computed(() => {
+    const s = this.instantane();
+    return s !== null && s !== this.reglagesCourants();
+  });
+  /** « Ouvrir la vue Parc » cliqué avec des réglages non enregistrés : la feuille demande quoi faire. */
+  protected readonly confirmerParc = signal(false);
 
   // Coûts
   protected readonly monthCostEur = signal(0);
@@ -517,17 +561,18 @@ export class AgendaAgentSettingsSheetComponent {
   protected readonly needsFleet = computed(() => this.isSuperAdmin() && !this.fleetFilter.selectedFleetId());
 
   /**
-   * « Lancer l'analyse » n'est proposé que si l'agent est activé EN BASE — c'est exactement ce que
-   * le serveur refuse (409). L'IA maître coupée ne grise PAS le bouton : le serveur accepte ce
-   * lancement et produit un passage déterministe (détection, propositions, réservations selon
-   * l'autonomie) sans avis de l'IA — comportement voulu, décrit dans design/C3. Griser ici ce que
-   * le serveur accepte aurait caché une fonction qui marche.
+   * « Lancer un passage de l'agent » n'est proposé que si l'agent est activé EN BASE — c'est
+   * exactement ce que le serveur refuse (409). L'IA maître coupée ne grise PAS le bouton : le
+   * serveur accepte ce lancement et produit un passage déterministe (détection, propositions) sans
+   * avis de l'IA — comportement voulu, décrit dans design/C3. Griser ici ce que le serveur accepte
+   * aurait caché une fonction qui marche — c'est aussi pourquoi ce bouton reste ici alors que
+   * l'Assistant IA a le sien : quand l'IA de la société est coupée, l'onglet IA peut disparaître.
    */
   protected readonly lancementPossible = computed(() => this.enregistre() && !this.error());
   /** Le motif du bouton grisé — écrit sous le bouton, jamais deviné. `null` quand le lancement est possible. */
   protected readonly motifLancement = computed<string | null>(() => {
     if (this.error()) return 'Réglage indisponible : impossible de savoir si l\'agent est activé.';
-    if (!this.enregistre()) return 'L\'agent est désactivé : activez-le et enregistrez pour lancer une analyse.';
+    if (!this.enregistre()) return 'L\'agent est désactivé : activez-le et enregistrez pour lancer un passage.';
     return null;
   });
   /**
@@ -579,9 +624,27 @@ export class AgendaAgentSettingsSheetComponent {
     return this.fleetFilter.selectedFleetId() ?? undefined;
   }
 
+  /**
+   * Société d'un travail en arrière-plan : celle du bandeau pour un super-admin, `null` sinon —
+   * la convention de l'Assistant IA, pour que les deux boutons « passage » se gardent l'un l'autre.
+   */
+  private jobFleetId(): string | null {
+    return this.isSuperAdmin() ? this.fleetFilter.selectedFleetId() : null;
+  }
+
+  /** Les réglages de l'agent tels qu'ils partiraient à « Enregistrer », en une chaîne comparable. */
+  private reglagesCourants(): string {
+    return JSON.stringify([
+      this.enabled(), this.nightlyHour(), this.frequency(), this.autoComplete(),
+      this.trigNightly(), this.trigIncident(), this.trigMaintenance(), this.trigReservation(),
+    ]);
+  }
+
   private async load(): Promise<void> {
     this.loading.set(true);
     this.error.set(null);
+    this.instantane.set(null); // rien à comparer tant que la base n'est pas relue
+    this.confirmerParc.set(false);
     this.enregistre.set(false); // inconnu tant que le réglage n'est pas relu : pas de bouton, pas de faux motif
     const fleetId = this.currentFleetId();
     try {
@@ -600,6 +663,7 @@ export class AgendaAgentSettingsSheetComponent {
       this.trigReservation.set(s.triggerReservation);
       this.metier.set(s.metier);
       this.monthCostEur.set(s.monthCostEur);
+      this.instantane.set(this.reglagesCourants());
     } catch (e) {
       swallow('agenda-agent-settings-sheet:load', e);
       this.error.set(this.errMsg(e));
@@ -741,6 +805,11 @@ export class AgendaAgentSettingsSheetComponent {
     try {
       await firstValueFrom(this.ai.setFleetMetier({ fleetId: this.currentFleetId(), metier }));
       this.toast.success('Métier mis à jour', this.metierLabel(metier));
+      // Contre-revue du 29/09 (R20) : le métier s'enregistre ici SANS « Enregistrer » — on ferme la
+      // feuille par la croix. L'Assistant IA, resté monté sous la feuille, ne le relisait jamais :
+      // l'en-tête gardait l'ancien métier et l'avertissement « analyse faite pour un autre métier »
+      // ne s'affichait pas. Ce signal le lui fait relire (pas en cas d'échec : rien n'a changé).
+      this.sync.propositionsModifiees();
     } catch (e) {
       swallow('agenda-agent-settings-sheet:onMetierChange', e);
       this.metier.set(prev);
@@ -772,7 +841,12 @@ export class AgendaAgentSettingsSheetComponent {
     }
   }
 
-  protected async save(): Promise<void> {
+  /**
+   * Enregistre les réglages de l'agent, puis ferme la feuille. `apres` (ex. basculer sur la vue
+   * Parc) ne s'exécute qu'en cas de SUCCÈS : un enregistrement refusé laisse la feuille ouverte,
+   * l'erreur affichée, et la page là où elle était. Rend `true` si c'est enregistré.
+   */
+  protected async save(apres?: () => void): Promise<boolean> {
     this.saving.set(true);
     this.error.set(null);
     try {
@@ -790,62 +864,70 @@ export class AgendaAgentSettingsSheetComponent {
         triggerReservation: this.trigReservation(),
       }));
       this.enregistre.set(this.enabled()); // la valeur en base est désormais celle de la case
+      this.instantane.set(this.reglagesCourants());
+      this.confirmerParc.set(false);
       this.toast.success('Paramètres enregistrés', 'L\'agent utilisera ces réglages.');
+      // Revue du 29/09 : l'Assistant IA, resté monté SOUS cette feuille, relit l'activation de
+      // l'agent par ce signal — sinon son bouton restait grisé « activez-le dans les réglages ».
+      this.sync.propositionsModifiees();
       this.saved.emit();
+      apres?.();
       this.closed.emit();
+      return true;
     } catch (e) {
       swallow('agenda-agent-settings-sheet:save', e);
       this.error.set(this.errMsg(e));
+      return false;
     } finally {
       this.saving.set(false);
     }
   }
 
+  /** « Ouvrir la vue Parc » : directement si rien n'est en suspens, sinon la feuille demande d'abord. */
+  protected ouvrirParc(): void {
+    if (this.modifie()) {
+      this.confirmerParc.set(true);
+      return;
+    }
+    this.parc.emit();
+    this.closed.emit();
+  }
+
+  protected async enregistrerPuisParc(): Promise<void> {
+    await this.save(() => this.parc.emit());
+  }
+
+  /** Choix explicite d'abandonner : les réglages seront relus depuis la base à la prochaine ouverture. */
+  protected parcSansEnregistrer(): void {
+    this.confirmerParc.set(false);
+    this.parc.emit();
+    this.closed.emit();
+  }
+
   /**
-   * Lance l'analyse de l'agent EN ARRIÈRE-PLAN (sans attendre la nuit) : on ferme la modal
+   * Lance un passage de l'agent EN ARRIÈRE-PLAN (sans attendre la nuit) : on ferme la modal
    * immédiatement et une PASTILLE en haut de l'agenda montre « l'agent travaille… » puis les
    * résultats (cliquables pour ouvrir les propositions). Fini l'attente bloquée sans retour.
    *
    * Depuis le 2026-09-05 (design/C3 point 7), le clic suit le MÊME chemin que la nuit : détection
    * déterministe, propositions préparées tout de suite avec leur phrase mécanique, et l'avis de
-   * l'IA confié au poste — il arrive au passage suivant du courrier (06:30 ou 14:30). Plus aucun
-   * appel API au clic : le résumé le dit, et ne promet un avis que si un travail est bien parti
-   * (`aiVerdictQueued`) — l'IA peut être coupée pour la société, ou n'avoir rien à juger.
+   * l'IA confié au poste — il arrive au passage suivant du courrier (06:30 ou 14:30).
+   *
+   * Revue du 29/09 : passe par `lancerPassageAgent`, la fonction du bouton de l'Assistant IA —
+   * même titre de pastille (« Passage de l'agent »), même aide (qui ne promet plus de réservation
+   * placée : l'agent ne réserve jamais), même bilan, et la page recharge à la fin.
    */
   protected runNow(): void {
     // Le bouton est grisé dans ce cas ; la garde évite un clic clavier ou un état intermédiaire.
     // Le serveur refuserait de toute façon (409, design/C3 point 2).
     if (!this.lancementPossible()) return;
-    // Anti-double-lancement : la feuille reste montée ~220 ms après fermeture (animation de sortie).
-    // Sans cette garde, un double-tap créerait 2 analyses → double placement auto possible.
-    if (this.aiJob.hasRunningOf('agent-run')) { this.closed.emit(); return; }
-    this.aiJob.run({
-      kind: 'agent-run',
-      title: 'Analyse de l\'agenda',
-      hint: 'L\'agent parcourt les trajets récurrents et l\'agenda pour préparer les propositions (ou placer automatiquement les réservations utiles). L\'avis de l\'IA, lui, est confié au poste : il arrive au prochain passage (06:30 ou 14:30). Ça prend quelques secondes…',
-      task: firstValueFrom(this.agentApi.run(this.currentFleetId())),
-      summarize: (r) => this.resumeLancement(r),
-    });
+    // Anti-double-lancement (dans la fonction) : la feuille reste montée ~220 ms après fermeture
+    // (animation de sortie) ; un double-tap ne crée pas deux passages.
+    lancerPassageAgent(
+      { aiJob: this.aiJob, agentApi: this.agentApi, sync: this.sync },
+      { fleetId: this.jobFleetId(), fleetName: this.isSuperAdmin() ? this.fleetName() : null },
+    );
     this.closed.emit(); // suivi désormais dans la pastille : plus de blocage de la modal.
-  }
-
-  /** Résumé lisible d'un lancement manuel, pour la pastille. Isolé pour rester testable et honnête. */
-  protected resumeLancement(r: AgendaAgentRunResultDto): string {
-    // Verrou serveur (passage nocturne ou événementiel en cours) : rien n'a été lancé — ne pas
-    // le résumer en « rien à proposer », qui ferait passer un agent occupé pour un agent vide.
-    if (r.alreadyRunning) return 'Une analyse était déjà en cours pour cette société : rien de nouveau n\'a été lancé.';
-    if (!r.created && !r.proposed) {
-      return 'Aucune optimisation à proposer pour l\'instant : aucun trajet récurrent assez net sur la période analysée.';
-    }
-    const preparees = `${r.proposed} proposition(s) préparée(s)`
-      + (r.created ? ` · ${r.created} réservation(s) placée(s) automatiquement` : '');
-    // ⚠️ `aiVerdictQueued = false` confond trois causes (IA coupée, rien à juger, file
-    // indisponible) : le dire « désactivée pour cette société » accusait un réglage que la pastille
-    // ne connaît pas — faux dès qu'un enfilage échoue sur une IA pourtant active.
-    const avis = r.aiVerdictQueued
-      ? ' — l\'avis de l\'IA arrivera au prochain passage du poste (06:30 ou 14:30).'
-      : ' — aucun avis de l\'IA n\'est attendu pour ce passage.';
-    return preparees + avis;
   }
 
   private errMsg(e: unknown): string {

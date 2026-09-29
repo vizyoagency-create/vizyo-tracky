@@ -1,3 +1,4 @@
+import { HttpErrorResponse } from '@angular/common/http';
 import { Injectable, computed, signal } from '@angular/core';
 import { apiErrorMessage } from '../error/api-error';
 
@@ -15,7 +16,13 @@ export type AiJobStatus = 'running' | 'done' | 'error';
 export interface AiJob {
   id: string;
   kind: AiJobKind;
-  /** Titre court (ex. « Analyse de l'agenda — CDEF »). */
+  /**
+   * Société concernée (revue du 29/09). Super-admin : celle du bandeau AU LANCEMENT ; `null` pour
+   * les autres rôles, qui n'en ont qu'une. Sans elle, une analyse lancée sur A s'affichait « en
+   * cours » sur B dès qu'on changeait de société, et sa fin faisait relire l'analyse de B.
+   */
+  fleetId?: string | null;
+  /** Titre court (ex. « Passage de l'agent — CDEF »). */
   title: string;
   /** Explication vulgarisée de CE QUE fait l'IA pendant le chargement (pour les non-experts). */
   hint: string;
@@ -25,9 +32,24 @@ export interface AiJob {
   /** Résultat lisible affiché quand c'est prêt (ex. « 2 propositions à valider »). */
   resultText?: string;
   error?: string;
+  /**
+   * Vrai quand le serveur a REFUSÉ (403, 409, 429) plutôt qu'échoué : la pastille dit « Refusé »
+   * et le motif. Un « Échec » sur un refus de quota faisait croire à une panne (revue du 29/09).
+   */
+  refused?: boolean;
   /** Résultat BRUT de la tâche (pour ré-afficher des résultats interactifs — ex. capacités à valider). */
   payload?: unknown;
 }
+
+/**
+ * Motifs par défaut d'un REFUS, quand le serveur n'en écrit pas. L'appelant peut les préciser
+ * (`run({ refus })`) : lui seul sait ce que « 429 » veut dire pour son geste.
+ */
+const REFUS_PAR_DEFAUT: Partial<Record<number, string>> = {
+  403: 'Refusé : ce compte n\'a pas le droit de lancer ce travail pour cette société.',
+  409: 'Refusé : l\'état a changé entre-temps. Rechargez la page puis réessayez.',
+  429: 'Refusé : ce travail est déjà en cours, ou a déjà été fait récemment pour cette société.',
+};
 
 /**
  * Refonte agenda/IA — Suivi des opérations IA en ARRIÈRE-PLAN.
@@ -49,11 +71,17 @@ export class AiJobService {
   /**
    * true si un job de CE TYPE est déjà en cours. Sert de garde anti-double-lancement : depuis le
    * passage en asynchrone, la feuille se ferme AVANT que la tâche finisse et reste montée ~220 ms
-   * (animation de sortie) → un double-tap sur « Lancer l'analyse » créerait 2 jobs (coût IA doublé,
-   * voire double placement automatique pour l'agent). L'appelant renonce si un même job tourne déjà.
+   * (animation de sortie) → un double-tap sur « Lancer un passage » créerait 2 jobs (coût IA doublé).
+   * L'appelant renonce si un même job tourne déjà.
+   *
+   * `fleetId` (revue du 29/09) restreint la garde à UNE société : `null` = les jobs sans société
+   * (rôles à une seule flotte), omis = toutes. Le serveur tient ses gardes par société ; une garde
+   * globale ici laissait le bouton de B cliquable mais muet pendant que A tournait.
    */
-  hasRunningOf(kind: AiJobKind): boolean {
-    return this._jobs().some((j) => j.kind === kind && j.status === 'running');
+  hasRunningOf(kind: AiJobKind, fleetId?: string | null): boolean {
+    return this._jobs().some(
+      (j) => j.kind === kind && j.status === 'running' && (fleetId === undefined || (j.fleetId ?? null) === fleetId),
+    );
   }
 
   /**
@@ -68,11 +96,16 @@ export class AiJobService {
     task: Promise<T>;
     /** Texte de résultat lisible (pour un non-expert) à partir de la réponse. */
     summarize: (result: T) => string;
+    /** Société concernée (voir `AiJob.fleetId`). */
+    fleetId?: string | null;
+    /** Motif lisible d'un refus, par statut HTTP, quand le serveur n'en donne pas. */
+    refus?: Partial<Record<number, string>>;
   }): string {
     const id = `aijob-${++this.seq}`;
     const job: AiJob = {
       id,
       kind: opts.kind,
+      fleetId: opts.fleetId ?? null,
       title: opts.title,
       hint: opts.hint,
       status: 'running',
@@ -88,7 +121,12 @@ export class AiJobService {
           resultText: safe(() => opts.summarize(result)) ?? 'Terminé.',
           payload: result,
         }),
-      (err) => this.patch(id, { status: 'error', finishedAt: Date.now(), error: apiErrorMessage(err, 'Échec de l\'analyse IA.') }),
+      (err) => {
+        const status = err instanceof HttpErrorResponse ? err.status : 0;
+        const refused = status === 403 || status === 409 || status === 429;
+        const repli = (refused ? opts.refus?.[status] ?? REFUS_PAR_DEFAUT[status] : undefined) ?? 'Échec de l\'analyse IA.';
+        this.patch(id, { status: 'error', finishedAt: Date.now(), error: apiErrorMessage(err, repli), refused });
+      },
     );
     return id;
   }

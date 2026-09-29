@@ -68,6 +68,14 @@ export interface AiCapacityProposalDto {
   /** 0..1 — certitude IA (basse = variante ambiguë, à confirmer). */
   confidence: number;
   reasoning: string;
+  /** Fiche du véhicule AU MOMENT de l'analyse (revue du 29/09) — sert à savoir si elle a bougé depuis. */
+  currentSeats?: number | null;
+  currentFeatures?: string[];
+  /** Fiche du véhicule MAINTENANT (rendue par `latest`) : l'écran affiche « actuel → proposé ». */
+  nowSeats?: number | null;
+  nowFeatures?: string[];
+  /** Vrai si la fiche a été modifiée depuis l'analyse : la proposition n'est plus appliquée d'office. */
+  ficheModifiee?: boolean;
 }
 
 export interface AiCapacityResultDto {
@@ -110,16 +118,37 @@ export interface AiCapacityLatestDto {
   nextAllowedAt: string | null;
   /** Fenêtre de la garde, en heures. */
   windowHours: number;
+  /**
+   * Pourquoi une analyse ne peut pas être lancée par CE compte, quand ce n'est pas la fenêtre de
+   * 24 h (ex. périmètre restreint à une partie du parc). Null sinon.
+   */
+  motif?: string | null;
+  /** Une analyse de cette société est en cours côté serveur : l'écran relit jusqu'à ce qu'elle finisse. */
+  enCours?: boolean;
 }
 
 /** Application (humaine) d'un sous-ensemble de propositions → écrit les véhicules. */
 export interface AiCapacityApplyItem {
   vehicleId: string;
   seats?: number | null;
+  /** Équipements à AJOUTER (le serveur fait l'union avec la fiche) — jamais la liste entière. */
   features?: string[];
+  /**
+   * Contre-revue du 29/09 — appliquer MALGRÉ une fiche modifiée depuis l'analyse (geste explicite
+   * « Appliquer quand même » sur une carte « à revoir »). Sans lui, une fiche modifiée est sautée.
+   */
+  forcer?: boolean;
 }
 export interface AiCapacityApplyDto {
   items: AiCapacityApplyItem[];
+  /** L'analyse conservée d'où viennent ces propositions (marquée « appliquée » pour ces véhicules). */
+  analysisId?: string;
+}
+
+/** Résultat d'une application : ce qui a été écrit, et ce qui a été écarté, véhicule par véhicule. */
+export interface AiCapacityApplyResultDto {
+  updated: number;
+  skipped: { vehicleId: string; plate: string | null; motif: string }[];
 }
 
 /* ===================== Capacité 2 — optimiseur de placement ===================== */

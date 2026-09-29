@@ -214,6 +214,10 @@ export function transformerFlotte(src: Fleet, ctx: Contexte): Prisma.FleetUnchec
     adaptiveSamplingEnabled: src.adaptiveSamplingEnabled,
     adaptiveFixModeEnabled: src.adaptiveFixModeEnabled,
     fuelPriceEurL: src.fuelPriceEurL,
+    // Sièges auto (28/09) : ce que la société possède et son réglage — un réglage de parc, copié.
+    childSeatsBaby: src.childSeatsBaby,
+    childSeatsChild: src.childSeatsChild,
+    childSeatPolicy: src.childSeatPolicy,
     weeklyReportEmail: null,
     // L'option IA est ACTIVE : le prospect voit les récits importés et les écrans de l'option.
     // Aucune clé IA dans la démo → rien n'est facturé, rien n'est généré.
@@ -297,6 +301,9 @@ export function transformerVehicule(src: Vehicle, ctx: Contexte, plaque: string)
     lastOdometerAt: src.lastOdometerAt,
     seats: src.seats,
     childSeats: src.childSeats,
+    // Sièges auto installés à bord (28/09) : une caractéristique du véhicule, comme les places.
+    childSeatsBaby: src.childSeatsBaby,
+    childSeatsChild: src.childSeatsChild,
     features: src.features,
     mixedUseEnabled: src.mixedUseEnabled,
     speedAlertEnabled: src.speedAlertEnabled,

@@ -18,6 +18,7 @@ import { Throttle } from '@nestjs/throttler';
 import type { Response } from 'express';
 import { RequirePermissions } from '../auth/decorators/permissions.decorator';
 import { Roles } from '../auth/decorators/roles.decorator';
+import { RequireVehiclePermission } from '../auth/decorators/vehicle-permissions.decorator';
 import type { AuthenticatedRequest } from '../auth/guards/jwt-auth.guard';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../auth/guards/permissions.guard';
@@ -80,11 +81,17 @@ export class VehiclesController {
 
   // Sprint 10 — Vue « Parc & capacités » : déclarée AVANT @Get(':id') (sinon 'capacity-overview'
   // serait capturé comme un :id). Lecture scopée tenant + accès granulaire (vehicles_view).
+  //
+  // Revue du 29/09 — `fleetId` = société choisie dans le bandeau (super-admin), comme pour
+  // `/vehicles/stats`. Sans lui, un super-admin recevait les 500 premières plaques de TOUTES les
+  // sociétés, et la vue Parc de l'agenda devait les recouper avec `GET /vehicles` (plafonné à
+  // 50) : les véhicules anciens d'une société disparaissaient de sa grille. Ignoré pour un
+  // non-super : le service impose toujours SA flotte, donc aucun passage d'une société à l'autre.
   @Get('capacity-overview')
   @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN, UserRole.FLEET_MANAGER, UserRole.VIEWER)
   @RequirePermissions('vehicles_view')
-  async capacityOverview(@Req() req: AuthenticatedRequest) {
-    return this.vehicles.capacityOverview(await this.buildRequestedBy(req));
+  async capacityOverview(@Req() req: AuthenticatedRequest, @Query('fleetId') fleetId?: string) {
+    return this.vehicles.capacityOverview(await this.buildRequestedBy(req), fleetId || null);
   }
 
   // feat/comptes-conducteurs (4a) — Feuille HTML imprimable de TOUS les QR de déverrouillage
@@ -209,15 +216,27 @@ export class VehiclesController {
     return this.vehicles.setOutOfService(id, dto, await this.buildRequestedBy(req));
   }
 
+  /**
+   * Revue du 29/09 (T9) — écrire UN véhicule exige le droit SUR CE véhicule, pas l'union des droits.
+   *
+   * `@RequirePermissions('vehicles_edit')` seul résout l'union des scopes : un gestionnaire qui a
+   * `vehicles_edit` sur le groupe Nord et seulement `vehicles_view` sur le groupe Sud passait la
+   * garde pour un véhicule Sud — la vue Parc de l'agenda et l'onglet Capacités lui offraient la
+   * feuille de réglage, et places, énergie, équipements étaient réécrits. Et comme le service ne
+   * recevait pas `accessibleVehicleIds`, `findOne` ne filtrait que la société : un compte limité à
+   * Nord modifiait, par son UUID, n'importe quel véhicule de sa société.
+   *
+   * Deux verrous, donc : la garde résout `vehicles_edit` sur la ligne d'accès qui couvre CE véhicule
+   * (403 si elle le refuse ou si aucune ne le couvre ; super-admin et admin de flotte passent), et
+   * `buildRequestedBy` fait appliquer le périmètre par `findOne` (404 hors périmètre). Même règle
+   * pour la synchro depuis le planning et la suppression ci-dessous.
+   */
   @Patch(':id')
   @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN, UserRole.FLEET_MANAGER)
   @RequirePermissions('vehicles_edit')
-  update(@Param('id') id: string, @Body() dto: UpdateVehicleDto, @Req() req: AuthenticatedRequest) {
-    return this.vehicles.update(id, dto, {
-      userId: req.user.id,
-      role: req.user.role,
-      fleetId: req.user.fleetId,
-    });
+  @RequireVehiclePermission('vehicles_edit', { paramName: 'id' })
+  async update(@Param('id') id: string, @Body() dto: UpdateVehicleDto, @Req() req: AuthenticatedRequest) {
+    return this.vehicles.update(id, dto, await this.buildRequestedBy(req));
   }
 
   /** Sprint 10 — Source de synchro (planning d'installation lié) pour pré-remplir/comparer. Lecture scopée. */
@@ -228,32 +247,30 @@ export class VehiclesController {
     return this.vehicles.getInstallationSource(id, await this.buildRequestedBy(req));
   }
 
-  /** Sprint 10 — Recopie les champs choisis (marque/modèle/énergie) du planning vers le véhicule. */
+  /**
+   * Sprint 10 — Recopie les champs choisis (marque/modèle/énergie) du planning vers le véhicule.
+   * Revue du 29/09 (T9) : c'est une écriture du véhicule — même double verrou que `PATCH :id`.
+   */
   @Post(':id/sync-from-installation')
   @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN, UserRole.FLEET_MANAGER)
   @RequirePermissions('vehicles_edit')
-  syncFromInstallation(
+  @RequireVehiclePermission('vehicles_edit', { paramName: 'id' })
+  async syncFromInstallation(
     @Param('id') id: string,
     @Body() dto: SyncFromInstallationDto,
     @Req() req: AuthenticatedRequest,
   ) {
-    return this.vehicles.syncFromInstallation(id, dto.fields, {
-      userId: req.user.id,
-      role: req.user.role,
-      fleetId: req.user.fleetId,
-    });
+    return this.vehicles.syncFromInstallation(id, dto.fields, await this.buildRequestedBy(req));
   }
 
+  /** Revue du 29/09 (T9) : même trou que `PATCH :id` — `vehicles_delete` résolu sur CE véhicule, périmètre appliqué. */
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
   @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN, UserRole.FLEET_MANAGER)
   @RequirePermissions('vehicles_delete')
-  remove(@Param('id') id: string, @Req() req: AuthenticatedRequest) {
-    return this.vehicles.remove(id, {
-      userId: req.user.id,
-      role: req.user.role,
-      fleetId: req.user.fleetId,
-    });
+  @RequireVehiclePermission('vehicles_delete', { paramName: 'id' })
+  async remove(@Param('id') id: string, @Req() req: AuthenticatedRequest) {
+    return this.vehicles.remove(id, await this.buildRequestedBy(req));
   }
 
   /**

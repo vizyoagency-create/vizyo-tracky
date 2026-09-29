@@ -2,6 +2,8 @@ import { Body, Controller, Get, Patch, Post, Query, Req, UseGuards } from '@nest
 import { UserRole } from '@prisma/client';
 import type {
   AiCapacityApplyDto,
+  AiCapacityApplyResultDto,
+  AiCapacityResultDto,
   AiCapacitySuggestRequestDto,
   AiPlacementSuggestRequestDto,
   SetFleetMetierDto,
@@ -11,7 +13,7 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import { AuthenticatedRequest, JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../auth/guards/permissions.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
-import { AiOptimizationService } from './ai-optimization.service';
+import { AiOptimizationService, type AiCapacityLatestReponse } from './ai-optimization.service';
 
 const ALL_ROLES = [
   UserRole.SUPER_ADMIN,
@@ -33,27 +35,40 @@ const ALL_ROLES = [
 export class AiOptimizationController {
   constructor(private readonly ai: AiOptimizationService) {}
 
-  /** Propositions de capacité (places / équipements) — DRY-RUN. Les sièges auto sont un stock société. */
+  /**
+   * Propositions de capacité (places / équipements) — DRY-RUN. Les sièges auto sont un stock société.
+   * Revue du 29/09 : c'est l'analyse de TOUTE la société — 403 pour un compte au périmètre partiel
+   * ou avec une sélection `vehicleIds` ; 429 si une analyse de la société a moins de 24 h ou est en cours.
+   */
   @Post('capacity/suggest')
   @Roles(...ALL_ROLES)
   @RequirePermissions('ai_optimize')
-  suggestCapacity(@Req() req: AuthenticatedRequest, @Body() dto: AiCapacitySuggestRequestDto) {
+  suggestCapacity(@Req() req: AuthenticatedRequest, @Body() dto: AiCapacitySuggestRequestDto): Promise<AiCapacityResultDto> {
     return this.ai.suggestCapacity(req.user, dto ?? {});
   }
 
-  /** Refonte du 28/09 — la dernière analyse conservée de la société, et si une nouvelle est possible. */
+  /**
+   * Refonte du 28/09 — la dernière analyse conservée de la société, et si une nouvelle est possible.
+   * Revue du 29/09 : bornée au périmètre véhicules de l'appelant, avec la fiche actuelle de chaque véhicule.
+   * Contre-revue du 29/09 : `enCours` dit si une analyse de la société tourne (l'écran relit jusqu'à la fin).
+   */
   @Get('capacity/latest')
   @Roles(...ALL_ROLES)
   @RequirePermissions('ai_optimize')
-  latestCapacity(@Req() req: AuthenticatedRequest, @Query('fleetId') fleetId?: string) {
+  latestCapacity(@Req() req: AuthenticatedRequest, @Query('fleetId') fleetId?: string): Promise<AiCapacityLatestReponse> {
     return this.ai.latestCapacity(req.user, fleetId);
   }
 
-  /** Application HUMAINE des propositions acceptées → écrit les véhicules. */
+  /**
+   * Application HUMAINE des propositions acceptées → écrit les véhicules. Revue du 29/09 : complète
+   * les fiches sans rien effacer, et rend véhicule par véhicule ce qui a été écarté et pourquoi.
+   * Contre-revue du 29/09 : `features` = équipements à AJOUTER (union faite ici, 30 au plus, sinon
+   * écarté avec motif) ; une fiche modifiée depuis l'analyse n'est réécrite qu'avec `forcer: true`.
+   */
   @Post('capacity/apply')
   @Roles(...ALL_ROLES)
   @RequirePermissions('vehicles_edit')
-  applyCapacity(@Req() req: AuthenticatedRequest, @Body() dto: AiCapacityApplyDto) {
+  applyCapacity(@Req() req: AuthenticatedRequest, @Body() dto: AiCapacityApplyDto): Promise<AiCapacityApplyResultDto> {
     return this.ai.applyCapacity(req.user, dto);
   }
 

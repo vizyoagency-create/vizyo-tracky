@@ -5,31 +5,14 @@ import {
   buildCells,
   eventColor,
   isSameDay,
+  joursDansFenetre,
   localIso,
   startOfMonth,
   startOfWeekMonday,
 } from './agenda.utils';
 
-/** Pilule d'événement affichée dans une cellule (couleur + libellé court). */
-/**
- * Lot multi-jours (28/09) — les jours civils (ISO locaux) qu'un évènement occupe : son premier
- * jour, puis, s'il porte une fin sur un autre jour, chaque jour jusqu'à elle. Borné : la grille
- * n'en montre jamais plus de 42, 62 laisse la marge d'une fin hors du mois. Sans fin, fin illisible
- * ou fin avant le début : le seul premier jour — jamais de trou, jamais d'invention.
- */
-export function joursCouverts(ev: Pick<VehicleEventDto, 'startAt' | 'endAt'>, maxJours = 62): string[] {
-  const d = new Date(ev.startAt);
-  if (Number.isNaN(d.getTime())) return [];
-  const jours = [localIso(d)];
-  const fin = ev.endAt ? new Date(ev.endAt) : null;
-  if (!fin || Number.isNaN(fin.getTime()) || fin.getTime() <= d.getTime()) return jours;
-  const curseur = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1);
-  while (curseur.getTime() <= fin.getTime() && jours.length < maxJours) {
-    jours.push(localIso(curseur));
-    curseur.setDate(curseur.getDate() + 1);
-  }
-  return jours;
-}
+/** Nombre de jours de la grille du mois : six semaines, du lundi de la première au dimanche de la dernière. */
+const JOURS_GRILLE = 42;
 
 /**
  * Le libellé d'une pilule qui s'étale sur plusieurs jours (refonte UX du 28/09, point 1) : « comprendre
@@ -45,6 +28,7 @@ export function libelleMultiJours(titre: string, jour: number, total: number): s
   return jour <= 1 ? `${total} j · ${titre}` : `↳ ${jour}/${total} · ${titre}`;
 }
 
+/** Pilule d'événement affichée dans une cellule (couleur + libellé court). */
 interface CalendarPill {
   id: string;
   color: string;
@@ -134,6 +118,60 @@ export function annulationSansObjet(
   const debut = new Date(ev.startAt).getTime();
   if (Number.isNaN(debut)) return false;
   return debut > maintenantMs;
+}
+
+/**
+ * Premier jour de la grille du mois : le lundi de la semaine du 1er. UNE expression pour les
+ * cellules et pour les pilules — si elles divergeaient, les pilules des jours de tête de grille
+ * (fin du mois précédent) disparaîtraient sans qu'aucune cellule ne manque.
+ */
+export function debutDeGrille(mois: Date): Date {
+  return startOfWeekMonday(startOfMonth(mois));
+}
+
+/** Une pilule à poser sur un jour : l'évènement, et où ce jour tombe dans sa durée. */
+export interface EntreeJour {
+  ev: VehicleEventDto;
+  /** Ce jour n'est pas le premier de l'évènement. */
+  suite: boolean;
+  /** Rang du jour dans l'évènement (1 = premier jour). */
+  jour: number;
+  /** Durée totale de l'évènement, en jours civils. */
+  total: number;
+}
+
+/**
+ * Regroupe les événements par jour de la GRILLE AFFICHÉE (clé ISO locale).
+ *
+ * Lot multi-jours (28/09) — « un véhicule en garage, ça peut prendre une semaine » : un
+ * évènement dont la fin tombe un autre jour occupe CHAQUE jour de l'intervalle, en « suite »
+ * après le premier. Avant, seule la journée de début portait une pilule, et une maintenance du
+ * 5 au 12 disparaissait de la grille dès le 6 alors que le panneau du jour la disait immobilisante.
+ *
+ * Revue du 29/09 : on n'énumère que les jours de la grille, avec le vrai rang et la vraie durée
+ * (`joursDansFenetre`, même règle que le panneau du jour). L'ancienne énumération partait du début
+ * de l'évènement et s'arrêtait au 62e jour : « 62 j » sur la pilule d'une mise à disposition de
+ * 91 jours, puis plus aucune pilule après le 62e jour alors que le véhicule était toujours pris.
+ * Sortie du composant à la contre-revue (S3) pour que ce câblage — la fenêtre passée, pas seulement
+ * la règle — soit éprouvé.
+ */
+export function evenementsParJour(
+  events: readonly VehicleEventDto[],
+  mois: Date,
+  maintenantMs: number,
+): Map<string, EntreeJour[]> {
+  const map = new Map<string, EntreeJour[]>();
+  const debut = debutDeGrille(mois);
+  for (const ev of events) {
+    if (annulationSansObjet(ev, maintenantMs)) continue;
+    for (const { iso, jour, total } of joursDansFenetre(ev, debut, JOURS_GRILLE)) {
+      const entree: EntreeJour = { ev, suite: jour > 1, jour, total };
+      const list = map.get(iso);
+      if (list) list.push(entree);
+      else map.set(iso, [entree]);
+    }
+  }
+  return map;
 }
 
 /**
@@ -646,30 +684,8 @@ export class AgendaCalendarComponent {
     this.dayClick.emit(iso);
   }
 
-  /**
-   * Regroupe les événements par jour (clé ISO locale).
-   *
-   * Lot multi-jours (28/09) — « un véhicule en garage, ça peut prendre une semaine » : un
-   * évènement dont la fin tombe un autre jour occupe CHAQUE jour de l'intervalle, en « suite »
-   * après le premier. Avant, seule la journée de début portait une pilule, et une maintenance du
-   * 5 au 12 disparaissait de la grille dès le 6 alors que le panneau du jour la disait immobilisante.
-   * Borné à 62 jours : la grille n'en montre jamais plus de 42.
-   */
-  private readonly eventsByDay = computed(() => {
-    const map = new Map<string, { ev: VehicleEventDto; suite: boolean; jour: number; total: number }[]>();
-    const maintenant = Date.now();
-    const ajouter = (key: string, entree: { ev: VehicleEventDto; suite: boolean; jour: number; total: number }) => {
-      const list = map.get(key);
-      if (list) list.push(entree);
-      else map.set(key, [entree]);
-    };
-    for (const ev of this.events()) {
-      if (annulationSansObjet(ev, maintenant)) continue;
-      const jours = joursCouverts(ev);
-      jours.forEach((jour, i) => ajouter(jour, { ev, suite: i > 0, jour: i + 1, total: jours.length }));
-    }
-    return map;
-  });
+  /** Les événements par jour de la grille affichée — voir `evenementsParJour`. */
+  private readonly eventsByDay = computed(() => evenementsParJour(this.events(), this.currentMonth(), Date.now()));
 
   protected readonly cells = computed<CalendarCell[]>(() => {
     const monthFirst = startOfMonth(this.currentMonth());
@@ -679,9 +695,10 @@ export class AgendaCalendarComponent {
     const byActivity = this.activityByDay();
     const byForecast = this.forecastByDay();
     const byProposals = this.proposalsByDay();
-    const start = startOfWeekMonday(monthFirst);
+    // La MÊME origine que celle des pilules (`evenementsParJour`).
+    const start = debutDeGrille(monthFirst);
 
-    return Array.from({ length: 42 }, (_, i) => {
+    return Array.from({ length: JOURS_GRILLE }, (_, i) => {
       const d = addDays(start, i);
       const iso = localIso(d);
       const dayEvents = byDay.get(iso) ?? [];

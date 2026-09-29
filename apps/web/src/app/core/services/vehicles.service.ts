@@ -160,9 +160,15 @@ export class VehiclesApiService {
 
   // ─── Sprint 10 — Synchro véhicules ↔ planning d'installation ───
 
-  /** Vue « Parc & capacités » : véhicules + capacité + source planning (modèle/énergie). */
-  capacityOverview(): Observable<VehicleCapacityRowDto[]> {
-    return this.http.get<VehicleCapacityRowDto[]>('/api/vehicles/capacity-overview');
+  /**
+   * Vue « Parc & capacités » : véhicules + capacité + source planning (modèle/énergie).
+   *
+   * `fleetId` (revue du 29/09) = société du bandeau, pour un super-admin : le serveur lit alors le
+   * parc de CETTE société en entier, au lieu des 500 premières plaques toutes sociétés mêlées.
+   * Ignoré côté serveur pour les autres rôles (déjà bornés à leur flotte).
+   */
+  capacityOverview(fleetId?: string | null): Observable<VehicleCapacityRowDto[]> {
+    return this.http.get<VehicleCapacityRowDto[]>('/api/vehicles/capacity-overview', fleetId ? { params: { fleetId } } : {});
   }
 
   /** Source de synchro (tâche d'installation liée la plus récente) d'un véhicule. */
