@@ -127,4 +127,42 @@ describe('AiStatusService', () => {
       recit: false,
     });
   });
+
+  /**
+   * 29/09 — « c'est le client qui désactive » : l'écran MONTRE l'IA sur le choix de la société
+   * (`fleetEnabled`), pas sur `enabled`, qui exige aussi une clé au serveur. Sur la démo (aucune clé,
+   * option imposée), l'agenda montrait les propositions pendant que la barre latérale, l'Activité et
+   * les Paramètres parlaient d'une IA coupée.
+   */
+  it('`societeActive` suit le choix du client (`fleetEnabled`), même sans clé au serveur', () => {
+    svc.refresh();
+    http.expectOne((r) => r.url === '/api/ai/status')
+      .flush(reponse({ configured: false, enabled: false, fleetEnabled: true }));
+    expect({ enabled: svc.enabled(), societe: svc.societeActive() }).toEqual({ enabled: false, societe: true });
+  });
+
+  it('`societeActive` : client qui a coupé l’IA → faux, clé ou pas ; serveur d’avant (sans le champ) → `enabled`', () => {
+    svc.refresh();
+    http.expectOne((r) => r.url === '/api/ai/status').flush(reponse({ enabled: true, fleetEnabled: false }));
+    expect(svc.societeActive()).toBe(false);
+
+    svc.refresh();
+    http.expectOne((r) => r.url === '/api/ai/status').flush(reponse({ enabled: true }));
+    expect(svc.societeActive()).toBe(true);
+  });
+
+  it('deux changements de société rapprochés : la réponse de la PREMIÈRE, arrivée en retard, n’écrase rien', () => {
+    fleetFilter.set('fleet-a');
+    svc.refresh();
+    const premiere = http.expectOne((r) => r.url === '/api/ai/status' && r.params.get('fleetId') === 'fleet-a');
+
+    fleetFilter.set('fleet-b');
+    svc.refresh();
+    const seconde = http.expectOne((r) => r.url === '/api/ai/status' && r.params.get('fleetId') === 'fleet-b');
+
+    seconde.flush(reponse({ fleetId: 'fleet-b', fleetEnabled: false }));
+    premiere.flush(reponse({ fleetId: 'fleet-a', fleetEnabled: true }));
+
+    expect({ societe: svc.status()?.fleetId, active: svc.societeActive() }).toEqual({ societe: 'fleet-b', active: false });
+  });
 });

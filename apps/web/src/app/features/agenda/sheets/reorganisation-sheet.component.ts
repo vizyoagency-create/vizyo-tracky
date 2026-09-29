@@ -22,7 +22,15 @@ import { AuthService } from '../../../core/services/auth.service';
 import { FleetFilterService } from '../../../core/services/fleet-filter.service';
 import { ToastService } from '../../../shared/ui/toast/toast.service';
 import { BottomSheetComponent } from '../../../shared/ui/bottom-sheet/bottom-sheet.component';
-import { horsFenetrePreset, lotExactDeSimulation, raisonsVideRefusees } from '../agenda.utils';
+import {
+  compteAgentMemorise,
+  type CompteAgentMemorise,
+  horsFenetrePreset,
+  lotExactDeSimulation,
+  memoriserCompteAgent,
+  origineAgentVisible,
+  raisonsVideRefusees,
+} from '../agenda.utils';
 
 /** Fenêtres proposées — celles qu'on veut réellement reprendre, pas un sélecteur de dates. */
 const FENETRES = [
@@ -261,14 +269,22 @@ interface Lecture {
                      Quatrième revue du 29/09 (D1) : lot limité aux refusées, les nombres des boutons
                      (« Toutes 3 ») comptaient tout le véhicule, pas le lot — ils se taisent ; le lot est dit
                      par le bandeau, le bilan et le bouton. La ligne de détail reste, et dit son périmètre. -->
+                <!-- 29/09 (IA désactivée) : IA coupée, « Posées par l'agent » ne reste que s'il filtre de
+                     VRAIES réservations (compte > 0) ou s'il est le filtre actif ; à 0, lui et le « · 0 de
+                     l'agent » du détail disparaissent (boutonAgentVisible). La mention « agent » des lignes
+                     de l'aperçu reste : c'est l'histoire de la réservation. Revue du 29/09 : le compte
+                     qui en décide est celui de la SOCIÉTÉ, mémorisé — le bouton ne surgit plus au retour
+                     de chaque première simulation, et ne disparaît plus sur une erreur. -->
                 <div class="ro-seg">
                   <button type="button" class="ro-seg-btn" [class.ro-seg-btn--on]="origine() === 'toutes'"
                           (click)="origine.set('toutes')">Toutes@if (comptesBoutons(); as c) { <span class="ro-n">{{ c.agent + c.public + c.manuelle }}</span> }</button>
-                  <button type="button" class="ro-seg-btn" [class.ro-seg-btn--on]="origine() === 'auto'"
-                          (click)="origine.set('auto')">Posées par l'agent@if (comptesBoutons(); as c) { <span class="ro-n">{{ c.agent }}</span> }</button>
+                  @if (boutonAgentVisible()) {
+                    <button type="button" class="ro-seg-btn" [class.ro-seg-btn--on]="origine() === 'auto'"
+                            (click)="origine.set('auto')">Posées par l'agent@if (comptesBoutons(); as c) { <span class="ro-n">{{ c.agent }}</span> }</button>
+                  }
                 </div>
                 @if (comptes(); as c) {
-                  <span class="ro-detail">{{ plaqueLue() ? 'Sur ' + plaqueLue() : 'Sur la fenêtre' }}{{ lotLimite() ? ', toute la période (pas seulement les refusées)' : '' }} : {{ c.manuelle }} saisie{{ c.manuelle > 1 ? 's' : '' }} à la main · {{ c.public }} du lien public · {{ c.agent }} de l'agent.</span>
+                  <span class="ro-detail">{{ plaqueLue() ? 'Sur ' + plaqueLue() : 'Sur la fenêtre' }}{{ lotLimite() ? ', toute la période (pas seulement les refusées)' : '' }} : {{ c.manuelle }} saisie{{ c.manuelle > 1 ? 's' : '' }} à la main · {{ c.public }} du lien public@if (boutonAgentVisible()) { · {{ c.agent }} de l'agent}.</span>
                 }
                 @if (origine() === 'toutes') {
                   <span class="ro-avert">
@@ -375,7 +391,9 @@ interface Lecture {
                     }
                     <button type="button" class="ro-lien" (click)="elargir()">Élargir à toute la période</button>
                   } @else if (l.corps.origine === 'auto' && autresQueAgent() !== 0) {
-                    <p><strong>Aucune réservation posée par l'agent</strong>{{ surPlaque() }} {{ l.fenetre }} — l'agent ne réserve plus fermement depuis le 23/09 : il propose, vous validez.</p>
+                    <!-- 29/09 : « il propose, vous validez » n'est vrai que si l'IA est active — coupée, l'agenda
+                         ne montre plus ses propositions. -->
+                    <p><strong>Aucune réservation posée par l'agent</strong>{{ surPlaque() }} {{ l.fenetre }}@if (iaActive()) { — l'agent ne réserve plus fermement depuis le 23/09 : il propose, vous validez}.</p>
                     @if (autresQueAgent(); as n) {
                       <p>{{ plaqueLue() ? 'Sur ' + plaqueLue() + ', il y a' : 'Il y a' }} {{ n }} réservation{{ n > 1 ? 's' : '' }} saisie{{ n > 1 ? 's' : '' }} à la main ou venue{{ n > 1 ? 's' : '' }} du lien public.</p>
                     }
@@ -580,6 +598,12 @@ export class ReorganisationSheetComponent {
   readonly vehicles = input<VehiculeReorganisation[]>([]);
   /** Pré-réglage à l'ouverture (véhicule, fenêtre, action) — depuis un autre geste de la page. */
   readonly preset = input<PresetReorganisation | null>(null);
+  /**
+   * 29/09 — l'IA de la société du bandeau est-elle active ? La page le décide (`visibiliteIa`, statut
+   * chargé ET de la société du bandeau) et le passe ici. Faux par défaut : rien de l'agent sans
+   * confirmation (opt-in, comme `AiStatusService`).
+   */
+  readonly iaActive = input(false);
   readonly closed = output<void>();
   /** Émis après une application réelle — l'agenda recharge ses couches. */
   readonly applique = output<void>();
@@ -713,6 +737,31 @@ export class ReorganisationSheetComponent {
     if (!this.listeConnue()) return false;
     return !(this.lotLimite() && vehicleId === this.lue()?.corps.vehicleId);
   }
+  /**
+   * 29/09 (revue) — dernier compte CONNU des réservations posées par l'agent sur la société du bandeau
+   * (`totaux.agent` d'une simulation réussie : toute la société sur la fenêtre simulée, avant les
+   * filtres de véhicule et d'origine). Ni remis à zéro à l'ouverture — la feuille reste montée dans la
+   * page, rouverte elle sait déjà —, ni effacé par une simulation en erreur, ni changé par le choix
+   * d'un véhicule. Voir `CompteAgentMemorise`.
+   */
+  private readonly compteAgentSociete = signal<CompteAgentMemorise | null>(null);
+  /**
+   * 29/09 (IA désactivée) — le bouton « Posées par l'agent » (et le « · N de l'agent » du détail).
+   * IA coupée, il ne reste que s'il filtre de VRAIES réservations — la société en a au moins une sur
+   * la fenêtre (`compteAgentSociete`) —, ou s'il est le filtre actif. Voir `origineAgentVisible`.
+   *
+   * Revue du 29/09 : il lisait `comptes()`, la simulation AFFICHÉE — `null` à chaque ouverture et après
+   * une erreur, celle du véhicule choisi sinon : il surgissait au retour de la première simulation
+   * (« Toutes » passant de pleine largeur à moitié), disparaissait sur une erreur, et avec un véhicule
+   * sans réservation de l'agent. Le nombre écrit SUR le bouton reste celui du périmètre lu (`comptesBoutons`).
+   */
+  protected readonly boutonAgentVisible = computed(() =>
+    origineAgentVisible({
+      iaActive: this.iaActive(),
+      compteAgent: compteAgentMemorise(this.compteAgentSociete(), this.fleetFilter.selectedFleetId()),
+      selectionnee: this.origine() === 'auto',
+    }),
+  );
   /** Réservations humaines ou publiques dans le périmètre lu (`null` = inconnu). */
   protected readonly autresQueAgent = computed(() => {
     const c = this.comptes();
@@ -1028,6 +1077,8 @@ export class ReorganisationSheetComponent {
           if (n !== this.lecture) return; // périmée : un critère a changé, ou la feuille s'est refermée
           this.lue.set({ corps, fenetre, applicable, r });
           if (r.parVehicule) this.parVehiculeConnu.set(r.parVehicule);
+          // 29/09 (revue) : le compte de l'agent de la société — seule une simulation RÉUSSIE le remplace.
+          this.compteAgentSociete.update((m) => memoriserCompteAgent(m, corps.fleetId ?? null, r));
           this.chargement.set(false);
         },
         error: (err) => {

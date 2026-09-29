@@ -19,11 +19,36 @@ import { AiStatusController } from './ai-status.controller';
  */
 describe('AiStatusController.status', () => {
   /** `avail` décide par (fleetId, feature) — on peut donc simuler un kill-switch ciblé. */
-  function build(avail: (fleetId: string | null | undefined, feature?: string) => boolean) {
-    const isEnabledForFleet = jest.fn(async (f: string | null | undefined, k?: string) => avail(f, k));
-    const ctrl = new AiStatusController({ isConfigured: () => true, isEnabledForFleet } as never);
-    return { ctrl, isEnabledForFleet };
+  function build(avail: (fleetId: string | null | undefined, feature?: string) => boolean, configured = true) {
+    // Comme le vrai service : `isEnabledForFleet` = une clé ET la porte ; `isFeatureOnForFleet` = la porte seule.
+    const isFeatureOnForFleet = jest.fn(async (f: string | null | undefined, k?: string) => avail(f, k));
+    const isEnabledForFleet = jest.fn(async (f: string | null | undefined, k?: string) => configured && avail(f, k));
+    const ctrl = new AiStatusController({ isConfigured: () => configured, isEnabledForFleet, isFeatureOnForFleet } as never);
+    return { ctrl, isEnabledForFleet, isFeatureOnForFleet };
   }
+
+  /**
+   * 29/09 — « c'est le client qui désactive » : l'écran masque toute l'IA sur le CHOIX de la société.
+   * `enabled` le mélangeait avec la présence d'une clé : sur la démo (aucune clé, option imposée),
+   * l'agenda montrait les propositions pendant que la barre latérale, l'Activité et les Paramètres
+   * parlaient d'une IA coupée. `fleetEnabled` porte le choix seul.
+   */
+  it('serveur sans clé : `enabled` faux, mais `fleetEnabled` dit le choix du client', async () => {
+    const { ctrl } = build((f) => f === 'fleet-9', false);
+    const res = await ctrl.status(fleetAdmin, undefined);
+    expect({ configured: res.configured, enabled: res.enabled, fleetEnabled: res.fleetEnabled }).toEqual({
+      configured: false,
+      enabled: false,
+      fleetEnabled: true,
+    });
+  });
+
+  it('`fleetEnabled` suit la société VISÉE et vaut faux quand le client a coupé l’IA', async () => {
+    const { ctrl } = build((f) => f === 'fleet-payante');
+    expect((await ctrl.status(superAdmin, 'fleet-payante')).fleetEnabled).toBe(true);
+    expect((await ctrl.status(superAdmin, 'fleet-coupee')).fleetEnabled).toBe(false);
+    expect((await ctrl.status(superAdmin, undefined)).fleetEnabled).toBe(false);
+  });
 
   const superAdmin = { user: { role: UserRole.SUPER_ADMIN, fleetId: null } } as never;
   const fleetAdmin = { user: { role: UserRole.FLEET_ADMIN, fleetId: 'fleet-9' } } as never;

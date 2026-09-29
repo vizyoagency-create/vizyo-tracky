@@ -6,6 +6,7 @@ import {
   effect,
   HostListener,
   inject,
+  linkedSignal,
   OnInit,
   signal,
   untracked,
@@ -21,7 +22,7 @@ import {
   LucideAngularModule, CalendarDays, ChevronDown, ChevronLeft, ChevronRight, Check,
   Layers, Truck, Plus, AlertTriangle, CalendarClock, Wrench, X, Trash2, Play, ListChecks,
   CalendarCheck, Inbox, Sparkles, Activity, ShieldCheck, Ban, Info, Pencil, Settings, QrCode, Shuffle, Route,
-  WifiOff, MoreHorizontal,
+  WifiOff, MoreHorizontal, Repeat,
 } from 'lucide-angular';
 import type {
   AgendaAgentProposalDto,
@@ -74,15 +75,23 @@ import {
   fenetreAReorganiser,
   fenetreImmobilisation,
   fenetresAjoutees,
+  interrupteurSociete,
   libelleVehiculesLibres,
   localIso,
+  memeVisibiliteIa,
   placesMaxLibres,
+  propositionsDuPerimetre,
+  propositionsParJour,
   rangDuJour,
+  type ReglageIaBrut,
   repliDefinitif,
   severityLabel,
   startOfDay,
   startOfMonth,
   urgencyColor,
+  type EtatIaAgenda,
+  type VisibiliteIa,
+  visibiliteIa,
 } from './agenda.utils';
 
 /** Option de groupe pour le dropdown filtre. */
@@ -144,14 +153,17 @@ function groupeReservationId(ev: VehicleEventDto): string | null {
             </h1>
             <!-- Le sous-titre suit ce que le compte voit réellement : annoncer des
                  entretiens à qui n'a pas la permission agenda_view promet un écran qui
-                 n'existe pas pour lui. -->
+                 n'existe pas pour lui. 29/09 : l'« assistant » n'est annoncé que si l'onglet
+                 Assistant IA existe — IA coupée par le client, il n'y en a plus. -->
             <p class="text-sm text-fg-tertiary mt-0.5">
               @if (canSeeAgenda()) {
                 Réservations, entretiens, incidents et missions de votre flotte
               } @else if (vueEffective() === 'missions') {
                 Les missions de votre flotte, et leurs tournées
-              } @else {
+              } @else if (montrerVueIa()) {
                 Le parc de votre flotte et l'assistant de réservation
+              } @else {
+                Le parc de votre flotte
               }
             </p>
           </div>
@@ -209,8 +221,15 @@ function groupeReservationId(ev: VehicleEventDto): string | null {
           </div>
         </div>
 
-        <!-- Suivi des opérations IA lancées en arrière-plan (analyse, optimisation…) -->
-        <app-ai-job-pill (view)="onAiJobView($event)"></app-ai-job-pill>
+        <!-- Suivi des opérations IA lancées en arrière-plan (analyse, optimisation…).
+             29/09 : IA coupée par le client, la pastille se tait — « IA en cours… », et « Voir » qui
+             menait à un Assistant IA qui n'existe plus. Le service garde les travaux : un travail en
+             vol finit en arrière-plan, et sa pastille revient si l'IA est réactivée. Revue du 29/09 :
+             un super-admin qui a lancé un travail sur UNE AUTRE société (à l'IA active) le garde en
+             vue — « Voir » le ramène sur cette société (pastilleIaVisible). -->
+        @if (pastilleIaVisible()) {
+          <app-ai-job-pill (view)="onAiJobView($event)"></app-ai-job-pill>
+        }
 
         <!-- Strip de 3 stats — trois zéros seraient un mensonge pour qui n'a pas le
              droit de lire les échéances : la flotte en a peut-être trente. -->
@@ -441,7 +460,7 @@ function groupeReservationId(ev: VehicleEventDto): string | null {
       @if (vueEffective() === 'missions') {
         <app-missions-panel />
       } @else if (vueEffective() === 'parc') {
-        <app-agenda-parc-view [vehicles]="scopedVehicles()" />
+        <app-agenda-parc-view [vehicles]="scopedVehicles()" [iaActive]="iaActive()" />
       } @else if (vueEffective() === 'ia') {
         <app-agenda-ia-view
           [proposals]="agentProposals()"
@@ -477,8 +496,11 @@ function groupeReservationId(ev: VehicleEventDto): string | null {
                --texte-* portent la meme signification et basculent. -->
           <span class="inline-flex items-center gap-1.5"><span class="ag-leg-glyphe ag-leg-glyphe--reel">●</span>Activité réelle</span>
           <span class="inline-flex items-center gap-1.5"><span class="ag-leg-glyphe ag-leg-glyphe--prevu">~</span>Usage prévu</span>
-          <!-- Lot 3a — sans cette entrée, le pointillé violet de la grille n'a pas de nom. -->
-          <span class="inline-flex items-center gap-1.5"><span class="ag-leg-fantome"></span>Proposé par l'agent (non réservé)</span>
+          <!-- Lot 3a — sans cette entrée, le pointillé violet de la grille n'a pas de nom.
+               29/09 : IA coupée, la grille n'a plus de pointillé — et la légende plus d'entrée. -->
+          @if (propositionsVisibles()) {
+            <span class="inline-flex items-center gap-1.5"><span class="ag-leg-fantome"></span>Proposé par l'agent (non réservé)</span>
+          }
         </div>
       }
 
@@ -612,7 +634,7 @@ function groupeReservationId(ev: VehicleEventDto): string | null {
                     </span>
                     <span class="ag-day-card-badges">
                       @if (isImmobilizing(ev)) {
-                        <span class="ag-blocked" title="Véhicule exclu des réservations et suggestions IA tant que l'événement est actif">Immobilisé</span>
+                        <span class="ag-blocked" [title]="titreImmobilise()">Immobilisé</span>
                       }
                       <span class="ag-status" [attr.data-status]="ev.status">{{ eventStatusLabel(ev.status) }}</span>
                     </span>
@@ -689,11 +711,14 @@ function groupeReservationId(ev: VehicleEventDto): string | null {
                 </article>
               }
             </section>
-            <!-- ── Usage prévu (aujourd'hui + à venir) ── -->
+            <!-- ── Usage prévu (aujourd'hui + à venir) ──
+                 29/09 : l'icône est une RÉCURRENCE, plus l'étincelle. La prévision est déterministe
+                 (ForecastService : les habitudes des trajets, aucun appel IA) et reste IA coupée ;
+                 l'étincelle, signe de l'IA partout ailleurs, la faisait passer pour de l'IA. -->
             @if (canSeeInsights() && dayContext() !== 'past') {
               <section class="ag-sec">
                 <div class="ag-sec-head">
-                  <span class="ag-sec-titr ag-sec-titr--fc"><lucide-icon [img]="SparklesIcon" [size]="13"></lucide-icon> Usage prévu</span>
+                  <span class="ag-sec-titr ag-sec-titr--fc"><lucide-icon [img]="RepeatIcon" [size]="13"></lucide-icon> Usage prévu</span>
                   <span class="ag-sec-badge ag-sec-badge--fc">{{ dayForecast().length }}</span>
                 </div>
                 <p class="ag-sec-sub">Estimé d'après l'historique récent. Indicatif — n'empêche pas de réserver.</p>
@@ -748,8 +773,10 @@ function groupeReservationId(ev: VehicleEventDto): string | null {
             <!-- ── Proposé par l'agent (réservations fantômes) ──
                  Refonte du 28/09 (point 7) : une LIGNE par proposition (plaque · heures · destination ·
                  ✓ ✗), le pourquoi au survol ; au-delà de trois, la liste se replie — 31 cartes sur un
-                 jeudi faisaient du panneau du jour un long défilement. -->
-            @if (canOptimize() && dayProposals().length > 0) {
+                 jeudi faisaient du panneau du jour un long défilement.
+                 29/09 : sous propositionsVisibles() (IA active + reservations_view) — IA coupée par le
+                 client, la section n'existe plus, même si des propositions restaient à trancher. -->
+            @if (propositionsVisibles() && dayProposals().length > 0) {
               <section class="ag-sec">
                 <div class="ag-sec-head">
                   <span class="ag-sec-titr ag-sec-titr--fantome"><lucide-icon [img]="SparklesIcon" [size]="13"></lucide-icon> Proposé par l'agent</span>
@@ -949,9 +976,9 @@ function groupeReservationId(ev: VehicleEventDto): string | null {
                   <input type="checkbox" [(ngModel)]="form.blocksVehicle" (ngModelChange)="onPeriodeChange()" />
                   <span>Immobilise le véhicule</span>
                 </label>
+                <!-- 29/09 : les « suggestions de l'IA » ne sont citées que si l'IA est active. -->
                 <p class="ag-field-note">
-                  Tant que l'événement n'est pas terminé, le véhicule est exclu des réservations
-                  et des suggestions de l'IA (ex. roue crevée, passage au garage).
+                  Tant que l'événement n'est pas terminé, le véhicule est exclu des réservations@if (iaActive()) { et des suggestions de l'IA} (ex. roue crevée, passage au garage).
                 </p>
               </div>
 
@@ -1066,6 +1093,7 @@ function groupeReservationId(ev: VehicleEventDto): string | null {
       [open]="reorgSheetOpen()"
       [vehicles]="scopedVehicles()"
       [preset]="reorgPreset()"
+      [iaActive]="iaActive()"
       (closed)="reorgSheetOpen.set(false); reorgPreset.set(null)"
       (applique)="onReservationChanged()" />
   `,
@@ -1722,8 +1750,11 @@ export class AgendaComponent implements OnInit {
    * toutes les causes (mois, société, groupe, véhicule) sans comparer les paramètres un à un. Le
    * chemin « sans le droit » prend aussi un numéro : une réponse encore en vol ne ré-écrit pas
    * derrière lui ce qu'il vient de vider.
+   *
+   * 29/09 : les propositions de l'agent ont rejoint le compteur — le chemin « IA coupée » vide la
+   * liste, et une lecture partie juste avant ne doit pas la remplir derrière lui.
    */
-  private readonly lecture = { events: 0, summary: 0, activity: 0, forecast: 0, pending: 0 };
+  private readonly lecture = { events: 0, summary: 0, activity: 0, forecast: 0, pending: 0, propositions: 0 };
 
   // ─── Icônes ───────────────────────────────────────────────────────────────
   protected readonly CalendarDaysIcon = CalendarDays;
@@ -1771,6 +1802,8 @@ export class AgendaComponent implements OnInit {
   protected readonly CalendarCheckIcon = CalendarCheck;
   protected readonly InboxIcon = Inbox;
   protected readonly SparklesIcon = Sparkles;
+  /** « Usage prévu » : une récurrence, pas de l'IA (29/09). */
+  protected readonly RepeatIcon = Repeat;
   protected readonly ActivityIcon = Activity;
   protected readonly ShieldCheckIcon = ShieldCheck;
   protected readonly BanIcon = Ban;
@@ -1927,10 +1960,12 @@ export class AgendaComponent implements OnInit {
   protected readonly vue = signal<VueAgenda>('calendrier');
   /** Menu « ⋯ » de l'en-tête (QR, réorganiser, paramètres). */
   protected readonly plusOpen = signal(false);
-  /** La vue Assistant IA n'a de sens qu'avec une fonction IA ouverte, ou des propositions à traiter. */
-  protected readonly montrerVueIa = computed(
-    () => this.canOptimize() && (this.aiCapacity() || this.aiAgendaAgent() || this.aiStatus.can('placement') || this.agentProposalCount() > 0),
-  );
+  /**
+   * La vue Assistant IA n'a de sens qu'avec une fonction IA ouverte, ou des propositions à traiter —
+   * et, depuis le 29/09, seulement IA ACTIVE : IA coupée par le client, des propositions restées à
+   * trancher ne la font plus apparaître. Décidé par `visibiliteIa` (voir `visibilite`).
+   */
+  protected readonly montrerVueIa = computed(() => this.visibilite().vueIa);
   /** Le tableau des missions : sa permission, ou celle du calendrier (l'onglet y vivait déjà). */
   protected readonly canSeeMissions = computed(() => this.perms.can('missions_view'));
 
@@ -1981,7 +2016,10 @@ export class AgendaComponent implements OnInit {
    */
   /** Société (bandeau) du statut IA actuellement chargé ; undefined tant qu'aucun ne l'est. */
   private readonly statutIaSociete = signal<string | null | undefined>(undefined);
-  /** Société (bandeau) des propositions actuellement chargées ; undefined tant qu'aucune lecture n'a abouti. */
+  /**
+   * Société (bandeau) des propositions actuellement chargées ; undefined tant qu'aucune lecture n'a
+   * abouti — et de nouveau quand l'IA coupée les a vidées (29/09).
+   */
   private readonly propositionsSociete = signal<string | null | undefined>(undefined);
   /**
    * Un statut IA qui ARRIVE est celui de la société du bandeau à ce moment : `AiStatusService`
@@ -1993,10 +2031,170 @@ export class AgendaComponent implements OnInit {
     const societe = untracked(() => this.fleetFilter.selectedFleetId());
     untracked(() => this.statutIaSociete.set(societe));
   });
-  /** Le statut IA et les propositions affichés sont ceux de la société du bandeau : l'onglet IA dit vrai. */
-  private readonly etatIaAJour = computed(() => {
+  /**
+   * 29/09 — le statut IA en mémoire est-il celui de la société du bandeau ? Un super-admin reçoit
+   * celui de la société DEMANDÉE (`fleetId` de la réponse) : on le compare au bandeau, ce qui écarte
+   * aussi une réponse de l'ancienne société arrivée APRÈS celle de la nouvelle (le service garde la
+   * dernière arrivée). Les autres rôles reçoivent toujours celui de leur flotte — le serveur ignore le
+   * bandeau, qui peut même porter une valeur laissée par une autre session : l'étiquette posée à
+   * l'arrivée suffit (S2). Sur « Toutes les sociétés », le serveur ne vise aucune société : l'étiquette
+   * aussi. Une réponse sans `fleetId` (API antérieure) retombe sur l'étiquette.
+   */
+  private readonly statutIaCharge = computed(() => {
+    const statut = this.aiStatus.status();
+    if (!statut) return false;
     const societe = this.fleetFilter.selectedFleetId();
-    return this.statutIaSociete() === societe && this.propositionsSociete() === societe;
+    if (this.auth.user()?.role === 'SUPER_ADMIN' && societe !== null && statut.fleetId !== undefined) {
+      return statut.fleetId === societe;
+    }
+    return this.statutIaSociete() === societe;
+  });
+
+  /**
+   * ── REVUE DU 29/09 — UN STATUT D'UNE AUTRE SOCIÉTÉ ARRIVÉ EN DERNIER EST RELU ────────────────
+   *
+   * `AiStatusService.refresh()` ne numérote pas ses lectures et garde la DERNIÈRE réponse arrivée. Un
+   * super-admin qui passe de A à B puis revient sur A : si la réponse de B arrive après celle de A, le
+   * statut en mémoire est celui de B sous le bandeau A — `statutIaCharge` reste faux, et rien ne le
+   * relisait (`ensureLoaded` ne relit pas un statut présent ; le service ne relit qu'au changement de
+   * société) : ni propositions, ni onglet, ni pastille pour A, jusqu'au changement suivant. À chaque
+   * ARRIVÉE d'un statut qui n'est pas celui du bandeau, une relecture ; une seule par société du
+   * bandeau tant qu'aucun bon statut n'est revenu, pour ne jamais boucler. Si c'était la réponse
+   * périmée d'une lecture croisée (celle de A encore en vol), il y a une lecture de trop, sans effet.
+   * Le correctif de fond — numéroter les lectures du service — est hors de cette page.
+   */
+  private statutRelancePour: string | null = null;
+  private readonly statutPerimeEffect = effect(() => {
+    const statut = this.aiStatus.status(); // seule dépendance : chaque ARRIVÉE, pas chaque changement de bandeau
+    if (!statut) return;
+    untracked(() => {
+      const societe = this.fleetFilter.selectedFleetId();
+      if (this.auth.user()?.role !== 'SUPER_ADMIN' || societe === null || statut.fleetId === undefined) return;
+      if (statut.fleetId === societe) {
+        this.statutRelancePour = null;
+        return;
+      }
+      if (this.statutRelancePour === societe) return;
+      this.statutRelancePour = societe;
+      queueMicrotask(() => this.aiStatus.refresh());
+    });
+  });
+
+  /**
+   * ── REVUE DU 29/09 — LE RÉGLAGE BRUT DE LA SOCIÉTÉ, QUAND LE STATUT NE PEUT PAS LE DIRE ───────
+   *
+   * Sur un serveur SANS clé API (la démo), `enabled` vaut faux quel que soit le choix du client : le
+   * réglage de la société se lit alors à part (`GET /api/ai/fleet-enabled`, comme la feuille
+   * Paramètres) — voir `interrupteurSociete`. Seuls le super-admin (sur une société) et
+   * l'administrateur de flotte y ont accès (`@Roles` du contrôleur) ; pour les autres il reste
+   * « illisible », soit IA coupée (opt-in). Avec une clé (la production), rien n'est lu.
+   *
+   * Relu à chaque statut ARRIVÉ pour la société du bandeau — c'est ainsi qu'un « couper » ou
+   * « réactiver » depuis Paramètres (qui relit le statut) atteint la page sans la recharger. Pendant
+   * la relecture, la valeur d'avant tient pour la même société ; une autre société attend la sienne.
+   * Chaque lecture prend un numéro : une réponse dépassée ne remplace pas la suivante.
+   */
+  private readonly reglageIa = signal<{ societe: string | null; valeur: Exclude<ReglageIaBrut, null> } | null>(null);
+  private lectureReglageIa = 0;
+  private readonly reglageIaEffect = effect(() => {
+    const statut = this.aiStatus.status();
+    // Le statut porte le choix du client (`fleetEnabled`, 29/09) : rien à relire à part.
+    if (!statut || typeof statut.fleetEnabled === 'boolean' || statut.configured || !this.statutIaCharge()) return;
+    const societe = this.fleetFilter.selectedFleetId();
+    const role = this.auth.user()?.role;
+    const n = ++this.lectureReglageIa;
+    if (!(role === 'FLEET_ADMIN' || (role === 'SUPER_ADMIN' && societe !== null))) {
+      untracked(() => this.reglageIa.set({ societe, valeur: 'illisible' }));
+      return;
+    }
+    // Un administrateur de flotte lit SA société : le bandeau peut porter la valeur d'une autre
+    // session, et le serveur refuserait (403) une société qui n'est pas la sienne.
+    const cible = role === 'SUPER_ADMIN' ? (societe ?? undefined) : undefined;
+    firstValueFrom(this.aiStatus.getFleetEnabled(cible)).then(
+      (r) => {
+        if (n === this.lectureReglageIa) this.reglageIa.set({ societe, valeur: r.enabled === true });
+      },
+      (err: unknown) => {
+        swallow('agenda:reglageIa', err);
+        if (n === this.lectureReglageIa) this.reglageIa.set({ societe, valeur: 'illisible' });
+      },
+    );
+  });
+  /** L'interrupteur de la société du bandeau (`interrupteurSociete`) ; `null` tant qu'il n'est pas connu. */
+  private readonly interrupteurIa = computed<boolean | null>(() => {
+    const statut = this.aiStatus.status();
+    if (!statut) return null;
+    const lu = this.reglageIa();
+    return interrupteurSociete(statut, lu !== null && lu.societe === this.fleetFilter.selectedFleetId() ? lu.valeur : null);
+  });
+
+  /**
+   * ── 29/09 — CE QUE LA PAGE MONTRE DE L'IA, DÉCIDÉ EN UN SEUL ENDROIT ─────────────────────────
+   *
+   * « C'est le client qui désactive, donc on enlève les suggestions » (propriétaire). La règle
+   * (`visibiliteIa`, agenda.utils.ts) : l'interrupteur de la SOCIÉTÉ (`interrupteurIa` — pas la clé API
+   * du serveur, revue du 29/09), pour un statut chargé et qui est celui du bandeau. Tout ce qui montre
+   * l'IA dans la page en dérive : lecture et affichage des propositions (pointillés, légende, panneau
+   * du jour, badge), onglet Assistant IA, pastille des travaux IA, mentions de l'IA dans les textes —
+   * et les vues Parc et Réorganiser le reçoivent en entrée. Le serveur ne change pas : l'agent peut
+   * poursuivre ses passages déterministes, on ne montre plus rien de lui ; l'IA réactivée, tout revient
+   * sans recharger la page.
+   *
+   * Un `linkedSignal` et non un `computed` (revue du 29/09) : la décision a besoin de la PRÉCÉDENTE —
+   * pendant qu'un super-admin change de société, l'onglet et la pastille gardent leur dernière valeur
+   * au lieu de se démonter le temps d'un aller-retour (voir `visibiliteIa`). Jamais écrit à la main.
+   */
+  private readonly visibilite = linkedSignal<EtatIaAgenda, VisibiliteIa>({
+    source: () => ({
+      statutCharge: this.statutIaCharge(),
+      interrupteur: this.interrupteurIa(),
+      canOptimize: this.canOptimize(),
+      fonctions: { capacity: this.aiCapacity(), agendaAgent: this.aiAgendaAgent(), placement: this.aiStatus.can('placement') },
+      nbPropositions: this.agentProposalCount(),
+      propositionsChargees: this.propositionsSociete() === this.fleetFilter.selectedFleetId(),
+    }),
+    computation: (etat, avant) => visibiliteIa(etat, avant?.value ?? null),
+    equal: memeVisibiliteIa,
+  });
+  /** L'IA est active pour la société du bandeau : statut chargé, interrupteur de la société ouvert. */
+  protected readonly iaActive = computed(() => this.visibilite().iaActive);
+  /**
+   * La pastille des travaux IA : l'IA de la société du bandeau active — ou un travail lancé sur une
+   * AUTRE société (super-admin), qu'on ne perd pas de vue en changeant de bandeau : son « Voir »
+   * ramène sur sa société (revue du 29/09). Un travail sans société (`fleetId` nul) est celui de la
+   * société du compte : il suit l'IA de la page.
+   */
+  protected readonly pastilleIaVisible = computed(() => {
+    if (this.iaActive()) return true;
+    const ici = this.fleetFilter.selectedFleetId();
+    return this.aiJob.jobs().some((j) => !!j.fleetId && j.fleetId !== ici);
+  });
+  /** Les propositions de l'agent se lisent et se montrent : IA active ET droit reservations_view. */
+  protected readonly propositionsVisibles = computed(() => this.visibilite().propositions);
+  /**
+   * Le statut IA et les propositions affichés sont ceux de la société du bandeau : l'onglet IA dit
+   * vrai. 29/09 : IA chargée ET coupée, plus rien à attendre — les propositions ne se lisent plus, et
+   * aucune ne pourrait rouvrir l'onglet : un ?vue=ia retombe tout de suite.
+   */
+  private readonly etatIaAJour = computed(() => this.visibilite().decide);
+
+  /**
+   * ── 29/09 — LES PROPOSITIONS SUIVENT L'IA DE LA SOCIÉTÉ, SANS RECHARGER LA PAGE ──────────────
+   *
+   * Invisibles (IA coupée, ou statut pas encore chargé pour la société du bandeau), `loadAgentProposals`
+   * ne lit rien et vide la liste. Quand elles le redeviennent — statut arrivé, société changée, IA
+   * réactivée —, elles se lisent. Une seule lecture : jusqu'à la fin du premier chargement, c'est
+   * `ngOnInit` qui lit, au moment où il en est (même garde que `fleetFilterEffect`) ; ensuite, une
+   * lecture périmée est écartée par son numéro (T15). Dans l'autre sens, la liste en mémoire est
+   * vidée — le gabarit, lui, ne la montrait déjà plus (`propositionsVisibles`).
+   */
+  private propositionsEtaientVisibles: boolean | null = null;
+  private readonly propositionsVisiblesEffect = effect(() => {
+    const visibles = this.propositionsVisibles();
+    const avant = this.propositionsEtaientVisibles;
+    this.propositionsEtaientVisibles = visibles;
+    if (avant === null || avant === visibles || !this.initialised) return;
+    queueMicrotask(() => void this.loadAgentProposals());
   });
   /** Dernière vue demandée qui a été effectivement MONTRÉE (null tant qu'aucune). */
   private vueMontree: VueAgenda | null = null;
@@ -2154,34 +2352,24 @@ export class AgendaComponent implements OnInit {
    * Même filtrage que les événements : une proposition est un pré-remplissage pour CE parc-là.
    * Le filtre de TYPE ne s'y applique pas — une proposition n'a pas de type d'événement, elle
    * deviendra une réservation si on la valide.
+   *
+   * 29/09 : AUCUNE quand elles ne sont pas visibles (IA coupée, statut pas encore chargé) — c'est
+   * d'ici que partent les pilules pointillées de la grille et le panneau du jour : IA coupée, ni
+   * l'une ni l'autre, même le temps que la liste en mémoire soit vidée (`propositionsDuPerimetre`).
    */
-  private readonly scopedProposals = computed(() => {
-    const vid = this.selectedVehicleId();
-    const gids = this.groupVehicleIdSet();
-    return this.agentProposals().filter((p) => {
-      if (vid && p.vehicleId !== vid) return false;
-      if (gids && !gids.has(p.vehicleId)) return false;
-      return true;
-    });
-  });
+  private readonly scopedProposals = computed(() =>
+    propositionsDuPerimetre(this.agentProposals(), this.propositionsVisibles(), {
+      vehicleId: this.selectedVehicleId(),
+      vehiculesDuGroupe: this.groupVehicleIdSet(),
+    }),
+  );
 
   /**
-   * Nb de propositions par jour (clé ISO locale) — la couche FANTÔME du calendrier.
-   *
-   * Compte les PROPOSITIONS, pas les véhicules distincts : deux tournées prévues le même jour sur
-   * le même véhicule sont deux créneaux à valider, et les fondre en « 1 » cacherait du travail.
-   * (C'est l'inverse des couches activité/prévision, qui répondent à « combien de véhicules ».)
+   * Nb de propositions par jour (clé ISO locale) — la couche FANTÔME du calendrier. Compte les
+   * PROPOSITIONS, pas les véhicules distincts (voir `propositionsParJour`). Vide IA coupée : la
+   * grille ne pose alors ni pilule « N proposés » ni point creux.
    */
-  protected readonly proposalsByDay = computed<Map<string, number>>(() => {
-    const counts = new Map<string, number>();
-    for (const p of this.scopedProposals()) {
-      const d = new Date(p.startAt);
-      if (Number.isNaN(d.getTime())) continue;
-      const key = localIso(d);
-      counts.set(key, (counts.get(key) ?? 0) + 1);
-    }
-    return counts;
-  });
+  protected readonly proposalsByDay = computed<Map<string, number>>(() => propositionsParJour(this.scopedProposals()));
 
   /** Propositions du jour ouvert, triées par heure — affichées dans le panneau jour. */
   /** Le panneau du jour replie les propositions au-delà de trois ; ce drapeau les déplie. */
@@ -2561,7 +2749,8 @@ export class AgendaComponent implements OnInit {
    * l'Assistant IA, seul le DROIT est vérifié ici : le statut IA se charge en asynchrone, et
    * `vueEffective` n'affiche la vue qu'une fois ce statut connu (repli sur une autre sinon) ; si
    * l'IA n'est pas ouverte une fois statut et propositions chargés, la demande retombe pour de bon
-   * sur la vue affichée (`vueDefinitiveEffect`, contre-revue S2).
+   * sur la vue affichée (`vueDefinitiveEffect`, contre-revue S2). 29/09 : IA coupée par le client,
+   * elle retombe dès le statut chargé — sans attendre des propositions qui ne se lisent plus.
    */
   private appliquerVueDemandee(): void {
     const v = this.route.snapshot.queryParamMap.get('vue');
@@ -3087,6 +3276,11 @@ export class AgendaComponent implements OnInit {
   protected isImmobilizing(ev: VehicleEventDto): boolean {
     return isImmobilizingEvent(ev);
   }
+
+  /** Survol du badge « Immobilisé » : les « suggestions IA » n'y sont citées que si l'IA est active (29/09). */
+  protected readonly titreImmobilise = computed(
+    () => `Véhicule exclu des réservations${this.iaActive() ? ' et suggestions IA' : ''} tant que l'événement est actif`,
+  );
 
   /** Fin d'un événement pour le test de chevauchement du jour : étendue si immobilisation active. */
   private eventSpanEndMs(ev: VehicleEventDto, startMs: number): number {
@@ -3845,13 +4039,17 @@ export class AgendaComponent implements OnInit {
    * sur l'Assistant IA dès que le DROIT est là (`canOptimize`, comme un ?vue=ia) ; si l'IA n'est pas
    * ouverte une fois le statut de la société chargé, la vue retombe d'elle-même
    * (`vueDefinitiveEffect`). On ne conclut « rien à traiter » que sur un état déjà à jour.
+   *
+   * 29/09 : IA coupée par le client, la pastille ne s'affiche plus (gabarit) ; « Voir » ramenant le
+   * bandeau sur une société dont l'IA est coupée, la vue retombe sur le Calendrier dès son statut chargé.
    */
   protected async onAiJobView(job: AiJob): Promise<void> {
     this.aiJob.dismiss(job.id);
     if (job.fleetId && job.fleetId !== this.fleetFilter.selectedFleetId()) this.fleetFilter.set(job.fleetId);
     if (job.kind === 'agent-run') {
       this.onReservationChanged(); // un passage peut avoir placé des réservations d'office
-      // Les propositions d'abord : ce sont elles qui ouvrent (ou non) la vue quand l'IA est coupée.
+      // Les propositions d'abord : IA active sans fonction ouverte, ce sont elles qui ouvrent (ou non)
+      // la vue. IA coupée (29/09), elles ne se lisent plus et n'ouvrent plus rien.
       await this.loadAgentProposals();
     }
     if (!this.canOptimize() || (this.etatIaAJour() && !this.vuePermise('ia'))) {
@@ -3891,12 +4089,24 @@ export class AgendaComponent implements OnInit {
    * (`propositionsSociete`) — c'est ce qui dit à la page que l'onglet IA n'est plus « en
    * chargement ». Une réponse arrivée après un changement de société est écartée : la lecture de la
    * nouvelle société est déjà partie (`fleetFilterEffect`), et l'ancienne liste n'y a pas sa place.
+   *
+   * 29/09 (IA désactivée) : IA coupée pour la société du bandeau — ou statut (ou, serveur sans clé,
+   * réglage brut) pas encore connu —, AUCUN appel, et la liste en mémoire est vidée. Rien n'est noté « lu » : si le statut arrive IA
+   * active, les propositions se liront (`propositionsVisiblesEffect`) et l'onglet les attendra (S2) ;
+   * s'il arrive IA coupée, `visibiliteIa` n'attend plus rien. Chaque passage prend un numéro (T15) :
+   * une lecture partie avant la coupure ne remplit pas derrière elle la liste qu'elle a vidée.
    */
   protected async loadAgentProposals(): Promise<void> {
     const societe = this.fleetFilter.selectedFleetId();
+    const n = ++this.lecture.propositions;
     if (!this.canOptimize()) {
       this.agentProposals.set([]);
       this.propositionsSociete.set(societe);
+      return;
+    }
+    if (!this.propositionsVisibles()) {
+      this.agentProposals.set([]);
+      this.propositionsSociete.set(undefined);
       return;
     }
     let liste: AgendaAgentProposalDto[];
@@ -3906,7 +4116,9 @@ export class AgendaComponent implements OnInit {
       swallow('agenda:loadAgentProposals', err);
       liste = [];
     }
-    if (this.fleetFilter.selectedFleetId() !== societe) return;
+    // Périmée : une lecture plus récente est partie, la société a changé, ou l'IA vient d'être coupée
+    // (la lecture qui vide la liste n'est peut-être pas encore passée — elle suit, par l'effet).
+    if (n !== this.lecture.propositions || this.fleetFilter.selectedFleetId() !== societe || !this.propositionsVisibles()) return;
     this.agentProposals.set(liste);
     this.propositionsSociete.set(societe);
   }

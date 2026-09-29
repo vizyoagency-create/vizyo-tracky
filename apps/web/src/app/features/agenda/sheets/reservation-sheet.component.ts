@@ -510,8 +510,10 @@ function toLocalInput(d: Date): string {
               </div>
             }
 
-            <!-- Loader explicatif : l'utilisateur comprend ce que fait l'IA et combien de temps ça prend -->
-            @if (aiLoading()) {
+            <!-- Loader explicatif : l'utilisateur comprend ce que fait l'IA et combien de temps ça prend.
+                 29/09 — tout ce qui suit parle de l'IA : gardé par canAi(), comme le bouton qui le
+                 produit. IA coupée pendant que la feuille est ouverte : plus aucune trace à l'écran. -->
+            @if (canAi() && aiLoading()) {
               <div class="rs-ai-loading">
                 <lucide-icon [img]="LoaderIcon" [size]="16" class="rs-spin"></lucide-icon>
                 <div>
@@ -520,11 +522,11 @@ function toLocalInput(d: Date): string {
                 </div>
               </div>
             }
-            @if (aiError()) { <div class="rs-alert rs-alert--err"><lucide-icon [img]="AlertIcon" [size]="13"></lucide-icon> {{ aiError() }}</div> }
-            @if (aiNoMatch()) { <div class="rs-alert rs-alert--warn"><lucide-icon [img]="AlertIcon" [size]="13"></lucide-icon> {{ aiNotes() || 'Aucun véhicule ne couvre bien le besoin sur ce créneau.' }}</div> }
+            @if (canAi() && aiError()) { <div class="rs-alert rs-alert--err"><lucide-icon [img]="AlertIcon" [size]="13"></lucide-icon> {{ aiError() }}</div> }
+            @if (canAi() && aiNoMatch()) { <div class="rs-alert rs-alert--warn"><lucide-icon [img]="AlertIcon" [size]="13"></lucide-icon> {{ aiNotes() || 'Aucun véhicule ne couvre bien le besoin sur ce créneau.' }}</div> }
             <!-- Transparence : véhicules écartés AVANT le raisonnement IA (résultats non faussés en silence) -->
-            @if (aiExcludedInfo()) { <div class="rs-alert rs-alert--info">{{ aiExcludedInfo() }}</div> }
-            @if (aiProposals().length > 0) {
+            @if (canAi() && aiExcludedInfo()) { <div class="rs-alert rs-alert--info">{{ aiExcludedInfo() }}</div> }
+            @if (canAi() && aiProposals().length > 0) {
               <div class="rs-ai-list">
                 <span class="rs-ai-hint">Proposé par l'IA — touchez pour choisir. Le n°1 est le meilleur compromis besoin / coût :</span>
                 @for (p of aiProposals(); track p.vehicleId; let i = $index) {
@@ -636,9 +638,16 @@ function toLocalInput(d: Date): string {
                     Quand aucun véhicule n'était libre de tout engagement, la demande a pris celui
                     qu'une proposition de l'agent retenait sur ce créneau. Valider écarte cette
                     proposition : ça se dit AVANT le clic, pas après.
+                    29/09 — seulement si l'IA de la société est active : IA désactivée, le client ne
+                    voit plus les propositions de l'agent, et lui annoncer qu'on en écarte une
+                    parlerait d'un objet qu'il ne voit pas. Le serveur l'écarte de toute façon.
+                    Super-admin sur « Toutes les sociétés » (needsFleet) : la file mêle les demandes
+                    de toutes les sociétés, et le statut IA « sans société » vaut toujours faux côté
+                    serveur. On ne masque que l'IA d'une société CONNUE et coupée : ici, la phrase
+                    reste, comme avant (revue du 29/09).
                   -->
                   @for (r of g.items; track r.id) {
-                    @if (deplacements(r); as dep) {
+                    @if ((iaActive() || needsFleet()) && deplacements(r); as dep) {
                       <p class="rs-q-deplace">
                         <lucide-icon [img]="AlertIcon" [size]="12"></lucide-icon>
                         @if (g.items.length > 1) { {{ r.vehiclePlate }} : }
@@ -813,6 +822,14 @@ export class ReservationSheetComponent {
   protected readonly canManage = computed(() => this.perms.can('reservations_manage'));
   /** « Suggérer avec l'IA » appelle `placementSuggest` → fonction `placement` (pas l'interrupteur maître). */
   protected readonly canAi = computed(() => this.perms.can('ai_optimize') && this.aiStatus.can('placement'));
+  /**
+   * 29/09 — IA de la SOCIÉTÉ active (interrupteur maître) : garde les textes qui parlent de l'agent
+   * (« Valider écartera N proposition(s) de l'agent »). IA désactivée par le client, l'agent peut
+   * encore tourner côté serveur, mais la feuille ne le mentionne plus. Faux tant que le statut n'est
+   * pas arrivé (opt-in) ; l'IA réactivée, le texte revient sans rouvrir la feuille. Super-admin sans
+   * société choisie : aucune société n'est connue, le gabarit n'y masque rien (`needsFleet`).
+   */
+  protected readonly iaActive = computed(() => this.aiStatus.societeActive());
   /** Super-admin sans société choisie : réserver mélangerait toutes les flottes → on gate. */
   protected readonly needsFleet = computed(
     () => this.auth.user()?.role === 'SUPER_ADMIN' && !this.fleetFilter.selectedFleetId(),
@@ -1948,7 +1965,7 @@ export class ReservationSheetComponent {
       if (res.proposals.length > 0) this.vehicleId.set(res.proposals[0].vehicleId); // pré-sélectionne le meilleur
     } catch (e) {
       swallow('reservation-sheet:suggestAi', e);
-      this.aiError.set(this.errMsg(e));
+      this.aiError.set(this.errMsg(e, true));
     } finally {
       this.aiLoading.set(false);
     }
@@ -2207,8 +2224,16 @@ export class ReservationSheetComponent {
     }
   }
 
-  private errMsg(e: unknown): string {
-    if (e instanceof HttpErrorResponse && e.status === 503) {
+  /**
+   * Message lisible d'une erreur d'API (le message du serveur d'abord).
+   *
+   * 29/09 — le repli « Copilote IA non configuré » d'un 503 sans message ne vaut que pour l'appel IA
+   * (`ia`, depuis `suggestAi`). Appliqué à toute la feuille, un 503 de passerelle (déploiement, API qui
+   * redémarre) sur une validation, un refus ou une demande disait « Copilote IA non configuré » — à un
+   * client qui a peut-être désactivé l'IA, sur un geste qui ne s'en sert pas.
+   */
+  private errMsg(e: unknown, ia = false): string {
+    if (ia && e instanceof HttpErrorResponse && e.status === 503) {
       return apiErrorMessage(e, 'Copilote IA non configuré côté serveur (ANTHROPIC_API_KEY).');
     }
     return apiErrorMessage(e, e instanceof HttpErrorResponse ? `Erreur (${e.status}).` : 'Une erreur est survenue.');
