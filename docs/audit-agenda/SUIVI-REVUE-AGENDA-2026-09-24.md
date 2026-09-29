@@ -1372,6 +1372,98 @@ réservation, optimiseur IA, alertes de vitesse, rapport hebdomadaire) réponden
 `fleetId` étranger venant d'un non-super-admin. L'écran ne leur en envoie plus, mais un autre client
 de l'API le pourrait.
 
+### Relecture contradictoire de la piste 3 — un défaut important, quatorze mineurs, tous corrigés
+
+Une relecture indépendante (lecture seule, sans rien exécuter) du code de la piste 3 : **aucun
+bloquant**, **un défaut important**, quatorze mineurs. Chacun a été vérifié dans le code — et le
+principal mesuré en base — avant d'être corrigé.
+
+**L'important : « une proposition écartée ne revient pas » était faux.** L'heure d'un motif est une
+MOYENNE sur les semaines d'apprentissage (`recurrence-detector` : `Math.round(sumStart / activeWeeks)`)
+: elle dérive d'une nuit à l'autre. Le dédoublonnage de l'agent portait sur le début EXACT (unicité
+société × véhicule × début). Une journée écartée (« une journée tombe ») se repeuplait donc le
+lendemain, deux minutes plus tôt. Le même mécanisme doublait les propositions en attente — et deux
+motifs du même véhicule se superposaient. **Mesuré chez cdef31 le 29/09 : 181 des 307 propositions
+en attente en chevauchaient une autre du même véhicule** (19 véhicules, jusqu'à 5 le même jour pour
+HD-686-QX le 30/09). Des paires se chevauchant : 48 venaient de nuits différentes vers la même
+destination (la dérive), 54 de la même nuit vers des destinations différentes (deux motifs) — un
+véhicule ne fait qu'un trajet à la fois, « Tout réserver » en aurait refusé la plupart.
+
+→ `runForFleet` ne crée plus une occurrence qui **chevauche** une proposition connue du même véhicule,
+quel que soit son statut (en attente, écartée, réservée), ni une créée plus tôt dans le même passage.
+Les motifs arrivent triés par confiance : le plus sûr passe d'abord. Une lecture de plus par passage.
+**Les propositions déjà en base ne sont pas touchées** (les 181 restent : leur ménage est une décision
+du propriétaire).
+
+**Les mineurs :**
+
+| Relevé | Corrigé |
+|---|---|
+| un véhicule choisi qu'on ne gère pas : 403 **pendant la simulation d'arrière-plan** (onglet Réservations à l'écran) → toast rouge « Action impossible » | en simulation, lot vide qui le dit (`vehiculeNonGere`) ; 403 seulement à l'écriture ; la simulation d'arrière-plan est silencieuse (`X-Quiet-Errors`) et relancée en arrivant sur l'onglet si elle a échoué |
+| choisir « Tous » puis le véhicule depuis l'onglet Propositions **levait en silence** la limite aux réservations refusées (T3) | la limite vaut sur le véhicule du pré-réglage, sans être levée par un choix de véhicule ; seul « Élargir » la lève |
+| menu et onglet se contredisaient (« 307 » au menu, « 287 » dans l'onglet ; « 12 » à un gestionnaire dont la feuille ne trouvait rien) | le compte du menu est lu par la simulation (mêmes véhicules gérés, même fenêtre) ; inconnu = entrée active |
+| `dejaTraitees` appelait « déjà traitée » une proposition prise par « Réserver » puis RENDUE, ou commencée | statut relu après l'écriture : `dejaTraitees` (écartée ailleurs, réservée, expirée) et `restees` (toujours en attente) |
+| « Propositions de l'agent écartées en lot » en bleu « modification » dans les deux fils | gris, comme l'écart à l'unité (test ajouté : la cohérence entre écrans ne le voyait pas) |
+| « Écarter » ignorait un « Tout réserver / Tout écarter » en cours dans l'Assistant IA | le bouton attend son bilan, et le dit |
+| toast vert « 0 proposition écartée » | avertissement qui dit pourquoi |
+| libellé du menu « Réorganiser des réservations » sous un titre de feuille « Réorganiser » | « Réorganiser » quand il y a des propositions, comme la feuille |
+| incident sans fin : « du 29 sept. au 29 oct. », une fin que personne n'a saisie (renvoi des réservations aussi) | « à partir du …, sans date de fin » ; même fenêtre envoyée |
+| identifiants mal formés → 500 de la base (entrée au centre d'alerte) | 400 |
+| une requête de droits par véhicule, à chaque simulation | une seule (`vehiculesAutorises`, règle de `canOnVehicle`) |
+| à 390 px, « Propositions de l'agent 307 » sur deux lignes | « Propositions » sur téléphone |
+| la page ouvrait la feuille sur un véhicule dont on ne gère pas les réservations (droit global) | droit sur CE véhicule |
+| simulation (une lecture) répondait 201 | 200, comme `reservations/reorganiser` |
+| **aucune spec de composant** pour la feuille | 10 cas : ouverture sur l'onglet, lot EXACT renvoyé, compte-rendu conservé quand la page relit, IA coupée, pré-réglage, T3, silence d'arrière-plan, relance, garde de lot, avertissement, véhicule non géré |
+
+**Écart qui existait déjà, laissé en l'état** : `apply` et `dismiss` à l'unité ne vérifient pas le droit
+de gérer les réservations du véhicule (`apply` vérifie seulement l'accès), et `list()` n'est pas borné
+aux véhicules accessibles. Le lot est désormais plus strict que le geste unitaire. À traiter à part.
+
+**Fusion avec le correctif du filtre société (même soir).** Le correctif de la session parallèle
+(`f4bf992a` + `0e8e8169`, ci-dessus) a été relu fichier par fichier, puis rejoué SUR la relecture : deux
+conflits seulement — le début de `ecarterEnLot` (gardé : la société n'est validée, et même lue, que
+pour un super-admin ; leur `resolveFleetId` ignore désormais `fleetId` pour les autres) et la fin de
+la spec du runner (deux blocs ajoutés au même endroit : les deux gardés). Leurs tests et les miens
+tiennent ensemble — voir « Vérifié » ci-dessous.
+
+**Vérifié.** Relecture seule : `pnpm verify` vert (API 4 752, web 965, shared 423, 153 migrations,
+smoke 5/5). Code fusionné : API 4 760/4 760, shared 423, migrations et smoke verts ; web **3 échecs**
+au premier passage — la spec de la feuille ne tenait qu'après celle des utilitaires, qui enregistre la
+locale `fr` (ordre aléatoire de Jasmine) : elle l'enregistre elle-même. Au passage, le faux
+`AuthService` de leur spec Rapports n'avait pas `isAuthenticated` (4 TypeError du traqueur d'activité
+par passage, sans échec) : complété. Puis web 970/970 et `ng build` sans erreur. Greffé sur
+`origin/main` en quatre commits (`16950680`, `88a8a615`, `a125b143`, `ba07aa2a`).
+
+**Recette démo (21:49 – 22:00, Transports Méridien) :**
+
+| | Résultat |
+|---|---|
+| menu « ⋯ » | « Réorganiser » (IA active, des propositions) |
+| 412 px | « Réservations 1 · Propositions 487 », une ligne chacun (40 px au lieu de 54) |
+| incident SANS fin sur DS-941-JG | « 35 propositions de l'agent sur DS-941-JG pendant l'immobilisation » ; feuille : « Période de l'immobilisation : à partir du mar. 29 sept., 21:51 (30 jours) » — plus de fin inventée |
+| passage de l'agent déclenché par l'incident (nouveau code) | 0 créée, 559 ignorées, 0 chevauchement neuf (l'horizon était couvert ; le passage de nuit fera le vrai volume) |
+| « rien d'écarté », pour de vrai | 20 propositions écartées « ailleurs » par l'API après la simulation, puis « Écarter ces 20 » : avertissement « Aucune proposition écartée — 20 déjà traitées entre-temps (réservées ou écartées ailleurs) : laissées telles quelles », aucune ligne de journal |
+| simulation | répond 200 (201 avant) |
+| fil Agenda | « Propositions de l'agent écartées en lot » gris, comme l'écart à l'unité ; « Incident signalé » reste rouge |
+| ménage | l'incident de test clôturé (« Marqué terminé ») |
+
+**🚀 Déployé le 29/09 à 22:06 (Paris) — `ba07aa2a`, SANS `--force`.** `deploy.sh --attendre` : le
+passage de 21:45 a fini normalement (`done`, 17 min), puis construction, migration, recréation ; API
+saine en 10 s ; démo à jour. Personne en ligne dans la demi-heure. Artefacts vérifiés DANS les
+conteneurs (règle de chevauchement, droits groupés, `resolveFleetId` fusionné, filtre société,
+textes de la feuille). Le correctif du filtre société est donc **en production** avec la relecture.
+
+**Recette prod (22:07 – 22:10), Chrome** — une première navigation a servi l'ancienne version (le
+service worker, comme à chaque déploiement) ; la seconde a pris `main-6YJBPLQT.js` :
+
+| | Résultat |
+|---|---|
+| cdef31, menu « ⋯ » | « Réorganiser — Aucune réservation à venir · 307 propositions de l'agent » |
+| cdef31, feuille (simulations seules, **rien écarté**) | onglet « Propositions de l'agent 307 », bilan 307 sur 25 véhicules — le menu et l'onglet disent le même nombre ; nouveau texte « ne repropose pas un trajet qui chevauche… » |
+| cdef31, base après | 307 en attente, 0 ligne `propositions_ecartees` |
+| Client test (IA coupée) | « Réorganiser des réservations », pas d'onglet, aucune mention de l'agent, **aucune** requête de propositions |
+| journaux de l'API depuis le déploiement | aucune erreur ; une dégradation sans rapport (HD-584-BF en TCP seul, déjà connue) |
+
 ---
 
 ## Ce qu'il ne faut pas défaire
@@ -1409,3 +1501,7 @@ de l'API le pourrait.
   `FleetFilterService.selectedFleetId()` vaut null et le stockage est effacé ; l'agent et ses
   réglages ignorent `fleetId` hors super-admin. Le 403 ne reste que là où la société vient d'une
   donnée (le compte visé par `reglerAvis`).
+- **Une proposition ne se superpose pas à une autre du même véhicule** (`runForFleet`, relecture du
+  29/09). Le dédoublonnage par début EXACT ne suffit pas : l'heure d'un motif est une moyenne qui
+  dérive d'une nuit à l'autre. Retirer cette règle ramène les journées écartées le lendemain, et les
+  181 chevauchements relevés chez cdef31.
