@@ -1,9 +1,11 @@
+import { signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { HttpHeaders, provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { ActivatedRoute, convertToParamMap, provideRouter } from '@angular/router';
 import { of } from 'rxjs';
 import { CONDUCTEUR_AUCUN } from '@vizyo/tracky-shared';
+import { AuthService } from '../../core/services/auth.service';
 import { DriversApiService } from '../../core/services/drivers.service';
 import { FleetFilterService } from '../../core/services/fleet-filter.service';
 import { PreferencesService } from '../../core/services/preferences.service';
@@ -923,6 +925,15 @@ describe('Page Rapports — bascule de société', () => {
         provideHttpClient(),
         provideHttpClientTesting(),
         { provide: DriversApiService, useValue: { list: () => Promise.resolve([]) } },
+        // Changer de société est un geste de SUPER-ADMIN : le compte est déclaré, pas hérité (29/09).
+        // Le vrai `AuthService` relit le stockage du navigateur, où un spec précédent peut avoir laissé
+        // un jeton — décodé en compte sans rôle, pour qui le filtre société n'existe pas.
+        {
+          provide: AuthService,
+          useValue: {
+            user: signal({ sub: 'u-sa', email: 'sa@exemple.fr', role: 'SUPER_ADMIN', fleetId: null, permissions: null }),
+          },
+        },
       ],
     });
   });
@@ -930,6 +941,8 @@ describe('Page Rapports — bascule de société', () => {
   afterEach(() => {
     // La barre d'adresse est partagée par toute la page de test : on la rend telle qu'on l'a prise.
     window.history.replaceState(window.history.state, '', urlDepart);
+    // Le filtre société aussi : il est persisté, et le suivant le relirait.
+    localStorage.removeItem('vizyo-fleet-filter');
   });
 
   /**

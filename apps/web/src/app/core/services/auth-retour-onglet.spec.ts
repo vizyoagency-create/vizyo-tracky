@@ -78,7 +78,7 @@ describe('AuthService — le retour au premier plan rattrape le minuteur gelé',
   it('jeton EXPIRÉ pendant le sommeil de l’onglet : le retour déclenche un renouvellement', async () => {
     // Vingt minutes d'écran verrouillé : le minuteur n'a jamais tiré, le jeton est mort.
     localStorage.setItem('vizyo-tracky-token', jeton(-300));
-    TestBed.inject(AuthService);
+    const auth = TestBed.inject(AuthService);
     const avant = appels;
 
     passerEnArrierePlan();
@@ -91,6 +91,12 @@ describe('AuthService — le retour au premier plan rattrape le minuteur gelé',
           'et le rattrapage par 401 n’arrive qu’après.',
       )
       .toBeGreaterThan(avant);
+
+    // Le renouvellement parti doit ABOUTIR avant la fin du test (29/09) : il réécrit le jeton, et
+    // une écriture arrivée après le nettoyage laissait aux specs suivants un jeton que le vrai
+    // `AuthService` décode en compte connecté — sans rôle, donc sans filtre société. `tryRefresh()`
+    // rend le renouvellement en vol ; s'il a déjà abouti, il en refait un, attendu lui aussi.
+    await auth.tryRefresh();
   });
 
   it('jeton ENCORE VALIDE : le retour ne déclenche AUCUN appel réseau', async () => {

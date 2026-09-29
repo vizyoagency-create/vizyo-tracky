@@ -44,9 +44,40 @@ describe('AgendaAgentSettingsService — ⚙️ Paramètres de l\'agenda (P2)', 
     ).rejects.toBeInstanceOf(BadRequestException);
   });
 
-  it('get : non-super-admin visant une AUTRE société -> 403', async () => {
+  /**
+   * Ce test affirmait « 403 » jusqu'au 29/09. Le `fleetId` d'un non-super-admin vient du filtre
+   * société de l'écran, relu du navigateur : après une session super-admin, il porte la société d'un
+   * AUTRE client, et le 403 l'aurait privé de SES réglages (la feuille Paramètres ne l'envoie qu'à un
+   * super-admin, les autres écrans n'ont pas tous cette prudence). Il est ignoré, comme pour les
+   * réservations ; la société d'un non-super-admin est celle de son compte, point.
+   */
+  it('get / set / destinataires : une société étrangère envoyée par un non-super-admin est IGNORÉE — c’est la sienne', async () => {
+    const prisma = makePrisma();
+    const destinataires = makeDestinataires() as unknown as { possibles: jest.Mock };
+    const svc = new AgendaAgentSettingsService(prisma, makeAiUsage(), destinataires as never);
+    const p = prisma as unknown as { fleet: { findUnique: jest.Mock }; agendaAgentSettings: { upsert: jest.Mock } };
+
+    await expect(svc.get(makeUser({ fleetId: 'f1' }), 'fOTHER')).resolves.toMatchObject({ fleetId: 'f1' });
+    expect(p.fleet.findUnique.mock.calls[0][0].where).toEqual({ id: 'f1' });
+
+    await svc.set(makeUser({ fleetId: 'f1' }), { fleetId: 'fOTHER', enabled: true });
+    expect(p.agendaAgentSettings.upsert.mock.calls[0][0].where).toEqual({ fleetId: 'f1' });
+
+    await expect(svc.destinatairesAvis(makeUser({ fleetId: 'f1' }), 'fOTHER')).resolves.toMatchObject({ fleetId: 'f1' });
+    expect(destinataires.possibles).toHaveBeenCalledWith('f1');
+  });
+
+  it('un compte de flotte SANS société (anomalie) : 403 — la société envoyée ne lui en prête pas une', async () => {
     const svc = new AgendaAgentSettingsService(makePrisma(), makeAiUsage(), makeDestinataires());
-    await expect(svc.get(makeUser({ fleetId: 'f1' }), 'fOTHER')).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(svc.get(makeUser({ fleetId: null }), 'fOTHER')).rejects.toBeInstanceOf(ForbiddenException);
+  });
+
+  it('super-admin : c’est la société visée (le bandeau) qui est réglée', async () => {
+    const prisma = makePrisma();
+    const svc = new AgendaAgentSettingsService(prisma, makeAiUsage(), makeDestinataires());
+    await svc.set(makeUser({ role: UserRole.SUPER_ADMIN, fleetId: null }), { fleetId: 'fCLIENT', enabled: true });
+    const p = prisma as unknown as { agendaAgentSettings: { upsert: jest.Mock } };
+    expect(p.agendaAgentSettings.upsert.mock.calls[0][0].where).toEqual({ fleetId: 'fCLIENT' });
   });
 
   it('get : renvoie les DÉFAUTS + métier + coût du mois quand jamais configuré', async () => {
@@ -195,6 +226,24 @@ describe('AgendaAgentSettingsService — destinataires de l’avis', () => {
     expect((prisma as unknown as { user: { update: jest.Mock } }).user.update).toHaveBeenCalledWith(
       expect.objectContaining({ data: { reservationNoticeEnabled: false } }),
     );
+  });
+
+  /**
+   * ⚠️ ICI LE 403 RESTE. La société ne vient pas de l'écran mais du COMPTE visé : un administrateur
+   * qui bascule l'avis d'un compte d'un autre client est un vrai hors-périmètre, pas un filtre resté
+   * dans le navigateur. Ignorer cette société-là écrirait sur le compte d'un autre client.
+   */
+  it('un compte d’une AUTRE société : 403, rien n’est écrit', async () => {
+    const prisma = ({
+      user: {
+        findUnique: jest.fn().mockResolvedValue({ id: 'u9', fleetId: 'fOTHER', email: 'z@x.fr' }),
+        update: jest.fn(),
+      },
+    }) as never;
+    const svc = new AgendaAgentSettingsService(prisma, makeAiUsage(), destinataires([{ id: 'u9', notifie: true }]));
+
+    await expect(svc.reglerAvis(makeUser(), { userId: 'u9', notifie: true })).rejects.toBeInstanceOf(ForbiddenException);
+    expect((prisma as unknown as { user: { update: jest.Mock } }).user.update).not.toHaveBeenCalled();
   });
 
   /** ⚠️ Rallumer n'est JAMAIS refusé : le garde ne protège que du sens qui rend muet. */

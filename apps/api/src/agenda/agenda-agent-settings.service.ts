@@ -80,7 +80,8 @@ type EditableFields = Partial<EditableFieldsBase>;
  * Refonte agenda/IA (2026-07) — Réglages de l'agent d'optimisation d'agenda, PAR FLOTTE.
  * Une ligne par flotte (opt-in), lue/écrite depuis la ⚙️ « Paramètres de l'agenda ».
  * L'agent nocturne (P3) consommera ces réglages. Scoping tenant STRICT : un super-admin doit
- * préciser la flotte ; un non-SA ne peut viser que la sienne. Métier lu de la flotte (édité via
+ * préciser la flotte ; un non-SA règle toujours la sienne (le `fleetId` qu'il envoie est ignoré, et
+ * un compte d'une autre société lui est refusé). Métier lu de la flotte (édité via
  * l'endpoint dédié `/ai/fleet-metier`) ; coût IA du mois lu via `AiUsageService`.
  */
 @Injectable()
@@ -133,13 +134,21 @@ export class AgendaAgentSettingsService {
     }
   }
 
-  /** Résout la flotte cible (propre flotte ou, super-admin, celle passée) + garde de périmètre. */
+  /**
+   * La société réglée DEPUIS L'ÉCRAN. Super-admin : celle qu'il vise (`fleetId`, le bandeau), à préciser
+   * s'il n'en a pas. Tout autre rôle : LA SIENNE — le `fleetId` qu'il envoie est ignoré (29/09) : il
+   * vient du filtre société relu du navigateur, qui porte après une session super-admin la société d'un
+   * autre client. La feuille Paramètres ne l'envoie qu'à un super-admin ; un écran moins prudent aurait
+   * privé l'administrateur de ses propres réglages (403). Même règle que
+   * `AgendaAgentRunnerService.resolveFleetId`.
+   */
   private resolveFleetId(user: AuthUser, fleetId?: string): string {
+    if (user.role !== UserRole.SUPER_ADMIN) {
+      if (!user.fleetId) throw new ForbiddenException('Aucune flotte associée');
+      return user.fleetId;
+    }
     const id = fleetId ?? user.fleetId ?? undefined;
     if (!id) throw new BadRequestException('Préciser la flotte (fleetId).');
-    if (user.role !== UserRole.SUPER_ADMIN && id !== user.fleetId) {
-      throw new ForbiddenException('Flotte hors périmètre.');
-    }
     return id;
   }
 
@@ -178,7 +187,13 @@ export class AgendaAgentSettingsService {
       select: { id: true, fleetId: true, email: true },
     });
     if (!cible?.fleetId) throw new NotFoundException('Compte introuvable.');
-    const id = this.resolveFleetId(user, cible.fleetId);
+    // Ici la société vient du COMPTE visé, pas de l'écran : pour un non-super-admin, une société qui
+    // n'est pas la sienne est un vrai hors-périmètre — `resolveFleetId`, qui l'ignorerait, écrirait sur
+    // le compte d'un autre client.
+    if (user.role !== UserRole.SUPER_ADMIN && cible.fleetId !== user.fleetId) {
+      throw new ForbiddenException('Flotte hors périmètre.');
+    }
+    const id = cible.fleetId;
 
     if (dto.notifie === false) {
       const restants = (await this.destinataires.possibles(id)).filter(
