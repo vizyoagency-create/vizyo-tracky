@@ -4,10 +4,11 @@ import type {
   ActivityFeedItemDto,
   ActivityStatsDto,
   EngineCommandAuditDto,
+  FleetAgendaActivityDto,
   OnlineUserDto,
   PresenceStatus,
 } from '@vizyo/tracky-shared';
-import { labelForRoute } from '@vizyo/tracky-shared';
+import { AGENDA_ACTIVITY_ACTION_LABELS, labelForRoute } from '@vizyo/tracky-shared';
 import { Prisma, UserRole } from '@prisma/client';
 import type { AuthUser } from '../auth/types/auth-user';
 import { OwnerVisibilityService } from '../common/owner-visibility.service';
@@ -54,6 +55,25 @@ const VALID_TYPES = new Set([
   'HEARTBEAT',
 ]);
 const VALID_STATUS = new Set(['ACTIVE', 'IDLE', 'AWAY']);
+
+/** Identifiant de ligne ou de société : une colonne `@db.Uuid` refuse toute autre forme (erreur 500). */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Nom affiché d'un geste fait par un super-admin ou le propriétaire de la plateforme (owner caché). */
+export const ACTEUR_EQUIPE_TRACKY = 'Équipe Tracky';
+
+/**
+ * Lignes du fil « Agenda » d'une société : les deux catégories métier de l'agenda, plus les
+ * passages de l'agent (écrits en catégorie AI). `category` optionnelle : RESERVATION = les
+ * réservations seules ; AGENDA = le reste de l'agenda, passages de l'agent compris.
+ */
+function filtreCategoriesAgenda(category?: string): Prisma.SystemActivityLogWhereInput {
+  const passagesAgent: Prisma.SystemActivityLogWhereInput = { category: 'AI', action: 'agenda_agent_run' };
+  if (category === 'RESERVATION') return { category: 'RESERVATION' };
+  if (category === 'AGENDA') return { OR: [{ category: 'AGENDA' }, passagesAgent] };
+  // Absente ou inconnue : tout le fil Agenda — jamais au-delà (une catégorie étrangère n'élargit rien).
+  return { OR: [{ category: { in: ['RESERVATION', 'AGENDA'] } }, passagesAgent] };
+}
 
 function fullName(u: { firstName?: string | null; lastName?: string | null }): string {
   return [u.firstName, u.lastName].filter(Boolean).join(' ') || 'Utilisateur';
@@ -276,6 +296,117 @@ export class UserActivityService {
     }));
   }
 
+  /**
+   * 29/09 — fil « Agenda » d'UNE société (page Activité de l'administrateur de flotte) : les gestes
+   * sur les réservations et l'agenda, lus dans le journal métier `system_activity_logs`.
+   *
+   * Bornage : `fleetId` de la LIGNE (= la société de la ressource, jamais celle de l'auteur) — un
+   * geste d'un super-admin sur la société d'un client y figure donc, sous « Équipe Tracky ».
+   *
+   * ⚠️ Réponse délibérément pauvre : ni identifiant d'utilisateur, ni `actor`, ni `meta` (qui porte
+   * des identifiants internes). L'auteur est résolu ICI en un nom affichable ; l'identité d'un
+   * super-admin ou du propriétaire de la plateforme n'est jamais chargée (règle « owner caché »).
+   * Cursor composite (createdAt, id), comme les autres fils.
+   *
+   * Lecteur (`viewer`) : un administrateur de flotte voit les gestes de l'owner, sous « Équipe
+   * Tracky » (voulu : la société voit ce qu'on a fait chez elle). Un SUPER_ADMIN non-owner, lui,
+   * ne les voit PAS (règle d'OwnerVisibilityService : l'owner est exclu de toutes les vues
+   * d'activité des autres super-admins) — sinon l'écart avec /admin/activity › Système, qui les
+   * masque, trahirait qu'un compte caché agit. L'exclusion est une clause du `where` (jamais un
+   * filtre après coup, qui rendrait des pages courtes et fausserait le curseur) ; elle garde les
+   * lignes sans auteur (demande publique, agent, système).
+   */
+  async getAgendaFeed(
+    filters: { limit?: number; before?: string; beforeId?: string; category?: string },
+    scope: FleetActivityScope,
+    viewer: { role?: UserRole | null; isOwner?: boolean | null } = {},
+  ): Promise<FleetAgendaActivityDto[]> {
+    // Une société mal formée ne filtrerait rien : Prisma rejetterait la requête (500) — on rend vide.
+    if (!scope?.fleetId || !UUID_RE.test(scope.fleetId)) return [];
+    const take = Math.min(Math.max(filters.limit ?? 50, 1), 200);
+    const and: Prisma.SystemActivityLogWhereInput[] = [
+      { fleetId: scope.fleetId },
+      filtreCategoriesAgenda(filters.category),
+    ];
+    if (viewer?.role === UserRole.SUPER_ADMIN) {
+      // `{}` pour l'owner lui-même (il voit tout) ; sinon un OR (NULL conservé) → clause du AND.
+      const ownerExcl = await this.ownerVis.nullableUserIdExclusion(viewer, 'triggeredByUserId');
+      if (Object.keys(ownerExcl).length) and.push(ownerExcl as Prisma.SystemActivityLogWhereInput);
+    }
+    if (filters.before) {
+      const d = new Date(filters.before);
+      if (!Number.isNaN(d.getTime())) {
+        and.push(
+          filters.beforeId && UUID_RE.test(filters.beforeId)
+            ? { OR: [{ createdAt: { lt: d } }, { createdAt: d, id: { lt: filters.beforeId } }] }
+            : { createdAt: { lt: d } },
+        );
+      }
+    }
+    const rows = await this.prisma.systemActivityLog.findMany({
+      where: { AND: and },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      take,
+      // `meta` n'est jamais lu : il ne peut donc pas fuir dans la réponse.
+      select: {
+        id: true,
+        createdAt: true,
+        category: true,
+        action: true,
+        status: true,
+        actor: true,
+        target: true,
+        detail: true,
+        triggeredByUserId: true,
+      },
+    });
+
+    // Auteurs : les comptes élevés (super-admin, owner) ne sont JAMAIS chargés — leur nom n'entre
+    // pas en mémoire. Les autres le sont avec leur rôle, pour rattraper un compte promu depuis
+    // moins d'une minute (cache de getElevatedUserIds) : il resterait « Équipe Tracky ».
+    const auteurs = [...new Set(rows.map((r) => r.triggeredByUserId).filter((x): x is string => !!x))];
+    const eleves = new Set(auteurs.length ? await this.getElevatedUserIds() : []);
+    const aCharger = auteurs.filter((id) => !eleves.has(id));
+    const users = aCharger.length
+      ? await this.prisma.user.findMany({
+          where: { id: { in: aCharger } },
+          select: { id: true, firstName: true, lastName: true, fleetId: true, role: true, isOwner: true },
+        })
+      : [];
+    const userById = new Map(users.map((u) => [u.id, u]));
+
+    const auteur = (r: (typeof rows)[number]): Pick<FleetAgendaActivityDto, 'actorName' | 'actorKind'> => {
+      if (r.triggeredByUserId) {
+        if (eleves.has(r.triggeredByUserId)) return { actorName: ACTEUR_EQUIPE_TRACKY, actorKind: 'team' };
+        const u = userById.get(r.triggeredByUserId);
+        if (u && (u.role === UserRole.SUPER_ADMIN || u.isOwner)) {
+          return { actorName: ACTEUR_EQUIPE_TRACKY, actorKind: 'team' };
+        }
+        // Compte supprimé, ou rattaché à une AUTRE société (déplacé depuis) : on ne nomme pas
+        // quelqu'un qui n'est pas de la maison — pas de nom d'une société à l'autre.
+        if (!u || u.fleetId !== scope.fleetId) return { actorName: 'Utilisateur', actorKind: 'user' };
+        return { actorName: fullName(u), actorKind: 'user' };
+      }
+      if (r.actor === 'client') return { actorName: 'Demande publique', actorKind: 'public' };
+      if (r.action === 'agenda_agent_run' || r.action.startsWith('proposition_')) {
+        return { actorName: "Agent de l'agenda", actorKind: 'agent' };
+      }
+      return { actorName: 'Tracky', actorKind: 'system' };
+    };
+
+    return rows.map((r) => ({
+      id: r.id,
+      at: r.createdAt.toISOString(),
+      category: r.category,
+      action: r.action,
+      actionLabel: AGENDA_ACTIVITY_ACTION_LABELS[r.action] ?? r.action,
+      status: r.status,
+      ...auteur(r),
+      vehiclePlate: r.target,
+      detail: r.detail,
+    }));
+  }
+
   /** Analytics agrégées sur une fenêtre (défaut : 7 derniers jours). */
   async getStats(fromIso?: string, toIso?: string, viewer: { isOwner?: boolean | null } = {}): Promise<ActivityStatsDto> {
     const to = toIso ? new Date(toIso) : new Date();
@@ -401,7 +532,6 @@ export class UserActivityService {
     });
 
     // Résolution du demandeur : seules les valeurs UUID-like sont requêtables.
-    const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     const validIds = [
       ...new Set(commands.map((c) => c.requestedBy).filter((id) => UUID_RE.test(id))),
     ];

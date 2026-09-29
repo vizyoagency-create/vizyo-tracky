@@ -1,13 +1,20 @@
 import type { VehicleEventType } from '@vizyo/tracky-shared';
 import {
+  dansFenetreReorganisation,
+  demandeNonReaffectable,
   dureeEnJours,
   estUneEcheance,
   eventTypeLabel,
   fenetreAReorganiser,
   fenetreImmobilisation,
   fenetresAjoutees,
+  horsFenetrePreset,
   HORIZON_SANS_FIN_MS,
   joursDansFenetre,
+  libelleVehiculesLibres,
+  lotExactDeSimulation,
+  placesMaxLibres,
+  raisonsVideRefusees,
   rangDuJour,
   repliDefinitif,
   startOfMonth,
@@ -346,5 +353,321 @@ describe('repliDefinitif — quand la vue demandée devient la vue affichée', (
 
   it('une autre vue montrée puis privée de son onglet (droit retiré) : définitif', () => {
     expect(repliDefinitif('parc', 'calendrier', false, 'parc')).toBe(true);
+  });
+});
+
+/**
+ * « 12 PLACES » (29/09) : « 7 / 8 véhicule(s) disponible(s) aujourd'hui » a fait chercher un
+ * véhicule de 12 places dans un parc dont le plus grand en a 9. Le compte reste ; la capacité du
+ * plus grand véhicule LIBRE le suit.
+ */
+describe('placesMaxLibres / libelleVehiculesLibres — la taille de ce qui est libre', () => {
+  const parc = [
+    { id: 'a', seats: 5 },
+    { id: 'b', seats: 9 },
+    { id: 'c', seats: 7 },
+    { id: 'd', seats: null },
+  ];
+
+  it('le plus grand parmi les libres, pas parmi tout le parc', () => {
+    expect(placesMaxLibres(parc, new Set(['d'])).max).toBe(9);
+    expect(placesMaxLibres(parc, new Set(['b', 'd']))).toEqual({ max: 7, inconnus: 0 }); // le 9 places est pris : on ne l'annonce pas
+  });
+
+  it('un libre SANS places renseignées est compté à part, pas sauté en silence', () => {
+    // Revue du correctif (29/09) : 'd' (seats null) est libre — c'est peut-être le minibus. La borne
+    // 9 ne le couvre pas, et la fonction doit le dire.
+    expect(placesMaxLibres(parc, new Set())).toEqual({ max: 9, inconnus: 1 });
+    expect(placesMaxLibres([{ id: 'x', seats: 0 }, { id: 'y' }, { id: 'z', seats: Number.NaN }], new Set())).toEqual({
+      max: null,
+      inconnus: 3,
+    });
+    // Un non renseigné PRIS n'entre pas dans le compte : seuls les libres comptent.
+    expect(placesMaxLibres(parc, new Set(['d'])).inconnus).toBe(0);
+  });
+
+  it('aucun libre : ni borne ni inconnu', () => {
+    expect(placesMaxLibres(parc, new Set(['a', 'b', 'c', 'd']))).toEqual({ max: null, inconnus: 0 });
+    expect(placesMaxLibres([], new Set())).toEqual({ max: null, inconnus: 0 });
+  });
+
+  it('« 7 / 8 véhicules libres aujourd’hui · jusqu’à 9 places par véhicule » quand tous les libres sont renseignés', () => {
+    expect(libelleVehiculesLibres(7, { max: 9, inconnus: 0 }, true)).toBe(
+      "véhicules libres aujourd'hui · jusqu'à 9 places par véhicule",
+    );
+    expect(libelleVehiculesLibres(1, { max: 5, inconnus: 0 }, false)).toBe(
+      "véhicule libre ce jour · jusqu'à 5 places par véhicule",
+    );
+  });
+
+  it('un libre sans places renseignées : la borne est QUALIFIÉE, jamais présentée comme sûre', () => {
+    // Le scénario de la revue : 7 libres dont le minibus sans places — celui qui cherche 12 places
+    // ne doit pas conclure qu'aucun libre ne convient.
+    expect(libelleVehiculesLibres(7, placesMaxLibres(parc, new Set()), true)).toBe(
+      "véhicules libres aujourd'hui · jusqu'à 9 places par véhicule, hors 1 sans nombre de places renseigné",
+    );
+    expect(libelleVehiculesLibres(4, { max: 7, inconnus: 2 }, true)).toBe(
+      "véhicules libres aujourd'hui · jusqu'à 7 places par véhicule, hors 2 sans nombre de places renseigné",
+    );
+    // Aucun libre n'a ses places : on le dit, sans chiffre inventé.
+    expect(libelleVehiculesLibres(2, { max: null, inconnus: 2 }, true)).toBe(
+      "véhicules libres aujourd'hui · nombre de places non renseigné",
+    );
+  });
+
+  it('sans véhicule libre, ou sans capacité calculée : le compte seul', () => {
+    expect(libelleVehiculesLibres(0, { max: 9, inconnus: 1 }, true)).toBe("véhicule libre aujourd'hui");
+    expect(libelleVehiculesLibres(3, null, true)).toBe("véhicules libres aujourd'hui");
+    expect(libelleVehiculesLibres(3, { max: null, inconnus: 0 }, true)).toBe("véhicules libres aujourd'hui");
+  });
+});
+
+/**
+ * UNE DEMANDE EN ATTENTE QUE « RÉAFFECTER » REFUSERA À COUP SÛR (quatrième revue du 29/09, C6).
+ * Même règle que `motifDemandeNonReaffectable` du serveur — les deux cas de sa spec sont rejoués ici :
+ * « lundi → vendredi, immobilisation dès jeudi » (reservations.service.spec « une demande EN ATTENTE
+ * qui déborde ») et la simulation T4.
+ */
+describe('demandeNonReaffectable — le calque web de la règle du serveur', () => {
+  const H = 3600_000;
+  const MAINTENANT = new Date('2026-09-29T10:00:30').getTime();
+
+  it('une demande en attente qui commence AVANT l’immobilisation et déborde dessus : refusée d’office', () => {
+    // Spec serveur : demande à +24 h, immobilisation (aPartirDe) jeudi à +72 h.
+    expect(demandeNonReaffectable('REQUESTED', MAINTENANT + 24 * H, MAINTENANT, MAINTENANT + 72 * H)).toBe(true);
+  });
+
+  it('une demande en attente déjà commencée : refusée, même si l’immobilisation est déjà en cours', () => {
+    expect(demandeNonReaffectable('REQUESTED', MAINTENANT - 2 * H, MAINTENANT, MAINTENANT - 48 * H)).toBe(true);
+  });
+
+  it('une demande en attente qui commence APRÈS le début de l’immobilisation : elle se réaffecte en entier', () => {
+    expect(demandeNonReaffectable('REQUESTED', MAINTENANT + 80 * H, MAINTENANT, MAINTENANT + 72 * H)).toBe(false);
+  });
+
+  it('la coupe est à la minute, comme au serveur : une demande qui commence dans la minute de la coupe passe', () => {
+    const coupe = new Date('2026-10-01T08:00:00').getTime();
+    expect(demandeNonReaffectable('REQUESTED', coupe + 20_000, MAINTENANT, coupe + 45_000)).toBe(false);
+    expect(demandeNonReaffectable('REQUESTED', coupe - 1, MAINTENANT, coupe + 45_000)).toBe(true);
+  });
+
+  it('une réservation ferme n’est jamais concernée : elle se scinde', () => {
+    for (const status of ['CONFIRMED', 'IN_PROGRESS']) {
+      expect(demandeNonReaffectable(status, MAINTENANT + 24 * H, MAINTENANT, MAINTENANT + 72 * H)).toBe(false);
+      expect(demandeNonReaffectable(status, MAINTENANT - 2 * H, MAINTENANT, MAINTENANT + 72 * H)).toBe(false);
+    }
+  });
+});
+
+/**
+ * LOT LIMITÉ AUX REFUSÉES PUIS DURÉE CHANGÉE (quatrième revue du 29/09, C7) : la réservation refusée,
+ * à J+10, sortait de la fenêtre « 7 jours », et le vide disait seulement « reprise ou annulée depuis ».
+ */
+describe('raisonsVideRefusees / horsFenetrePreset — pourquoi le lot des refusées est vide', () => {
+  const PRESET = { from: '2026-10-09T00:00:00.000Z', to: '2026-10-12T21:59:59.000Z' };
+  const corps = (over: Partial<{ from: string; to: string; ids: string[]; origine: string; action: string }> = {}) => ({
+    ...PRESET, ids: ['r1'], origine: 'toutes', action: 'reaffecter', ...over,
+  });
+
+  it('lu sur la période de l’immobilisation : la seule cause est une reprise ou une annulation depuis', () => {
+    expect(horsFenetrePreset(corps(), PRESET)).toBe(false);
+    expect(raisonsVideRefusees(corps(), PRESET)).toBe('elle a pu être reprise ou annulée depuis.');
+  });
+
+  it('⚠️ « 7 jours » cliqué : « hors de la fenêtre choisie » vient EN TÊTE', () => {
+    const sept = corps({ from: '2026-09-29T10:00:00.000Z', to: '2026-10-06T10:00:00.000Z' });
+    expect(horsFenetrePreset(sept, PRESET)).toBe(true);
+    expect(raisonsVideRefusees(sept, PRESET)).toBe(
+      "elle est hors de la fenêtre choisie (la période de l'immobilisation la contenait), ou elle a pu être reprise ou annulée depuis.",
+    );
+  });
+
+  it('au pluriel, et avec les causes propres à l’origine et à l’action', () => {
+    const texte = raisonsVideRefusees(
+      corps({ from: 'autre', ids: ['r1', 'r2'], origine: 'auto', action: 'annuler' }),
+      PRESET,
+    );
+    expect(texte.startsWith('elles sont hors de la fenêtre choisie (la période de l\'immobilisation les contenait), ou elles ont pu être reprises ou annulées depuis')).toBe(true);
+    expect(texte.includes("le filtre « Posées par l'agent » les écarte")).toBe(true);
+    expect(texte.includes('commencer avant la fenêtre')).toBe(true);
+  });
+
+  it('sans période imposée : la fenêtre peut être en cause, sans parler d’une immobilisation', () => {
+    expect(horsFenetrePreset(corps(), null)).toBe(true);
+    expect(raisonsVideRefusees(corps(), null)).toBe('elle est hors de la fenêtre choisie, ou elle a pu être reprise ou annulée depuis.');
+  });
+
+  /**
+   * Cinquième revue du 29/09 (C13) : décidé sur l'égalité des chaînes, « hors de la fenêtre » tombait
+   * dès que la fenêtre n'était plus le pré-réglage — « 30 jours » qui CONTIENT la réservation du 10/10
+   * la citait en tête, et « Revenir à la période » ramenait au même vide. Désormais sur les DATES des
+   * refusées, appariées par id, avec le prédicat du serveur. « Maintenant » est FIXÉ : jamais l'horloge.
+   */
+  describe('C13 — sur les dates des refusées, pas sur l’égalité des chaînes', () => {
+    const MAINTENANT = Date.parse('2026-09-29T10:00:00.000Z');
+    const JOUR = 86_400_000;
+    const apres = (jours: number) => new Date(MAINTENANT + jours * JOUR).toISOString();
+    const R1 = { id: 'r1', startAt: '2026-10-10T08:00:00.000Z', endAt: '2026-10-10T18:00:00.000Z' };
+    const trente = corps({ from: apres(0), to: apres(30) });
+    const sept = corps({ from: apres(0), to: apres(7) });
+
+    it('⚠️ « 30 jours » qui contient la réservation refusée du 10/10 : pas de clause « hors fenêtre », pas de retour', () => {
+      expect(horsFenetrePreset(trente, PRESET, [R1], MAINTENANT)).toBe(false);
+      expect(raisonsVideRefusees(trente, PRESET, [R1], MAINTENANT)).toBe('elle a pu être reprise ou annulée depuis.');
+    });
+
+    it('« 30 jours » sans aucune date connue : repli par inclusion — la fenêtre couvre la période, pas de clause', () => {
+      expect(horsFenetrePreset(trente, PRESET, [], MAINTENANT)).toBe(false);
+    });
+
+    it('« 7 jours » qui exclut la réservation du 10/10 : la clause reste en tête (non-régression C7)', () => {
+      expect(horsFenetrePreset(sept, PRESET, [R1], MAINTENANT)).toBe(true);
+      expect(raisonsVideRefusees(sept, PRESET, [R1], MAINTENANT).startsWith('elle est hors de la fenêtre choisie')).toBe(true);
+    });
+
+    it('« 7 jours » qui CONTIENT la refusée du 02/10 (immobilisation 01/10 → 12/10) : pas de clause — l’inclusion seule se tromperait', () => {
+      const preset = { from: '2026-10-01T00:00:00.000Z', to: '2026-10-12T21:59:59.000Z' };
+      const r = { id: 'r1', startAt: '2026-10-02T08:00:00.000Z', endAt: '2026-10-02T18:00:00.000Z' };
+      expect(horsFenetrePreset(sept, preset, [r], MAINTENANT)).toBe(false);
+      // Sans la date, la cause reste possible : 7 jours ne couvrent pas toute la période.
+      expect(horsFenetrePreset(sept, preset, [], MAINTENANT)).toBe(true);
+    });
+
+    it('appariement PAR ID : une refusée sans date (réservation introuvable) ne prend pas les dates d’une autre', () => {
+      const deux = corps({ from: apres(0), to: apres(7), ids: ['r0', 'r1'] });
+      const r1Dans7 = { id: 'r1', startAt: apres(2), endAt: apres(2.5) };
+      // r0 n'a pas de date : repli par inclusion — 7 jours ne couvrent pas la période → possible.
+      expect(horsFenetrePreset(deux, PRESET, [r1Dans7], MAINTENANT)).toBe(true);
+      // Sixième revue : les deux assertions suivantes DÉPARTAGENT id et position — un appariement par
+      // position (`refusees[i]`) les fait échouer, l'assertion d'avant passait avec lui.
+      // Une date sans id n'est appariée à rien : r1 reste sans date → repli par inclusion, 7 jours ne
+      // couvrent pas la période → possible. Par position, cette date (dans les 7 jours) passerait pour r1.
+      expect(horsFenetrePreset(sept, PRESET, [{ startAt: apres(2), endAt: apres(2.5) }], MAINTENANT)).toBe(true);
+      // La date d'une AUTRE refusée (r9, hors des 7 jours, dans la période) n'est pas celle de r1 :
+      // r1, datée dans les 7 jours, n'est pas écartée par la fenêtre. Par position, r1 prendrait les dates de r9.
+      const r9 = { id: 'r9', startAt: R1.startAt, endAt: R1.endAt };
+      expect(horsFenetrePreset(sept, PRESET, [r9, r1Dans7], MAINTENANT)).toBe(false);
+    });
+
+    it('une refusée qu’aucune des deux fenêtres ne prend (déjà commencée, sous « Annuler ») : pas une affaire de fenêtre', () => {
+      const enCours = { id: 'r1', startAt: apres(-1), endAt: apres(1) };
+      const annulerSept = corps({ from: apres(0), to: apres(7), action: 'annuler' });
+      const preset = { from: apres(-2), to: apres(5) };
+      expect(horsFenetrePreset(annulerSept, preset, [enCours], MAINTENANT)).toBe(false);
+      // Sous « Réaffecter », elle chevauche les deux fenêtres (scindée) : rien à dire non plus.
+      expect(horsFenetrePreset(corps({ from: apres(0), to: apres(7) }), preset, [enCours], MAINTENANT)).toBe(false);
+    });
+
+    it('« Annuler » : la refusée commence dans la période mais pas dans la fenêtre lue → clause', () => {
+      const r = { id: 'r1', startAt: apres(10), endAt: apres(11) };
+      expect(horsFenetrePreset(corps({ from: apres(0), to: apres(7), action: 'annuler' }), { from: apres(9), to: apres(12) }, [r], MAINTENANT)).toBe(true);
+    });
+
+    it('sans période imposée mais dates connues : la fenêtre n’est citée que si elle écarte la refusée', () => {
+      expect(horsFenetrePreset(trente, null, [R1], MAINTENANT)).toBe(false);
+      expect(horsFenetrePreset(sept, null, [R1], MAINTENANT)).toBe(true);
+    });
+  });
+
+  /**
+   * Sixième revue du 29/09 (suite de C13) : « commencer avant la fenêtre » tombait sous Annuler et
+   * Décaler SANS condition — même quand les dates de la refusée, connues de la feuille, l'excluent.
+   */
+  describe('« commencer avant la fenêtre » — seulement si les dates des refusées le permettent', () => {
+    const MAINTENANT = Date.parse('2026-09-29T10:00:00.000Z');
+    const JOUR = 86_400_000;
+    const apres = (jours: number) => new Date(MAINTENANT + jours * JOUR).toISOString();
+    const P2 = { from: apres(9), to: apres(12) };
+    const CLAUSE = 'commencer avant la fenêtre';
+
+    it('⚠️ « Annuler » sur la période elle-même, la refusée y commence : la reprise ou l’annulation depuis, seule', () => {
+      const lu = corps({ ...P2, action: 'annuler' });
+      const r1 = { id: 'r1', startAt: apres(10), endAt: apres(11) };
+      expect(raisonsVideRefusees(lu, P2, [r1], MAINTENANT)).toBe('elle a pu être reprise ou annulée depuis.');
+      // Idem sous « Décaler ».
+      expect(raisonsVideRefusees(corps({ ...P2, action: 'decaler' }), P2, [r1], MAINTENANT)).toBe('elle a pu être reprise ou annulée depuis.');
+    });
+
+    it('la refusée commence AVANT la fenêtre lue (ou a déjà commencé) : la clause reste', () => {
+      const lu = corps({ ...P2, action: 'annuler' });
+      expect(raisonsVideRefusees(lu, P2, [{ id: 'r1', startAt: apres(8), endAt: apres(10) }], MAINTENANT).includes(CLAUSE)).toBe(true);
+      // Fenêtre dont le début est passé : ramenée à maintenant — une refusée commencée hier en sort.
+      const depuisHier = corps({ from: apres(-2), to: apres(3), action: 'annuler' });
+      expect(raisonsVideRefusees(depuisHier, depuisHier, [{ id: 'r1', startAt: apres(-1), endAt: apres(1) }], MAINTENANT).includes(CLAUSE)).toBe(true);
+    });
+
+    it('sans date connue pour une refusée du lot (ou date illisible, ou date sans id) : la clause reste', () => {
+      const lu = corps({ ...P2, action: 'annuler' });
+      expect(raisonsVideRefusees(lu, P2, [], MAINTENANT).includes(CLAUSE)).toBe(true);
+      expect(raisonsVideRefusees(lu, P2, [{ id: 'r1', startAt: 'illisible', endAt: null }], MAINTENANT).includes(CLAUSE)).toBe(true);
+      // Appariement PAR ID : une date sans id, même dans la fenêtre, ne date pas r1.
+      expect(raisonsVideRefusees(lu, P2, [{ startAt: apres(10), endAt: apres(11) }], MAINTENANT).includes(CLAUSE)).toBe(true);
+      // Deux refusées, une seule datée (dedans) : l'autre peut encore commencer avant.
+      const deux = corps({ ...P2, ids: ['r0', 'r1'], action: 'annuler' });
+      expect(raisonsVideRefusees(deux, P2, [{ id: 'r1', startAt: apres(10), endAt: apres(11) }], MAINTENANT).includes(CLAUSE)).toBe(true);
+    });
+
+    it('jamais sous « Réaffecter » (qui prend ce qui chevauche)', () => {
+      expect(raisonsVideRefusees(corps(P2), P2, [{ id: 'r1', startAt: apres(8), endAt: apres(10) }], MAINTENANT).includes(CLAUSE)).toBe(false);
+    });
+  });
+});
+
+describe('dansFenetreReorganisation — le prédicat de lot du serveur (reorganiser)', () => {
+  const MAINTENANT = Date.parse('2026-09-29T10:00:00.000Z');
+  const H = 3_600_000;
+  const iso = (ms: number) => new Date(ms).toISOString();
+  const fenetre = { from: iso(MAINTENANT - 24 * H), to: iso(MAINTENANT + 48 * H) };
+
+  it('réaffecter : ce qui CHEVAUCHE [max(from, maintenant), to) — une réservation en cours y est', () => {
+    expect(dansFenetreReorganisation({ startAt: iso(MAINTENANT - H), endAt: iso(MAINTENANT + H) }, 'reaffecter', fenetre, MAINTENANT)).toBe(true);
+    expect(dansFenetreReorganisation({ startAt: iso(MAINTENANT - 3 * H), endAt: iso(MAINTENANT - H) }, 'reaffecter', fenetre, MAINTENANT)).toBe(false);
+    expect(dansFenetreReorganisation({ startAt: iso(MAINTENANT + 48 * H), endAt: iso(MAINTENANT + 50 * H) }, 'reaffecter', fenetre, MAINTENANT)).toBe(false);
+    // Le serveur écarte une réservation sans fin.
+    expect(dansFenetreReorganisation({ startAt: iso(MAINTENANT + H), endAt: null }, 'reaffecter', fenetre, MAINTENANT)).toBe(false);
+  });
+
+  it('annuler / décaler : ce qui COMMENCE dedans — une réservation en cours n’y est pas', () => {
+    for (const action of ['annuler', 'decaler']) {
+      expect(dansFenetreReorganisation({ startAt: iso(MAINTENANT - H), endAt: iso(MAINTENANT + H) }, action, fenetre, MAINTENANT)).toBe(false);
+      expect(dansFenetreReorganisation({ startAt: iso(MAINTENANT + H), endAt: iso(MAINTENANT + 2 * H) }, action, fenetre, MAINTENANT)).toBe(true);
+    }
+  });
+
+  it('indécidable : date illisible, action inconnue ; fenêtre entièrement passée : rien', () => {
+    expect(dansFenetreReorganisation({ startAt: 'x', endAt: null }, 'annuler', fenetre, MAINTENANT)).toBe(null);
+    expect(dansFenetreReorganisation({ startAt: iso(MAINTENANT + H), endAt: 'x' }, 'reaffecter', fenetre, MAINTENANT)).toBe(null);
+    expect(dansFenetreReorganisation({ startAt: iso(MAINTENANT + H), endAt: null }, undefined, fenetre, MAINTENANT)).toBe(null);
+    const passee = { from: iso(MAINTENANT - 48 * H), to: iso(MAINTENANT - H) };
+    expect(dansFenetreReorganisation({ startAt: iso(MAINTENANT - 2 * H), endAt: iso(MAINTENANT + H) }, 'reaffecter', passee, MAINTENANT)).toBe(false);
+  });
+});
+
+/**
+ * LE NOMBRE NE SUFFIT PAS (quatrième revue du 29/09, C0) : une réservation commencée sortait du lot,
+ * une demande du lien public y entrait, 3 = 3 — et la demande était annulée sans avoir été vue.
+ * L'application renvoie le lot EXACT de la simulation ; sans lui (ancienne API), le nombre seul.
+ */
+describe('lotExactDeSimulation — le lot vu, renvoyé tel quel à l’application', () => {
+  it('le lot rendu par la simulation, en copie', () => {
+    const lotIds = ['r1', 'r2', 'r3'];
+    const lot = lotExactDeSimulation({ concernees: 3, lotIds });
+    expect(lot).toEqual(['r1', 'r2', 'r3']);
+    expect(lot === lotIds).toBe(false); // une copie : le corps envoyé ne partage rien avec la réponse
+  });
+
+  it('ancienne API (pas de lotIds) : null — on garde le contrôle par le nombre', () => {
+    expect(lotExactDeSimulation({ concernees: 3 })).toBeNull();
+    expect(lotExactDeSimulation({ concernees: 3, lotIds: null })).toBeNull();
+  });
+
+  it('une liste qui ne décrit pas le lot compté : null, plutôt qu’un 409 à chaque application', () => {
+    expect(lotExactDeSimulation({ concernees: 3, lotIds: ['r1', 'r2'] })).toBeNull();
+    expect(lotExactDeSimulation({ concernees: 2, lotIds: ['r1', ''] })).toBeNull();
+    expect(lotExactDeSimulation({ concernees: 2, lotIds: ['r1', 42] })).toBeNull();
+  });
+
+  it('un lot vide reste un lot vide (l’écran n’applique de toute façon rien sans réservation)', () => {
+    expect(lotExactDeSimulation({ concernees: 0, lotIds: [] })).toEqual([]);
   });
 });

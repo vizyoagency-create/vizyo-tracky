@@ -27,6 +27,16 @@ interface EtatGroupe {
   plaquesAVenir: string[];
   /** Les lignes fermes encore à venir, avec LEUR créneau (contre-revue R3). */
   lignesAVenir: { plate: string; startAt: Date | null; endAt: Date | null }[];
+  /**
+   * Quatrième revue du 29/09 (C1) — la demande n'est plus tenue qu'EN PARTIE : au moins une ligne
+   * sœur a été refusée ou annulée (CANCELLED — seul `cancel()` pose ce statut ; une scission n'en
+   * pose pas), au moins une ligne ferme reste à venir, et ce qui reste ne couvre pas, de façon
+   * PROUVÉE, les places demandées. Décidé ICI, une seule fois : confirmation, refus, annulation et
+   * modification lisent ce même drapeau.
+   */
+  partielle: boolean;
+  /** Les places demandées par le lien public (`seatsNeeded`), si lisibles — rappelées au demandeur. */
+  placesDemandees: number | null;
 }
 
 /**
@@ -132,11 +142,16 @@ export class ReservationBookingNotifier {
     if (payload.endAt && new Date(payload.endAt).getTime() <= Date.now()) return;
     const groupe = await this.etatDuGroupe(m);
     if (groupe.attend) return;
+    // Cinquième revue du 29/09 (C1) — le MOTIF est dit ici : un décalage, une réaffectation ou une
+    // édition ne pose jamais CANCELLED, donc une sœur perdue est forcément ANCIENNE (le demandeur en a
+    // déjà été prévenu). Le courriel dit « le créneau ou le véhicule a changé » ; `partielle`, s'il
+    // tient, n'y est qu'un rappel — jamais « une partie des véhicules n'est plus maintenue ».
     const built = this.email.buildReservationConfirmedEmail({
       fleetName: await this.fleetNameOf(payload.fleetId),
       destination: this.destinationDe(m),
       ...this.recapGroupe(groupe, payload),
       modifiee: true,
+      motif: 'changement',
     });
     await this.notify(contact, payload.fleetId, built, 'reservation_confirmed');
   }
@@ -185,7 +200,8 @@ export class ReservationBookingNotifier {
   /**
    * La confirmation qui nomme les lignes fermes RESTANTES d'une demande, construite sur ELLES — la
    * première à venir sert de référence (créneau, plaque), jamais la ligne de l'événement, qui vient
-   * d'être annulée ou refusée. `modifiee` : la demande avait déjà été confirmée au demandeur.
+   * d'être annulée ou refusée. `modifiee` : la demande avait déjà été confirmée au demandeur — c'est
+   * alors un RETRAIT (motif `retrait`, C1 de la cinquième revue) : une ligne ferme vient d'être perdue.
    */
   private async confirmationDesLignesRestantes(
     groupe: EtatGroupe,
@@ -199,12 +215,14 @@ export class ReservationBookingNotifier {
       startAt: (premiere.startAt ?? new Date(payload.startAt)).toISOString(),
       endAt: premiere.endAt ? premiere.endAt.toISOString() : null,
     };
-    return this.email.buildReservationConfirmedEmail({
+    const recap = {
       fleetName: await this.fleetNameOf(payload.fleetId),
       destination: this.destinationDe(m),
       ...this.recapGroupe(groupe, reference),
-      ...(modifiee ? { modifiee: true } : {}),
-    });
+    };
+    return modifiee
+      ? this.email.buildReservationConfirmedEmail({ ...recap, modifiee: true, motif: 'retrait' })
+      : this.email.buildReservationConfirmedEmail(recap);
   }
 
   /**
@@ -216,11 +234,21 @@ export class ReservationBookingNotifier {
    *    relayée) : une ligne « véhicule — créneau » par ligne ferme à venir. Une partie déjà écoulée
    *    d'une scission n'est plus annoncée (elle n'est pas « à venir »).
    * Sans `bookingRef` (ou journal illisible), le groupe est vide : la ligne de référence seule.
+   *
+   * C1 (quatrième revue du 29/09) — une demande tenue EN PARTIE ({@link EtatGroupe.partielle}) le dit :
+   * `partielle` et le rappel des places demandées passent au gabarit. Tous les courriels qui
+   * nomment ce qui reste (confirmation, refus ou annulation d'une sœur, modification) passent par ici.
    */
   private recapGroupe(
     groupe: EtatGroupe,
     reference: { vehiclePlate: string | null; startAt: string; endAt: string | null },
-  ): { slotLabel: string; vehicle: string | null; lignes?: { vehicle: string; slotLabel: string }[] } {
+  ): {
+    slotLabel: string;
+    vehicle: string | null;
+    lignes?: { vehicle: string; slotLabel: string }[];
+    partielle?: true;
+    placesDemandees?: number | null;
+  } {
     const creneaux = new Set(groupe.lignesAVenir.map((l) => `${l.startAt?.getTime() ?? ''}|${l.endAt?.getTime() ?? ''}`));
     const lignes =
       creneaux.size > 1
@@ -236,6 +264,7 @@ export class ReservationBookingNotifier {
       slotLabel: this.fmtSlot(reference.startAt, reference.endAt),
       vehicle: groupe.plaquesAVenir.length > 1 ? groupe.plaquesAVenir.join(', ') : reference.vehiclePlate,
       ...(lignes ? { lignes } : {}),
+      ...(groupe.partielle ? { partielle: true as const, placesDemandees: groupe.placesDemandees } : {}),
     };
   }
 
@@ -251,15 +280,28 @@ export class ReservationBookingNotifier {
    * Un seul courriel par décision : on se tait tant qu'un frère est encore en attente, et l'on
    * écrit à la dernière décision — la confirmation nomme alors tous les véhicules retenus.
    * Sans `bookingRef` (demande à un seul véhicule, ou ancienne), rien ne change.
+   *
+   * C1 (quatrième revue du 29/09) — « partielle » se décide ICI, et nulle part ailleurs :
+   *  - au moins une sœur CANCELLED (refusée ou annulée : seul `cancel()` pose ce statut) ;
+   *  - au moins une ligne ferme encore à venir (sinon c'est un refus ou une annulation, pas une
+   *    confirmation partielle) ;
+   *  - et ce qui reste NE COUVRE PAS de façon prouvée les places demandées. Le gestionnaire peut avoir
+   *    réaffecté la ligne restante sur un véhicule plus grand (un 12 places pour une demande de 11)
+   *    avant de refuser l'autre, devenue inutile : « retenue en partie » y serait faux et alarmant.
+   *    La couverture se juge INSTANT PAR INSTANT ({@link besoinCouvert}) : un 12 places relayé par un
+   *    autre 12 places après une scission couvre toujours 11 places.
+   *    Faute de preuve (une capacité non renseignée, un besoin illisible), la sœur perdue suffit.
+   * Le texte seul change : ni le nombre de courriels, ni leurs destinataires, ni leurs conditions.
    */
   private async etatDuGroupe(m: Record<string, unknown>): Promise<EtatGroupe> {
-    const vide: EtatGroupe = { attend: false, plaquesAVenir: [], lignesAVenir: [] };
+    const placesDemandees = this.placesDemandeesDe(m);
+    const vide: EtatGroupe = { attend: false, plaquesAVenir: [], lignesAVenir: [], partielle: false, placesDemandees };
     const ref = typeof m['bookingRef'] === 'string' ? (m['bookingRef'] as string) : '';
     if (!ref) return vide;
     try {
       const freres = await this.prisma.vehicleEvent.findMany({
         where: { type: 'RESERVATION', metadata: { path: ['bookingRef'], equals: ref } },
-        select: { status: true, startAt: true, endAt: true, vehicle: { select: { plate: true } } },
+        select: { status: true, startAt: true, endAt: true, vehicle: { select: { plate: true, seats: true } } },
       });
       const maintenant = Date.now();
       // Revue du 29/09 (C5) : après une scission, la partie écoulée (fermée à la coupe) garde
@@ -269,21 +311,79 @@ export class ReservationBookingNotifier {
           (f) => (f.status === 'CONFIRMED' || f.status === 'IN_PROGRESS') && (!f.endAt || new Date(f.endAt).getTime() > maintenant),
         )
         .sort((a, b) => (a.startAt ? new Date(a.startAt).getTime() : 0) - (b.startAt ? new Date(b.startAt).getTime() : 0));
+      const lignesAVenir = aVenir
+        .filter((f) => !!f.vehicle?.plate)
+        .map((f) => ({
+          plate: f.vehicle?.plate ?? '',
+          startAt: f.startAt ? new Date(f.startAt) : null,
+          endAt: f.endAt ? new Date(f.endAt) : null,
+        }));
+      const perdues = freres.filter((f) => f.status === 'CANCELLED').length;
       return {
         attend: freres.some((f) => f.status === 'REQUESTED'),
         plaquesAVenir: [...new Set(aVenir.map((f) => f.vehicle?.plate ?? '').filter(Boolean))],
-        lignesAVenir: aVenir
-          .filter((f) => !!f.vehicle?.plate)
-          .map((f) => ({
-            plate: f.vehicle?.plate ?? '',
-            startAt: f.startAt ? new Date(f.startAt) : null,
-            endAt: f.endAt ? new Date(f.endAt) : null,
-          })),
+        lignesAVenir,
+        partielle: perdues > 0 && lignesAVenir.length > 0 && !this.besoinCouvert(aVenir, placesDemandees, maintenant),
+        placesDemandees,
       };
     } catch {
       // un journal illisible ne doit pas taire le demandeur
       return vide;
     }
+  }
+
+  /** `seatsNeeded` du lien public (entier > 0), ou null s'il est absent ou illisible. */
+  private placesDemandeesDe(m: Record<string, unknown>): number | null {
+    const n = m['seatsNeeded'];
+    return typeof n === 'number' && Number.isFinite(n) && n > 0 ? Math.floor(n) : null;
+  }
+
+  /**
+   * Les lignes fermes à venir couvrent-elles, de façon PROUVÉE, les places demandées ? Seulement si le
+   * besoin est lisible, que chaque ligne a une capacité renseignée, et qu'À CHAQUE INSTANT de ce qui
+   * reste à venir (de maintenant — ou du premier début — à la dernière fin) les lignes présentes
+   * totalisent au moins les places demandées. Dans le doute : non prouvé.
+   *
+   * Instant par instant, et non « même créneau pour toutes » (revue du 29/09) : des créneaux qui
+   * diffèrent ne s'additionnent pas — deux voitures de 9 l'une après l'autre ne font pas 18 places —,
+   * mais une ligne de 12 places RELAYÉE par une autre de 12 (« Réaffecter » scinde L1 : lundi→jeudi sur
+   * MINI-12, jeudi→vendredi sur un autre 12 places) couvre bien 11 places du début à la fin. L'ancienne
+   * règle (« créneaux différents = non prouvé ») y disait « retenue qu'en partie » : faux et alarmant.
+   * Un TROU entre deux lignes (fin de l'une avant le début de l'autre) compte 0 place à cet instant :
+   * non couvert. Le passé ne compte pas : seul ce qui reste à venir est jugé.
+   *
+   * Les instants examinés sont le point de départ et chaque borne (début ou fin) qui tombe ensuite
+   * avant la dernière fin : entre deux bornes, l'ensemble des lignes présentes ne change pas.
+   */
+  private besoinCouvert(
+    aVenir: { startAt: Date | string | null; endAt: Date | string | null; vehicle: { seats?: number | null } | null }[],
+    placesDemandees: number | null,
+    maintenant: number = Date.now(),
+  ): boolean {
+    if (placesDemandees == null || aVenir.length === 0) return false;
+    const lignes: { debut: number; fin: number; places: number }[] = [];
+    for (const f of aVenir) {
+      const s = f.vehicle?.seats;
+      if (typeof s !== 'number' || !Number.isFinite(s) || s <= 0) return false; // capacité inconnue
+      const debut = f.startAt ? new Date(f.startAt).getTime() : NaN;
+      if (!Number.isFinite(debut)) return false; // début illisible
+      const fin = f.endAt ? new Date(f.endAt).getTime() : Number.POSITIVE_INFINITY; // sans fin : ouverte
+      if (Number.isNaN(fin) || fin <= debut) return false;
+      lignes.push({ debut, fin, places: s });
+    }
+    const depart = Math.max(maintenant, Math.min(...lignes.map((l) => l.debut)));
+    const derniereFin = Math.max(...lignes.map((l) => l.fin));
+    if (!(depart < derniereFin)) return false;
+    const instants = new Set<number>([depart]);
+    for (const l of lignes) {
+      if (l.debut > depart && l.debut < derniereFin) instants.add(l.debut);
+      if (l.fin > depart && l.fin < derniereFin) instants.add(l.fin);
+    }
+    for (const t of instants) {
+      const presentes = lignes.reduce((total, l) => (l.debut <= t && t < l.fin ? total + l.places : total), 0);
+      if (presentes < placesDemandees) return false;
+    }
+    return true;
   }
 
   /**
@@ -295,6 +395,8 @@ export class ReservationBookingNotifier {
    * refusée : la validation s'était tue (une sœur attendait encore, F13), et le refus final écrivait
    * « votre demande n'a pas pu être retenue » — la confirmation de la ligne retenue n'arrivait jamais.
    * S'il reste des lignes fermes à venir, c'est LEUR confirmation qui part, nommant ce qui reste.
+   * Quatrième revue du 29/09 (C1) : elle ne dit plus « votre demande a été validée » comme si tout
+   * l'était — l'état du groupe la marque « retenue qu'en partie » ({@link EtatGroupe.partielle}).
    */
   @OnEvent('reservation.refused', { async: true })
   async onRefused(payload: LigneEvenement): Promise<void> {

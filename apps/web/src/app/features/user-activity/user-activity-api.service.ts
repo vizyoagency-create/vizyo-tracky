@@ -92,19 +92,27 @@ export class UserActivityApiService {
     });
   }
 
-  /** Palier B — journal des actions AUTO/système (arrière-plan) : e-mails, SMS, push, moteur… */
+  /**
+   * Palier B — journal des actions AUTO/système (arrière-plan) : e-mails, SMS, push, moteur…
+   * et, depuis le 29/09, les gestes d'agenda (catégories RESERVATION et AGENDA).
+   *
+   * `fleetId` borne le journal à UNE société (celle de la ressource touchée, telle qu'écrite
+   * par `SystemActivityService.record()`) ; absent = toutes les sociétés.
+   */
   systemFeed(opts: {
     limit?: number;
     before?: string;
     beforeId?: string;
     category?: string;
     status?: string;
+    fleetId?: string | null;
   } = {}): Observable<SystemActivityDto[]> {
     let params = new HttpParams().set('limit', String(opts.limit ?? 60));
     if (opts.before) params = params.set('before', opts.before);
     if (opts.beforeId) params = params.set('beforeId', opts.beforeId);
     if (opts.category) params = params.set('category', opts.category);
     if (opts.status) params = params.set('status', opts.status);
+    if (opts.fleetId) params = params.set('fleetId', opts.fleetId);
     return this.http.get<SystemActivityDto[]>('/api/admin/activity/system', { params });
   }
 }

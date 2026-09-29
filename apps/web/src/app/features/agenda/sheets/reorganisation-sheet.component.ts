@@ -22,6 +22,7 @@ import { AuthService } from '../../../core/services/auth.service';
 import { FleetFilterService } from '../../../core/services/fleet-filter.service';
 import { ToastService } from '../../../shared/ui/toast/toast.service';
 import { BottomSheetComponent } from '../../../shared/ui/bottom-sheet/bottom-sheet.component';
+import { horsFenetrePreset, lotExactDeSimulation, raisonsVideRefusees } from '../agenda.utils';
 
 /** Fenêtres proposées — celles qu'on veut réellement reprendre, pas un sélecteur de dates. */
 const FENETRES = [
@@ -64,7 +65,7 @@ export interface PresetReorganisation {
    * cours (la partie d'avant reste, la suite part) ; l'ancienne liste « hors de portée — à annuler
    * une par une » annonçait non reprise une réservation que la simulation comptait dans son lot.
    */
-  nonReprises?: { plate: string | null; startAt: string; endAt: string | null; motif: string }[];
+  nonReprises?: { id?: string | null; plate: string | null; startAt: string; endAt: string | null; motif: string }[];
   /**
    * Troisième passe (T3) — liste BLANCHE : les ids des réservations refusées que la feuille doit
    * reprendre, et elles SEULES. Présente, elle part dans le corps (simulation ET application ; le
@@ -139,8 +140,10 @@ interface Lecture {
  *    contre-revue du 29/09) : même corps ne voulait pas dire même lot — deux demandes du lien
  *    public arrivées pendant que la feuille restait ouverte étaient annulées (et leur courriel de
  *    refus envoyé) sans avoir jamais été montrées. Sur un 409 « la liste a changé », rien n'est
- *    écrit : la feuille relance la simulation et le dit. Limite connue : c'est un NOMBRE — une
- *    réservation partie et une arrivée dans le même intervalle passent ;
+ *    écrit : la feuille relance la simulation et le dit. Quatrième revue (C0) : le nombre seul
+ *    laissait passer une réservation partie compensée par une arrivée — l'application renvoie donc
+ *    aussi le lot EXACT de la simulation (`lotIds` → `ids`, liste blanche) : une arrivée n'entre
+ *    jamais dans le lot, une sortie fait tomber `attendu` ;
  *  - « maintenant » est relu à chaque simulation (il était figé dans un computed : la fenêtre
  *    « 7 jours » rétrécissait tant que l'agenda restait ouvert) ;
  *  - une fenêtre imposée (période d'immobilisation) se voit et se quitte : les 7/14/30 jours ne
@@ -158,6 +161,10 @@ interface Lecture {
  *  - une demande en attente (REQUESTED) n'est jamais annoncée « scindée » : elle se valide ou se
  *    refuse. Celles que le serveur refusera d'office sont rangées dans les refus avec leur motif, et
  *    le bilan comme le bouton ne comptent que ce qui partira (T4) — `attendu` reste le lot entier.
+ *
+ * Quatrième revue du 29/09 : lot limité aux refusées puis durée changée, le vide cite « hors de la
+ * fenêtre choisie » et propose de revenir à la période de l'immobilisation (C7) ; sous cette limite,
+ * les boutons d'origine et la plaque du lot ne portent plus de nombres qui comptaient tout le véhicule (D1).
  */
 @Component({
   selector: 'app-reorganisation-sheet',
@@ -218,10 +225,12 @@ interface Lecture {
                 <select class="ro-in" [value]="vehicleId()" (change)="choisirVehicule($any($event.target).value)" aria-label="Véhicule concerné">
                   <option value="" [selected]="vehicleId() === ''">Tous les véhicules@if (listeConnue()) { ({{ totalOrigine() }}) }</option>
                   @for (v of optionsVehicule(); track v.vehicleId) {
-                    <option [value]="v.vehicleId" [selected]="v.vehicleId === vehicleId()">{{ v.plate || '—' }}@if (listeConnue()) { ({{ v.n }}) }</option>
+                    <!-- D1 (29/09) : pas de « (n) » sur le véhicule d'un lot limité aux refusées — il compterait
+                         tout le véhicule. Les autres gardent le leur : les choisir lève la limite. -->
+                    <option [value]="v.vehicleId" [selected]="v.vehicleId === vehicleId()">{{ v.plate || '—' }}@if (compteVehiculeVisible(v.vehicleId)) { ({{ v.n }}) }</option>
                   }
                   @if (vehicleId() && !vehiculeDansListe()) {
-                    <option [value]="vehicleId()" selected>{{ plaqueDe(vehicleId()) }}@if (listeConnue()) { (0) }</option>
+                    <option [value]="vehicleId()" selected>{{ plaqueDe(vehicleId()) }}@if (compteVehiculeVisible(vehicleId())) { (0) }</option>
                   }
                 </select>
               </div>
@@ -248,15 +257,18 @@ interface Lecture {
                   </div>
                 }
                 <!-- Comptes du véhicule choisi quand il y en a un : un compte de TOUT le parc sous un
-                     filtre véhicule annonçait des réservations que le clic ne donnait pas. -->
+                     filtre véhicule annonçait des réservations que le clic ne donnait pas.
+                     Quatrième revue du 29/09 (D1) : lot limité aux refusées, les nombres des boutons
+                     (« Toutes 3 ») comptaient tout le véhicule, pas le lot — ils se taisent ; le lot est dit
+                     par le bandeau, le bilan et le bouton. La ligne de détail reste, et dit son périmètre. -->
                 <div class="ro-seg">
                   <button type="button" class="ro-seg-btn" [class.ro-seg-btn--on]="origine() === 'toutes'"
-                          (click)="origine.set('toutes')">Toutes@if (comptes(); as c) { <span class="ro-n">{{ c.agent + c.public + c.manuelle }}</span> }</button>
+                          (click)="origine.set('toutes')">Toutes@if (comptesBoutons(); as c) { <span class="ro-n">{{ c.agent + c.public + c.manuelle }}</span> }</button>
                   <button type="button" class="ro-seg-btn" [class.ro-seg-btn--on]="origine() === 'auto'"
-                          (click)="origine.set('auto')">Posées par l'agent@if (comptes(); as c) { <span class="ro-n">{{ c.agent }}</span> }</button>
+                          (click)="origine.set('auto')">Posées par l'agent@if (comptesBoutons(); as c) { <span class="ro-n">{{ c.agent }}</span> }</button>
                 </div>
                 @if (comptes(); as c) {
-                  <span class="ro-detail">{{ plaqueLue() ? 'Sur ' + plaqueLue() : 'Sur la fenêtre' }} : {{ c.manuelle }} saisie{{ c.manuelle > 1 ? 's' : '' }} à la main · {{ c.public }} du lien public · {{ c.agent }} de l'agent.</span>
+                  <span class="ro-detail">{{ plaqueLue() ? 'Sur ' + plaqueLue() : 'Sur la fenêtre' }}{{ lotLimite() ? ', toute la période (pas seulement les refusées)' : '' }} : {{ c.manuelle }} saisie{{ c.manuelle > 1 ? 's' : '' }} à la main · {{ c.public }} du lien public · {{ c.agent }} de l'agent.</span>
                 }
                 @if (origine() === 'toutes') {
                   <span class="ro-avert">
@@ -351,6 +363,13 @@ interface Lecture {
                     <!-- T3 : le lot était limité aux refusées — dire « rien à venir » parlerait de tout le véhicule. -->
                     <p><strong>Rien à {{ infinitif(l.corps.action) }} parmi {{ ids.length > 1 ? 'les ' + ids.length + ' réservations refusées' : 'la réservation refusée' }}</strong>{{ surPlaque() }} {{ l.fenetre }} :
                       {{ videRefusees(l.corps) }}</p>
+                    @if (peutRevenirALaPeriode(l.corps)) {
+                      <!-- C7 (quatrième revue du 29/09) : une durée cliquée a sorti la réservation refusée de la
+                           fenêtre. Revenir remet ensemble le véhicule, la période, la limite aux refusées et
+                           « Toutes ». C13 (cinquième revue) : proposé seulement si la fenêtre lue écarte
+                           vraiment une refusée que la période prenait — décidé sur leurs dates. -->
+                      <button type="button" class="ro-lien" (click)="revenirAuxRefus()">Revenir à la période de l'immobilisation</button>
+                    }
                     @if (l.corps.origine === 'auto') {
                       <button type="button" class="ro-lien" (click)="origine.set('toutes')">Prendre toutes les réservations</button>
                     }
@@ -680,6 +699,20 @@ export class ReorganisationSheetComponent {
     if (!l) return null;
     return l.corps.vehicleId ? (l.r.totauxVehicule ?? null) : (l.r.totaux ?? null);
   });
+  /**
+   * Quatrième revue du 29/09 (D1) — la simulation LUE était limitée aux refusées (`ids`). Ses comptes
+   * par origine et par véhicule portent sur tout le véhicule (choix du serveur, figé par la spec T3 :
+   * c'est ce qu'« Élargir » reprendrait) : ils ne s'affichent pas en NOMBRES sur les boutons, où ils
+   * se lisaient comme le lot (« Toutes 3 » au-dessus de « 1 réservation serait réaffectée »).
+   */
+  protected readonly lotLimite = computed(() => !!this.lue()?.corps.ids);
+  /** Les comptes des boutons d'origine : ceux de `comptes()`, sauf sous un lot limité aux refusées (D1). */
+  protected readonly comptesBoutons = computed(() => (this.lotLimite() ? null : this.comptes()));
+  /** Le « (n) » d'une plaque de la liste Véhicule — tu pour le véhicule d'un lot limité aux refusées (D1). */
+  protected compteVehiculeVisible(vehicleId: string): boolean {
+    if (!this.listeConnue()) return false;
+    return !(this.lotLimite() && vehicleId === this.lue()?.corps.vehicleId);
+  }
   /** Réservations humaines ou publiques dans le périmètre lu (`null` = inconnu). */
   protected readonly autresQueAgent = computed(() => {
     const c = this.comptes();
@@ -894,12 +927,19 @@ export class ReorganisationSheetComponent {
     this.limiteeAuxRefus.set(false);
   }
 
-  /** T3 — revenir au périmètre de l'ouverture : le véhicule, la période et les seules refusées. */
+  /**
+   * T3 — revenir au périmètre de l'ouverture : le véhicule, la période, les seules refusées, et
+   * « Toutes » (l'origine de l'ouverture). Cinquième revue du 29/09 (C13) : l'origine n'était pas
+   * remise — lu sous « Posées par l'agent », le retour retombait sur le même vide (une refusée est le
+   * plus souvent saisie à la main). Sous un lot limité aux ids, « Toutes » n'ajoute rien d'autre
+   * que les refusées elles-mêmes.
+   */
   protected revenirAuxRefus(): void {
     if (this.idsPreset().length === 0) return;
     this.vehicleId.set(this.vehiculePreset());
     this.recalerDestination();
     if (this.fenetrePreset()) this.fenetreFixeActive.set(true);
+    this.origine.set('toutes');
     this.limiteeAuxRefus.set(true);
   }
 
@@ -925,15 +965,24 @@ export class ReorganisationSheetComponent {
   /**
    * T3 — pourquoi un lot limité aux refusées est vide : les raisons POSSIBLES seulement, selon le
    * corps lu (le serveur ne dit pas laquelle ; on ne l'invente pas).
+   * Quatrième revue du 29/09 (C7) : une durée cliquée (7/14/30 jours) garde la limite ; la réservation
+   * refusée, hors de cette fenêtre, n'y est plus — « hors de la fenêtre choisie » vient en tête.
+   * Cinquième revue (C13) : seulement si la fenêtre lue l'écarte VRAIMENT — décidé sur les dates des
+   * refusées (`nonReprises`, appariées par id), plus sur l'égalité des chaînes : « 30 jours » qui
+   * contient la réservation du 10/10 ne cite plus la fenêtre.
    */
   protected videRefusees(corps: CorpsReorganisation): string {
-    const pl = (corps.ids?.length ?? 0) > 1;
-    const raisons = [`${pl ? 'elles ont' : 'elle a'} pu être reprise${pl ? 's' : ''} ou annulée${pl ? 's' : ''} depuis`];
-    if (corps.origine === 'auto') raisons.push(`le filtre « Posées par l'agent » ${pl ? 'les ' : "l'"}écarte`);
-    if (corps.action !== 'reaffecter') {
-      raisons.push('commencer avant la fenêtre — Annuler et Décaler ne prennent que ce qui commence dedans');
-    }
-    return `${raisons.join(', ou ')}.`;
+    return raisonsVideRefusees(corps, this.fenetrePreset(), this.nonReprises(), Date.now());
+  }
+
+  /**
+   * C7 — la simulation LUE écarte une refusée que la période de l'immobilisation prenait : le vide
+   * propose d'y revenir. Décidé sur le corps lu (pas sur `fenetreFixeActive`, qui a pu changer depuis)
+   * et, depuis C13, sur les dates des refusées — sinon le bouton ramenait au même vide.
+   */
+  protected peutRevenirALaPeriode(corps: CorpsReorganisation): boolean {
+    const fx = this.fenetrePreset();
+    return fx !== null && horsFenetrePreset(corps, fx, this.nonReprises(), Date.now());
   }
 
   /**
@@ -1003,7 +1052,15 @@ export class ReorganisationSheetComponent {
     this.avis.set(null);
     // `attendu` : le serveur recalcule le lot au moment d'écrire ; s'il n'a plus le nombre affiché,
     // il n'écrit RIEN (409) — on n'applique jamais un geste de masse sur un lot que personne n'a vu.
+    // Quatrième revue du 29/09 (C0) : et `ids` = le lot EXACT de la simulation (`lotIds`). Le nombre
+    // seul laissait passer une réservation sortie (commencée) compensée par une arrivée (une demande
+    // du lien public) : la nouvelle était annulée sans avoir été vue, courriel de refus compris. Avec
+    // la liste blanche, une arrivée n'entre jamais dans le lot, et une sortie fait tomber `attendu`.
+    // `l.corps` n'est pas modifié : c'est lui qui dit à l'écran si le lot était limité aux refusées.
     const corps: ReorganiserReservationsDto = { ...l.corps, simulation: false, attendu: l.r.concernees };
+    const lotIds = lotExactDeSimulation(l.r);
+    if (lotIds) corps.ids = lotIds; // sous-ensemble de `l.corps.ids` s'il y en avait : rien n'est élargi
+    // Sans `lotIds` (API d'avant la quatrième revue), le comportement d'avant : le nombre seul.
     this.http
       .post<ReorganisationResultDto>(URL_REORGANISER, corps)
       .pipe(takeUntilDestroyed(this.destroyRef))

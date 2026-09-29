@@ -76,3 +76,67 @@ describe('LogCleanupService — rétention des journaux SMS', () => {
     expect(prisma.wireLog.deleteMany).toHaveBeenCalledTimes(1);
   });
 });
+
+/**
+ * 29/09 — le fil « Agenda » d'une société (catégories RESERVATION et AGENDA du journal système)
+ * se lit des mois après : il suit la rétention de l'audit des mutations (365 j), pas les 30 j
+ * du journal courant.
+ */
+describe('LogCleanupService — rétention du journal système (fil Agenda)', () => {
+  /** Rejoue un `where` Prisma { createdAt: { lt }, category: … } sur une ligne en mémoire. */
+  function supprimee(where: any, ligne: { category: string; createdAt: Date }): boolean {
+    if (!(ligne.createdAt < where.createdAt.lt)) return false;
+    const c = where.category;
+    if (typeof c === 'string') return ligne.category === c;
+    if (c?.in) return c.in.includes(ligne.category);
+    if (c?.notIn) return !c.notIn.includes(ligne.category);
+    if (c?.not) return ligne.category !== c.not;
+    return true;
+  }
+
+  function purge(lignes: { category: string; ageDays: number }[]) {
+    const { service, prisma } = makeService();
+    return service.cleanupLogs().then(() => {
+      const wheres = prisma.systemActivityLog.deleteMany.mock.calls.map((c: any[]) => c[0].where);
+      const now = Date.now();
+      return lignes.map((l) => {
+        const ligne = { category: l.category, createdAt: new Date(now - l.ageDays * DAY) };
+        return { ...l, purgee: wheres.some((w: any) => supprimee(w, ligne)) };
+      });
+    });
+  }
+
+  it('RESERVATION et AGENDA de 200 j sont CONSERVÉES, comme MUTATION ; EMAIL de 31 j est purgé', async () => {
+    const r = await purge([
+      { category: 'RESERVATION', ageDays: 200 },
+      { category: 'AGENDA', ageDays: 200 },
+      { category: 'MUTATION', ageDays: 200 },
+      { category: 'EMAIL', ageDays: 31 },
+      { category: 'AI', ageDays: 31 },
+    ]);
+    expect(r.map((x) => [x.category, x.purgee])).toEqual([
+      ['RESERVATION', false],
+      ['AGENDA', false],
+      ['MUTATION', false],
+      ['EMAIL', true],
+      ['AI', true],
+    ]);
+  });
+
+  it('RESERVATION et AGENDA de 366 j sont purgées (borne 365 j de MUTATION_AUDIT_RETENTION_DAYS)', async () => {
+    const r = await purge([
+      { category: 'RESERVATION', ageDays: 366 },
+      { category: 'AGENDA', ageDays: 366 },
+      { category: 'RESERVATION', ageDays: 364 },
+    ]);
+    expect(r.map((x) => x.purgee)).toEqual([true, true, false]);
+  });
+
+  it('les deux purges du journal système sont DISJOINTES (aucune catégorie visée deux fois)', async () => {
+    const { service, prisma } = makeService();
+    await service.cleanupLogs();
+    const [courant, audit] = prisma.systemActivityLog.deleteMany.mock.calls.map((c: any[]) => c[0].where);
+    expect(courant.category).toEqual({ notIn: ['MUTATION', 'RESERVATION', 'AGENDA'] });
+    expect(audit.category).toEqual({ in: ['MUTATION', 'RESERVATION', 'AGENDA'] });
+  });
+});

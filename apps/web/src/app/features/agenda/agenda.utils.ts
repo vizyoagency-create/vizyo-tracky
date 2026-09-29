@@ -307,6 +307,246 @@ export function fenetreImmobilisation(
   return { from: debutMs, to: Number.isFinite(eff) ? eff : Math.max(debutMs, maintenantMs) + HORIZON_SANS_FIN_MS };
 }
 
+// ─── Quatrième revue du 29/09 ────────────────────────────────────────────────────────────────
+
+/** La taille de ce qui est libre : le plus grand nombre de places CONNU, et combien de libres n'en ont pas. */
+export interface CapaciteLibres {
+  /** Plus grand nombre de places parmi les libres dont on le connaît ; null si aucun. */
+  max: number | null;
+  /** Véhicules libres sans nombre de places renseigné — la borne `max` ne les couvre pas. */
+  inconnus: number;
+}
+
+/**
+ * La capacité des véhicules LIBRES (ceux qui ne sont pas dans `exclus`) : le plus grand nombre de
+ * places connu, et le nombre de libres dont les places ne sont pas renseignées.
+ *
+ * « 12 places » (29/09) : le panneau du jour disait « 7 / 8 véhicule(s) disponible(s) aujourd'hui »
+ * à quelqu'un qui cherchait 12 places — aucun véhicule du parc n'en a plus de 9. Le compte reste
+ * vrai ; ce qui manquait, c'est la TAILLE de ce qui est libre.
+ *
+ * Revue du correctif (29/09) : un libre sans places renseignées (`seats` null — jamais saisi) était
+ * sauté EN SILENCE, et « jusqu'à 9 places » devenait une borne fausse si ce libre-là est le minibus.
+ * Il est désormais COMPTÉ à part, pour que le libellé le dise (même notion que
+ * `excludedUnknownCapacity` côté serveur). Un nombre non positif ou non fini vaut « non renseigné ».
+ */
+export function placesMaxLibres(
+  vehicules: readonly { id: string; seats?: number | null }[],
+  exclus: ReadonlySet<string>,
+): CapaciteLibres {
+  let max: number | null = null;
+  let inconnus = 0;
+  for (const v of vehicules) {
+    if (exclus.has(v.id)) continue;
+    const s = v.seats;
+    if (typeof s !== 'number' || !Number.isFinite(s) || s <= 0) {
+      inconnus++;
+      continue;
+    }
+    if (max === null || s > max) max = s;
+  }
+  return { max, inconnus };
+}
+
+/**
+ * Le libellé qui suit « 7 / 8 » dans le panneau du jour : « véhicules libres aujourd'hui · jusqu'à
+ * 9 places par véhicule ». La borne n'est présentée comme sûre que si TOUS les libres ont leurs
+ * places renseignées ; sinon elle est qualifiée (« hors 1 sans nombre de places renseigné »), et si
+ * aucun libre n'en a, on le dit au lieu d'inventer un chiffre.
+ */
+export function libelleVehiculesLibres(libres: number, capacite: CapaciteLibres | null, aujourdhui: boolean): string {
+  const base = `${libres > 1 ? 'véhicules libres' : 'véhicule libre'} ${aujourdhui ? "aujourd'hui" : 'ce jour'}`;
+  if (libres <= 0 || !capacite) return base;
+  const { max, inconnus } = capacite;
+  if (max === null) return inconnus > 0 ? `${base} · nombre de places non renseigné` : base;
+  const borne = `${base} · jusqu'à ${max} place${max > 1 ? 's' : ''} par véhicule`;
+  return inconnus > 0 ? `${borne}, hors ${inconnus} sans nombre de places renseigné` : borne;
+}
+
+/**
+ * Une DEMANDE en attente (REQUESTED) que « Réaffecter » refusera à coup sûr : déjà commencée, ou qui
+ * commence avant la coupe — max(maintenant, `aPartirDeMs`) arrondie à la minute. Calque du
+ * `motifDemandeNonReaffectable` du serveur (reservations.service.ts) : une demande jamais validée
+ * n'a pas de « suite » ferme à reprendre, elle se valide ou se refuse.
+ *
+ * Quatrième revue du 29/09 (C6) : le formulaire d'immobilisation la mettait d'office en
+ * « Réaffecter », la comptait dans le bouton, et la création finissait sur un 400 connu d'avance.
+ * ⚠️ Ce n'est PAS un partage de code avec le serveur : si sa règle change, celle-ci doit suivre
+ * (les tests de agenda.utils.spec.ts rejouent les cas de la spec serveur).
+ */
+export function demandeNonReaffectable(
+  status: string,
+  debutMs: number,
+  maintenantMs: number,
+  aPartirDeMs: number,
+): boolean {
+  if (status !== 'REQUESTED' || Number.isNaN(debutMs)) return false;
+  const coupe = Math.floor(Math.max(maintenantMs, Number.isNaN(aPartirDeMs) ? maintenantMs : aPartirDeMs) / 60_000) * 60_000;
+  return debutMs < maintenantMs || debutMs < coupe;
+}
+
+/** Une réservation refusée telle que la feuille Réorganiser la connaît : son id (appariement) et ses dates. */
+export interface RefuseeDatee {
+  id?: string | null;
+  startAt: string;
+  endAt: string | null;
+}
+
+/**
+ * Le serveur prendrait-il cette réservation dans le lot d'une fenêtre [from, to) pour cette action ?
+ * Calque de `reorganiser()` (reservations.service.ts) — ⚠️ pas un partage de code : si sa règle
+ * change, celle-ci doit suivre. La fenêtre commence à max(from, maintenant) (« jamais le passé ») ;
+ *  - « réaffecter » prend ce qui la CHEVAUCHE : une fin connue après ce début, un début avant `to` ;
+ *  - « annuler » et « décaler », ce qui COMMENCE dedans (début ≥ ce début, et ≤ `to`, borne de la
+ *    lecture des évènements).
+ * `null` = indécidable : date illisible, ou action inconnue.
+ */
+export function dansFenetreReorganisation(
+  r: { startAt: string; endAt: string | null },
+  action: string | undefined,
+  fenetre: { from: string; to: string },
+  maintenantMs: number,
+): boolean | null {
+  const debutR = Date.parse(r.startAt);
+  const from = Date.parse(fenetre.from);
+  const to = Date.parse(fenetre.to);
+  if (Number.isNaN(debutR) || Number.isNaN(from) || Number.isNaN(to)) return null;
+  const debut = Math.max(from, maintenantMs);
+  // Fenêtre entièrement passée : le serveur refuse la simulation (400) — elle ne prend rien.
+  if (debut >= to) return false;
+  if (action === 'reaffecter') {
+    // Le serveur écarte une réservation sans fin (`!!e.endAt`) : écartée quelle que soit la fenêtre.
+    if (!r.endAt) return false;
+    const finR = Date.parse(r.endAt);
+    if (Number.isNaN(finR)) return null;
+    return finR > debut && debutR < to;
+  }
+  if (action === 'annuler' || action === 'decaler') return debutR >= debut && debutR <= to;
+  return null;
+}
+
+/**
+ * La FENÊTRE LUE est-elle une cause possible du vide d'un lot limité aux refusées — une refusée
+ * que la période de l'immobilisation (le pré-réglage) aurait prise et que cette fenêtre ne prend pas ?
+ * Décidé sur le corps LU, jamais sur le signal courant : c'est la simulation affichée qu'on explique.
+ *
+ * Cinquième revue du 29/09 (C13) : décidé jusque-là sur l'égalité des chaînes from/to, il répondait
+ * vrai dès que la fenêtre n'était plus celle du pré-réglage — « 30 jours » qui CONTIENT la réservation
+ * du 10/10 affichait « hors de la fenêtre choisie » en tête, et « Revenir à la période » ramenait au
+ * même vide. Désormais, sur les DATES, avec le prédicat du serveur :
+ *  - pas de pré-réglage : vrai dès qu'une refusée datée n'est pas dans la fenêtre lue ;
+ *  - fenêtre lue = pré-réglage : faux (rien n'a bougé) ;
+ *  - toutes les refusées du lot (`corps.ids`) appariées PAR ID à leurs dates : vrai si l'une est hors
+ *    de la fenêtre lue ET dans celle du pré-réglage (une refusée qui échappe aux deux — commencée,
+ *    sans fin — n'est pas une affaire de fenêtre : revenir à la période n'y changerait rien) ;
+ *  - une refusée sans date connue : repli par INCLUSION — la fenêtre lue, ramenée à maintenant,
+ *    couvre-t-elle celle du pré-réglage ? Alors elle prend tout ce que celui-ci prenait : faux.
+ *    Sinon (ou date illisible) : vrai — la cause reste « possible ».
+ */
+export function horsFenetrePreset(
+  corps: { from: string; to: string; ids?: readonly string[]; action?: string },
+  preset: { from: string; to: string } | null,
+  refusees: readonly RefuseeDatee[] = [],
+  maintenantMs: number = Date.now(),
+): boolean {
+  if (preset && corps.from === preset.from && corps.to === preset.to) return false;
+  const parId = new Map<string, RefuseeDatee>();
+  for (const r of refusees) if (r.id) parId.set(r.id, r);
+  let inconnue = (corps.ids?.length ?? 0) === 0;
+  for (const id of corps.ids ?? []) {
+    const r = parId.get(id);
+    const dansLue = r ? dansFenetreReorganisation(r, corps.action, corps, maintenantMs) : null;
+    const dansPreset = r && preset ? dansFenetreReorganisation(r, corps.action, preset, maintenantMs) : null;
+    if (dansLue === null || (preset && dansPreset === null)) {
+      inconnue = true;
+      continue;
+    }
+    if (!dansLue && (!preset || dansPreset)) return true;
+  }
+  if (!inconnue) return false;
+  if (!preset) return true;
+  const debutLu = Math.max(Date.parse(corps.from), maintenantMs);
+  const debutPreset = Math.max(Date.parse(preset.from), maintenantMs);
+  const finLue = Date.parse(corps.to);
+  const finPreset = Date.parse(preset.to);
+  if ([debutLu, debutPreset, finLue, finPreset].some(Number.isNaN)) return true;
+  return !(debutLu <= debutPreset && finLue >= finPreset);
+}
+
+/**
+ * « Commencer avant la fenêtre » est-il une cause POSSIBLE du vide (Annuler / Décaler ne prennent que
+ * ce qui commence à partir de max(from lu, maintenant)) ? Vrai si une refusée du lot (`corps.ids`)
+ * n'a pas de date connue — appariée PAR ID, comme dans `horsFenetrePreset` —, ou une date illisible,
+ * ou si elle commence avant ce début ; faux si toutes commencent dedans ou après.
+ * Sixième revue du 29/09 (suite de C13) : la clause tombait sans condition hors « réaffecter » —
+ * « Annuler » sur la période de l'immobilisation, réservation refusée du 10/10 qui y commence,
+ * annulée depuis : le vide citait encore « commencer avant la fenêtre », que ses dates excluent.
+ */
+function commencementAvantPossible(
+  corps: { from: string; ids?: readonly string[] },
+  refusees: readonly RefuseeDatee[],
+  maintenantMs: number,
+): boolean {
+  const ids = corps.ids ?? [];
+  if (ids.length === 0) return true;
+  // Math.max propage NaN : un « from » illisible laisse la cause possible.
+  const debut = Math.max(Date.parse(corps.from), maintenantMs);
+  if (Number.isNaN(debut)) return true;
+  const parId = new Map<string, RefuseeDatee>();
+  for (const r of refusees) if (r.id) parId.set(r.id, r);
+  return ids.some((id) => {
+    const r = parId.get(id);
+    const debutR = r ? Date.parse(r.startAt) : Number.NaN;
+    return Number.isNaN(debutR) || debutR < debut;
+  });
+}
+
+/**
+ * Pourquoi un lot LIMITÉ AUX RÉSERVATIONS REFUSÉES (`ids`) est vide : les raisons POSSIBLES
+ * seulement, selon le corps lu — le serveur ne dit pas laquelle, on ne l'invente pas.
+ *
+ * Quatrième revue du 29/09 (C7) : lot limité, puis « 7 jours » cliqué — la réservation refusée, à
+ * J+10, sort de la fenêtre. Le vide disait « elle a pu être reprise ou annulée depuis » : faux, elle
+ * était intacte. La fenêtre qui n'est plus celle de l'immobilisation vient désormais EN TÊTE —
+ * seulement si elle écarte vraiment une refusée (C13, cinquième revue : décidé sur les dates, cf.
+ * `horsFenetrePreset`) ; une fenêtre de 30 jours qui la contient ne la cite plus.
+ * Sixième revue : « commencer avant la fenêtre » suit la même règle (`commencementAvantPossible`).
+ */
+export function raisonsVideRefusees(
+  corps: { from: string; to: string; ids?: readonly string[]; origine: string; action: string },
+  preset: { from: string; to: string } | null,
+  refusees: readonly RefuseeDatee[] = [],
+  maintenantMs: number = Date.now(),
+): string {
+  const pl = (corps.ids?.length ?? 0) > 1;
+  const raisons: string[] = [];
+  if (horsFenetrePreset(corps, preset, refusees, maintenantMs)) {
+    raisons.push(
+      `${pl ? 'elles sont' : 'elle est'} hors de la fenêtre choisie` +
+        (preset ? ` (la période de l'immobilisation ${pl ? 'les' : 'la'} contenait)` : ''),
+    );
+  }
+  raisons.push(`${pl ? 'elles ont' : 'elle a'} pu être reprise${pl ? 's' : ''} ou annulée${pl ? 's' : ''} depuis`);
+  if (corps.origine === 'auto') raisons.push(`le filtre « Posées par l'agent » ${pl ? 'les ' : "l'"}écarte`);
+  if (corps.action !== 'reaffecter' && commencementAvantPossible(corps, refusees, maintenantMs)) {
+    raisons.push('commencer avant la fenêtre — Annuler et Décaler ne prennent que ce qui commence dedans');
+  }
+  return `${raisons.join(', ou ')}.`;
+}
+
+/**
+ * Quatrième revue du 29/09 (C0) — le lot EXACT d'une simulation de Réorganiser, à renvoyer en `ids`
+ * à l'application. Null si le serveur ne l'a pas rendu (API d'avant la revue), ou s'il ne décrit pas
+ * le lot compté (id vide, ou pas `concernees` ids) : on garde alors le contrôle par le nombre seul,
+ * plutôt qu'une liste qui ferait refuser (409) toutes les applications.
+ */
+export function lotExactDeSimulation(r: { concernees: number; lotIds?: readonly unknown[] | null }): string[] | null {
+  const ids = r.lotIds;
+  if (!Array.isArray(ids) || ids.length !== r.concernees) return null;
+  if (!ids.every((id) => typeof id === 'string' && id !== '')) return null;
+  return [...(ids as string[])];
+}
+
 /**
  * La vue DEMANDÉE de l'agenda doit-elle devenir la vue AFFICHÉE (contre-revue du 29/09, S2) ?
  *

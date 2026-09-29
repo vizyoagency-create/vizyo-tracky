@@ -8,7 +8,7 @@ import {
 } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
 import { Cron } from '@nestjs/schedule';
-import { Prisma, UserRole } from '@prisma/client';
+import { Prisma, UserRole, VehicleEventStatus, VehicleEventType } from '@prisma/client';
 import type {
   AgendaAgentProposalDto,
   AgendaAgentProposalStatus,
@@ -22,13 +22,13 @@ import { AiUsageService } from '../ai-usage/ai-usage.service';
 import { AiAvailabilityService } from '../ai/ai-availability.service';
 import { ErrorLogger } from '../observability/error-logger.service';
 import { PrismaService } from '../prisma/prisma.service';
-import { SystemActivityService } from '../system-activity/system-activity.service';
+import { SystemActivityService, type SystemActivityInput } from '../system-activity/system-activity.service';
 import { lireResultatLocal, TravauxIaService } from '../travaux-ia/travaux-ia.service';
 import { AGENDA_AGENT_SCHEMA, renderAgendaAgentSystem } from './agenda-agent.prompt';
 import { fleetTzFormatter, localParts, localWallToUtc } from './fleet-tz.util';
 import { RecurrenceDetectorService, type RecurringPattern } from './recurrence-detector.service';
 import { ReservationsService } from './reservations.service';
-import { VehicleEventsService } from './vehicle-events.service';
+import { creneauParis, VehicleEventsService } from './vehicle-events.service';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 /** Horizon de projection des occurrences récurrentes (jours à venir). */
@@ -42,6 +42,14 @@ const KEEP_RUNS_PER_FLEET = 100;
 const RETENTION_PROPOSITIONS_CLOSES_MS = 90 * DAY_MS;
 /** P2-5 — par passage horaire : le reliquat s'écoule en plusieurs passages, jamais en un verrou. */
 const PURGE_LOT_MAX = 5_000;
+/**
+ * D0 (4e revue du 29/09) — âge minimal d'une proposition « prise sans réservation » avant rattrapage.
+ * `apply()` prend la proposition puis réserve : quelques centaines de millisecondes d'ordinaire. Dix
+ * minutes laissent passer toute application encore en cours (VPS lent, verrou) sans la disputer.
+ */
+const RATTRAPAGE_DELAI_MS = 10 * 60 * 1000;
+/** D0 — par passage horaire, comme la purge : un reliquat anormal s'écoule sans verrouiller. */
+const RATTRAPAGE_LOT_MAX = 200;
 /**
  * Plafond de la liste des propositions rendue à l'écran (grille en pointillé, onglet
  * « Propositions IA », panneau du jour).
@@ -180,13 +188,19 @@ export class AgendaAgentRunnerService {
 
   // ─── Exécution ─────────────────────────────────────────────────────────────
 
-  /** Lancement À LA DEMANDE (super/fleet admin). */
+  /**
+   * Lancement À LA DEMANDE (super/fleet admin). L'utilisateur réel suit jusqu'au journal métier
+   * (29/09) : « Passage de l'agent » lancé par quelqu'un n'est pas un passage de nuit.
+   */
   async runOnDemand(user: AuthUser, fleetId?: string): Promise<AgendaAgentRunResultDto> {
-    return this.runForFleet(this.resolveFleetId(user, fleetId), 'manual');
+    return this.runForFleet(this.resolveFleetId(user, fleetId), 'manual', user.id);
   }
 
-  /** Analyse une flotte : détecte, projette, dédup, propose ou réserve (auto). */
-  async runForFleet(fleetId: string, origin: string): Promise<AgendaAgentRunResultDto> {
+  /**
+   * Analyse une flotte : détecte, projette, dédup, propose ou réserve (auto).
+   * `triggeredByUserId` : renseigné pour un lancement manuel seulement (journal métier).
+   */
+  async runForFleet(fleetId: string, origin: string, triggeredByUserId: string | null = null): Promise<AgendaAgentRunResultDto> {
     if (this.running.has(fleetId)) return { created: 0, proposed: 0, skipped: 0, alreadyRunning: true };
     this.running.add(fleetId);
     const startedAt = new Date();
@@ -369,7 +383,7 @@ export class AgendaAgentRunnerService {
         aiUsed: false,
       });
       const aiVerdictQueued = await this.enfilerJugement(fleetId, origin, runId, patterns, idsParMotif);
-      this.track(fleetId, origin, { created, proposed, skipped }, detection, aiVerdictQueued);
+      this.track(fleetId, origin, { created, proposed, skipped }, detection, aiVerdictQueued, triggeredByUserId);
       return { created, proposed, skipped, aiVerdictQueued };
     } catch (e) {
       // Un refus (agent désactivé, lancement manuel) n'est pas un passage en échec : il n'a rien
@@ -399,6 +413,19 @@ export class AgendaAgentRunnerService {
    */
   @Cron('0 0 * * * *')
   async runScheduled(): Promise<void> {
+    // D0 — AVANT l'expiration : une proposition prise sans réservation et rendue à `pending` doit
+    // pouvoir expirer dans le même passage si son créneau est déjà passé.
+    try {
+      const { liees, rendues } = await this.rattraperPropositionsPrises();
+      if (liees + rendues > 0) {
+        this.logger.warn(`${liees} proposition(s) prise(s) rattachée(s) à leur réservation, ${rendues} rendue(s) à « en attente »`);
+      }
+    } catch (e) {
+      this.logger.error(`rattraperPropositionsPrises : ${(e as Error)?.message ?? e}`);
+      void this.errorLogger
+        ?.record(e as Error, 'AGENDA_AGENT', { phase: 'rattraperPropositionsPrises' })
+        .catch(() => {});
+    }
     try {
       const n = await this.expirerPropositions();
       if (n > 0) this.logger.log(`${n} proposition(s) d'agenda périmée(s) passée(s) en expired`);
@@ -522,6 +549,17 @@ export class AgendaAgentRunnerService {
    * écartée (et « Tout réserver » lancé deux fois ne devait son salut qu'à la contrainte
    * d'exclusion). Un seul gagne ; l'autre reçoit « déjà traitée ». Si la réservation échoue, la
    * proposition est RENDUE (retour à `pending`) : elle reste réservable.
+   *
+   * ── D0 (4e revue du 29/09) : ET SI LE PROCESSUS MEURT ENTRE LA PRISE ET LA RÉSERVATION ? ─────
+   * La proposition resterait `applied` sans `createdEventId` : ni réservable (elle n'est plus
+   * `pending`), ni réservée. Une transaction unique (prise + réservation + lien) serait la
+   * réponse directe, mais `ReservationsService.systemConfirm` écrit par son propre client Prisma
+   * et rattrape le conflit d'EXCLUDE par un `catch` — dans une transaction interactive, ce conflit
+   * AVORTERAIT la transaction au lieu de rendre `null`. On ne change pas ce contrat ici : le cron
+   * horaire RATTRAPE (`rattraperPropositionsPrises`) toute proposition prise depuis plus de 10 min
+   * sans lien — rattachée à la réservation qu'ELLE a posée (`metadata.propositionId`, ou agent +
+   * même véhicule + même créneau exact) si elle existe, rendue à `pending` sinon. L'état orphelin
+   * dure donc au plus une heure et ne se fige jamais.
    */
   async apply(user: AuthUser, id: string): Promise<AgendaAgentProposalDto> {
     const p = (await this.prisma.agendaAgentProposal.findUnique({ where: { id } })) as ProposalRow | null;
@@ -549,7 +587,12 @@ export class AgendaAgentRunnerService {
         end: p.endAt,
         title: this.title(p),
         createdBy: user.id,
-        metadata: { agent: true, appliedBy: user.id, destinationLabel: p.destinationLabel, confidence: p.confidence, basis: p.basis },
+        // `propositionId` : l'identité de la proposition SUR la réservation — c'est par elle que le
+        // rattrapage D0 retrouve « sa » réservation, même déplacée ou réaffectée entre-temps.
+        metadata: {
+          agent: true, propositionId: id, appliedBy: user.id,
+          destinationLabel: p.destinationLabel, confidence: p.confidence, basis: p.basis,
+        },
       });
     } catch (e) {
       await rendre();
@@ -563,6 +606,17 @@ export class AgendaAgentRunnerService {
       where: { id },
       data: { status: 'applied', createdEventId: resa.id },
     })) as ProposalRow;
+    // Écrit APRÈS le lien : une ligne « réservée » ne doit jamais précéder la réservation. Si le
+    // processus meurt avant, c'est le rattrapage horaire qui l'écrit (D0).
+    this.journaliser(() => ({
+      category: 'RESERVATION',
+      action: 'proposition_reservee',
+      target: resa.vehiclePlate ?? null,
+      detail: `Proposition de l'agent réservée — ${creneauParis(p.startAt, p.endAt)}${p.destinationLabel ? ` · ${p.destinationLabel}` : ''}`,
+      fleetId: p.fleetId,
+      triggeredByUserId: user.id,
+      meta: { propositionId: id, reservationId: resa.id, vehicleId: p.vehicleId, confidence: p.confidence },
+    }));
     return this.toDto(updated, resa.vehiclePlate ?? null);
   }
 
@@ -571,19 +625,195 @@ export class AgendaAgentRunnerService {
    *
    * Revue du 29/09 — écrite SOUS CONDITION : jamais sur une proposition devenue réservation entre
    * la lecture et l'écriture (voir {@link apply}).
+   *
+   * Revue du 29/09 (C3) — IDEMPOTENTE, et seule la vraie transition `pending` → `dismissed` est
+   * journalisée. L'écran ne se rafraîchit pas depuis le serveur : une proposition déjà écartée
+   * (verdict de l'IA de 06:30 / 14:30, ménage après une réservation, un collègue dans un autre
+   * onglet) ou expirée par le cron horaire y reste affichée. « Écarter » l'écrivait à nouveau
+   * (`notIn applied/auto_applied`) : une seconde ligne « Proposition de l'agent écartée » au nom de
+   * celui qui cliquait en dernier, et une `expired` repassait `dismissed`. Désormais :
+   *   — déjà `dismissed` / `expired` : ce que l'utilisateur demande est acquis → réponse 200 avec
+   *     le statut RÉEL, rien d'écrit, aucune ligne (un « Tout écarter » sur une liste périmée ne
+   *     compte plus de faux « refusée(s) ») ;
+   *   — `applied` / `auto_applied` : 400, une réservation s'annule depuis l'agenda ;
+   *   — `pending` : écriture sous `status: 'pending'` ; perdue (count 0) → on relit pour dire la
+   *     VRAIE raison, au lieu d'annoncer « réservation » à tort.
    */
   async dismiss(user: AuthUser, id: string): Promise<AgendaAgentProposalDto> {
     const p = (await this.prisma.agendaAgentProposal.findUnique({ where: { id } })) as ProposalRow | null;
     if (!p) throw new NotFoundException('Proposition introuvable');
     this.assertScope(user, p.fleetId);
     const dejaReservee = 'Une réservation déjà créée s\'annule depuis l\'agenda.';
-    if (p.status === 'auto_applied' || p.status === 'applied') throw new BadRequestException(dejaReservee);
+    const reservee = (s: string): boolean => s === 'auto_applied' || s === 'applied';
+    if (reservee(p.status)) throw new BadRequestException(dejaReservee);
+    if (p.status !== 'pending') return this.toDto(p, null);
     const ecrit = await this.prisma.agendaAgentProposal.updateMany({
-      where: { id, status: { notIn: ['applied', 'auto_applied'] } },
+      where: { id, status: 'pending' },
       data: { status: 'dismissed' },
     });
-    if (ecrit.count === 0) throw new BadRequestException(dejaReservee);
+    if (ecrit.count === 0) {
+      const maintenant = (await this.prisma.agendaAgentProposal.findUnique({
+        where: { id },
+        select: { status: true },
+      })) as { status: string } | null;
+      if (!maintenant) throw new NotFoundException('Proposition introuvable');
+      if (reservee(maintenant.status)) throw new BadRequestException(dejaReservee);
+      // Écartée ou expirée entre la lecture et l'écriture : acquis, sans ligne.
+      if (maintenant.status !== 'pending') return this.toDto({ ...p, status: maintenant.status }, null);
+      // Prise par « Réserver » puis RENDUE (créneau occupé) pendant notre écriture : rien n'est
+      // tranché, l'utilisateur recommence.
+      throw new ConflictException('La proposition vient d\'être traitée ailleurs ; réessayez.');
+    }
+    const plaque = await this.plaque(p.vehicleId);
+    this.journaliser(() => ({
+      category: 'AGENDA',
+      action: 'proposition_ecartee',
+      target: plaque,
+      detail: `Proposition de l'agent écartée — ${creneauParis(p.startAt, p.endAt)}${p.destinationLabel ? ` · ${p.destinationLabel}` : ''}`,
+      fleetId: p.fleetId,
+      triggeredByUserId: user.id,
+      // Plus de `statutAvant` : seule une transition depuis `pending` est journalisée.
+      meta: { propositionId: id, vehicleId: p.vehicleId },
+    }));
     return this.toDto({ ...p, status: 'dismissed' }, null);
+  }
+
+  /**
+   * D0 (4e revue du 29/09) — RATTRAPAGE des propositions prises sans réservation.
+   *
+   * `apply()` prend la proposition (`pending` → `applied`), réserve, puis note `createdEventId`.
+   * Un processus tué entre les deux (déploiement, OOM, redémarrage du conteneur) laissait une
+   * proposition `applied` sans lien : ni réservable, ni réservée, figée pour toujours. Toute ligne
+   * dans cet état depuis plus de 10 minutes (`updatedAt`, posé par la prise) est :
+   *
+   *   — RATTACHÉE à la réservation que `apply` avait créée PAR ELLE avant de mourir ; la ligne
+   *     « Proposition réservée » que `apply` n'a pas pu écrire l'est ici, au nom de la personne
+   *     qui avait cliqué (`metadata.appliedBy` de la réservation) ;
+   *   — RENDUE à `pending` sinon : elle redevient réservable, ou expire au passage suivant si son
+   *     créneau est passé (le rattrapage tourne AVANT l'expiration).
+   *
+   * Relecture du 29/09 — « sa » réservation, pas « une » réservation. La première version prenait
+   * n'importe quelle réservation ferme du véhicule qui COUVRAIT le créneau : une réservation posée
+   * à la main par le gestionnaire (plus large) récupérait la proposition, et le fil du client
+   * recevait « Proposition de l'agent réservée » sous l'auteur « Agent de l'agenda », en plus de la
+   * vraie ligne. Et une réservation de l'agent ANNULÉE avant le passage rendait la proposition
+   * réservable à nouveau. Désormais on ne rattache qu'une réservation de l'AGENT
+   * (`metadata.agent`) : soit celle qui porte `metadata.propositionId` = cette proposition
+   * (posé par `apply` depuis le 29/09, suit la réservation si elle est déplacée), soit — pour les
+   * réservations d'avant ce marqueur — celle du même véhicule sur EXACTEMENT le même créneau
+   * (l'unicité société × véhicule × début des propositions garantit qu'aucune autre proposition
+   * n'a pu la poser). Tous statuts : annulée, elle reste le résultat de ce clic — la proposition
+   * reste `applied` avec son lien, jamais re-proposée. Une réservation déjà liée à une AUTRE
+   * proposition n'est jamais reprise.
+   *
+   * Chaque écriture est sous condition (`applied` ET `createdEventId` nul) : une application
+   * tardive qui aboutit entre la lecture et l'écriture n'est jamais écrasée. Rend les compteurs.
+   */
+  async rattraperPropositionsPrises(now: Date = new Date()): Promise<{ liees: number; rendues: number }> {
+    const orphelines = await this.prisma.agendaAgentProposal.findMany({
+      where: { status: 'applied', createdEventId: null, updatedAt: { lt: new Date(now.getTime() - RATTRAPAGE_DELAI_MS) } },
+      select: { id: true, fleetId: true, vehicleId: true, startAt: true, endAt: true, destinationLabel: true },
+      orderBy: { updatedAt: 'asc' },
+      take: RATTRAPAGE_LOT_MAX,
+    });
+    let liees = 0;
+    let rendues = 0;
+    for (const p of orphelines) {
+      const resa = await this.reservationDeLaProposition(p);
+      const orpheline = { id: p.id, status: 'applied', createdEventId: null };
+      if (resa) {
+        const { count } = await this.prisma.agendaAgentProposal.updateMany({
+          where: orpheline,
+          data: { createdEventId: resa.id },
+        });
+        if (count === 0) continue;
+        liees++;
+        const appliedBy = (resa.metadata as { appliedBy?: unknown } | null)?.appliedBy;
+        const auteur = typeof appliedBy === 'string' && appliedBy ? appliedBy : null;
+        this.journaliser(() => ({
+          category: 'RESERVATION',
+          action: 'proposition_reservee',
+          actor: auteur ? 'utilisateur' : 'system',
+          target: resa.vehicle?.plate ?? null,
+          detail:
+            `Proposition de l'agent réservée — ${creneauParis(p.startAt, p.endAt)}${p.destinationLabel ? ` · ${p.destinationLabel}` : ''}` +
+            ` (lien rétabli après une interruption${resa.status === VehicleEventStatus.CANCELLED ? ' ; réservation annulée depuis' : ''})`,
+          fleetId: p.fleetId,
+          triggeredByUserId: auteur,
+          meta: { propositionId: p.id, reservationId: resa.id, vehicleId: p.vehicleId, rattrapage: true, statutReservation: resa.status },
+        }));
+      } else {
+        const { count } = await this.prisma.agendaAgentProposal.updateMany({
+          where: orpheline,
+          data: { status: 'pending' },
+        });
+        if (count > 0) rendues++;
+      }
+    }
+    return { liees, rendues };
+  }
+
+  /**
+   * La réservation posée PAR cette proposition (voir {@link rattraperPropositionsPrises}), ou `null`.
+   * Jamais une réservation manuelle (`metadata.agent` exigé), jamais celle d'une autre proposition
+   * (`metadata.propositionId` différent, ou déjà liée ailleurs par `createdEventId`).
+   */
+  private async reservationDeLaProposition(p: {
+    id: string;
+    fleetId: string;
+    vehicleId: string;
+    startAt: Date;
+    endAt: Date;
+  }): Promise<{ id: string; status: VehicleEventStatus; metadata: Prisma.JsonValue; vehicle: { plate: string } | null } | null> {
+    const candidates = await this.prisma.vehicleEvent.findMany({
+      where: {
+        fleetId: p.fleetId,
+        type: VehicleEventType.RESERVATION,
+        // Tous statuts : une réservation annulée avant le passage reste le résultat de ce clic.
+        OR: [
+          { metadata: { path: ['propositionId'], equals: p.id } },
+          { vehicleId: p.vehicleId, startAt: p.startAt, endAt: p.endAt, metadata: { path: ['agent'], equals: true } },
+        ],
+      },
+      select: { id: true, status: true, metadata: true, vehicle: { select: { plate: true } } },
+      orderBy: { createdAt: 'desc' },
+      take: 5,
+    });
+    for (const resa of candidates) {
+      const meta = (resa.metadata ?? null) as { agent?: unknown; propositionId?: unknown } | null;
+      if (meta?.agent !== true) continue;
+      if (typeof meta.propositionId === 'string' && meta.propositionId !== p.id) continue;
+      const dejaLiee = await this.prisma.agendaAgentProposal.findFirst({
+        where: { createdEventId: resa.id, id: { not: p.id } },
+        select: { id: true },
+      });
+      if (dejaLiee) continue;
+      return resa;
+    }
+    return null;
+  }
+
+  /** Plaque d'un véhicule pour le journal ; `null` si la lecture échoue (le geste passe quand même). */
+  private async plaque(vehicleId: string): Promise<string | null> {
+    try {
+      const v = await this.prisma.vehicle.findUnique({ where: { id: vehicleId }, select: { plate: true } });
+      return v?.plate ?? null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Une ligne du journal métier pour un geste sur une proposition. Construite DANS le `try` : une
+   * donnée inattendue ne fait jamais échouer le geste tracé. `fleetId` = société de la PROPOSITION
+   * (jamais celle de l'utilisateur) ; `actor` = « utilisateur » par défaut, jamais un nom.
+   */
+  private journaliser(construire: () => Omit<SystemActivityInput, 'actor'> & { actor?: string }): void {
+    try {
+      this.systemActivity?.record({ actor: 'utilisateur', ...construire() });
+    } catch (e) {
+      this.logger.warn(`journal des propositions non écrit : ${(e as Error)?.message ?? e}`);
+    }
   }
 
   // ─── Helpers ───────────────────────────────────────────────────────────────
@@ -1014,6 +1244,7 @@ export class AgendaAgentRunnerService {
       skippedStalePatterns: number;
     },
     aiVerdictQueued = false,
+    triggeredByUserId: string | null = null,
   ): void {
     // Le détail des exclusions n'apparaît que s'il y en a : un libellé propre les jours normaux,
     // et une explication le jour où l'exploitant se demande où sont passées ses propositions.
@@ -1038,6 +1269,8 @@ export class AgendaAgentRunnerService {
       actor: origin === 'manual' ? 'utilisateur' : 'system',
       detail: `Agent agenda (${origin}) : ${counts.created} réservé(s), ${counts.proposed} proposé(s), ${counts.skipped} ignoré(s)${why}${ia}`,
       fleetId,
+      // Lancement manuel : la personne qui a cliqué. Nuit / déclencheur : null (système).
+      triggeredByUserId: origin === 'manual' ? triggeredByUserId : null,
       meta: {
         ...counts,
         skippedDormantVehicles: dormant,

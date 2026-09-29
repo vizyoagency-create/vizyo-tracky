@@ -9,6 +9,15 @@ import { assertRetentionWindow } from '../common/retention-guard';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
+/**
+ * Catégories du journal système conservées aussi longtemps que l'audit des mutations
+ * (`MUTATION_AUDIT_RETENTION_DAYS`, 365 j par défaut) au lieu des 30 j du journal courant :
+ *  - MUTATION : audit des mutations HTTP par utilisateur ;
+ *  - RESERVATION / AGENDA (29/09) : le fil « Agenda » que lit la société cliente (qui a validé,
+ *    refusé, réaffecté telle réservation) — une réservation se discute encore des mois après.
+ */
+export const CATEGORIES_JOURNAL_LONGUES = ['MUTATION', 'RESERVATION', 'AGENDA'];
+
 @Injectable()
 export class LogCleanupService {
   private readonly logger = new Logger(LogCleanupService.name);
@@ -53,14 +62,14 @@ export class LogCleanupService {
       this.prisma.errorLog.deleteMany({
         where: { createdAt: { lt: errorThreshold } },
       }),
-      // Palier B — le journal des actions système suit la rétention error logs, SAUF la
-      // catégorie MUTATION (audit des mutations HTTP par utilisateur) qui a la sienne,
-      // plus longue (valeur d'audit : « qui a fait quoi » doit survivre au journal courant).
+      // Palier B — le journal des actions système suit la rétention error logs, SAUF les
+      // catégories d'audit (MUTATION, RESERVATION, AGENDA) qui ont la leur, plus longue
+      // (valeur d'audit : « qui a fait quoi » doit survivre au journal courant).
       this.prisma.systemActivityLog.deleteMany({
-        where: { createdAt: { lt: errorThreshold }, category: { not: 'MUTATION' } },
+        where: { createdAt: { lt: errorThreshold }, category: { notIn: CATEGORIES_JOURNAL_LONGUES } },
       }),
       this.prisma.systemActivityLog.deleteMany({
-        where: { createdAt: { lt: mutationThreshold }, category: 'MUTATION' },
+        where: { createdAt: { lt: mutationThreshold }, category: { in: CATEGORIES_JOURNAL_LONGUES } },
       }),
       // Journaux SMS (numeros + contenu). smsDays=0 => desactive : on ne supprime rien.
       smsDays > 0
@@ -78,7 +87,7 @@ export class LogCleanupService {
         mutationDeleted: mutationResult.count,
         smsDeleted: smsResult.count,
       },
-      `Log cleanup: ${wireResult.count} wire logs (>${wireDays}d), ${errorResult.count} error logs (>${errorDays}d), ${sysActivityResult.count} system-activity logs (>${errorDays}d), ${mutationResult.count} mutation-audit (>${mutationDays}d), ${smsResult.count} sms logs (>${smsDays}d) deleted`,
+      `Log cleanup: ${wireResult.count} wire logs (>${wireDays}d), ${errorResult.count} error logs (>${errorDays}d), ${sysActivityResult.count} system-activity logs (>${errorDays}d), ${mutationResult.count} mutation-audit/agenda (>${mutationDays}d), ${smsResult.count} sms logs (>${smsDays}d) deleted`,
     );
 
     // La purge du journal est elle-même une action système : sans cette ligne, des
@@ -91,7 +100,7 @@ export class LogCleanupService {
         status: 'SUCCESS',
         actor: 'log-cleanup-cron',
         target: `${total} ligne(s) de log`,
-        detail: `wire >${wireDays}j, erreurs/système >${errorDays}j, audit mutations >${mutationDays}j, SMS >${smsDays}j`,
+        detail: `wire >${wireDays}j, erreurs/système >${errorDays}j, audit mutations + agenda >${mutationDays}j, SMS >${smsDays}j`,
         meta: {
           wireDeleted: wireResult.count,
           errorDeleted: errorResult.count,

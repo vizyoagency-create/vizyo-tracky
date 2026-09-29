@@ -1,4 +1,11 @@
-import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  Logger,
+  NotFoundException,
+  Optional,
+} from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Prisma, UserRole, VehicleEventStatus, VehicleEventType } from '@prisma/client';
 import type {
@@ -12,10 +19,88 @@ import type {
 import { IMMOBILIZING_STATUSES } from '@vizyo/tracky-shared';
 import type { AuthUser } from '../auth/types/auth-user';
 import { resolveReportVehicleScope } from '../common/report-vehicle-scope';
+import { formatFleetDate, formatFleetDateTime, formatFleetTime } from '../common/utils/datetime';
 import { PrismaService } from '../prisma/prisma.service';
+import { SystemActivityService, type SystemActivityInput } from '../system-activity/system-activity.service';
 import { VehicleAccessService } from '../vehicle-access/vehicle-access.service';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Un créneau lisible, en HEURE DE PARIS, pour le texte d'une ligne du journal métier (29/09).
+ *
+ * Le serveur tourne en UTC : `toISOString()` dans un `detail` affiche 07:00 pour un départ à 09:00
+ * l'été — et c'est ce texte que le fil « Agenda » d'un client relit. `journeeEntiere` : un évènement
+ * « toute la journée » (maintenance, incident) se dit par ses dates seules, sans une heure qui ne
+ * veut rien dire. Partagé par l'agent de l'agenda et les plans d'entretien.
+ *
+ *   05/10/2026 09:00 → 12:00            (même jour)
+ *   05/10/2026 09:00 → 06/10/2026 12:00 (à cheval)
+ *   05/10/2026 → 12/10/2026             (journées entières)
+ */
+export function creneauParis(debut: Date, fin?: Date | null, journeeEntiere = false): string {
+  if (journeeEntiere) {
+    const j1 = formatFleetDate(debut);
+    const j2 = fin ? formatFleetDate(fin) : j1;
+    return j1 === j2 ? j1 : `${j1} → ${j2}`;
+  }
+  const d = formatFleetDateTime(debut);
+  if (!fin) return d;
+  return formatFleetDate(debut) === formatFleetDate(fin) ? `${d} → ${formatFleetTime(fin)}` : `${d} → ${formatFleetDateTime(fin)}`;
+}
+
+/** Libellés du journal : ce que lit un exploitant, pas un code d'énumération. */
+const TYPE_LIBELLE: Record<string, string> = {
+  MAINTENANCE: 'Maintenance',
+  INCIDENT: 'Incident',
+  RESERVATION: 'Réservation',
+  MISSION: 'Mission',
+};
+const STATUT_LIBELLE: Record<string, string> = {
+  PLANNED: 'planifié',
+  OPEN: 'ouvert',
+  IN_PROGRESS: 'en cours',
+  DONE: 'terminé',
+  CANCELLED: 'annulé',
+  REQUESTED: 'demandé',
+  CONFIRMED: 'confirmé',
+};
+const GRAVITE_LIBELLE: Record<string, string> = { LOW: 'faible', MEDIUM: 'moyenne', HIGH: 'haute', CRITICAL: 'critique' };
+const typeLibelle = (t: string | null | undefined): string => (t ? (TYPE_LIBELLE[t] ?? t) : 'Évènement');
+const statutLibelle = (s: string | null | undefined): string => (s ? (STATUT_LIBELLE[s] ?? s) : '—');
+const graviteLibelle = (g: string | null | undefined): string => (g ? (GRAVITE_LIBELLE[g] ?? g) : 'non renseignée');
+/** Un texte comparé tel que l'écran le montre : rogné, et `null` = vide (la feuille renvoie '' là où la base a null). */
+const texteCompare = (v: unknown): string => (typeof v === 'string' ? v.trim() : v == null ? '' : String(v));
+/** « « Carrosserie » », ou « — » pour un champ vide ; borné, c'est une saisie libre. */
+const cite = (v: unknown): string => {
+  const t = texteCompare(v);
+  if (!t) return '—';
+  return `« ${t.length > 60 ? `${t.slice(0, 59)}…` : t} »`;
+};
+/** 12450 → « 12 450 km » (espace ordinaire : pas de dépendance à l'ICU du serveur). */
+const km = (n: number | null | undefined): string =>
+  n == null ? 'non relevé' : `${String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ' ')} km`;
+
+/** Ce que `loadScoped` rend : de quoi garder, journaliser et comparer avant/après. */
+type EvenementCharge = {
+  vehicleId: string;
+  type: VehicleEventType;
+  startAt: Date;
+  endAt: Date | null;
+  fleetId?: string;
+  status?: VehicleEventStatus;
+  title?: string;
+  allDay?: boolean;
+  blocksVehicle?: boolean;
+  // Revue du 29/09 (C2) — lus pour ne nommer au journal que ce qui change VRAIMENT.
+  description?: string | null;
+  category?: string | null;
+  severity?: string | null;
+  odometerKm?: number | null;
+  linkedEventId?: string | null;
+  metadata?: Prisma.JsonValue | null;
+  vehicle?: { plate: string | null } | null;
+};
 
 /**
  * P2-3 (audit du 22/09) — plafond de la liste d'évènements d'une fenêtre.
@@ -46,11 +131,36 @@ export class VehicleEventsService {
     private readonly vehicleAccess: VehicleAccessService,
     // EventEmitter2 est global (EventEmitterModule.forRoot) : injecté en prod, omis dans les specs.
     private readonly emitter?: EventEmitter2,
+    // Journal métier (29/09, @Global) — EN DERNIER et @Optional : les specs montées à la main
+    // (`new VehicleEventsService(prisma, access)`) restent valides, et sans journal rien ne casse.
+    @Optional() private readonly systemActivity?: SystemActivityService,
   ) {}
 
   /** Notifie l'agent d'agenda qu'un incident/maintenance vient d'être créé (déclencheur P3). */
   private emitAgentTrigger(fleetId: string, kind: 'incident' | 'maintenance'): void {
     this.emitter?.emit('agenda-agent.trigger', { fleetId, kind });
+  }
+
+  /**
+   * Une ligne du fil « Agenda » (catégorie AGENDA). Le texte est construit DANS le `try` : une
+   * donnée inattendue (mock partiel, ligne sans véhicule) ne fait jamais échouer le geste qu'on
+   * trace — même contrat que `SystemActivityService.record`, qui ne lève jamais.
+   *
+   * `fleetId` = la société de L'ÉVÈNEMENT (donc du véhicule), jamais celle de l'utilisateur : un
+   * super-admin qui clôt une maintenance chez un client laisse la trace chez ce client.
+   *
+   * `construire` peut rendre `null` : « rien à dire » (un Enregistrer qui n'a rien changé), décidé
+   * lui aussi DANS le `try`.
+   */
+  private journaliser(construire: () => Omit<SystemActivityInput, 'category' | 'actor'> | null): void {
+    if (!this.systemActivity) return;
+    try {
+      const ligne = construire();
+      if (!ligne) return;
+      this.systemActivity.record({ category: 'AGENDA', actor: 'utilisateur', ...ligne });
+    } catch (e) {
+      this.logger.warn(`journal agenda non écrit : ${(e as Error)?.message ?? e}`);
+    }
   }
 
   /** Vérifie l'accès à un véhicule (cross-flotte + IDOR intra-flotte) → renvoie son fleetId. */
@@ -270,6 +380,26 @@ export class VehicleEventsService {
     if (row.type === VehicleEventType.INCIDENT || row.type === VehicleEventType.MAINTENANCE) {
       this.emitAgentTrigger(row.fleetId, row.type === VehicleEventType.INCIDENT ? 'incident' : 'maintenance');
     }
+    // Un INCIDENT saisi par la feuille « Nouvel évènement » est un incident signalé, comme par le
+    // bouton dédié : même libellé au fil, sinon le client lit « Événement créé » pour une panne.
+    this.journaliser(() => ({
+      action: row.type === VehicleEventType.INCIDENT ? 'incident_signale' : 'evenement_cree',
+      target: row.vehicle?.plate ?? null,
+      detail:
+        `${typeLibelle(row.type)} « ${row.title} » — ${creneauParis(row.startAt, row.endAt, row.allDay)}` +
+        (row.blocksVehicle ? ' · véhicule indisponible' : ''),
+      fleetId: row.fleetId,
+      triggeredByUserId: user.id,
+      meta: {
+        eventId: row.id,
+        vehicleId: row.vehicleId,
+        type: row.type,
+        status: row.status,
+        blocksVehicle: row.blocksVehicle,
+        startAt: row.startAt.toISOString(),
+        endAt: row.endAt ? row.endAt.toISOString() : null,
+      },
+    }));
     return this.toDto(row);
   }
 
@@ -293,6 +423,17 @@ export class VehicleEventsService {
       include: { vehicle: { select: { plate: true } } },
     });
     this.emitAgentTrigger(row.fleetId, 'incident');
+    this.journaliser(() => ({
+      action: 'incident_signale',
+      target: row.vehicle?.plate ?? null,
+      detail:
+        `Incident « ${row.title} » signalé le ${formatFleetDateTime(row.startAt)}` +
+        (row.severity ? ` · gravité ${GRAVITE_LIBELLE[row.severity] ?? row.severity}` : '') +
+        (row.blocksVehicle ? ' · véhicule immobilisé' : ''),
+      fleetId: row.fleetId,
+      triggeredByUserId: user.id,
+      meta: { eventId: row.id, vehicleId: row.vehicleId, severity: row.severity ?? null, blocksVehicle: row.blocksVehicle },
+    }));
     return this.toDto(row);
   }
 
@@ -341,7 +482,129 @@ export class VehicleEventsService {
     if (dto.odometerKm !== undefined) {
       await this.maybeUpdateOdometer(existing.vehicleId, dto.odometerKm, row.startAt);
     }
+    // « Clos » = le statut PASSE à DONE (réponse « Oui, terminée » de l'écran « À clore », bouton
+    // « Terminé ») ; un DONE réécrit sur un évènement déjà clos n'est qu'une modification.
+    const clos = dto.status === VehicleEventStatus.DONE && existing.status !== VehicleEventStatus.DONE;
+    this.journaliser(() => {
+      const quoi = `${typeLibelle(row.type)} « ${row.title} »`;
+      const { lignes: changements, champs } = this.changements(existing, row, dto);
+      // Revue du 29/09 (C2) — la feuille d'édition renvoie TOUS ses champs : « Enregistrer » sans
+      // rien toucher n'est pas une modification. Aucune ligne — même règle que `tracerModification`
+      // côté réservations. Une clôture, elle, est toujours un geste.
+      if (!clos && changements.length === 0) return null;
+      return {
+        action: clos ? 'evenement_clos' : 'evenement_modifie',
+        target: row.vehicle?.plate ?? existing.vehicle?.plate ?? null,
+        detail: clos
+          ? `Clôture : ${quoi} — ${creneauParis(row.startAt, row.endAt, row.allDay)}`
+          : `Modification : ${quoi} — ${changements.join(' ; ')}`,
+        fleetId: row.fleetId ?? existing.fleetId ?? null,
+        triggeredByUserId: user.id,
+        meta: {
+          eventId: id,
+          vehicleId: existing.vehicleId,
+          type: row.type,
+          // Les clés qui ont VRAIMENT changé — pas toutes celles que la feuille a renvoyées.
+          champs,
+          avant: {
+            status: existing.status ?? null,
+            title: existing.title ?? null,
+            startAt: existing.startAt?.toISOString() ?? null,
+            endAt: existing.endAt?.toISOString() ?? null,
+            blocksVehicle: existing.blocksVehicle ?? null,
+          },
+          apres: {
+            status: row.status,
+            title: row.title,
+            startAt: row.startAt.toISOString(),
+            endAt: row.endAt?.toISOString() ?? null,
+            blocksVehicle: row.blocksVehicle,
+          },
+        },
+      };
+    });
     return this.toDto(row);
+  }
+
+  /**
+   * Ce qui a changé, en clair — seulement ce que le correctif a VRAIMENT modifié, et les clés
+   * correspondantes (`meta.champs`).
+   *
+   * Revue du 29/09 (C2) — la feuille d'édition renvoie à chaque « Enregistrer » le titre, la
+   * catégorie, la description, les dates, l'immobilisation, la gravité d'un incident et le
+   * kilométrage s'il est connu. Nommer un champ parce qu'il était DANS le correctif faisait lire
+   * « description, catégorie mis à jour » à chaque report de date — et même sans rien toucher. Un
+   * champ n'est donc nommé que si sa valeur en base diffère avant/après (`avant` = `loadScoped`,
+   * `apres` = la ligne réécrite) : textes rognés, `null` et '' confondus, `metadata` comparé en
+   * JSON (les deux côtés sortent de la base, même ordre de clés). Un champ que `avant` ne porte pas
+   * n'est jamais nommé : on n'affirme pas un changement qu'on ne peut pas prouver.
+   */
+  private changements(
+    avant: EvenementCharge,
+    apres: EventRow,
+    dto: UpdateVehicleEventDto,
+  ): { lignes: string[]; champs: string[] } {
+    const lignes: string[] = [];
+    const champs: string[] = [];
+    const envoye = (k: keyof UpdateVehicleEventDto): boolean => dto[k] !== undefined;
+    if (envoye('status') && avant.status !== apres.status) {
+      lignes.push(`statut ${statutLibelle(avant.status)} → ${statutLibelle(apres.status)}`);
+      champs.push('status');
+    }
+    if (envoye('title') && avant.title !== undefined && avant.title !== apres.title) {
+      lignes.push(`titre « ${avant.title} » → « ${apres.title} »`);
+      champs.push('title');
+    }
+    const datesAvant = creneauParis(avant.startAt, avant.endAt, avant.allDay ?? apres.allDay);
+    const datesApres = creneauParis(apres.startAt, apres.endAt, apres.allDay);
+    const clesDates = (['startAt', 'endAt', 'allDay'] as const).filter(envoye);
+    if (clesDates.length > 0 && datesAvant !== datesApres) {
+      // « désormais » plutôt qu'une flèche : un créneau en porte déjà une (09:00 → 12:00).
+      lignes.push(`dates ${datesAvant}, désormais ${datesApres}`);
+      // Chaque borne comparée TELLE QU'AFFICHÉE (dans le mode du créneau réécrit) : une journée
+      // entière renvoyée à 00:00 au lieu de 08:00 n'a pas « changé de début ».
+      const affiche = (d: Date | null | undefined): string => (d ? creneauParis(d, null, apres.allDay) : '—');
+      const bougees = clesDates.filter((k) =>
+        k === 'allDay'
+          ? avant.allDay !== undefined && avant.allDay !== apres.allDay
+          : affiche(avant[k]) !== affiche(apres[k]),
+      );
+      champs.push(...(bougees.length > 0 ? bougees : clesDates));
+    }
+    if (envoye('blocksVehicle') && avant.blocksVehicle !== undefined && avant.blocksVehicle !== apres.blocksVehicle) {
+      lignes.push(apres.blocksVehicle ? 'véhicule désormais indisponible' : 'véhicule de nouveau disponible');
+      champs.push('blocksVehicle');
+    }
+    if (envoye('category') && avant.category !== undefined && texteCompare(avant.category) !== texteCompare(apres.category)) {
+      lignes.push(`catégorie ${cite(avant.category)} → ${cite(apres.category)}`);
+      champs.push('category');
+    }
+    if (envoye('severity') && avant.severity !== undefined && (avant.severity ?? null) !== (apres.severity ?? null)) {
+      lignes.push(`gravité ${graviteLibelle(avant.severity)} → ${graviteLibelle(apres.severity)}`);
+      champs.push('severity');
+    }
+    if (envoye('odometerKm') && avant.odometerKm !== undefined && (avant.odometerKm ?? null) !== (apres.odometerKm ?? null)) {
+      lignes.push(`kilométrage ${km(avant.odometerKm)} → ${km(apres.odometerKm)}`);
+      champs.push('odometerKm');
+    }
+    // Contenus longs ou techniques : nommés, pas recopiés.
+    const nommes: string[] = [];
+    if (envoye('description') && avant.description !== undefined && texteCompare(avant.description) !== texteCompare(apres.description)) {
+      nommes.push('description');
+      champs.push('description');
+    }
+    if (envoye('linkedEventId') && avant.linkedEventId !== undefined && (avant.linkedEventId ?? null) !== (apres.linkedEventId ?? null)) {
+      nommes.push('évènement lié');
+      champs.push('linkedEventId');
+    }
+    if (envoye('metadata') && avant.metadata !== undefined && JSON.stringify(avant.metadata ?? null) !== JSON.stringify(apres.metadata ?? null)) {
+      nommes.push('détails');
+      champs.push('metadata');
+    }
+    if (nommes.length > 0) {
+      lignes.push(nommes.length === 1 && nommes[0] === 'description' ? 'description mise à jour' : `${nommes.join(', ')} mis à jour`);
+    }
+    return { lignes, champs };
   }
 
   async remove(user: AuthUser, id: string): Promise<{ ok: true }> {
@@ -350,7 +613,41 @@ export class VehicleEventsService {
       throw new BadRequestException('Les réservations se gèrent depuis l\'espace Réservations.');
     }
     this.refuserSiMission(existing.type);
-    await this.prisma.vehicleEvent.delete({ where: { id } });
+    // Écrit AVANT la suppression : après, il ne reste rien en base pour dire ce qui a disparu (titre,
+    // type, plaque, dates). Si la suppression échoue, une seconde ligne en ÉCHEC le dit — le fil ne
+    // doit pas affirmer une suppression qui n'a pas eu lieu sans que la suite le corrige.
+    const quoi = () => `${typeLibelle(existing.type)} « ${existing.title ?? 'sans titre'} »`;
+    const meta = () => ({
+      eventId: id,
+      vehicleId: existing.vehicleId,
+      type: existing.type,
+      status: existing.status ?? null,
+      title: existing.title ?? null,
+      startAt: existing.startAt?.toISOString() ?? null,
+      endAt: existing.endAt?.toISOString() ?? null,
+    });
+    this.journaliser(() => ({
+      action: 'evenement_supprime',
+      target: existing.vehicle?.plate ?? null,
+      detail: `Suppression : ${quoi()} — ${creneauParis(existing.startAt, existing.endAt, existing.allDay ?? true)}`,
+      fleetId: existing.fleetId ?? null,
+      triggeredByUserId: user.id,
+      meta: meta(),
+    }));
+    try {
+      await this.prisma.vehicleEvent.delete({ where: { id } });
+    } catch (e) {
+      this.journaliser(() => ({
+        action: 'evenement_supprime',
+        status: 'FAILURE',
+        target: existing.vehicle?.plate ?? null,
+        detail: `Suppression ÉCHOUÉE : ${quoi()} — l'évènement est toujours dans l'agenda.`,
+        fleetId: existing.fleetId ?? null,
+        triggeredByUserId: user.id,
+        meta: { ...meta(), error: e instanceof Error ? e.message.slice(0, 300) : String(e) },
+      }));
+      throw e;
+    }
     return { ok: true };
   }
 
@@ -398,16 +695,35 @@ export class VehicleEventsService {
   }
 
   /** Charge un événement en garantissant qu'il est dans le périmètre de l'user. */
-  private async loadScoped(
-    user: AuthUser,
-    id: string,
-  ): Promise<{ vehicleId: string; type: VehicleEventType; startAt: Date; endAt: Date | null }> {
+  private async loadScoped(user: AuthUser, id: string): Promise<EvenementCharge> {
     const where = await this.scopedWhere(user);
     const ev = await this.prisma.vehicleEvent.findFirst({
       where: { ...where, id },
       // `startAt` / `endAt` : la garde « fin après début » de update() (lot multi-jours) doit
       // raisonner sur les valeurs en base quand le patch n'en change qu'une.
-      select: { id: true, vehicleId: true, type: true, startAt: true, endAt: true },
+      // `fleetId`, `status`, `title`, `allDay`, `blocksVehicle`, plaque : le journal métier (29/09)
+      // dit « avant → après » et, pour une suppression, ce qui a disparu — lus dans la MÊME requête.
+      // `description` … `metadata` (revue du 29/09, C2) : sans eux, `changements()` ne pouvait que
+      // nommer ce que la feuille RENVOIE, pas ce qui CHANGE.
+      select: {
+        id: true,
+        vehicleId: true,
+        type: true,
+        startAt: true,
+        endAt: true,
+        fleetId: true,
+        status: true,
+        title: true,
+        allDay: true,
+        blocksVehicle: true,
+        description: true,
+        category: true,
+        severity: true,
+        odometerKm: true,
+        linkedEventId: true,
+        metadata: true,
+        vehicle: { select: { plate: true } },
+      },
     });
     if (!ev) throw new NotFoundException('Événement introuvable');
     return ev;

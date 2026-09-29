@@ -4,18 +4,115 @@ import { httpFailureMessage } from '../../core/services/http-failure';
 import { ZoneComponent } from '../../shared/ui/zone/zone.component';
 import type { EtatZone } from '../../shared/ui/zone/zone.component';
 import {
-  ChangeDetectionStrategy, Component, OnDestroy, OnInit, computed, inject, signal,
+  ChangeDetectionStrategy, Component, OnDestroy, OnInit, computed, effect, inject, signal, untracked,
 } from '@angular/core';
 import { DatePipe, NgTemplateOutlet } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { ActivatedRoute } from '@angular/router';
 import {
-  Activity, AlertTriangle, CircleDot, LucideAngularModule, Power, PowerOff, RefreshCw, Users, Zap,
+  Activity, AlertTriangle, CalendarDays, CircleDot, Globe, LucideAngularModule, Power, PowerOff, RefreshCw,
+  Settings, ShieldCheck, Sparkles, User, Users, Zap,
 } from 'lucide-angular';
-import type { ActivityFeedItemDto, EngineCommandAuditDto, OnlineUserDto } from '@vizyo/tracky-shared';
+import type {
+  ActivityFeedItemDto, EngineCommandAuditDto, FleetAgendaActivityDto, OnlineUserDto, StatutActionAgenda,
+} from '@vizyo/tracky-shared';
+import { AGENDA_ACTIVITY_ACTION_LABELS, statutActionAgenda } from '@vizyo/tracky-shared';
 import { firstValueFrom } from 'rxjs';
-import { FleetActivityApiService } from './fleet-activity-api.service';
+import { AuthService } from '../../core/services/auth.service';
+import { FleetFilterService } from '../../core/services/fleet-filter.service';
+import { FleetActivityApiService, type CategorieAgenda } from './fleet-activity-api.service';
 
-type Tab = 'engine' | 'live' | 'history';
+export type Tab = 'agenda' | 'engine' | 'live' | 'history';
+
+/**
+ * L'onglet qu'un lien demande par `?tab=`. Le bouton moteur (« Le boîtier n'a pas confirmé » →
+ * « Voir l'historique ») doit ouvrir « Moteurs » : depuis que l'Agenda ouvre la page (29/09), le
+ * lien nu tombait sur le fil des réservations, et la commande non confirmée n'apparaissait nulle
+ * part à l'écran — au moment même où il faut savoir si le véhicule est immobilisé.
+ * « En ligne » n'est un onglet que sous 1024 px : sur grand écran, la présence est déjà une
+ * colonne permanente, on reste sur l'onglet par défaut. Valeur inconnue → null (défaut).
+ */
+export function ongletDemande(valeur: string | null | undefined, large: boolean): Tab | null {
+  switch (valeur) {
+    case 'agenda':
+    case 'engine':
+    case 'history':
+      return valeur;
+    case 'live':
+      return large ? null : 'live';
+    default:
+      return null;
+  }
+}
+
+/** Ton d'une action d'agenda — chacun pointe vers un jeton de la famille --texte-*. */
+type TonAgenda = 'succes' | 'info' | 'attente' | 'alerte' | 'agent' | 'inactif';
+
+/**
+ * Libellé de la première tuile — les compteurs moteur, AU-DESSUS des onglets.
+ *
+ * Revue du 29/09 : depuis que l'Agenda ouvre la page, une panne des commandes moteur ne se lisait
+ * nulle part (la zone d'erreur est dans l'onglet Moteurs) et les tuiles affichaient « 0 Échec ·
+ * Commandes moteur · 7 j » — une liste vide passait pour une semaine lue en entier. Une liste
+ * vide ne couvre la fenêtre que si elle a été LUE : panne → « indisponibles », pas encore lue →
+ * sans promesse de période. Les chiffres, eux, passent à « — » dans ces deux cas (gabarit).
+ */
+export function libelleTuileMoteurs(e: { erreur: boolean; charge: boolean; fenetreComplete: boolean }): string {
+  if (e.erreur) return 'Commandes moteur indisponibles';
+  if (!e.charge) return 'Commandes moteur';
+  return e.fenetreComplete ? 'Commandes moteur · 7 j' : 'Commandes chargées';
+}
+
+/** Une ligne du fil Agenda, prête à lire : tout ce qui se calcule l'est une fois, ici. */
+interface LigneAgenda {
+  dto: FleetAgendaActivityDto;
+  heure: string;
+  dateLongue: string;
+  libelle: string;
+  ton: TonAgenda;
+  /**
+   * Mot de statut quand le geste n'a PAS (pleinement) abouti ; null = réussi, rien à dire.
+   * Calculé par `statutActionAgenda` (packages/shared) : la MÊME fonction que l'onglet Système
+   * de /admin/activity — les deux écrans ne peuvent plus dire deux choses d'une même ligne.
+   */
+  statut: StatutActionAgenda | null;
+}
+
+interface GroupeAgenda {
+  cle: string;
+  titre: string;
+  items: LigneAgenda[];
+}
+
+/**
+ * Heure de PARIS, jamais celle du poste : un administrateur en déplacement (ou un poste réglé
+ * en UTC) lirait sinon « 07:42 » pour une réservation validée à 09:42 à l'agence — et le
+ * détail écrit par le serveur, lui, est déjà en heure de Paris : les deux se contrediraient.
+ */
+const FUSEAU = 'Europe/Paris';
+const FMT_HEURE = new Intl.DateTimeFormat('fr-FR', { timeZone: FUSEAU, hour: '2-digit', minute: '2-digit' });
+const FMT_DATE_LONGUE = new Intl.DateTimeFormat('fr-FR', {
+  timeZone: FUSEAU, weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit',
+});
+const FMT_JOUR = new Intl.DateTimeFormat('fr-FR', { timeZone: FUSEAU, weekday: 'long', day: 'numeric', month: 'long' });
+const FMT_PARTIES_JOUR = new Intl.DateTimeFormat('en-GB', { timeZone: FUSEAU, year: 'numeric', month: '2-digit', day: '2-digit' });
+
+/** « 2026-09-29 » : le jour CIVIL à Paris de l'instant donné (clé de regroupement). */
+function jourParis(d: Date): { a: number; m: number; j: number } {
+  const p = FMT_PARTIES_JOUR.formatToParts(d);
+  const val = (t: string) => Number(p.find((x) => x.type === t)?.value ?? NaN);
+  return { a: val('year'), m: val('month'), j: val('day') };
+}
+function cleJour(x: { a: number; m: number; j: number }): string {
+  return `${x.a}-${String(x.m).padStart(2, '0')}-${String(x.j).padStart(2, '0')}`;
+}
+
+/** Les pastilles du fil Agenda. « Agenda » = maintenances, incidents, propositions de l'agent. */
+const PASTILLES_AGENDA: { id: CategorieAgenda; label: string }[] = [
+  { id: '', label: 'Tout' },
+  { id: 'RESERVATION', label: 'Réservations' },
+  { id: 'AGENDA', label: 'Agenda' },
+];
 
 /** Ton d'un resultat — chacun pointe vers un jeton de la famille --texte-*. */
 type Ton = 'succes' | 'attente' | 'alerte' | 'inactif';
@@ -64,6 +161,18 @@ const FENETRE_MS = FENETRE_JOURS * 24 * 60 * 60 * 1000;
  *    tant qu'on ne cliquait pas. Sous 1024 px elle reste un onglet : la planche mobile ne lui
  *    donne pas de colonne, et il n'y en a pas.
  *  · LES COMPTEURS NE MENTENT PAS SUR LEUR PERIMETRE — cf. `fenetreComplete()` plus bas.
+ *
+ * ── 29/09 — onglet « Agenda », en premier et par defaut ─────────────────────────────────
+ *
+ * Ce que l'administrateur vient chercher ici, c'est « qui a valide / refuse / deplace cette
+ * reservation, qui a signale cet incident ». Le fil lit le journal metier (categories
+ * RESERVATION et AGENDA, plus les passages de l'agent) via `GET /api/fleet-admin/activity/agenda`,
+ * borne a SA societe. Le nom de l'auteur est calcule cote serveur : un geste d'un compte
+ * interne s'y lit « Equipe Tracky », jamais un nom (regle « owner cache »).
+ *
+ * Un SUPER_ADMIN n'a pas de societe : l'API lui repond une liste vide s'il ne passe pas
+ * `?fleetId=`. La page lit donc le filtre societe global du bandeau, et le dit quand il manque —
+ * sans quoi quatre onglets vides lui feraient croire qu'il ne s'est rien passe.
  */
 @Component({
   selector: 'app-fleet-activity',
@@ -77,13 +186,29 @@ const FENETRE_MS = FENETRE_JOURS * 24 * 60 * 60 * 1000;
           <lucide-icon [img]="ActivityIcon" [size]="20" />
           <div>
             <h1>Activité de la flotte</h1>
-            <p class="fa-sub">Qui agit sur vos véhicules — coupures/rallumages moteur, présence et historique.</p>
+            <p class="fa-sub">Qui agit sur vos véhicules — réservations et agenda, coupures/rallumages moteur, présence et historique.</p>
           </div>
         </div>
-        <button class="fa-refresh" (click)="reloadActive()" [disabled]="loading()" aria-label="Rafraîchir">
+        <button class="fa-refresh" (click)="rafraichir()" [disabled]="loading()" aria-label="Rafraîchir">
           <lucide-icon [img]="RefreshIcon" [size]="16" [class.spin]="loading()" />
         </button>
       </header>
+
+      @if (societeManquante()) {
+        <div class="fa-note fa-note--attente" role="status">
+          Aucune société choisie : choisissez-en une dans le sélecteur de société du bandeau pour voir son activité.
+        </div>
+      }
+
+      <!-- Revue du 29/09 : une panne des commandes moteur se lit AU-DESSUS des onglets. Sa zone
+           d'erreur est dans l'onglet Moteurs ; depuis l'Agenda (onglet par défaut), rien ne la
+           signalait et les tuiles disaient « 0 Échec ». Dans Moteurs, la zone le dit déjà. -->
+      @if (engineErreur() && tab() !== 'engine') {
+        <div class="fa-note fa-note--attente fa-note--action" role="status">
+          <span>Commandes moteur indisponibles : les chiffres ci-dessous ne sont pas à jour.</span>
+          <button type="button" class="fa-note-btn" (click)="rechargerMoteurs()" [disabled]="loading()">Réessayer</button>
+        </div>
+      }
 
       @if (problemes().length) {
         <div class="fa-alerte" role="status">
@@ -103,19 +228,24 @@ const FENETRE_MS = FENETRE_JOURS * 24 * 60 * 60 * 1000;
         </div>
       }
 
+      <!-- « — » tant que les commandes ne sont pas lues, ou que leur lecture a échoué : un 0
+           dirait « rien ne s'est passé » là où l'on ne sait pas. -->
       <div class="fa-tuiles">
-        <div class="fa-tuile"><b>{{ vus().length }}</b><span>{{ libelleFenetre() }}</span></div>
-        <div class="fa-tuile"><b class="t-info">{{ nbCoupures() }}</b><span>Coupures</span></div>
-        <div class="fa-tuile"><b class="t-succes">{{ nbRallumages() }}</b><span>Rallumages</span></div>
-        <div class="fa-tuile" [class.bord-attente]="nbRefusees() > 0">
-          <b class="t-attente">{{ nbRefusees() }}</b><span>Refusée en marche</span>
+        <div class="fa-tuile"><b>{{ compteursLisibles() ? vus().length : '—' }}</b><span>{{ libelleFenetre() }}</span></div>
+        <div class="fa-tuile"><b class="t-info">{{ compteursLisibles() ? nbCoupures() : '—' }}</b><span>Coupures</span></div>
+        <div class="fa-tuile"><b class="t-succes">{{ compteursLisibles() ? nbRallumages() : '—' }}</b><span>Rallumages</span></div>
+        <div class="fa-tuile" [class.bord-attente]="compteursLisibles() && nbRefusees() > 0">
+          <b class="t-attente">{{ compteursLisibles() ? nbRefusees() : '—' }}</b><span>Refusée en marche</span>
         </div>
-        <div class="fa-tuile" [class.bord-alerte]="nbEchecs() > 0">
-          <b class="t-alerte">{{ nbEchecs() }}</b><span>Échec</span>
+        <div class="fa-tuile" [class.bord-alerte]="compteursLisibles() && nbEchecs() > 0">
+          <b class="t-alerte">{{ compteursLisibles() ? nbEchecs() : '—' }}</b><span>Échec</span>
         </div>
       </div>
 
       <nav class="fa-tabs" aria-label="Vues de l'activité">
+        <button class="tab-btn" [class.on]="tab() === 'agenda'" (click)="setTab('agenda')">
+          <lucide-icon [img]="AgendaIcon" [size]="15" /> Agenda
+        </button>
         <button class="tab-btn" [class.on]="tab() === 'engine'" (click)="setTab('engine')">
           <lucide-icon [img]="ZapIcon" [size]="15" /> Moteurs
         </button>
@@ -132,6 +262,54 @@ const FENETRE_MS = FENETRE_JOURS * 24 * 60 * 60 * 1000;
 
       <div class="fa-grille" [class.avec-aside]="large()">
         <div class="fa-colonne">
+
+          @if (tab() === 'agenda') {
+            <div class="fa-pastilles" role="group" aria-label="Filtrer le fil de l'agenda">
+              @for (p of pastillesAgenda; track p.id) {
+                <button type="button" class="fa-pastille" [class.on]="agendaCategorie() === p.id"
+                        [attr.aria-pressed]="agendaCategorie() === p.id" (click)="setAgendaCategorie(p.id)">
+                  {{ p.label }}
+                </button>
+              }
+            </div>
+
+            <!-- Réessayer = Rafraîchir : une panne de l'API fait tomber l'agenda ET les commandes
+                 moteur ; ne relancer que l'agenda laissait les tuiles d'en haut en panne. -->
+            <app-zone
+              [etat]="etatAgenda()"
+              quoi="L'activité de l'agenda"
+              [vide]="videAgenda()"
+              videDetail="Les réservations, maintenances, incidents et propositions de l'agent apparaîtront ici dès qu'un geste sera posé."
+              erreur="Impossible de charger l'activité de l'agenda"
+              (reessayer)="rafraichir()">
+              <div class="fa-liste">
+                @for (g of groupesAgenda(); track g.cle) {
+                  <div class="fa-groupe">
+                    <span class="fa-losange" aria-hidden="true">&#9670;</span>{{ g.titre }}
+                  </div>
+                  @for (l of g.items; track l.dto.id) {
+                    <article class="fa-ag" [attr.data-ton]="l.statut?.ton === 'alerte' ? 'alerte' : null">
+                      <div class="fa-ag-tete">
+                        <time class="fa-ag-heure" [attr.datetime]="l.dto.at" [attr.title]="l.dateLongue">{{ l.heure }}</time>
+                        <span class="fa-ag-qui" [attr.data-kind]="l.dto.actorKind">
+                          <lucide-icon [img]="iconeActeur(l.dto.actorKind)" [size]="13" />
+                          <span class="fa-ag-nom">{{ l.dto.actorName }}</span>
+                        </span>
+                        <span class="fa-ag-act" [attr.data-ton]="l.ton">{{ l.libelle }}</span>
+                        @if (l.dto.vehiclePlate) { <span class="fa-plq">{{ l.dto.vehiclePlate }}</span> }
+                        @if (l.statut; as s) { <span class="fa-mot" [attr.data-ton]="s.ton">{{ s.mot }}</span> }
+                      </div>
+                      @if (l.dto.detail) { <p class="fa-ag-detail">{{ l.dto.detail }}</p> }
+                    </article>
+                  }
+                }
+              </div>
+              <p class="fa-note-pied">Heures de Paris. « Équipe Tracky » désigne un geste de notre équipe sur votre agenda.</p>
+              @if (agendaSuite()) {
+                <button class="fa-more" (click)="loadMoreAgenda()" [disabled]="loading()">Charger plus</button>
+              }
+            </app-zone>
+          }
 
           @if (tab() === 'engine') {
             <div class="fa-filters">
@@ -219,7 +397,7 @@ const FENETRE_MS = FENETRE_JOURS * 24 * 60 * 60 * 1000;
                     <span class="fa-feed-when">{{ f.at | date:'dd/MM HH:mm' }}</span>
                     <span class="fa-feed-user">{{ f.userName }}</span>
                     <span class="fa-feed-type">{{ typeLabel(f.type) }}</span>
-                    <span class="fa-feed-target">{{ f.routeLabel ?? f.route ?? f.target ?? '' }}</span>
+                    <span class="fa-feed-target">{{ cibleFeed(f) }}</span>
                   </li>
                 }
               </ul>
@@ -343,6 +521,55 @@ const FENETRE_MS = FENETRE_JOURS * 24 * 60 * 60 * 1000;
     .fa-aside { min-width: 0; position: sticky; top: 16px; }
 
     .fa-note { font-size: 12.5px; color: var(--text-secondary); background: var(--bg-secondary); border: 1px solid var(--border-subtle); border-radius: 10px; padding: 10px 12px; margin-bottom: 12px; }
+    .fa-note--attente {
+      color: var(--texte-attente); font-weight: 600;
+      background: color-mix(in srgb, var(--warning) 12%, transparent);
+      border-color: color-mix(in srgb, var(--warning) 28%, transparent);
+    }
+    .fa-note--action { display: flex; align-items: center; justify-content: space-between; gap: 8px 12px; flex-wrap: wrap; }
+    .fa-note-btn {
+      min-height: 44px; padding: 6px 14px; border-radius: 10px; cursor: pointer;
+      background: transparent; border: 1px solid currentColor; color: inherit;
+      font-size: 12.5px; font-weight: 700;
+    }
+    .fa-note-btn:disabled { opacity: .5; cursor: default; }
+
+    /* Fil Agenda — pastilles de filtre, puis une ligne par geste. */
+    .fa-pastilles { display: flex; gap: 6px; margin-bottom: 12px; flex-wrap: wrap; }
+    .fa-pastille {
+      min-height: 44px; padding: 7px 15px; border-radius: 9999px;
+      border: 1px solid var(--border-subtle); background: var(--bg-secondary);
+      color: var(--text-secondary); font-size: 13px; font-weight: 700; cursor: pointer;
+    }
+    .fa-pastille.on {
+      color: var(--texte-succes);
+      background: color-mix(in srgb, var(--color-tracky-light) 12%, transparent);
+      border-color: color-mix(in srgb, var(--color-tracky-light) 45%, transparent);
+    }
+    .fa-ag { display: flex; flex-direction: column; gap: 5px; padding: 11px 14px; border-bottom: 1px solid var(--border-subtle); min-width: 0; }
+    .fa-ag:last-child { border-bottom: none; }
+    .fa-ag[data-ton='alerte'] { background: color-mix(in srgb, var(--danger) 12%, transparent); }
+    .fa-ag-tete { display: flex; align-items: center; gap: 6px 8px; flex-wrap: wrap; min-width: 0; }
+    .fa-ag-heure { font-size: 12.5px; font-weight: 700; color: var(--text-primary); font-variant-numeric: tabular-nums; }
+    .fa-ag-qui {
+      display: inline-flex; align-items: center; gap: 5px; min-width: 0; max-width: 100%;
+      font-size: 12.5px; font-weight: 700; color: var(--text-primary);
+    }
+    .fa-ag-qui lucide-icon { color: var(--text-secondary); flex-shrink: 0; display: inline-flex; }
+    .fa-ag-qui[data-kind='team'] { color: var(--texte-succes); }
+    .fa-ag-qui[data-kind='agent'] { color: var(--texte-violet); }
+    .fa-ag-qui[data-kind='public'] { color: var(--texte-info); }
+    .fa-ag-nom { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .fa-ag-act { display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 7px; font-size: 11.5px; font-weight: 700; }
+    .fa-ag-act[data-ton='succes'] { color: var(--texte-succes); background: color-mix(in srgb, var(--color-tracky-light) 12%, transparent); }
+    .fa-ag-act[data-ton='info'] { color: var(--texte-info); background: color-mix(in srgb, var(--blue) 12%, transparent); }
+    .fa-ag-act[data-ton='attente'] { color: var(--texte-attente); background: color-mix(in srgb, var(--warning) 12%, transparent); }
+    .fa-ag-act[data-ton='alerte'] { color: var(--texte-alerte); background: color-mix(in srgb, var(--danger) 12%, transparent); }
+    .fa-ag-act[data-ton='agent'] { color: var(--texte-violet); background: color-mix(in srgb, var(--violet) 12%, transparent); }
+    .fa-ag-act[data-ton='inactif'] { color: var(--texte-inactif); background: var(--surface-quaternary); }
+    /* Meme cause que .fa-ligne[data-ton] .fa-act : deux lavis de 12 % empiles font tomber le contraste. */
+    .fa-ag[data-ton] .fa-ag-act { background: var(--bg-secondary); }
+    .fa-ag-detail { margin: 0; font-size: 12.5px; line-height: 1.45; color: var(--text-secondary); text-wrap: pretty; overflow-wrap: anywhere; }
     .fa-filters { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
     .fa-filters select {
       min-height: 44px; padding: 7px 10px; border-radius: 9px; border: 1px solid var(--border-subtle);
@@ -452,7 +679,12 @@ const FENETRE_MS = FENETRE_JOURS * 24 * 60 * 60 * 1000;
 export class FleetActivityComponent implements OnInit, OnDestroy {
   private readonly api = inject(FleetActivityApiService);
   private readonly toast = inject(ToastService);
+  private readonly auth = inject(AuthService);
+  private readonly fleetFilter = inject(FleetFilterService);
+  /** Optionnelle : la page doit rester utilisable hors routeur (test, intégration). */
+  private readonly route = inject(ActivatedRoute, { optional: true });
 
+  protected readonly AgendaIcon = CalendarDays;
   protected readonly ActivityIcon = Activity;
   protected readonly RefreshIcon = RefreshCw;
   protected readonly ZapIcon = Zap;
@@ -471,7 +703,8 @@ export class FleetActivityComponent implements OnInit, OnDestroy {
    * pas deriver de la realite.
    */
   protected readonly periodeSondageSec = 20;
-  protected readonly tab = signal<Tab>('engine');
+  /** L'agenda d'abord : c'est ce que l'administrateur vient chercher (29/09). */
+  protected readonly tab = signal<Tab>('agenda');
   protected readonly loading = signal(false);
   protected readonly online = signal<OnlineUserDto[]>([]);
   protected readonly feed = signal<ActivityFeedItemDto[]>([]);
@@ -487,18 +720,76 @@ export class FleetActivityComponent implements OnInit, OnDestroy {
    * sur cette flotte » — un mensonge rassurant sur l'ecran meme qui sert a verifier que
    * personne n'a touche aux vehicules.
    */
-  private readonly engineErreur = signal(false);
+  /** Lu aussi par le gabarit : la panne se signale au-dessus des onglets (revue du 29/09). */
+  protected readonly engineErreur = signal(false);
   private readonly feedErreur = signal(false);
   private readonly presenceErreur = signal(false);
   private readonly engineCharge = signal(false);
   private readonly feedCharge = signal(false);
   private readonly presenceCharge = signal(false);
 
+  // ── Fil Agenda ─────────────────────────────────────────────────────────────
+  protected readonly pastillesAgenda = PASTILLES_AGENDA;
+  protected readonly agenda = signal<FleetAgendaActivityDto[]>([]);
+  protected readonly agendaCategorie = signal<CategorieAgenda>('');
+  private readonly agendaErreur = signal(false);
+  private readonly agendaCharge = signal(false);
+  /**
+   * Y a-t-il une page apres ? Vrai tant que la derniere page reçue etait PLEINE. Un bouton
+   * « Charger plus » affiche des qu'on a 50 lignes promettait une suite qui n'existait pas
+   * quand la liste tombait pile sur la taille de page, et ne disparaissait jamais.
+   */
+  protected readonly agendaSuite = signal(false);
+  /**
+   * Numero du chargement en cours. Deux pastilles cliquees vite, ou une societe changee
+   * pendant un appel : la reponse la plus LENTE arrivait en dernier et ecrasait la bonne —
+   * des reservations sous la pastille « Agenda ». On ne garde que la reponse du dernier appel.
+   */
+  private agendaSeq = 0;
+  /** Meme garde pour les autres onglets, le temps d'un changement de societe. */
+  private generation = 0;
+
+  // ── Societe (super-admin) ─────────────────────────────────────────────────
+  private readonly estSuperAdmin = computed(() => this.auth.user()?.role === 'SUPER_ADMIN');
+  /**
+   * La societe a interroger : celle du filtre global du bandeau pour un super-admin, rien pour
+   * un administrateur de flotte (le serveur lit la sienne dans son jeton et ignore le parametre).
+   */
+  private readonly societeCible = computed<string | null>(() =>
+    this.estSuperAdmin() ? this.fleetFilter.selectedFleetId() : null,
+  );
+  protected readonly societeManquante = computed(() => this.estSuperAdmin() && !this.fleetFilter.selectedFleetId());
+  /** Derniere societe chargee — `undefined` tant que le premier chargement n'est pas parti. */
+  private societeChargee: string | null | undefined = undefined;
+
   private pollTimer: ReturnType<typeof setInterval> | null = null;
   private mq: MediaQueryList | null = null;
   private onMq: ((e: MediaQueryListEvent) => void) | null = null;
 
+  constructor() {
+    // Le super-admin change de societe dans le bandeau : tout ce qui est a l'ecran appartient a
+    // l'ANCIENNE. On vide avant de recharger — laisser ses lignes pendant l'appel ferait lire
+    // l'activite d'un client sous le nom d'un autre.
+    effect(() => {
+      const societe = this.societeCible();
+      if (this.societeChargee === undefined || societe === this.societeChargee) return;
+      this.societeChargee = societe;
+      untracked(() => this.changerDeSociete());
+    });
+  }
+
   // ── Etats de zone ──────────────────────────────────────────────────────────
+  protected readonly etatAgenda = computed<EtatZone>(() => {
+    if (this.agendaErreur()) return 'erreur';
+    if (!this.agendaCharge()) return 'chargement';
+    return this.agenda().length ? 'rempli' : 'vide';
+  });
+  protected readonly videAgenda = computed(() => {
+    switch (this.agendaCategorie()) {
+      case 'RESERVATION': return 'Aucune action de réservation sur la période';
+      default: return "Aucune action d'agenda sur la période";
+    }
+  });
   protected readonly etatMoteurs = computed<EtatZone>(() => {
     if (this.engineErreur()) return 'erreur';
     if (!this.engineCharge()) return 'chargement';
@@ -541,9 +832,20 @@ export class FleetActivityComponent implements OnInit, OnDestroy {
     const plusAncienne = new Date(tout[tout.length - 1].createdAt).getTime();
     return plusAncienne < Date.now() - FENETRE_MS;
   });
-  protected readonly libelleFenetre = computed(() =>
-    this.fenetreComplete() ? 'Actions · 7 j' : 'Actions chargées',
-  );
+  /**
+   * Les chiffres des tuiles se lisent-ils ? Non tant que la liste n'a pas été reçue, ni quand sa
+   * dernière lecture a échoué (la liste gardée n'est plus à jour) : les tuiles disent alors « — ».
+   */
+  protected readonly compteursLisibles = computed(() => this.engineCharge() && !this.engineErreur());
+  /**
+   * « Commandes moteur », plus « Actions » : depuis que l'onglet Agenda ouvre la page (29/09),
+   * « Actions · 7 j » au-dessus d'un fil de réservations se lisait comme le compte de CE fil.
+   */
+  protected readonly libelleFenetre = computed(() => libelleTuileMoteurs({
+    erreur: this.engineErreur(),
+    charge: this.engineCharge(),
+    fenetreComplete: this.fenetreComplete(),
+  }));
 
   private compte(pred: (c: EngineCommandAuditDto) => boolean): number {
     return this.vus().filter(pred).length;
@@ -605,13 +907,58 @@ export class FleetActivityComponent implements OnInit, OnDestroy {
     return out;
   });
 
+  /**
+   * Le fil Agenda, classe par JOUR DE PARIS (pas celui du poste : une validation a 00:30 a
+   * Paris n'appartient pas a « hier » parce que le poste est en UTC). Le serveur sert du plus
+   * recent au plus ancien ; l'ordre est conserve.
+   */
+  protected readonly groupesAgenda = computed<GroupeAgenda[]>(() => {
+    const maintenant = new Date();
+    const auj = jourParis(maintenant);
+    const cleAuj = cleJour(auj);
+    const h = new Date(Date.UTC(auj.a, auj.m - 1, auj.j - 1));
+    const cleHier = cleJour({ a: h.getUTCFullYear(), m: h.getUTCMonth() + 1, j: h.getUTCDate() });
+
+    const groupes: GroupeAgenda[] = [];
+    let courant: GroupeAgenda | null = null;
+    let cleCourante = '';
+    for (const dto of this.agenda()) {
+      const d = new Date(dto.at);
+      const valide = !Number.isNaN(d.getTime());
+      const cle = valide ? cleJour(jourParis(d)) : 'sans-date';
+      if (!courant || cleCourante !== cle) {
+        cleCourante = cle;
+        const titre = !valide ? 'Date inconnue'
+          : cle === cleAuj ? "Aujourd'hui"
+          : cle === cleHier ? 'Hier'
+          : FMT_JOUR.format(d);
+        // Deux lots du meme jour separes par un autre jour ne devraient pas exister (tri serveur),
+        // mais une cle de suivi en double ferait planter le @for : on la rend unique.
+        courant = { cle: groupes.some((g) => g.cle === cle) ? `${cle}-${groupes.length}` : cle, titre, items: [] };
+        groupes.push(courant);
+      }
+      courant.items.push(this.ligneAgenda(dto, d, valide));
+    }
+    return groupes;
+  });
+
+  private ligneAgenda(dto: FleetAgendaActivityDto, d: Date, valide: boolean): LigneAgenda {
+    return {
+      dto,
+      heure: valide ? FMT_HEURE.format(d) : '—',
+      dateLongue: valide ? FMT_DATE_LONGUE.format(d) : '',
+      libelle: dto.actionLabel || AGENDA_ACTIVITY_ACTION_LABELS[dto.action] || dto.action,
+      ton: this.tonAction(dto.action),
+      statut: statutActionAgenda(String(dto.status), dto.action),
+    };
+  }
+
   ngOnInit(): void {
-    void this.loadEngine();
-    void this.loadOnline();
-    this.pollTimer = setInterval(() => void this.loadOnline(), this.periodeSondageSec * 1000);
+    this.societeChargee = this.societeCible();
 
     // La presence n'a une colonne que s'il y a la place. 1024 px = la largeur en deca de
     // laquelle la colonne de 344 px mangerait la liste au lieu de l'accompagner.
+    // Lu AVANT l'onglet demande : « En ligne » n'existe que sous 1024 px.
     if (typeof window !== 'undefined' && typeof window.matchMedia === 'function') {
       this.mq = window.matchMedia('(min-width: 1024px)');
       this.large.set(this.mq.matches);
@@ -619,10 +966,22 @@ export class FleetActivityComponent implements OnInit, OnDestroy {
         this.large.set(e.matches);
         // En passant au grand ecran, l'onglet « En ligne » disparait : on ne laisse pas
         // l'utilisateur sur un onglet qui n'existe plus.
-        if (e.matches && this.tab() === 'live') this.setTab('engine');
+        if (e.matches && this.tab() === 'live') this.setTab('agenda');
       };
       this.mq.addEventListener('change', this.onMq);
     }
+
+    // `?tab=engine` (lien « Voir l'historique » du bouton moteur) : on ouvre l'onglet demande.
+    const demande = ongletDemande(this.route?.snapshot.queryParamMap.get('tab'), this.large());
+    if (demande) this.tab.set(demande);
+
+    // Agenda, moteurs et presence se chargent toujours : les tuiles et le bandeau d'echecs
+    // (au-dessus des onglets) lisent `engine()`, la presence est une colonne sur grand ecran.
+    void this.loadAgenda();
+    void this.loadEngine();
+    void this.loadOnline();
+    if (this.tab() === 'history') void this.loadFeed();
+    this.pollTimer = setInterval(() => void this.loadOnline(), this.periodeSondageSec * 1000);
   }
 
   ngOnDestroy(): void {
@@ -637,17 +996,113 @@ export class FleetActivityComponent implements OnInit, OnDestroy {
   }
 
   protected reloadActive(): void {
-    if (this.tab() === 'engine') void this.loadEngine();
+    if (this.tab() === 'agenda') void this.loadAgenda();
+    else if (this.tab() === 'engine') void this.loadEngine();
     else if (this.tab() === 'live') void this.loadOnline();
     else void this.loadFeed();
   }
 
+  /**
+   * Le bouton « Rafraichir » de l'en-tete. Les tuiles (Coupures, Rallumages, Refusee en marche,
+   * Echec) et le bandeau « N commandes moteur n'ont pas abouti » sont AU-DESSUS des onglets et
+   * lisent `engine()` : tant que « Moteurs » etait l'onglet par defaut, rafraichir l'onglet
+   * suffisait. Depuis que l'Agenda ouvre la page (29/09), une coupure en echec restait a 0 et
+   * sans bandeau jusqu'a un passage par « Moteurs ». On recharge donc aussi les commandes.
+   */
+  protected rafraichir(): void {
+    this.reloadActive();
+    if (this.tab() !== 'engine') void this.loadEngine();
+  }
+
+  /** « Réessayer » de la note « Commandes moteur indisponibles », depuis un autre onglet que Moteurs. */
+  protected rechargerMoteurs(): void { void this.loadEngine(); }
+
   protected setEngineAction(v: string): void { this.engineAction.set(v); void this.loadEngine(); }
   protected setEngineStatus(v: string): void { this.engineStatus.set(v); void this.loadEngine(); }
 
-  private async loadOnline(): Promise<void> {
+  protected setAgendaCategorie(c: CategorieAgenda): void {
+    if (c === this.agendaCategorie()) return;
+    this.agendaCategorie.set(c);
+    // On vide AVANT l'appel : garder les lignes de l'ancien filtre sous la nouvelle pastille
+    // ferait lire des reservations sous « Agenda » le temps de la reponse.
+    this.agenda.set([]);
+    this.agendaCharge.set(false);
+    void this.loadAgenda();
+  }
+
+  /** Changement de societe (super-admin) : tout ce qui est affiche appartient a l'ancienne. */
+  private changerDeSociete(): void {
+    this.generation++;
+    this.agenda.set([]); this.agendaCharge.set(false); this.agendaSuite.set(false);
+    this.engine.set([]); this.engineCharge.set(false);
+    this.feed.set([]); this.feedCharge.set(false);
+    this.online.set([]); this.presenceCharge.set(false);
+    void this.loadAgenda();
+    void this.loadEngine();
+    void this.loadOnline();
+    if (this.tab() === 'history') void this.loadFeed();
+  }
+
+  private async loadAgenda(): Promise<void> {
+    const seq = ++this.agendaSeq;
+    this.loading.set(true);
+    this.agendaErreur.set(false);
     try {
-      this.online.set(await firstValueFrom(this.api.online()));
+      const page = await firstValueFrom(this.api.agenda({
+        limit: this.pageSize,
+        category: this.agendaCategorie(),
+        fleetId: this.societeCible(),
+      }));
+      if (seq !== this.agendaSeq) return;
+      this.agenda.set(page);
+      this.agendaSuite.set(page.length >= this.pageSize);
+      this.agendaCharge.set(true);
+    } catch (err) {
+      if (seq !== this.agendaSeq) return;
+      swallow('fleet-activity:loadAgenda', err);
+      // Une panne n'est pas un fil vide : l'ecran le dit, avec un bouton Reessayer.
+      this.agenda.set([]);
+      this.agendaSuite.set(false);
+      this.agendaErreur.set(true);
+    } finally {
+      if (seq === this.agendaSeq) this.loading.set(false);
+    }
+  }
+
+  protected async loadMoreAgenda(): Promise<void> {
+    const last = this.agenda()[this.agenda().length - 1];
+    if (!last) return;
+    const seq = this.agendaSeq;
+    this.loading.set(true);
+    try {
+      const more = await firstValueFrom(this.api.agenda({
+        limit: this.pageSize,
+        before: last.at,
+        beforeId: last.id,
+        category: this.agendaCategorie(),
+        fleetId: this.societeCible(),
+      }));
+      // Filtre ou societe changes entre-temps : cette page appartient a une autre liste.
+      if (seq !== this.agendaSeq) return;
+      if (more.length) {
+        // Filet contre un curseur qui se recouvre : une ligne deja affichee n'est pas reprise.
+        const vus = new Set(this.agenda().map((a) => a.id));
+        this.agenda.update((cur) => [...cur, ...more.filter((a) => !vus.has(a.id))]);
+      }
+      this.agendaSuite.set(more.length >= this.pageSize);
+    } catch (err) {
+      if (seq !== this.agendaSeq) return;
+      swallow('fleet-activity:loadMoreAgenda', err);
+      this.toast.error('Chargement impossible', httpFailureMessage(err, "l'activité de l'agenda"));
+    } finally { this.loading.set(false); }
+  }
+
+  private async loadOnline(): Promise<void> {
+    const gen = this.generation;
+    try {
+      const liste = await firstValueFrom(this.api.online(this.societeCible()));
+      if (gen !== this.generation) return;
+      this.online.set(liste);
       this.presenceErreur.set(false);
       this.presenceCharge.set(true);
     } catch (err) {
@@ -658,16 +1113,27 @@ export class FleetActivityComponent implements OnInit, OnDestroy {
   }
 
   private async loadEngine(): Promise<void> {
+    const gen = this.generation;
     this.loading.set(true);
     this.engineErreur.set(false);
     try {
-      this.engine.set(await firstValueFrom(
-        this.api.engineCommands(this.pageSize, undefined, this.engineAction() || undefined, this.engineStatus() || undefined),
-      ));
+      const liste = await firstValueFrom(
+        this.api.engineCommands(
+          this.pageSize, undefined, this.engineAction() || undefined, this.engineStatus() || undefined, this.societeCible(),
+        ),
+      );
+      if (gen !== this.generation) return;
+      this.engine.set(liste);
       this.engineCharge.set(true);
     } catch (err) {
+      if (gen !== this.generation) return;
       swallow('fleet-activity:loadEngine', err);
-      this.engine.set([]);
+      // Une RELECTURE ratée (Rafraîchir, filtre) n'efface plus la dernière liste reçue : une
+      // coupure en échec déjà connue disparaissait du bandeau et le compteur Échec retombait à 0.
+      // La note « indisponibles » et les « — » des tuiles disent qu'elle n'est plus à jour ; dans
+      // l'onglet Moteurs, la zone passe en erreur. Jamais la liste d'une AUTRE société :
+      // changerDeSociete() l'a vidée et a remis engineCharge à false avant cet appel.
+      if (!this.engineCharge()) this.engine.set([]);
       this.engineErreur.set(true);
     } finally { this.loading.set(false); }
   }
@@ -675,11 +1141,15 @@ export class FleetActivityComponent implements OnInit, OnDestroy {
   protected async loadMoreEngine(): Promise<void> {
     const last = this.engine()[this.engine().length - 1];
     if (!last) return;
+    const gen = this.generation;
     this.loading.set(true);
     try {
       const more = await firstValueFrom(
-        this.api.engineCommands(this.pageSize, last.createdAt, this.engineAction() || undefined, this.engineStatus() || undefined),
+        this.api.engineCommands(
+          this.pageSize, last.createdAt, this.engineAction() || undefined, this.engineStatus() || undefined, this.societeCible(),
+        ),
       );
+      if (gen !== this.generation) return;
       if (more.length) this.engine.update((cur) => [...cur, ...more]);
     } catch (err) {
       swallow('fleet-activity:loadMoreEngine', err);
@@ -690,12 +1160,16 @@ export class FleetActivityComponent implements OnInit, OnDestroy {
   }
 
   private async loadFeed(): Promise<void> {
+    const gen = this.generation;
     this.loading.set(true);
     this.feedErreur.set(false);
     try {
-      this.feed.set(await firstValueFrom(this.api.feed({ limit: this.pageSize })));
+      const liste = await firstValueFrom(this.api.feed({ limit: this.pageSize, fleetId: this.societeCible() }));
+      if (gen !== this.generation) return;
+      this.feed.set(liste);
       this.feedCharge.set(true);
     } catch (err) {
+      if (gen !== this.generation) return;
       swallow('fleet-activity:loadFeed', err);
       this.feed.set([]);
       this.feedErreur.set(true);
@@ -705,9 +1179,13 @@ export class FleetActivityComponent implements OnInit, OnDestroy {
   protected async loadMoreFeed(): Promise<void> {
     const last = this.feed()[this.feed().length - 1];
     if (!last) return;
+    const gen = this.generation;
     this.loading.set(true);
     try {
-      const more = await firstValueFrom(this.api.feed({ limit: this.pageSize, before: last.at, beforeId: last.id }));
+      const more = await firstValueFrom(this.api.feed({
+        limit: this.pageSize, before: last.at, beforeId: last.id, fleetId: this.societeCible(),
+      }));
+      if (gen !== this.generation) return;
       if (more.length) this.feed.update((cur) => [...cur, ...more]);
     } catch (err) {
       swallow('fleet-activity:loadMoreFeed', err);
@@ -818,7 +1296,76 @@ export class FleetActivityComponent implements OnInit, OnDestroy {
       case 'CLICK': return 'Clic';
       case 'FORM_SUBMIT': return 'Formulaire';
       case 'SCROLL': return 'Défilement';
+      // 29/09 — ces cinq types s'affichaient bruts (« SESSION_START ») : un code, pas un mot.
+      case 'SESSION_START': return 'Connexion';
+      case 'SESSION_END': return 'Déconnexion';
+      case 'SESSION_RESUME': return 'Reprise de session';
+      case 'IDLE': return 'Inactif';
+      case 'AWAY': return 'Absent';
       default: return t;
+    }
+  }
+
+  /**
+   * Ce que l'evenement concerne. Pour une deconnexion, `target` porte la CAUSE sous forme de
+   * code (`manual`, `tab_close`, `auto`) : l'afficher tel quel ecrivait « tab_close » a l'ecran.
+   */
+  protected cibleFeed(f: ActivityFeedItemDto): string {
+    if (f.type === 'SESSION_END') {
+      switch (f.target) {
+        case 'manual': return 'volontaire';
+        case 'tab_close': return 'onglet fermé';
+        case 'auto': return 'expiration de la session';
+        default: return f.routeLabel ?? f.route ?? '';
+      }
+    }
+    return f.routeLabel ?? f.route ?? f.target ?? '';
+  }
+
+  // ── Fil Agenda : qui, et de quelle couleur ────────────────────────────────
+  protected iconeActeur(kind: FleetAgendaActivityDto['actorKind']): typeof User {
+    switch (kind) {
+      case 'team': return ShieldCheck;
+      case 'public': return Globe;
+      case 'agent': return Sparkles;
+      case 'system': return Settings;
+      default: return User;
+    }
+  }
+
+  /**
+   * Une couleur = une signification (design/TOKENS.md) : vert = acte, rouge = refus ou
+   * incident, ambre = en attente d'une decision, bleu = modification, violet = l'IA,
+   * gris = retrait sans gravite (annulation, suppression, proposition ecartee).
+   */
+  private tonAction(action: string): TonAgenda {
+    switch (action) {
+      case 'reservation_creee':
+      case 'reservation_consignee':
+      case 'reservation_validee':
+      case 'proposition_reservee':
+      case 'evenement_clos':
+        return 'succes';
+      case 'reservation_refusee':
+      case 'incident_signale':
+        return 'alerte';
+      case 'reservation_demandee':
+      case 'public_booking_submitted':
+        return 'attente';
+      case 'agenda_agent_run':
+        return 'agent';
+      case 'reservation_annulee':
+      // Revue du 29/09 : une demande RETIREE par son auteur est un retrait, pas une modification.
+      // Tombee dans default, elle s'affichait en bleu a cote d'une « Reservation annulee » grise.
+      // Garder admin-activity.component.ts (agendaBadgeCls) d'accord : fleet-activity.component.spec.ts.
+      case 'reservation_retiree':
+      case 'evenement_supprime':
+      case 'proposition_ecartee':
+        return 'inactif';
+      default:
+        // Modifications (modifiee, reaffectee, decalee, scindee, reorganisees, evenement_cree,
+        // evenement_modifie, sieges, capacites, plan d'entretien, reglages) et codes inconnus.
+        return 'info';
     }
   }
 }

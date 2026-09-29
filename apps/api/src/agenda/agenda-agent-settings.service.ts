@@ -2,7 +2,9 @@ import {
   BadRequestException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import type {
@@ -16,10 +18,47 @@ import type {
 import type { AuthUser } from '../auth/types/auth-user';
 import { AiUsageService } from '../ai-usage/ai-usage.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { SystemActivityService } from '../system-activity/system-activity.service';
 import { DestinatairesAvisService } from './destinataires-avis.service';
 
 const FREQUENCIES: AgendaAgentFrequency[] = ['daily', 'weekly'];
 const AUTONOMIES: AgendaAgentAutonomy[] = ['suggest', 'auto_high_confidence'];
+
+/**
+ * Valeurs d'une société qui n'a jamais enregistré de réglage — les MÊMES que `toDto` et que les
+ * défauts du schéma. Un premier enregistrement se compare à elles : « activé : non → oui », et non
+ * dix lignes pour des valeurs que l'écran affichait déjà.
+ */
+const DEFAUTS: Required<EditableFieldsBase> = {
+  enabled: false,
+  nightlyHour: 2,
+  frequency: 'daily',
+  autonomy: 'suggest',
+  confidenceThreshold: 80,
+  autoCompleteAfterReservation: false,
+  triggerNightly: true,
+  triggerIncident: true,
+  triggerMaintenance: true,
+  triggerReservation: false,
+};
+
+/** Libellé lisible d'un champ et de sa valeur — ce que le fil « Agenda » affiche. */
+const oui = (b: unknown) => (b ? 'oui' : 'non');
+const CHAMPS: Record<keyof EditableFieldsBase, { libelle: string; valeur: (v: unknown) => string }> = {
+  enabled: { libelle: 'agent activé', valeur: oui },
+  nightlyHour: { libelle: 'heure du passage de nuit', valeur: (v) => `${String(v)} h` },
+  frequency: { libelle: 'fréquence', valeur: (v) => (v === 'weekly' ? 'chaque semaine' : 'chaque nuit') },
+  autonomy: {
+    libelle: 'autonomie',
+    valeur: (v) => (v === 'auto_high_confidence' ? 'réserve au-dessus du seuil' : 'propose seulement'),
+  },
+  confidenceThreshold: { libelle: 'seuil de confiance', valeur: (v) => `${String(v)} %` },
+  autoCompleteAfterReservation: { libelle: 'optimiser après une réservation', valeur: oui },
+  triggerNightly: { libelle: 'passage de nuit', valeur: oui },
+  triggerIncident: { libelle: 'relance après un incident', valeur: oui },
+  triggerMaintenance: { libelle: 'relance après une maintenance', valeur: oui },
+  triggerReservation: { libelle: 'relance après une réservation', valeur: oui },
+};
 
 type SettingsRow = {
   enabled: boolean;
@@ -34,7 +73,8 @@ type SettingsRow = {
   triggerReservation: boolean;
   lastRunAt: Date | null;
 };
-type EditableFields = Partial<Omit<SettingsRow, 'lastRunAt'>>;
+type EditableFieldsBase = Omit<SettingsRow, 'lastRunAt'>;
+type EditableFields = Partial<EditableFieldsBase>;
 
 /**
  * Refonte agenda/IA (2026-07) — Réglages de l'agent d'optimisation d'agenda, PAR FLOTTE.
@@ -45,13 +85,53 @@ type EditableFields = Partial<Omit<SettingsRow, 'lastRunAt'>>;
  */
 @Injectable()
 export class AgendaAgentSettingsService {
+  private readonly logger = new Logger(AgendaAgentSettingsService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly aiUsage: AiUsageService,
     // La règle « qui peut valider / qui est prévenu » vit dans UN seul service, partagé avec le
     // notifieur. La redéfinir ici, c'est se condamner à ce que les deux divergent un jour.
     private readonly destinataires: DestinatairesAvisService,
+    // Journal métier (29/09, @Global) — en dernier et @Optional : sans lui, rien ne casse.
+    @Optional() private readonly systemActivity?: SystemActivityService,
   ) {}
+
+  /**
+   * Une ligne `reglages_agent_modifies` (catégorie AGENDA) — les SEULS champs qui ont changé,
+   * « avant → après », sur la société RÉGLÉE (pas celle de l'utilisateur : un super-admin règle
+   * celle d'un client). Un enregistrement qui ne change rien n'écrit rien.
+   */
+  private journaliserReglages(user: AuthUser, fleetId: string, avant: SettingsRow | null, data: EditableFields): void {
+    if (!this.systemActivity) return;
+    try {
+      const base: EditableFieldsBase = { ...DEFAUTS, ...(avant ?? {}) };
+      const champs = (Object.keys(data) as (keyof EditableFieldsBase)[]).filter(
+        (k) => data[k] !== undefined && data[k] !== base[k],
+      );
+      if (champs.length === 0) return;
+      const detail = champs
+        .map((k) => `${CHAMPS[k].libelle} : ${CHAMPS[k].valeur(base[k])} → ${CHAMPS[k].valeur(data[k])}`)
+        .join(' ; ');
+      this.systemActivity.record({
+        category: 'AGENDA',
+        action: 'reglages_agent_modifies',
+        actor: 'utilisateur',
+        target: null,
+        detail: `Réglages de l'agent — ${detail}`,
+        fleetId,
+        triggeredByUserId: user.id,
+        meta: {
+          champs,
+          avant: Object.fromEntries(champs.map((k) => [k, base[k]])),
+          apres: Object.fromEntries(champs.map((k) => [k, data[k]])),
+          premierReglage: avant === null,
+        },
+      });
+    } catch (e) {
+      this.logger.warn(`journal réglages de l'agent non écrit : ${(e as Error)?.message ?? e}`);
+    }
+  }
 
   /** Résout la flotte cible (propre flotte ou, super-admin, celle passée) + garde de périmètre. */
   private resolveFleetId(user: AuthUser, fleetId?: string): string {
@@ -139,11 +219,22 @@ export class AgendaAgentSettingsService {
     if (!fleet) throw new NotFoundException('Flotte introuvable.');
 
     const data = this.sanitize(dto);
+    // L'état AVANT, pour ne journaliser que ce qui change. Une lecture qui échoue ne bloque pas
+    // l'enregistrement : le journal comparera alors aux défauts.
+    let avant: SettingsRow | null = null;
+    if (this.systemActivity) {
+      try {
+        avant = (await this.prisma.agendaAgentSettings.findUnique({ where: { fleetId: id } })) as SettingsRow | null;
+      } catch {
+        avant = null;
+      }
+    }
     const row = await this.prisma.agendaAgentSettings.upsert({
       where: { fleetId: id },
       create: { fleetId: id, updatedByUserId: user.id, ...data },
       update: { updatedByUserId: user.id, ...data },
     });
+    this.journaliserReglages(user, id, avant, data);
     const monthCostEur = await this.aiUsage.monthCostEur(id, user);
     return this.toDto(fleet, row, monthCostEur);
   }

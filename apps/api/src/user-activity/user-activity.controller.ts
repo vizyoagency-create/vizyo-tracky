@@ -136,6 +136,10 @@ export class UserActivityController {
     @Query('beforeId') beforeId?: string,
     @Query('category') category?: string,
     @Query('status') status?: string,
+    // 29/09 — filtre société + période (ex. « l'agenda de tel client la semaine dernière »).
+    @Query('fleetId') fleetId?: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
   ) {
     return this.system.getFeed({
       limit: limit ? parseInt(limit, 10) || 60 : 60,
@@ -143,6 +147,9 @@ export class UserActivityController {
       beforeId,
       category,
       status,
+      fleetId,
+      from,
+      to,
     }, req.user);
   }
 
@@ -208,6 +215,34 @@ export class UserActivityController {
       { limit: limit ? parseInt(limit, 10) || 50 : 50, before, action, status },
       req.user,
       scope,
+    );
+  }
+
+  /**
+   * 29/09 — fil « Agenda » de la société : réservations, gestes d'agenda, passages de l'agent.
+   * Même périmètre que les autres fils : un administrateur de flotte est borné à SA société
+   * (`?fleetId` ignoré) ; un super-admin passe `?fleetId`. Filtre `category` : RESERVATION | AGENDA.
+   * Les gestes d'un super-admin ou du propriétaire s'y lisent « Équipe Tracky » (jamais l'identité).
+   * Le lecteur est transmis : pour un super-admin non-owner, les gestes de l'owner sont exclus
+   * (comme dans /admin/activity › Système) ; un administrateur de flotte les garde.
+   */
+  @Get('fleet-admin/activity/agenda')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN)
+  fleetAgenda(
+    @Req() req: AuthenticatedRequest,
+    @Query('limit') limit?: string,
+    @Query('before') before?: string,
+    @Query('beforeId') beforeId?: string,
+    @Query('category') category?: string,
+    @Query('fleetId') fleetId?: string,
+  ) {
+    const scope = this.fleetScope(req.user, fleetId);
+    if (!scope) return [];
+    return this.svc.getAgendaFeed(
+      { limit: limit ? parseInt(limit, 10) || 50 : 50, before, beforeId, category },
+      scope,
+      req.user,
     );
   }
 }

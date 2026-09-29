@@ -119,6 +119,15 @@ const EMAIL_TEXTE_ATTENTE = '#885B05';  // 5,92:1 sur blanc
 /** Texte secondaire. #6B7570 tombait a 4,4977 — SOUS le seuil, et invisible a l'arrondi. */
 const EMAIL_TEXTE_SECOND = '#656F68';   // 5,21:1 sur blanc
 
+/**
+ * Pourquoi une réservation publique déjà confirmée est « modifiée » (cinquième revue du 29/09, C1) —
+ * dit par l'émetteur (le notifier), jamais deviné par le gabarit :
+ *  - `changement` : le véhicule ou le créneau d'une ligne a changé (décalage, réaffectation, édition) ;
+ *    rien n'a été perdu à cet instant ;
+ *  - `retrait` : une ligne ferme de la demande vient d'être annulée, d'autres restent.
+ */
+export type MotifModificationReservation = 'changement' | 'retrait';
+
 export interface SendEmailParams {
   to: string;
   subject: string;
@@ -1888,32 +1897,80 @@ Ouvrir les demandes : ${opts.agendaUrl}`;
    * créneau (une ligne décalée seule, une voiture gardée jusqu'à jeudi puis relayée). Le récapitulatif
    * écrit alors UNE ligne par véhicule avec SON créneau, au lieu d'un créneau et de toutes les
    * plaques — qui annonçait au nouvel horaire un véhicule resté à l'ancien. Ignoré sous deux lignes.
+   *
+   * `partielle` (quatrième revue du 29/09, C1) : une demande groupée dont une partie a été refusée ou
+   * annulée (une ligne sœur CANCELLED) alors qu'une autre reste ferme. Le demandeur de 11 places
+   * recevait « votre demande a été validée — Véhicule : A » (9 places) et se présentait à 11. Sujet et
+   * phrase disent désormais « retenue qu'en partie : voici ce qui reste confirmé », et le rappel
+   * « Places demandées » s'ajoute quand il est connu (`placesDemandees`). Qui décide « partielle » :
+   * le notifier, depuis l'état du groupe — jamais ce gabarit. Même modèle journalisé.
+   *
+   * `motif` (cinquième revue du 29/09, C1) — obligatoire avec `modifiee` : POURQUOI elle l'est, dit
+   * par le notifier ({@link MotifModificationReservation}). Une demande déjà retenue en partie qu'on
+   * DÉCALE (`changement` + `partielle`) recevait « modifiée et n'est retenue qu'en partie : une partie
+   * des véhicules prévus n'est plus maintenue » — une perte annoncée qui n'avait pas eu lieu, et plus
+   * un mot du créneau changé. Désormais :
+   *  - `changement` : « le véhicule ou le créneau a changé » partout (sujet, phrase, bandeau, aperçu,
+   *    texte) ; avec `partielle`, un simple rappel « elle n'est retenue qu'en partie » + les places ;
+   *  - `retrait` : « une partie des véhicules prévus n'est plus maintenue » — la seule variante qui
+   *    annonce une perte ; sans `partielle`, « elle reste confirmée ».
+   * Sans motif (appelant hors TypeScript), `changement` : le sens historique de `modifiee` (C5).
    */
-  buildReservationConfirmedEmail(opts: {
-    fleetName: string;
-    slotLabel: string;
-    destination?: string | null;
-    vehicle?: string | null;
-    modifiee?: boolean;
-    lignes?: { vehicle: string; slotLabel: string }[];
-  }): { subject: string; html: string; text: string } {
+  buildReservationConfirmedEmail(
+    opts: {
+      fleetName: string;
+      slotLabel: string;
+      destination?: string | null;
+      vehicle?: string | null;
+      lignes?: { vehicle: string; slotLabel: string }[];
+      partielle?: boolean;
+      placesDemandees?: number | null;
+    } & ({ modifiee?: false; motif?: undefined } | { modifiee: true; motif: MotifModificationReservation }),
+  ): { subject: string; html: string; text: string } {
     const modifiee = opts.modifiee === true;
-    const subject = modifiee ? `Votre réservation a été modifiée` : `Votre réservation est confirmée`;
+    const retrait = modifiee && opts.motif === 'retrait';
+    const partielle = opts.partielle === true;
+    const placesDemandees =
+      partielle && typeof opts.placesDemandees === 'number' && Number.isFinite(opts.placesDemandees) && opts.placesDemandees > 0
+        ? Math.floor(opts.placesDemandees)
+        : null;
+    const subject = modifiee
+      ? partielle && retrait
+        ? `Votre réservation a été modifiée : elle n'est retenue qu'en partie`
+        : `Votre réservation a été modifiée`
+      : partielle
+        ? `Votre demande n'a été retenue qu'en partie`
+        : `Votre réservation est confirmée`;
     const parVehicule = (opts.lignes ?? []).filter((l) => l.vehicle && l.slotLabel);
     const detaille = parVehicule.length > 1;
     const rows = detaille
       ? [
           opts.destination ? this.kvRow('Destination', opts.destination) : '',
+          placesDemandees ? this.kvRow('Places demandées', String(placesDemandees)) : '',
           ...parVehicule.map((l) => this.kvRow(`Véhicule ${l.vehicle}`, l.slotLabel)),
         ].filter(Boolean)
       : [
           this.kvRow('Créneau', opts.slotLabel),
           opts.destination ? this.kvRow('Destination', opts.destination) : '',
+          placesDemandees ? this.kvRow('Places demandées', String(placesDemandees)) : '',
           this.kvRow('Véhicule', opts.vehicle || 'attribué par la société'),
         ].filter(Boolean);
+    const societe = `<span style="color:${EMAIL_ACCENT_TEXTE};font-weight:600;">${escapeHtml(opts.fleetName)}</span>`;
+    const fort = (mot: string) => `<span class="m-title" style="color:#0A1311;font-weight:600;">${mot}</span>`;
     const phrase = modifiee
-      ? `Bonjour, votre réservation auprès de <span style="color:${EMAIL_ACCENT_TEXTE};font-weight:600;">${escapeHtml(opts.fleetName)}</span> a été <span class="m-title" style="color:#0A1311;font-weight:600;">modifiée</span> : le véhicule ou le créneau a changé. Elle reste confirmée ; voici le récapitulatif à jour :`
-      : `Bonjour, votre demande auprès de <span style="color:${EMAIL_ACCENT_TEXTE};font-weight:600;">${escapeHtml(opts.fleetName)}</span> a été <span class="m-title" style="color:#0A1311;font-weight:600;">validée</span>. Voici le récapitulatif :`;
+      ? retrait
+        ? partielle
+          ? `Bonjour, votre réservation auprès de ${societe} a été ${fort('modifiée')} et n'est retenue ${fort("qu'en partie")} : une partie des véhicules prévus n'est plus maintenue. Voici ce qui reste confirmé :`
+          : `Bonjour, votre réservation auprès de ${societe} a été ${fort('modifiée')} : une partie des véhicules prévus n'est plus maintenue. Elle reste confirmée ; voici le récapitulatif à jour :`
+        : partielle
+          ? `Bonjour, votre réservation auprès de ${societe} a été ${fort('modifiée')} : le véhicule ou le créneau a changé. Pour rappel, elle n'est retenue ${fort("qu'en partie")}. Voici ce qui reste confirmé :`
+          : `Bonjour, votre réservation auprès de ${societe} a été ${fort('modifiée')} : le véhicule ou le créneau a changé. Elle reste confirmée ; voici le récapitulatif à jour :`
+      : partielle
+        ? `Bonjour, votre demande auprès de ${societe} n'a été retenue <span class="m-title" style="color:#0A1311;font-weight:600;">qu'en partie</span> : une partie des véhicules prévus n'a pas pu être retenue. Voici ce qui reste confirmé :`
+        : `Bonjour, votre demande auprès de ${societe} a été <span class="m-title" style="color:#0A1311;font-weight:600;">validée</span>. Voici le récapitulatif :`;
+    const conseil = partielle
+      ? `Ce qui reste ne suffit pas pour votre groupe ? Répondez à cet e-mail pour prévenir la société, ou déposez une nouvelle demande depuis le même lien.`
+      : `Un imprévu ? Répondez à cet e-mail pour prévenir la société. À très bientôt.`;
     const body = `
         <tr><td style="padding:28px 36px 0;">
           <h1 class="m-title" style="margin:0 0 12px;font-family:${EMAIL_FONT};font-size:25px;line-height:1.15;font-weight:800;letter-spacing:-0.025em;color:#0A1311;">${subject}</h1>
@@ -1921,25 +1978,46 @@ Ouvrir les demandes : ${opts.agendaUrl}`;
           <table class="m-panel" role="presentation" width="100%" style="background:#F6F9F7;border:1px solid rgba(255,255,255,.07);border-radius:12px;border-collapse:separate;">
             ${rows.join('')}
           </table>
-          <p class="m-text" style="margin:20px 0 0;font-family:${EMAIL_FONT};font-size:13px;line-height:1.6;color:${EMAIL_TEXTE_SECOND};">Un imprévu ? Répondez à cet e-mail pour prévenir la société. À très bientôt.</p>
+          <p class="m-text" style="margin:20px 0 0;font-family:${EMAIL_FONT};font-size:13px;line-height:1.6;color:${EMAIL_TEXTE_SECOND};">${conseil}</p>
         </td></tr>`;
-    const html = this.shell({ eyebrow: modifiee ? 'Réservation · Modifiée' : 'Réservation · Confirmée',
+    const html = this.shell({
+      // Un changement de créneau ou de véhicule reste « Modifiée » même sur une demande tenue en partie :
+      // le bandeau et l'aperçu disent ce qui VIENT de se passer, le rappel « en partie » suit dans la phrase.
+      eyebrow: modifiee
+        ? retrait && partielle ? 'Réservation · Retenue en partie' : 'Réservation · Modifiée'
+        : partielle ? 'Réservation · Retenue en partie' : 'Réservation · Confirmée',
       preheader: modifiee
-        ? 'Le véhicule ou le créneau de votre réservation a changé : voici le récapitulatif à jour.'
-        : 'Le véhicule, le créneau et le point de retrait sont fixés.',
+        ? retrait
+          ? 'Une partie des véhicules prévus n\'est plus maintenue : voici ce qui reste confirmé.'
+          : partielle
+            ? 'Le véhicule ou le créneau de votre réservation a changé. Pour rappel, elle n\'est retenue qu\'en partie.'
+            : 'Le véhicule ou le créneau de votre réservation a changé : voici le récapitulatif à jour.'
+        : partielle
+          ? 'Une partie de votre demande n\'a pas pu être retenue : voici ce qui reste confirmé.'
+          : 'Le véhicule, le créneau et le point de retrait sont fixés.',
       footer: 'VIZYO TRACKY · RÉSERVATION DE VÉHICULES · E-mail automatique, ne pas répondre.', body });
+    const rappelPlaces = placesDemandees ? `Places demandées : ${placesDemandees}\n` : '';
     const recap = detaille
-      ? `${opts.destination ? `Destination : ${opts.destination}\n` : ''}${parVehicule.map((l) => `Véhicule ${l.vehicle} : ${l.slotLabel}`).join('\n')}`
+      ? `${opts.destination ? `Destination : ${opts.destination}\n` : ''}${rappelPlaces}${parVehicule.map((l) => `Véhicule ${l.vehicle} : ${l.slotLabel}`).join('\n')}`
       : `Créneau : ${opts.slotLabel}${opts.destination ? `\nDestination : ${opts.destination}` : ''}
-Véhicule : ${opts.vehicle || 'attribué par la société'}`;
+${rappelPlaces}Véhicule : ${opts.vehicle || 'attribué par la société'}`;
+    const introTexte = modifiee
+      ? retrait
+        ? partielle
+          ? `Votre réservation auprès de ${opts.fleetName} a été modifiée et n'est retenue qu'en partie : voici ce qui reste confirmé.`
+          : `Votre réservation auprès de ${opts.fleetName} a été modifiée : une partie des véhicules prévus n'est plus maintenue. Elle reste confirmée.`
+        : partielle
+          ? `Votre réservation auprès de ${opts.fleetName} a été modifiée : le véhicule ou le créneau a changé. Pour rappel, elle n'est retenue qu'en partie.`
+          : `Votre réservation auprès de ${opts.fleetName} a été modifiée : le véhicule ou le créneau a changé. Elle reste confirmée.`
+      : partielle
+        ? `Votre demande auprès de ${opts.fleetName} n'a été retenue qu'en partie : voici ce qui reste confirmé.`
+        : `Votre réservation auprès de ${opts.fleetName} est confirmée.`;
     const text = `Bonjour,
 
-${modifiee
-    ? `Votre réservation auprès de ${opts.fleetName} a été modifiée : le véhicule ou le créneau a changé. Elle reste confirmée.`
-    : `Votre réservation auprès de ${opts.fleetName} est confirmée.`}
+${introTexte}
 ${recap}
 
-Un imprévu ? Répondez à cet e-mail. À bientôt.
+${partielle ? 'Ce qui reste ne suffit pas ? Répondez à cet e-mail pour prévenir la société.' : 'Un imprévu ? Répondez à cet e-mail. À bientôt.'}
 — L'équipe Vizyo`;
     return { subject, html, text };
   }
