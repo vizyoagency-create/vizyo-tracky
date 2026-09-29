@@ -6806,11 +6806,82 @@ confondre les deux ferait accuser le mauvais coupable.
   session `tmux` le fait proprement ; ❌ ne pas redémarrer (V39) sans avoir tranché : on couperait un test peut-être voulu.
 - **Seuil de réescalade** : gravité 2 si le journal dépasse 500 Mo ou si des connexions arrivent d'adresses qui ne sont pas des boîtiers ;
   gravité 1 si le processus exécute autre chose que l'analyse de trames. `APPLIQUE` quand le bloc VPS-M127 rend « ✅ aucune ».
+- **2026-09-29 (2ᵉ passage) — inchangé, rien n'a bougé en 24 h** : même pid 4030432, root, **38 h** d'âge, toujours `session-6560.scope`,
+  port ouvert (v4 + v6), 0 connexion établie ; journal **12 588 016 o, dernière écriture 27/09 12:19:48** (fin de la session unique du FMC130 :
+  *« 347 paquet(s) AVL · 822 s »*) ; 12 lignes `ufw.log` vers 5027 (balayages rejetés). Le seuil de réescalade n'est pas franchi ; la question
+  « le test est-il fini ? » reste sans réponse — **V41 J+1**.
+
+---
+
+
+## VPS-051 — Le nom du repère de repli porte le code ENTRANT dès qu'une préversion a été tirée avant `deploy.sh`
+
+- **Domaine** : déploiement · **Gravité** : 3 · **Statut** : `A_TRAITER` — tâche **V43**
+- **Vu** : 2026-09-29 (1ᵉʳ passage) · **Mesure** (lecture seule : `docker images`, `docker inspect` sous `timeout 20`, journal T33,
+  `git log origin/main`, `deploy.sh` d'`origin/main`) :
+
+  | Repère | Image sous le repère | Née le | Déploiement qui la porte dans son nom | Ce qu'elle est réellement |
+  |---|---|---|---|---|
+  | `tracky-api:avant-20260928-1909-ee134038` | `72f95e127711` | 28/09 12:51:14 | `ee134038` (19:14:24, 286 s) | l'image **en service avant** `ee134038`, mise en service à 15:42 par `436d9ffe` |
+  | `tracky-api:avant-20260928-1537-436d9ffe` | `baecee3f24b7` | 28/09 09:56:30 | `436d9ffe` (15:42:42, 3 278 s) | l'image en service avant `436d9ffe` (celle de `d09aa605`, 11:41) |
+  | `tracky-api:avant-20260928-1338-00606db4` | `baecee3f24b7` | 28/09 09:56:30 | `00606db4` — **aucune ligne au journal T33** | le même repli que la ligne du dessus : un passage de 13:38 a posé ses repères puis n'a rien recréé |
+
+  Le 27/09 encore, le nom portait le code **sortant** (`avant-20260927-1810-908d20a0` pour le déploiement de `a3a8be21`).
+- **QUOI — la cause** : `etiqueter_repli` lit `git rev-parse --short HEAD` **avant** son propre `git pull` (`deploy.sh` l. 695-699) — juste,
+  tant que personne n'a tiré avant lui. Depuis le 27/09, le mode opératoire *« préversion sur la démo »* fait `git pull` + `compose build` sur
+  le VPS **avant** `deploy.sh` : `HEAD` est déjà le code entrant quand le repère est nommé. **L'image sous le repère reste la bonne** (règle du
+  20/09 : l'image du conteneur en service) ; c'est le **nom** qui ment. Et un passage refusé par la garde **après** la pose (13:38 → pas de ligne
+  T33) laisse un repère qui occupe une des 3 places de `REPLIS_A_GARDER` sans ajouter de profondeur.
+- **Pourquoi c'est un constat** : en incident, on choisit un repli **par son nom**. `deploy.sh --repli avant-20260928-1909-ee134038` ne rend
+  **pas** `ee134038` : il rend `436d9ffe`. Le repère le plus récent reste correct (c'est « le précédent ») ; tout choix fondé sur le sha est faux
+  d'un cran.
+- **`pourquoiInvisible`** : le script affiche le nom qu'il pose, pas ce que le sha désigne ; et le collecteur, qui le vérifiait par le sha
+  (VPS-M116), en a conclu « 🔴 le repli MENT » — le mauvais coupable (VPS-M129).
+- **QUOI FAIRE — V43** (code de `deploy.sh`, hors de l'audit) : nommer le repère d'après le **dernier sha journalisé** (`tail -1` du journal T33,
+  champ `sha`) — c'est le code qui tourne, par construction — et ne se replier sur `HEAD` que si le journal est vide. Et poser les repères
+  **après** `garde recreation` plutôt qu'avant le build, ou les retirer si la garde refuse. Gain : un nom de repli qui dit la vérité ; risque
+  faible (le harnais `deploy.test.sh` a 170 contrôles) ; contrepartie : une lecture de fichier de plus.
+- **`aNePasFaire`** : ❌ ne pas renommer à la main les repères existants (ils seront élagués par les 3 prochains déploiements) ; ❌ ne pas
+  « corriger » en retirant le `git pull` de la préversion : c'est lui qui permet la recette sur la démo avant la production.
+- **Seuil de réescalade** : gravité 2 si un repli est lancé **par le nom** et rend le mauvais code.
 
 ---
 
 
 ## Constats de méthode (sur l'audit lui-même)
+
+### VPS-M129 — « 🔴 le repli MENT », deuxième fausse alerte : la vérification supposait qu'un build produit une image neuve, et que le nom du repère dit le code sortant
+
+- **Domaine** : méthode · **Gravité** : 3 · **Statut** : `APPLIQUE` (2026-09-29 — fonction `verifie_repli_plausible`, bancée)
+- **Vu** : 2026-09-29 · **Mesure** : §4 *« tracky-api 🔴 le repli MENT : tracky-api:avant-20260928-1909-ee134038 = 72f95e127711, mais le conteneur
+  tournait sur 11ad5120fb74 le 2026-09-28 »* — et la même ligne pour `tracky-web`. Or 6 déploiements ont eu lieu depuis le passage de référence
+  (06:22 → 19:14), et `72f95e127711` est bien l'image que `436d9ffe` avait mise en service (VPS-051).
+- **QUOI** : la preuve par chaîne de VPS-M116 exige que l'image du repère soit **née pendant** le déploiement dont le repère porte le sha. Deux
+  hypothèses sont tombées le 28/09 : (1) une image n'est pas neuve si le service n'a pas changé — compose rend le cache (`436d9ffe` ne touchait
+  que le web : l'API déployée à 15:42 était née à 12:51) ; (2) le sha du nom est le code **entrant** quand une préversion a été tirée avant.
+- **`pourquoiInvisible`** : M116 avait été écrit sur un jour (23/09) où chaque déploiement reconstruisait l'API et où personne ne tirait avant
+  `deploy.sh`. La règle était juste pour ce jour-là.
+- **Correctif** : si la chaîne ne se prouve pas, le bloc teste une **plausibilité** avant de crier : l'image du repère est présente, **différente**
+  de celle en service, et **née avant la fin de l'avant-dernier déploiement journalisé** (elle existait quand celui-ci a fini). Il le dit
+  *« ✅ repli PLAUSIBLE … PAS une preuve d'identité »* et nomme VPS-M129. Le 🔴 reste pour un repère qui pointe l'image en service (repli nul) ou
+  une image née **après**. **Banc** (VPS, 1,2 s) : les deux services ressortent « PLAUSIBLE », `72f95e127711` née 12:51:14 et `aa9c56a1f2c3`
+  née 15:40:12, avant la fin de `436d9ffe` (15:42:42). `bash -n` OK.
+- **`aNePasFaire`** : ❌ ne pas écrire « repli RÉEL » sans l'image de chaque déploiement : le journal T33 ne porte que des `containerId`,
+  détruits au déploiement suivant. La vraie preuve viendra de `deploy.sh` (journaliser l'`ImageId`, piste de V43).
+- **Reste ouvert** : porter l'`ImageId` au journal T33 ; alors la chaîne se prouvera par égalité, sans heuristique d'horloge.
+
+### VPS-M128 — Les écoutes publiques n'étaient pas comparées d'un passage à l'autre : un port neuf de conteneur serait passé sans un mot
+
+- **Domaine** : méthode · **Gravité** : 4 · **Statut** : `APPLIQUE` (2026-09-29 — bloc « Écoutes publiques : NEUF ou DISPARU », 1ʳᵉ pose)
+- **Vu** : 2026-09-28 (angle mort n° 1 du rapport) · traité le 2026-09-29.
+- **QUOI** : VPS-M127 qualifie une écoute tenue par **l'hôte** ; une écoute publiée par un **conteneur** (un `docker-proxy` de plus) restait une
+  ligne dans une liste. Même trou que VPS-M92 avant les conteneurs : un inventaire qui montre sans comparer.
+- **Correctif** : `portsEcouteListe` (proto/port, adresses publiques seulement : ni 127.x, ni `[::1]`, ni 172.x/10.x des ponts Docker) est
+  imprimée pour `chiffres`, puis comparée **par différence d'ensembles** au dernier manifeste publié : 🟠 NEUVE(S), ℹ️ DISPARUE(S). Liste
+  vide ⇒ « NON FAITE », jamais « tout a disparu ». **Première pose** ce matin : `tcp/22,tcp/443,tcp/5023,tcp/5027,tcp/80` ; la comparaison
+  s'arme au passage suivant. **Banc** (VPS) : la liste sort en une ligne ; `bash -n` OK. Coût : un `ss` et un `jq` sur fichier local.
+- **`aNePasFaire`** : ❌ ne pas y mettre les adresses d'écoute complètes : les ponts Docker changent d'IP à chaque recréation, la liste
+  crierait tous les jours.
 
 ### VPS-M127 — Une écoute publique tenue par un processus de l'hôte était listée parmi les ports, sans un mot, pendant quatorze heures
 
