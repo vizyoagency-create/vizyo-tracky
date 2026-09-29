@@ -1185,7 +1185,9 @@ function groupeReservationId(ev: VehicleEventDto): string | null {
        cette feuille et, à spécificité égale, l'emportait — le menu « ⋯ » s'ouvrait vers la droite
        depuis le bouton et sortait de l'écran (retour du propriétaire, 29/09). */
     .ag-dd-menu.ag-dd-menu--right { left: auto; right: 0; max-width: min(320px, calc(100vw - 32px)); }
-    .ag-dd-item-row { display: inline-flex; align-items: center; gap: 9px; }
+    /* Le libellé ne se coupe pas (recette du 29/09 : « Réorganiser des / réservations » sur deux
+       lignes dans un menu resté à sa largeur minimale) : le menu s'élargit, jusqu'à sa largeur max. */
+    .ag-dd-item-row { display: inline-flex; align-items: center; gap: 9px; white-space: nowrap; }
     .ag-dd-item-row lucide-icon { color: var(--tracky-light); }
     .ag-icon-btn--plus { border: 1px solid var(--border-subtle); background: var(--bg-secondary); width: 36px; height: 36px; border-radius: 10px; }
     .ag-icon-btn--on { color: var(--fg-primary); background: var(--bg-tertiary); }
