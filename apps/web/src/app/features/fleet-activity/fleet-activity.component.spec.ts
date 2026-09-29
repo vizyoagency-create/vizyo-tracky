@@ -200,6 +200,13 @@ describe('Fil Agenda — le ton d’un geste est le même sur le fil client et s
     expect(tonClient('reservation_retiree')).toBe(tonClient('reservation_annulee'));
   });
 
+  it('« Propositions écartées en lot » (Réorganiser, 29/09) est un écart, gris comme l’écart à l’unité — pas une modification', () => {
+    // La cohérence entre écrans ne le voyait pas : les deux tombaient dans le même `default` (bleu).
+    expect(tonClient('propositions_ecartees')).toBe('inactif');
+    expect(tonClient('propositions_ecartees')).toBe(tonClient('proposition_ecartee'));
+    expect(classeAdmin('propositions_ecartees')).toBe(BADGE_DU_TON.inactif);
+  });
+
   it('chaque code d’action d’agenda a la MÊME couleur sur les deux écrans', () => {
     const codes = Object.keys(AGENDA_ACTIVITY_ACTION_LABELS);
     expect(codes.length).toBeGreaterThan(0);

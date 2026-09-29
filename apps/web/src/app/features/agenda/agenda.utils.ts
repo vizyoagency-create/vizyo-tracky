@@ -942,23 +942,36 @@ export interface EtatMenuReorganiser {
   jours: number;
   /** IA active pour la société du bandeau : sinon, les propositions ne comptent pas. */
   iaActive: boolean;
-  /** Propositions de l'agent en attente, montrées par la page. */
-  propositions: number;
+  /**
+   * Propositions que Réorganiser écarterait sur ces jours — relecture du 29/09 : lues par la
+   * simulation de la feuille (mêmes véhicules gérés, même fenêtre), plus le compte de la page (toute la
+   * société, figé depuis son chargement). `null` = pas encore lu, ou lecture en échec.
+   */
+  propositions: number | null;
 }
 
-/** L'entrée « Réorganiser » du menu : grisée ou non, et la ligne sous son libellé (`null` = rien à dire). */
-export function menuReorganiser(e: EtatMenuReorganiser): { grisee: boolean; ligne: string | null } {
-  const n = e.iaActive ? Math.max(0, e.propositions) : 0;
+/**
+ * L'entrée « Réorganiser » du menu : grisée ou non, son libellé, et la ligne sous le libellé (`null` =
+ * rien à dire). Libellé « Réorganiser » quand elle reprend aussi des propositions (IA active et au
+ * moins une), comme le titre de la feuille ; « Réorganiser des réservations » sinon.
+ */
+export function menuReorganiser(e: EtatMenuReorganiser): { grisee: boolean; ligne: string | null; libelle: string } {
+  const inconnu = e.iaActive && e.propositions === null;
+  const n = e.iaActive ? Math.max(0, e.propositions ?? 0) : 0;
+  const libelle = n > 0 ? 'Réorganiser' : 'Réorganiser des réservations';
   // Compte inconnu (pas encore lu, lecture en échec) ou des réservations : active, sans rien dire.
-  if (e.reservations !== 0) return { grisee: false, ligne: null };
+  if (e.reservations !== 0) return { grisee: false, ligne: null, libelle };
   if (n > 0) {
-    return { grisee: false, ligne: `Aucune réservation à venir · ${n} proposition${n > 1 ? 's' : ''} de l'agent` };
+    return { grisee: false, ligne: `Aucune réservation à venir · ${n} proposition${n > 1 ? 's' : ''} de l'agent`, libelle };
   }
+  // IA active, propositions pas encore lues : on ne grise pas sur une supposition.
+  if (inconnu) return { grisee: false, ligne: null, libelle };
   return {
     grisee: true,
     ligne: e.iaActive
       ? `Aucune réservation à venir sur ${e.jours} jours, ni proposition de l'agent`
       : `Aucune réservation à venir sur ${e.jours} jours`,
+    libelle,
   };
 }
 
@@ -1021,6 +1034,50 @@ export function propositionsSurPeriode(
     const fin = Date.parse(p.endAt);
     return debut >= maintenantMs && debut < periode.to && fin > periode.from;
   }).length;
+}
+
+/**
+ * Ce que la page propose après une immobilisation (création, ou jours ajoutés d'une prolongation) —
+ * relecture du 29/09 : la fenêtre qui porte le plus de propositions du véhicule, leur nombre, et la
+ * période du pré-réglage de la feuille. `null` = rien à proposer.
+ *
+ * `finInfinie` (incident sans date de fin) : la fenêtre la plus lointaine s'arrête à un horizon de 30
+ * jours que PERSONNE n'a saisi — le pré-réglage part alors sans fin (`to: null`), et la feuille dit
+ * « à partir du …, HH:mm (30 jours) » au lieu d'une date de fin inventée (« du 29 sept. au 29 oct. »).
+ * Même fenêtre envoyée au serveur : seule la phrase change.
+ */
+export function propositionsSousImmobilisation(
+  propositions: readonly { vehicleId: string; startAt: string; endAt: string }[],
+  vehicleId: string,
+  fenetres: readonly { from: number; to: number }[],
+  finInfinie: boolean,
+  maintenantMs: number,
+): { n: number; from: string; to: string | null } | null {
+  let meilleure: { from: number; to: number } | null = null;
+  let n = 0;
+  for (const w of fenetres) {
+    const k = propositionsSurPeriode(propositions, vehicleId, w, maintenantMs);
+    if (k > n) {
+      n = k;
+      meilleure = w;
+    }
+  }
+  if (!meilleure) return null;
+  return { n, from: new Date(meilleure.from).toISOString(), to: finDuPreset(meilleure, fenetres, finInfinie) };
+}
+
+/**
+ * La fin à donner à un pré-réglage de Réorganiser pour la fenêtre `w` parmi `fenetres` : `null` si
+ * l'immobilisation n'a pas de fin (`finInfinie`) et que `w` est la fenêtre qui court jusqu'à l'horizon
+ * — la dernière. Sert aussi au renvoi des réservations refusées (même date inventée, même correction).
+ */
+export function finDuPreset(
+  w: { from: number; to: number },
+  fenetres: readonly { from: number; to: number }[],
+  finInfinie: boolean,
+): string | null {
+  const derniere = Math.max(...fenetres.map((f) => f.to), w.to);
+  return finInfinie && w.to >= derniere ? null : new Date(w.to).toISOString();
 }
 
 /**

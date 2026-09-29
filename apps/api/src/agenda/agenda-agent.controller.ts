@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Query, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import type { EcarterPropositionsDto } from '@vizyo/tracky-shared';
 import { RequirePermissions } from '../auth/decorators/permissions.decorator';
@@ -91,6 +91,8 @@ export class AgendaAgentController {
    * que `dismiss`, et le serveur ne prend que les véhicules dont l'appelant gère les réservations.
    */
   @Post('proposals/ecarter')
+  // 200 et non 201 : la simulation (le cas par défaut) ne crée rien — comme `reservations/reorganiser`.
+  @HttpCode(200)
   @Roles(...ALL_ROLES)
   @RequirePermissions('reservations_manage')
   ecarterEnLot(@Req() req: AuthenticatedRequest, @Body() dto: EcarterPropositionsDto) {

@@ -136,6 +136,23 @@ export class PermissionsResolverService {
   }
 
   /**
+   * Parmi ces véhicules, ceux sur lesquels l'utilisateur a `key` — la règle de `canOnVehicle`
+   * (administrateurs : tous ; sinon le scope le plus spécifique gagne), mais en UNE requête
+   * (`resolveForVehicles`) au lieu d'une par véhicule. Sert aux gestes de masse (29/09 : écarter
+   * un lot de propositions de l'agent sur tout le parc).
+   */
+  async vehiculesAutorises(
+    user: AuthUser,
+    vehicleIds: string[],
+    key: keyof UserPermissions,
+  ): Promise<Set<string>> {
+    if (this.isAdmin(user)) return new Set(vehicleIds);
+    if (vehicleIds.length === 0) return new Set();
+    const perms = await this.resolveForVehicles(user, vehicleIds);
+    return new Set(vehicleIds.filter((id) => perms.get(id)?.[key] === true));
+  }
+
+  /**
    * Batch : resout les permissions pour plusieurs vehicules en 1 query.
    * Utile sur les listings (ex: page vehicules, decider quel bouton afficher
    * sur chaque ligne sans faire N queries). Hydrate le cache request-scoped.

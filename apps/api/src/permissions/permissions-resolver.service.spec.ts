@@ -249,6 +249,43 @@ describe('PermissionsResolverService', () => {
     });
   });
 
+  describe('vehiculesAutorises (29/09 — gestes de masse)', () => {
+    it('même règle que canOnVehicle, en UNE requête : le groupe qui retire l’emporte sur « tous »', async () => {
+      const findMany = jest.fn().mockResolvedValue([
+        { accessType: AccessType.ALL, permissions: { reservations_manage: true }, vehicleId: null, group: null },
+        {
+          accessType: AccessType.GROUP,
+          permissions: { reservations_manage: false },
+          vehicleId: null,
+          group: { vehicles: [{ vehicleId: VEHICLE_A }] },
+        },
+      ]);
+      const svc = new PermissionsResolverService(makePrismaMock(findMany));
+      const user = makeUser(UserRole.FLEET_MANAGER);
+
+      const ok = await svc.vehiculesAutorises(user, [VEHICLE_A, VEHICLE_B], 'reservations_manage');
+
+      expect([...ok]).toEqual([VEHICLE_B]);
+      expect(findMany).toHaveBeenCalledTimes(1);
+    });
+
+    it('administrateur : tous, sans requête ; liste vide : rien, sans requête', async () => {
+      const findMany = jest.fn();
+      const svc = new PermissionsResolverService(makePrismaMock(findMany));
+
+      expect([...(await svc.vehiculesAutorises(makeUser(UserRole.FLEET_ADMIN), [VEHICLE_A, VEHICLE_B], 'reservations_manage'))]).toEqual([VEHICLE_A, VEHICLE_B]);
+      expect((await svc.vehiculesAutorises(makeUser(UserRole.FLEET_MANAGER), [], 'reservations_manage')).size).toBe(0);
+      expect(findMany).not.toHaveBeenCalled();
+    });
+
+    it('aucune ligne ne couvre le véhicule : refusé (comme canOnVehicle)', async () => {
+      const findMany = jest.fn().mockResolvedValue([]);
+      const svc = new PermissionsResolverService(makePrismaMock(findMany));
+
+      expect((await svc.vehiculesAutorises(makeUser(UserRole.FLEET_MANAGER), [VEHICLE_A], 'reservations_manage')).size).toBe(0);
+    });
+  });
+
   describe('resolveForVehicles (batch)', () => {
     it('admin : Map peuplee avec tous true', async () => {
       const findMany = jest.fn();

@@ -25,6 +25,7 @@ import type {
 } from '@vizyo/tracky-shared';
 import { apiErrorMessage } from '../../../core/error/api-error';
 import { swallow } from '../../../core/error/swallow';
+import { QUIET_ERRORS_HEADER } from '../../../core/interceptors/auth.interceptor';
 import { AuthService } from '../../../core/services/auth.service';
 import { FleetFilterService } from '../../../core/services/fleet-filter.service';
 import { ToastService } from '../../../shared/ui/toast/toast.service';
@@ -243,8 +244,11 @@ interface Lecture {
               <div class="ro-seg">
                 <button type="button" class="ro-seg-btn" [class.ro-seg-btn--on]="quoiEffectif() === 'reservations'" [disabled]="envoi() || envoiP()"
                         (click)="choisirQuoi('reservations')">Réservations@if (compteOngletReservations() !== null) { <span class="ro-n">{{ compteOngletReservations() }}</span> }</button>
+                <!-- Relecture du 29/09 : « Propositions de l'agent 307 » passait sur deux lignes à 390 px ;
+                     sur téléphone le bouton dit « Propositions » (l'intro dit de qui). -->
                 <button type="button" class="ro-seg-btn" [class.ro-seg-btn--on]="quoiEffectif() === 'propositions'" [disabled]="envoi() || envoiP()"
-                        (click)="choisirQuoi('propositions')">Propositions de l'agent@if (compteOngletPropositions() !== null) { <span class="ro-n">{{ compteOngletPropositions() }}</span> }</button>
+                        [attr.aria-label]="'Propositions de l’agent' + (compteOngletPropositions() !== null ? ' : ' + compteOngletPropositions() : '')"
+                        (click)="choisirQuoi('propositions')"><span class="ro-lg">Propositions de l'agent</span><span class="ro-sm">Propositions</span>@if (compteOngletPropositions() !== null) { <span class="ro-n">{{ compteOngletPropositions() }}</span> }</button>
               </div>
             </div>
           }
@@ -364,8 +368,8 @@ interface Lecture {
                   <!-- T3 : ouverte après un refus, la feuille ne reprend QUE les refusées (liste blanche
                        envoyée au serveur) — pas celles laissées sur le véhicule, ni celles arrivées
                        depuis. Élargir est un geste explicite, et réversible. -->
-                  <div class="ro-limite" [class.ro-limite--off]="!limiteeAuxRefus()">
-                    @if (limiteeAuxRefus()) {
+                  <div class="ro-limite" [class.ro-limite--off]="!limiteActive()">
+                    @if (limiteActive()) {
                       <span>
                         <strong>{{ idsPreset().length }} réservation{{ idsPreset().length > 1 ? 's' : '' }} refusée{{ idsPreset().length > 1 ? 's' : '' }} à reprendre</strong>
                         — {{ idsPreset().length > 1 ? 'elles seules' : 'elle seule' }} : les réservations laissées{{ vehiculePreset() ? ' sur ' + plaqueDe(vehiculePreset()) : '' }} à la création, et celles arrivées depuis, ne sont pas touchées.
@@ -467,9 +471,16 @@ interface Lecture {
               } @else if (lueP(); as l) {
                 @if (l.r.simulation && l.r.concernees === 0) {
                   <div class="ro-vide">
-                    <p><strong>Aucune proposition de l'agent{{ surPlaqueP(l) }}</strong> {{ l.fenetre }} : rien à écarter.</p>
-                    @if (l.r.horsGestion > 0) {
-                      <p>{{ horsGestionTexte(l.r.horsGestion) }}</p>
+                    @if (l.r.vehiculeNonGere) {
+                      <!-- Relecture du 29/09 : un véhicule choisi dont on ne gère pas les réservations — un lot
+                           vide qui dit pourquoi, plus un 403 (et son toast rouge) pendant qu'on regardait l'autre onglet. -->
+                      <p><strong>Vous ne gérez pas les réservations de {{ plaqueDe(l.corps.vehicleId ?? '') }}</strong> :
+                        {{ l.r.horsGestion > 1 ? 'ses ' + l.r.horsGestion + ' propositions ' + l.fenetre + ' ne se retirent pas' : (l.r.horsGestion === 1 ? 'sa proposition ' + l.fenetre + ' ne se retire pas' : 'ses propositions ne se retirent pas') }} d'ici.</p>
+                    } @else {
+                      <p><strong>Aucune proposition de l'agent{{ surPlaqueP(l) }}</strong> {{ l.fenetre }} : rien à écarter.</p>
+                      @if (l.r.horsGestion > 0) {
+                        <p>{{ horsGestionTexte(l.r.horsGestion, false) }}</p>
+                      }
                     }
                     @if (l.corps.vehicleId && (totalP() ?? 0) > 0) {
                       <button type="button" class="ro-lien" (click)="choisirVehicule('')">Voir tous les véhicules ({{ totalP() }})</button>
@@ -487,6 +498,9 @@ interface Lecture {
                         proposition{{ l.r.ecartees > 1 ? 's' : '' }} écartée{{ l.r.ecartees > 1 ? 's' : '' }}{{ surPlaqueP(l) }}
                         @if (l.r.dejaTraitees > 0) {
                           · {{ dejaTraiteesTexte(l.r.dejaTraitees) }}
+                        }
+                        @if (l.r.restees > 0) {
+                          · {{ resteesTexte(l.r.restees) }}
                         }
                       }
                     </span>
@@ -515,12 +529,20 @@ interface Lecture {
                   }
 
                   @if (l.r.horsGestion > 0) {
-                    <span class="ro-detail">{{ horsGestionTexte(l.r.horsGestion) }}</span>
+                    <span class="ro-detail">{{ horsGestionTexte(l.r.horsGestion, true) }}</span>
                   }
                   @if (l.r.simulation) {
+                    @if (lotIaEnCours()) {
+                      <!-- Relecture du 29/09 : un « Tout réserver / Tout écarter » de l'Assistant IA tourne sur
+                           la société — deux intentions contraires ne partent pas en même temps. -->
+                      <p class="ro-avert ro-avert--bloc">
+                        <lucide-icon [img]="AlertIcon" [size]="12"></lucide-icon>
+                        Un lot « Tout réserver / Tout écarter » tourne dans l'Assistant IA : attendez son bilan avant d'écarter.
+                      </p>
+                    }
                     <span class="ro-detail">
-                      Une proposition écartée ne revient pas : l'agent ne repropose jamais un créneau déjà traité.
-                      Elle n'immobilisait aucun véhicule, et personne n'est prévenu.
+                      Une proposition écartée ne revient pas : l'agent ne repropose pas un trajet qui chevauche une
+                      proposition déjà traitée du même véhicule. Elle n'immobilisait aucun véhicule, et personne n'est prévenu.
                     </span>
                     <button type="button" class="ro-lien" (click)="ouvrirIa.emit()">Les revoir une par une dans l'Assistant IA</button>
                   }
@@ -699,7 +721,8 @@ interface Lecture {
               @if (lueP(); as l) {
                 @if (l.r.simulation && l.applicable && l.r.concernees > 0) {
                   <!-- Nomme ce qu'il fait et combien — le lot de la simulation LUE, renvoyé par ses identifiants. -->
-                  <button type="button" class="ro-btn ro-btn--go" [disabled]="envoiP() || chargementP()" (click)="ecarterPropositions()">
+                  <button type="button" class="ro-btn ro-btn--go" [disabled]="envoiP() || chargementP() || lotIaEnCours()"
+                          [attr.title]="lotIaEnCours() ? 'Un lot tourne dans l’Assistant IA : attendez son bilan.' : null" (click)="ecarterPropositions()">
                     @if (envoiP() || chargementP()) { <lucide-icon [img]="LoaderIcon" [size]="15" class="ro-spin"></lucide-icon> }
                     @if (chargementP()) {
                       Simulation en cours…
@@ -782,6 +805,9 @@ interface Lecture {
     .ro-when { color: var(--fg-tertiary); text-transform: capitalize; }
     /* 29/09 (piste 3) : la destination d'une proposition — coupée plutôt que de pousser la ligne hors de l'écran. */
     .ro-dest { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--fg-tertiary); }
+    /* Libellé long sur écran large, court sur téléphone (onglet « Propositions de l'agent »). */
+    .ro-sm { display: none; }
+    @media (max-width: 480px) { .ro-lg { display: none; } .ro-sm { display: inline; } }
     .ro-tag { font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 999px; color: var(--texte-violet); border: 1px dashed color-mix(in srgb, var(--violet) 45%, transparent); }
     .ro-tag--public { color: var(--fg-secondary); border-style: solid; border-color: var(--border-strong); }
     .ro-tag--coupe { color: var(--texte-attente); border-style: solid; border-color: color-mix(in srgb, var(--warning) 45%, transparent); }
@@ -897,11 +923,24 @@ export class ReorganisationSheetComponent {
   protected readonly vehiculePreset = signal('');
   /**
    * T3 — les ids des réservations refusées du pré-réglage (figés à l'ouverture), et si le lot est
-   * LIMITÉ à elles. Vrai à l'ouverture dès qu'il y en a ; seul « Élargir à toute la période » (ou le
-   * choix d'un autre véhicule, qui ne les porte pas) le lève — et « Ne reprendre que … » y revient.
+   * LIMITÉ à elles. Vrai à l'ouverture dès qu'il y en a ; seul « Élargir à toute la période » le lève
+   * — et « Ne reprendre que … » y revient.
    */
   protected readonly idsPreset = signal<string[]>([]);
   protected readonly limiteeAuxRefus = signal(false);
+  /**
+   * La limite EN VIGUEUR — relecture du 29/09 (piste 3) : elle vaut sur le véhicule du pré-réglage,
+   * et là seulement. Choisir un autre véhicule (depuis l'un ou l'autre onglet) ne la LÈVE plus : il la
+   * rend sans objet (les refusées ne sont pas sur lui) ; revenir au véhicule la retrouve. Avant,
+   * choisir « Tous » dans l'onglet Propositions puis revenir au véhicule reprenait toute la période —
+   * les réservations laissées exprès comprises — sans que l'onglet Réservations soit à l'écran.
+   */
+  protected readonly limiteActive = computed(
+    () =>
+      this.limiteeAuxRefus() &&
+      this.idsPreset().length > 0 &&
+      (!this.vehiculePreset() || this.vehicleId() === this.vehiculePreset()),
+  );
 
   protected readonly chargement = signal(false);
   protected readonly envoi = signal(false);
@@ -1071,24 +1110,53 @@ export class ReorganisationSheetComponent {
 
   protected choisirQuoi(q: QuoiReorganiser): void {
     this.quoi.set(q);
+    // Une simulation d'arrière-plan en échec (silencieuse, voir `simulerP`) : on la relance en arrivant
+    // sur l'onglet, plutôt que d'y laisser une erreur qu'aucun critère changé ne rejouerait.
+    if (q === 'propositions' && this.erreurP() && !this.chargementP() && this.open() && this.iaActive() && !this.needsFleet()) {
+      const { corps, fenetre } = this.preparerP();
+      this.simulerP(corps, fenetre);
+    }
   }
 
   protected surPlaqueP(l: LecturePropositions): string {
     return l.corps.vehicleId ? ` sur ${this.plaqueDe(l.corps.vehicleId)}` : '';
   }
 
-  /** Des propositions hors de ce que l'appelant gère : dit, jamais pris. */
-  protected horsGestionTexte(n: number): string {
+  /**
+   * Des propositions hors de ce que l'appelant gère : dites, jamais prises. `autres` : il y en a aussi
+   * dans le lot (« N autres… ») — sinon, sans « autres ».
+   */
+  protected horsGestionTexte(n: number, autres: boolean): string {
+    const a = autres ? ' autre' : '';
     return n > 1
-      ? `${n} autres propositions portent sur des véhicules dont vous ne gérez pas les réservations : elles ne se retirent pas d'ici.`
-      : `Une autre proposition porte sur un véhicule dont vous ne gérez pas les réservations : elle ne se retire pas d'ici.`;
+      ? `${n}${autres ? ' autres' : ''} propositions portent sur des véhicules dont vous ne gérez pas les réservations : elles ne se retirent pas d'ici.`
+      : `Une${a} proposition porte sur un véhicule dont vous ne gérez pas les réservations : elle ne se retire pas d'ici.`;
   }
 
+  /** Écartées ailleurs, réservées ou expirées entre la simulation et le clic (statut relu par le serveur). */
   protected dejaTraiteesTexte(n: number): string {
     return n > 1
-      ? `${n} déjà traitées entre-temps (réservées ou écartées ailleurs, ou commencées) : laissées telles quelles`
-      : `1 déjà traitée entre-temps (réservée ou écartée ailleurs, ou commencée) : laissée telle quelle`;
+      ? `${n} déjà traitées entre-temps (réservées ou écartées ailleurs) : laissées telles quelles`
+      : `1 déjà traitée entre-temps (réservée ou écartée ailleurs) : laissée telle quelle`;
   }
+
+  /** Toujours en attente sans avoir été écartées : commencées entre-temps, ou sorties du périmètre. */
+  protected resteesTexte(n: number): string {
+    return n > 1
+      ? `${n} toujours en attente (commencées entre-temps, ou hors de votre périmètre) : non écartées`
+      : `1 toujours en attente (commencée entre-temps, ou hors de votre périmètre) : non écartée`;
+  }
+
+  /**
+   * Relecture du 29/09 — un lot « Tout réserver / Tout écarter » de l'Assistant IA tourne sur la
+   * société du bandeau (`AgendaSyncService.lotsEnCours`, clé `société|véhicule`) : « Écarter » attend son
+   * bilan, comme le panneau du jour. Les données resteraient cohérentes (écritures sous condition), mais
+   * deux intentions contraires ne partent pas en même temps.
+   */
+  protected readonly lotIaEnCours = computed(() => {
+    const prefixe = `${this.fleetFilter.selectedFleetId() ?? '-'}|`;
+    return [...this.sync.lotsEnCours()].some((cle) => cle.startsWith(prefixe));
+  });
 
   /** Vide sur une fenêtre courte, tous véhicules : l'agent propose jusqu'à 14 jours — proposer d'élargir. */
   protected plusLoinP(l: LecturePropositions): boolean {
@@ -1370,7 +1438,7 @@ export class ReorganisationSheetComponent {
       vehicleId: this.vehicleId() || undefined,
       fleetId: this.fleetFilter.selectedFleetId() ?? undefined,
       // T3 : la liste blanche part dans le corps SIMULÉ — `appliquer()` le renvoie à l'identique.
-      ids: this.limiteeAuxRefus() && this.idsPreset().length > 0 ? [...this.idsPreset()] : undefined,
+      ids: this.limiteActive() ? [...this.idsPreset()] : undefined,
     };
     return { corps, fenetre };
   }
@@ -1440,11 +1508,11 @@ export class ReorganisationSheetComponent {
   /**
    * Changer le véhicule libéré : une destination devenue impossible (lui-même, autre société) retombe
    * sur Auto. Un AUTRE véhicule que celui du pré-réglage ne porte pas les réservations refusées : la
-   * limite aux refusées (T3) tombe — la feuille le dit, et « Ne reprendre que … » y revient.
+   * limite aux refusées (T3) est alors sans objet (`limiteActive`), sans être levée — revenir au
+   * véhicule la retrouve (relecture du 29/09 : un choix dans l'onglet Propositions la levait en silence).
    */
   protected choisirVehicule(id: string): void {
     this.vehicleId.set(id);
-    if (id !== this.vehiculePreset()) this.limiteeAuxRefus.set(false);
     this.recalerDestination();
   }
 
@@ -1650,8 +1718,16 @@ export class ReorganisationSheetComponent {
     const n = ++this.lectureP;
     this.chargementP.set(true);
     this.erreurP.set(null);
+    // Relecture du 29/09 : cette simulation tourne AUSSI pendant qu'on regarde les réservations (pour le
+    // compte de l'onglet). Là, une panne ne lève pas de toast global — l'onglet Propositions dira sa
+    // propre erreur quand on l'ouvrira. À l'écran, elle reste un geste de l'utilisateur : toast normal.
+    const enArrierePlan = this.quoiEffectif() !== 'propositions';
     this.enVolP = this.http
-      .post<EcartPropositionsResultDto>(URL_ECARTER_PROPOSITIONS, { ...corps, simulation: true } satisfies EcarterPropositionsDto)
+      .post<EcartPropositionsResultDto>(
+        URL_ECARTER_PROPOSITIONS,
+        { ...corps, simulation: true } satisfies EcarterPropositionsDto,
+        enArrierePlan ? { headers: { [QUIET_ERRORS_HEADER]: '1' } } : {},
+      )
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
         next: (r) => {
@@ -1678,7 +1754,7 @@ export class ReorganisationSheetComponent {
    */
   protected ecarterPropositions(): void {
     const l = this.lueP();
-    if (this.envoiP() || this.chargementP() || !l || !l.applicable || !l.r.simulation || l.r.concernees === 0) return;
+    if (this.envoiP() || this.chargementP() || this.lotIaEnCours() || !l || !l.applicable || !l.r.simulation || l.r.concernees === 0) return;
     this.enVolP?.unsubscribe();
     this.enVolP = null;
     const n = ++this.lectureP;
@@ -1697,10 +1773,16 @@ export class ReorganisationSheetComponent {
             this.parVehiculePConnu.set(r.parVehicule);
           }
           this.sync.propositionsModifiees();
-          this.toast.success(
-            `${r.ecartees} proposition${r.ecartees > 1 ? 's' : ''} écartée${r.ecartees > 1 ? 's' : ''}`,
-            r.dejaTraitees > 0 ? `${this.dejaTraiteesTexte(r.dejaTraitees)}.` : '',
-          );
+          const suite = [
+            r.dejaTraitees > 0 ? this.dejaTraiteesTexte(r.dejaTraitees) : '',
+            r.restees > 0 ? this.resteesTexte(r.restees) : '',
+          ].filter(Boolean).join(' · ');
+          if (r.ecartees > 0) {
+            this.toast.success(`${r.ecartees} proposition${r.ecartees > 1 ? 's' : ''} écartée${r.ecartees > 1 ? 's' : ''}`, suite ? `${suite}.` : '');
+          } else {
+            // Relecture du 29/09 : plus de toast VERT « 0 proposition écartée » — rien n'est parti, et l'on dit pourquoi.
+            this.toast.warning('Aucune proposition écartée', suite ? `${suite}.` : 'La liste avait changé : relancez la simulation.');
+          }
         },
         error: (err) => {
           swallow('reorganisation:ecarterPropositions', err);

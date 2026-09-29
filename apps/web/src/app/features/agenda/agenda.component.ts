@@ -76,6 +76,7 @@ import {
   fenetreAReorganiser,
   fenetreImmobilisation,
   fenetresAjoutees,
+  finDuPreset,
   interrupteurSociete,
   libelleVehiculesLibres,
   localIso,
@@ -84,7 +85,7 @@ import {
   placesMaxLibres,
   propositionsDuPerimetre,
   propositionsParJour,
-  propositionsSurPeriode,
+  propositionsSousImmobilisation,
   rangDuJour,
   type ReglageIaBrut,
   repliDefinitif,
@@ -216,7 +217,7 @@ function groupeReservationId(ev: VehicleEventDto): string | null {
                               [attr.title]="rienAReorganiser() ? raisonRienAReorganiser() : null"
                               (click)="plusOpen.set(false); reorgSheetOpen.set(true)">
                         <span class="ag-dd-item-content">
-                          <span class="ag-dd-item-row"><lucide-icon [img]="ShuffleIcon" [size]="14"></lucide-icon><span>Réorganiser des réservations</span></span>
+                          <span class="ag-dd-item-row"><lucide-icon [img]="ShuffleIcon" [size]="14"></lucide-icon><span>{{ libelleReorganiser() }}</span></span>
                           @if (raisonRienAReorganiser(); as raison) {
                             <span class="ag-dd-item-meta ag-dd-item-raison">{{ raison }}</span>
                           }
@@ -1110,7 +1111,7 @@ function groupeReservationId(ev: VehicleEventDto): string | null {
       [preset]="reorgPreset()"
       [iaActive]="iaActive()"
       [reorganisables]="reorganisables()"
-      [nbPropositions]="iaActive() ? agentProposalCount() : 0"
+      [nbPropositions]="nbPropositionsReorganisables()"
       (closed)="reorgSheetOpen.set(false); reorgPreset.set(null)"
       (ouvrirIa)="reorgSheetOpen.set(false); reorgPreset.set(null); vue.set('ia')"
       (applique)="onReservationChanged()" />
@@ -1759,6 +1760,7 @@ export class AgendaComponent implements OnInit {
     void this.loadPendingRequests();
     // 29/09 : le compte de l'ancienne société ne grise jamais le menu de la nouvelle.
     this.reorganisables.set(null);
+    this.propositionsReorganisables.set(null);
     void this.loadReorganisables();
   }
 
@@ -2004,12 +2006,26 @@ export class AgendaComponent implements OnInit {
       reservations: this.reorganisables()?.total ?? null,
       jours: this.reorganisables()?.jours ?? 30,
       iaActive: this.iaActive(),
-      propositions: this.agentProposalCount(),
+      propositions: this.propositionsReorganisables(),
     }),
   );
   protected readonly rienAReorganiser = computed(() => this.menuReorg().grisee);
   /** La ligne sous l'entrée : pourquoi elle est grisée, ou ce qu'elle trouvera (`null` = rien à dire). */
   protected readonly raisonRienAReorganiser = computed(() => this.menuReorg().ligne);
+  /** « Réorganiser » quand l'entrée reprend aussi des propositions — comme le titre de la feuille. */
+  protected readonly libelleReorganiser = computed(() => this.menuReorg().libelle);
+  /**
+   * Relecture du 29/09 (piste 3) — les propositions que Réorganiser écarterait sur les mêmes 30 jours,
+   * lues par la simulation de la feuille (`simulerEcart`) : mêmes véhicules gérés, même fenêtre. Le
+   * compte de la page (toute la société, figé depuis son chargement) disait « 307 » au menu et « 287 »
+   * dans l'onglet, et « 12 » à un gestionnaire dont la feuille ne trouvait rien. `null` = pas encore lu,
+   * lecture en échec, ou IA coupée (les propositions ne comptent pas).
+   */
+  protected readonly propositionsReorganisables = signal<number | null>(null);
+  /** Pour la feuille (onglet d'ouverture, carte « rien ») : le compte frais s'il est lu, celui de la page sinon. */
+  protected readonly nbPropositionsReorganisables = computed(() =>
+    this.iaActive() ? (this.propositionsReorganisables() ?? this.agentProposalCount()) : 0,
+  );
 
   /** Ouvre / ferme le menu « ⋯ » — à l'ouverture, le compte de Réorganiser est relu (il suit l'agenda). */
   protected basculerPlus(): void {
@@ -2251,7 +2267,11 @@ export class AgendaComponent implements OnInit {
     const avant = this.propositionsEtaientVisibles;
     this.propositionsEtaientVisibles = visibles;
     if (avant === null || avant === visibles || !this.initialised) return;
-    queueMicrotask(() => void this.loadAgentProposals());
+    queueMicrotask(() => {
+      void this.loadAgentProposals();
+      // 29/09 (piste 3) : le compte de Réorganiser suit — ses propositions n'étaient pas lues IA coupée.
+      void this.loadReorganisables();
+    });
   });
   /** Dernière vue demandée qui a été effectivement MONTRÉE (null tant qu'aucune). */
   private vueMontree: VueAgenda | null = null;
@@ -3802,7 +3822,8 @@ export class AgendaComponent implements OnInit {
         this.reorgPreset.set({
           vehicleId: lot.vehicleId,
           from: lot.fenetre.startAt,
-          to: lot.fenetre.endAt,
+          // Relecture du 29/09 : incident sans date de fin → pas de fin inventée (la feuille dit « à partir du … »).
+          to: this.sansFinEffective(created) ? null : lot.fenetre.endAt,
           action: 'reaffecter',
           // T3 : les refusées SEULEMENT — ni les « Laisser », ni ce qui a été repris, ni une
           // réservation arrivée depuis que le formulaire a été tranché.
@@ -3905,14 +3926,25 @@ export class AgendaComponent implements OnInit {
     const autre = ailleurs.length > 0
       ? ` Aussi ${ailleurs.length} sur l'autre période ajoutée (${detail(ailleurs)}) : à reprendre ensuite, depuis le jour.`
       : '';
-    this.toast.warning(titre, `${plaque} est immobilisé mais reste réservé (${detail(dedans)}). Réorganiser s'ouvre sur ce véhicule, du ${fmt(w.from)} au ${fmt(w.to)}.${autre}`);
+    // Relecture du 29/09 : un incident sans date de fin — la fenêtre s'arrête à un horizon de 30 jours
+    // que personne n'a saisi ; ni le message ni la feuille n'annoncent plus cette fin inventée.
+    const fin = finDuPreset(w, fenetres, this.sansFinEffective(apres));
+    const periode = fin ? `du ${fmt(w.from)} au ${fmt(w.to)}` : `à partir du ${fmt(w.from)}, sans date de fin`;
+    this.toast.warning(titre, `${plaque} est immobilisé mais reste réservé (${detail(dedans)}). Réorganiser s'ouvre sur ce véhicule, ${periode}.${autre}`);
     this.reorgPreset.set({
       vehicleId: apres.vehicleId,
       from: new Date(w.from).toISOString(),
-      to: new Date(w.to).toISOString(),
+      to: fin,
       action: 'reaffecter',
     });
     this.reorgSheetOpen.set(true);
+  }
+
+  /** L'immobilisation n'a pas de fin effective (incident ouvert sans date de fin) : elle court jusqu'à résolution. */
+  private sansFinEffective(ev: Pick<VehicleEventDto, 'type' | 'startAt' | 'endAt'>): boolean {
+    const debut = new Date(ev.startAt).getTime();
+    const fin = ev.endAt ? new Date(ev.endAt).getTime() : null;
+    return !Number.isFinite(effectiveBlockingEndMs(ev.type, debut, fin != null && !Number.isNaN(fin) ? fin : null));
   }
 
   /** Récupère l'estimation kilométrique et pré-remplit le champ + un hint. */
@@ -4047,29 +4079,18 @@ export class AgendaComponent implements OnInit {
    * propositions sont alors invisibles partout).
    */
   private proposerEcarterSousImmobilisation(ev: VehicleEventDto, fenetres: { from: number; to: number }[]): void {
-    if (fenetres.length === 0 || !this.canValidate() || !this.iaActive() || this.reorgSheetOpen()) return;
-    const maintenant = Date.now();
-    let periode: { from: number; to: number } | null = null;
-    let n = 0;
-    for (const w of fenetres) {
-      const k = propositionsSurPeriode(this.agentProposals(), ev.vehicleId, w, maintenant);
-      if (k > n) {
-        n = k;
-        periode = w;
-      }
-    }
-    if (!periode) return;
+    // Relecture du 29/09 : le droit de gérer les réservations de CE véhicule (le droit global laissait
+    // s'ouvrir la feuille sur un véhicule qu'on ne gère pas — et le serveur n'y montrait rien).
+    if (fenetres.length === 0 || !this.iaActive() || this.reorgSheetOpen() || !this.perms.can('reservations_manage', ev.vehicleId)) return;
+    const choix = propositionsSousImmobilisation(this.agentProposals(), ev.vehicleId, fenetres, this.sansFinEffective(ev), Date.now());
+    if (!choix) return;
+    const n = choix.n;
     const plaque = ev.vehiclePlate || 'le véhicule';
     this.toast.info(
       `${n} proposition${n > 1 ? 's' : ''} de l'agent sur ${plaque} pendant l'immobilisation`,
       `${n > 1 ? 'Elles ne pourront pas être réservées' : 'Elle ne pourra pas être réservée'} : Réorganiser s'ouvre sur ${n > 1 ? 'elles' : 'elle'} — rien n'est écarté sans votre accord.`,
     );
-    this.reorgPreset.set({
-      vehicleId: ev.vehicleId,
-      from: new Date(periode.from).toISOString(),
-      to: new Date(periode.to).toISOString(),
-      quoi: 'propositions',
-    });
+    this.reorgPreset.set({ vehicleId: ev.vehicleId, from: choix.from, to: choix.to, quoi: 'propositions' });
     this.reorgSheetOpen.set(true);
   }
 
@@ -4178,15 +4199,41 @@ export class AgendaComponent implements OnInit {
    */
   protected async loadReorganisables(): Promise<void> {
     const n = ++this.lecture.reorganisables;
-    if (!this.canValidate()) { this.reorganisables.set(null); return; }
-    try {
-      const r = await firstValueFrom(this.api.reorganisables(this.currentFleetId()));
-      if (n !== this.lecture.reorganisables) return;
-      this.reorganisables.set(r);
-    } catch (err) {
-      swallow('agenda:loadReorganisables', err);
-      if (n !== this.lecture.reorganisables) return;
+    if (!this.canValidate()) {
       this.reorganisables.set(null);
+      this.propositionsReorganisables.set(null);
+      return;
+    }
+    // Relecture du 29/09 (piste 3) : les propositions en même temps, par la simulation de la feuille —
+    // seulement IA active (coupée, elles ne comptent pas). La société n'est passée qu'à un super-admin :
+    // le filtre est relu du navigateur quel que soit le rôle, et le serveur l'ignore pour les autres.
+    const maintenant = Date.now();
+    const societe = this.auth.user()?.role === 'SUPER_ADMIN' ? this.currentFleetId() : undefined;
+    const [reservations, propositions] = await Promise.allSettled([
+      firstValueFrom(this.api.reorganisables(this.currentFleetId())),
+      this.iaActive()
+        ? firstValueFrom(
+            this.agentApi.simulerEcart({
+              from: new Date(maintenant).toISOString(),
+              to: new Date(maintenant + 30 * 86_400_000).toISOString(),
+              fleetId: societe,
+            }),
+          )
+        : Promise.resolve(null),
+    ]);
+    if (n !== this.lecture.reorganisables) return;
+    if (reservations.status === 'fulfilled') {
+      this.reorganisables.set(reservations.value);
+    } else {
+      swallow('agenda:loadReorganisables', reservations.reason);
+      this.reorganisables.set(null);
+    }
+    if (propositions.status === 'fulfilled') {
+      const p = propositions.value;
+      this.propositionsReorganisables.set(p ? p.parVehicule.reduce((s, v) => s + v.n, 0) : null);
+    } else {
+      swallow('agenda:loadReorganisables:propositions', propositions.reason);
+      this.propositionsReorganisables.set(null);
     }
   }
 

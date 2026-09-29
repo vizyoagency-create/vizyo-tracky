@@ -1440,6 +1440,8 @@ export class FleetActivityComponent implements OnInit, OnDestroy {
       case 'reservation_retiree':
       case 'evenement_supprime':
       case 'proposition_ecartee':
+      // 29/09 (piste 3) : un lot écarté depuis Réorganiser — gris comme l'écart à l'unité, pas bleu « modification ».
+      case 'propositions_ecartees':
         return 'inactif';
       default:
         // Modifications (modifiee, reaffectee, decalee, scindee, reorganisees, evenement_cree,
