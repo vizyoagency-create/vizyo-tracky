@@ -246,6 +246,21 @@ export interface ReorganisationResultDto {
   lotIds?: string[];
 }
 
+/**
+ * 29/09 (pistes 1 et 4 du propriétaire) — ce que « Réorganiser » trouverait, sans simuler
+ * (`GET /api/reservations/reorganisables`) : les réservations VIVANTES qui chevauchent les `jours`
+ * prochains jours, dans le périmètre de l'utilisateur — le même ensemble que `parVehicule` d'une
+ * simulation « Toutes » sur cette fenêtre. À 0, le menu « ⋯ » grise « Réorganiser » en disant
+ * pourquoi, et la feuille l'explique en tête au lieu d'aligner des « (0) ».
+ */
+export interface ReservationsReorganisablesDto {
+  total: number;
+  /** La fenêtre comptée (la plus large de la feuille : 30 jours). */
+  jours: number;
+  /** Nom de la société visée quand il n'y en a qu'une (administrateur, ou super-admin sur une société). */
+  societe: string | null;
+}
+
 /** Réaffecter UNE réservation à un autre véhicule (`auto` = premier libre et conforme). */
 export interface ReaffecterReservationDto {
   versVehicleId?: string;

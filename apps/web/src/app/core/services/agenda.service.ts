@@ -18,6 +18,7 @@ import type {
   OdometerEstimateDto,
   RecordMaintenanceDoneDto,
   ReportIncidentDto,
+  ReservationsReorganisablesDto,
   UpdateVehicleEventDto,
   UpsertMaintenancePlanDto,
   VehicleEventDto,
@@ -179,6 +180,14 @@ export class AgendaApiService {
     if (filters?.groupId) params['groupId'] = filters.groupId;
     if (filters?.fleetId) params['fleetId'] = filters.fleetId;
     return this.http.get<VehicleEventDto[]>('/api/reservations', { params });
+  }
+
+  /**
+   * GET /api/reservations/reorganisables — ce que « Réorganiser » trouverait sur les 30 prochains
+   * jours, sans simuler (29/09, pistes 1 et 4). `fleetId` : la société du bandeau d'un super-admin.
+   */
+  reorganisables(fleetId?: string): Observable<ReservationsReorganisablesDto> {
+    return this.http.get<ReservationsReorganisablesDto>('/api/reservations/reorganisables', { params: fleetId ? { fleetId } : {} });
   }
 
   // P2-6 (audit du 22/09) — `suggestReservation` (GET /api/reservations/suggest) a été retiré :

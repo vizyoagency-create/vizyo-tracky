@@ -3760,3 +3760,97 @@ describe('ReservationsService.reorganiser — `lotIds` (C0)', () => {
     expect(res.lotIds).toEqual(['a', 'b']);
   });
 });
+
+/**
+ * ── CE QUE RÉORGANISER TROUVERAIT, SANS SIMULER (29/09, pistes 1 et 4 du propriétaire) ─────────
+ *
+ * « Réorganiser est vide chez cdef31, on n'y comprend rien » : aucune réservation à venir, 317
+ * propositions de l'agent qui n'en sont pas. Le menu « ⋯ » grise désormais l'entrée à 0 et la feuille
+ * l'explique d'emblée. Le compte DOIT dire la même chose que la simulation : sinon le menu grise une
+ * feuille qui aurait trouvé quelque chose (ou l'inverse).
+ */
+describe('ReservationsService.reorganisables — le compte du menu « ⋯ »', () => {
+  const H = 3_600_000;
+  const J = 24 * H;
+  const resa = (over: Record<string, unknown> = {}) => ({
+    id: 'e1',
+    vehicleId: 'v1',
+    vehiclePlate: 'AA-111-BB',
+    type: 'RESERVATION',
+    status: 'CONFIRMED',
+    source: 'MANUAL',
+    startAt: new Date(Date.now() + 48 * H).toISOString(),
+    endAt: new Date(Date.now() + 50 * H).toISOString(),
+    ...over,
+  });
+  /** Le panel : 2 comptées (en cours, à venir) et 5 écartées (annulée, close, finie, au-delà de 30 j, sans fin). */
+  const panel = () => [
+    resa({ id: 'en-cours', startAt: new Date(Date.now() - 2 * H).toISOString(), endAt: new Date(Date.now() + 2 * H).toISOString() }),
+    resa({ id: 'a-venir', vehicleId: 'v2', vehiclePlate: 'CC-222-DD' }),
+    resa({ id: 'annulee', status: 'CANCELLED' }),
+    resa({ id: 'close', status: 'DONE' }),
+    resa({ id: 'finie', startAt: new Date(Date.now() - 5 * H).toISOString(), endAt: new Date(Date.now() - H).toISOString() }),
+    resa({ id: 'trop-loin', startAt: new Date(Date.now() + 31 * J).toISOString(), endAt: new Date(Date.now() + 31 * J + 2 * H).toISOString() }),
+    resa({ id: 'sans-fin', endAt: null }),
+  ];
+
+  function monter(liste: unknown[], fleet: unknown = { findUnique: jest.fn().mockResolvedValue({ name: 'cdef31' }) }) {
+    const events = makeEvents({ list: jest.fn().mockResolvedValue(liste) });
+    const prisma = makePrisma({ fleet });
+    const svc = new ReservationsService(prisma as never, access('ALL'), events, makePerms(true), { emit: jest.fn() } as never);
+    return { svc, prisma, events: events as unknown as { list: jest.Mock } };
+  }
+  const admin = { role: UserRole.FLEET_ADMIN, fleetId: 'f1' } as never;
+  const superAdmin = { role: UserRole.SUPER_ADMIN, fleetId: null } as never;
+
+  it('compte les réservations VIVANTES qui chevauchent les 30 prochains jours — en cours comprise', async () => {
+    const { svc } = monter(panel());
+    const r = await svc.reorganisables(admin);
+    expect(r).toEqual({ total: 2, jours: 30, societe: 'cdef31' });
+  });
+
+  it('cdef31 le 29/09 : que des propositions de l’agent, aucune réservation → 0', async () => {
+    const { svc } = monter([]);
+    expect((await svc.reorganisables(admin)).total).toBe(0);
+  });
+
+  it('lit la fenêtre [maintenant, +30 j) des RÉSERVATIONS, dans le périmètre demandé', async () => {
+    const { svc, events } = monter([]);
+    const avant = Date.now();
+    await svc.reorganisables(superAdmin, 'f9');
+    const q = events.list.mock.calls[0][1] as { from: Date; to: Date; type: string; fleetId?: string };
+    expect(q.type).toBe('RESERVATION');
+    expect(q.fleetId).toBe('f9');
+    expect(q.from.getTime()).toBeGreaterThanOrEqual(avant);
+    expect(q.to.getTime() - q.from.getTime()).toBe(30 * J);
+  });
+
+  it('le nom de la société : celle de l’utilisateur ; celle du bandeau pour un super-admin ; aucun sans bandeau', async () => {
+    const fleet = { findUnique: jest.fn().mockResolvedValue({ name: 'Client test' }) };
+    const { svc } = monter([], fleet);
+    expect((await svc.reorganisables(admin, 'autre-societe')).societe).toBe('Client test');
+    expect(fleet.findUnique.mock.calls[0][0]).toEqual({ where: { id: 'f1' }, select: { name: true } }); // jamais le paramètre d'un non-super-admin
+    expect((await svc.reorganisables(superAdmin, 'f9')).societe).toBe('Client test');
+    expect(fleet.findUnique.mock.calls[1][0].where).toEqual({ id: 'f9' });
+    fleet.findUnique.mockClear();
+    expect((await svc.reorganisables(superAdmin)).societe).toBeNull();
+    expect(fleet.findUnique).not.toHaveBeenCalled();
+  });
+
+  it('un nom illisible ne fait jamais échouer le compte', async () => {
+    const { svc } = monter(panel(), { findUnique: jest.fn().mockRejectedValue(new Error('base indisponible')) });
+    expect(await svc.reorganisables(admin)).toEqual({ total: 2, jours: 30, societe: null });
+  });
+
+  it('MÊME RÈGLE que la simulation : le total vaut la somme de `parVehicule` d’une simulation « Toutes » sur 30 jours', async () => {
+    const { svc } = monter(panel());
+    const compte = await svc.reorganisables(admin);
+    const sim = await svc.reorganiser(admin, {
+      from: new Date(Date.now()).toISOString(),
+      to: new Date(Date.now() + 30 * J).toISOString(),
+      origine: 'toutes',
+      action: 'annuler',
+    });
+    expect((sim.parVehicule ?? []).reduce((n, v) => n + v.n, 0)).toBe(compte.total);
+  });
+});

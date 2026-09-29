@@ -87,6 +87,18 @@ export class ReservationsController {
     });
   }
 
+  /**
+   * 29/09 — ce que Réorganiser trouverait sur les 30 prochains jours, sans simuler : la page grise
+   * l'entrée du menu à 0 (« rien à réorganiser ») et la feuille l'explique. Même droit que la
+   * réorganisation elle-même ; `fleetId` = le bandeau d'un super-admin (ignoré pour les autres).
+   */
+  @Get('reorganisables')
+  @Roles(...ALL_ROLES)
+  @RequirePermissions('reservations_manage')
+  reorganisables(@Req() req: AuthenticatedRequest, @Query('fleetId') fleetId?: string) {
+    return this.reservations.reorganisables(req.user, fleetId);
+  }
+
   /** Déposer une demande de réservation (REQUESTED). */
   @Post('request')
   @Roles(...ALL_ROLES)
