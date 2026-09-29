@@ -2343,7 +2343,11 @@ describe('ReservationsService — revue du 29/09', () => {
 
   // ─── R3 — un seul courriel « modifiée » par demande groupée ─────────────────────────────────
   describe('R3 — réorganiser prévient UNE fois par demande (bookingRef), sur l’état final', () => {
-    const debut = () => new Date(Date.now() + 48 * H);
+    // UN instant pour toutes les lignes (29/09, piste 3 : test instable sous la suite complète). Lu à
+    // chaque ligne, l'horloge avançait parfois d'une milliseconde entre `a` et `b` : le décalage vers
+    // l'avant écrit la plus TARDIVE d'abord (T0), l'ordre s'inversait, et « la dernière écrite » changeait.
+    const T_DEBUT = Date.now() + 48 * H;
+    const debut = () => new Date(T_DEBUT);
     const ligne = (id: string, vehicleId: string, over: Record<string, unknown> = {}) =>
       evRow({
         id, vehicleId, vehicle: { plate: vehicleId.toUpperCase() }, status: 'CONFIRMED', source: 'SYSTEM',
