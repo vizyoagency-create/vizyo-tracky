@@ -1,3 +1,4 @@
+import { formatDate } from '@angular/common';
 import type {
   VehicleEventDto,
   VehicleEventSeverity,
@@ -1020,4 +1021,33 @@ export function propositionsSurPeriode(
     const fin = Date.parse(p.endAt);
     return debut >= maintenantMs && debut < periode.to && fin > periode.from;
   }).length;
+}
+
+/**
+ * La période imposée à la feuille Réorganiser, en toutes lettres (« du lun. 5 oct. au mer. 7 oct. »).
+ * Le début est ramené à maintenant, comme le fait le serveur (il ne regarde jamais le passé) ; sans
+ * date de fin : « à partir du ven. 10 oct., 09:00 (30 jours) ».
+ *
+ * Recette démo du 29/09 (piste 3) — une immobilisation d'UNE journée court de 00:00 à 00:00 le
+ * lendemain : elle se lisait « du mer. 30 sept. au jeu. 1 oct. », comme si le jeudi en était. Une
+ * fin à minuit pile appartient au jour d'AVANT : « le mer. 30 sept. ».
+ */
+export function libellePeriode(
+  fx: { from: string; to: string; sansFin: boolean },
+  maintenantMs: number,
+  joursSansFin: number,
+): string {
+  const debut = new Date(Math.max(new Date(fx.from).getTime(), maintenantMs));
+  const jour = (d: Date) => formatDate(d, 'EEE d MMM', 'fr');
+  const heure = (d: Date) => formatDate(d, 'HH:mm', 'fr');
+  if (fx.sansFin) return `à partir du ${jour(debut)}, ${heure(debut)} (${joursSansFin} jours)`;
+  const finBrute = new Date(fx.to);
+  const aMinuit = (d: Date) => d.getHours() === 0 && d.getMinutes() === 0 && d.getSeconds() === 0 && d.getMilliseconds() === 0;
+  const finMinuit = aMinuit(finBrute) && finBrute.getTime() > debut.getTime();
+  const fin = finMinuit ? new Date(finBrute.getTime() - 1) : finBrute;
+  if (debut.toDateString() === fin.toDateString()) {
+    if (finMinuit && aMinuit(debut)) return `le ${jour(debut)}`;
+    return `le ${jour(debut)} de ${heure(debut)} à ${finMinuit ? '24:00' : heure(fin)}`;
+  }
+  return `du ${jour(debut)} au ${jour(fin)}`;
 }
