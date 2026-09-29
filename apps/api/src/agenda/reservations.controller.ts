@@ -110,6 +110,9 @@ export class ReservationsController {
   /**
    * Refonte du 28/09 — réaffecter UNE réservation à un autre véhicule (`auto` = premier libre et
    * conforme). Même permission que la validation : changer la voiture de quelqu'un, c'est gérer.
+   * Le garde ne lit que l'UNION des droits : le service exige `reservations_manage` sur le véhicule
+   * d'origine ET sur la cible. `aPartirDe` (contre-revue du 29/09) : la réservation qui déborde sur ce
+   * moment est scindée là, pas à « maintenant ».
    */
   @Post(':id/reaffecter')
   @Roles(...ALL_ROLES)
@@ -131,13 +134,14 @@ export class ReservationsController {
   }
 
   /**
-   * Lot 3c — REPRENDRE UN LOT de réservations (annuler / décaler), en masse.
+   * Lot 3c — REPRENDRE UN LOT de réservations (annuler / décaler / réaffecter), en masse.
    *
    * Même permission que la validation, et pour la même raison : reprendre cent réservations d'un
    * coup, c'est la même autorité que d'en valider une — en plus lourd de conséquences.
    *
    * ⚠️ `simulation` vaut VRAI par défaut côté service : un appel sans ce champ ne modifie RIEN et
-   * rend le compte-rendu. Il faut demander explicitement `simulation: false` pour écrire.
+   * rend le compte-rendu. Il faut demander explicitement `simulation: false` pour écrire — avec
+   * `attendu` (le nombre que la simulation affichait) : un lot qui a changé depuis répond 409.
    */
   @Post('reorganiser')
   @HttpCode(200)
@@ -147,7 +151,11 @@ export class ReservationsController {
     return this.reservations.reorganiser(req.user, dto);
   }
 
-  /** Éditer une réservation (créneau / critères / libellé). */
+  /**
+   * Éditer une réservation (créneau / critères / libellé / véhicule). Changer le véhicule, c'est la
+   * déplacer : le service exige `reservations_manage` sur l'origine ET sur la cible (contre-revue du
+   * 29/09) — le garde ci-dessous ne lit que l'union des droits.
+   */
   @Patch(':id')
   @Roles(...ALL_ROLES)
   @RequirePermissions('reservations_manage')

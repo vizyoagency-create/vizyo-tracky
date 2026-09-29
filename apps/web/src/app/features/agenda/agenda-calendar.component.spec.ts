@@ -1,46 +1,20 @@
-import { annulationSansObjet, joursCouverts, libelleMultiJours, peutEtreDeplace } from './agenda-calendar.component';
+import type { VehicleEventDto } from '@vizyo/tracky-shared';
+import {
+  annulationSansObjet,
+  debutDeGrille,
+  evenementsParJour,
+  libelleMultiJours,
+  peutEtreDeplace,
+  type EntreeJour,
+} from './agenda-calendar.component';
 
-/**
- * LOT MULTI-JOURS (28/09) — « un véhicule en garage, ça peut prendre une semaine ».
- *
- * La grille ne portait une pilule que sur le jour de DÉBUT : une maintenance du 5 au 12
- * disparaissait dès le 6, alors que le panneau du jour la disait immobilisante. Ce prédicat rend
- * les jours qu'un évènement occupe ; la grille pose une « suite » sur chacun après le premier.
+/*
+ * LOT MULTI-JOURS (28/09) — les jours qu'un évènement occupe sur la grille. Depuis la revue du
+ * 29/09, la grille n'énumère plus que les jours qu'elle AFFICHE, avec le vrai rang et la vraie durée
+ * (plus de borne à 62 jours) : la règle vit dans `agenda.utils.ts` (`joursDansFenetre`,
+ * `dureeEnJours`), partagée avec le panneau du jour, et ses tests dans `agenda.utils.spec.ts` ; son
+ * câblage dans la grille (`evenementsParJour`) est éprouvé plus bas.
  */
-describe('joursCouverts', () => {
-  it('sans fin : le seul jour de début', () => {
-    expect(joursCouverts({ startAt: '2026-10-05T08:00:00', endAt: null })).toEqual(['2026-10-05']);
-  });
-
-  it('une fin le même jour : toujours un seul jour', () => {
-    expect(joursCouverts({ startAt: '2026-10-05T08:00:00', endAt: '2026-10-05T18:00:00' })).toEqual(['2026-10-05']);
-  });
-
-  it('du 5 au 12 : huit jours, le premier compris, le dernier aussi', () => {
-    const jours = joursCouverts({ startAt: '2026-10-05T08:00:00', endAt: '2026-10-12T18:00:00' });
-    expect(jours.length).toBe(8);
-    expect(jours[0]).toBe('2026-10-05');
-    expect(jours[7]).toBe('2026-10-12');
-  });
-
-  it('une fin à minuit pile le lendemain occupe le lendemain (le véhicule y est encore immobilisé)', () => {
-    expect(joursCouverts({ startAt: '2026-10-05T08:00:00', endAt: '2026-10-06T00:00:00' })).toEqual(['2026-10-05', '2026-10-06']);
-  });
-
-  it('une fin AVANT le début, ou illisible : on ne raconte rien de plus que le début', () => {
-    expect(joursCouverts({ startAt: '2026-10-05T08:00:00', endAt: '2026-10-04T18:00:00' })).toEqual(['2026-10-05']);
-    expect(joursCouverts({ startAt: '2026-10-05T08:00:00', endAt: 'pas une date' })).toEqual(['2026-10-05']);
-  });
-
-  it('un début illisible ne produit aucun jour', () => {
-    expect(joursCouverts({ startAt: 'pas une date', endAt: '2026-10-12T18:00:00' })).toEqual([]);
-  });
-
-  it('⚠️ borné : un incident « jusqu’à nouvel ordre » daté d’un an ne fabrique pas 365 pilules', () => {
-    expect(joursCouverts({ startAt: '2026-10-05T08:00:00', endAt: '2027-10-05T08:00:00' }).length).toBe(62);
-    expect(joursCouverts({ startAt: '2026-10-05T08:00:00', endAt: '2027-10-05T08:00:00' }, 10).length).toBe(10);
-  });
-});
 
 /**
  * LA REPRISE EN MASSE LAISSAIT AUTANT DE LIGNES BARRÉES QU'ELLE ANNULAIT DE RÉSERVATIONS.
@@ -142,5 +116,65 @@ describe('libelleMultiJours', () => {
   it('une suite dit où on en est, avant le titre', () => {
     expect(libelleMultiJours('Sortie', 2, 3)).toBe('↳ 2/3 · Sortie');
     expect(libelleMultiJours('Sortie', 3, 3)).toBe('↳ 3/3 · Sortie');
+  });
+  it('une grande durée s’écrit telle quelle — le libellé ne borne rien', () => {
+    expect(libelleMultiJours('Mise à disposition', 1, 91)).toBe('91 j · Mise à disposition');
+    expect(libelleMultiJours('Mise à disposition', 70, 91)).toBe('↳ 70/91 · Mise à disposition');
+  });
+});
+
+/**
+ * LA BORNE À 62 JOURS, ÉPROUVÉE SUR LE CÂBLAGE DE LA GRILLE (contre-revue du 29/09, S3).
+ *
+ * Le test précédent ne regardait que `libelleMultiJours`, qui n'a jamais plafonné : il passait aussi
+ * sur le code d'avant. La borne vivait dans l'énumération des jours (partie du début de l'évènement,
+ * arrêtée au 62e) — c'est donc `evenementsParJour`, la fonction que la grille appelle, avec la
+ * fenêtre qu'elle passe, qu'il faut éprouver. Ces attentes échouent si l'énumération repart du début
+ * de l'évènement (plus rien après le 62e jour, « 62 j » au lieu de « 91 j »), ou si la fenêtre
+ * repart du 1er du mois au lieu du lundi de la première semaine (plus de pilule le lun. 26 oct.).
+ */
+describe('evenementsParJour — ce que la grille pose sur chaque jour', () => {
+  const MAD = {
+    id: 'mad',
+    title: 'Mise à disposition',
+    type: 'RESERVATION',
+    status: 'CONFIRMED',
+    startAt: '2026-09-01T08:00:00',
+    endAt: '2026-11-30T18:00:00',
+  } as VehicleEventDto;
+  const MAINTENANT = new Date('2026-09-01T07:00:00').getTime();
+  const libelle = (e: EntreeJour | undefined) => (e ? libelleMultiJours(e.ev.title, e.jour, e.total) : null);
+
+  it('grille de novembre : le lundi 26 oct. ouvre la grille, au 56e jour sur 91', () => {
+    const jours = evenementsParJour([MAD], new Date(2026, 10, 15), MAINTENANT);
+    // 1er nov. 2026 = un dimanche : la grille part du lundi 26 octobre.
+    expect(debutDeGrille(new Date(2026, 10, 15)).getTime()).toBe(new Date(2026, 9, 26).getTime());
+    expect(libelle(jours.get('2026-10-26')?.[0])).toBe('↳ 56/91 · Mise à disposition');
+    expect(jours.has('2026-10-25')).toBe(false);
+  });
+
+  it('AU-DELÀ du 62e jour : la pilule est toujours là, avec son vrai rang et sa vraie durée', () => {
+    const jours = evenementsParJour([MAD], new Date(2026, 10, 1), MAINTENANT);
+    expect(libelle(jours.get('2026-11-01')?.[0])).toBe('↳ 62/91 · Mise à disposition');
+    expect(libelle(jours.get('2026-11-02')?.[0])).toBe('↳ 63/91 · Mise à disposition');
+    expect(libelle(jours.get('2026-11-09')?.[0])).toBe('↳ 70/91 · Mise à disposition');
+    expect(libelle(jours.get('2026-11-30')?.[0])).toBe('↳ 91/91 · Mise à disposition');
+    // Et rien après la fin, même si la grille continue jusqu'au dimanche 6 décembre.
+    expect(jours.has('2026-12-01')).toBe(false);
+    // Du lun. 26 oct. au lun. 30 nov. : 36 jours, un seul évènement par jour.
+    expect(jours.size).toBe(36);
+  });
+
+  it('grille de septembre : le premier jour annonce la VRAIE durée (91 j, pas 62 j)', () => {
+    const jours = evenementsParJour([MAD], new Date(2026, 8, 1), MAINTENANT);
+    const premier = jours.get('2026-09-01')?.[0];
+    expect(libelle(premier)).toBe('91 j · Mise à disposition');
+    expect(premier?.suite).toBe(false);
+    expect(jours.get('2026-09-02')?.[0].suite).toBe(true);
+  });
+
+  it('une annulation encore à venir ne pose aucune pilule', () => {
+    const annulee = { ...MAD, status: 'CANCELLED' } as VehicleEventDto;
+    expect(evenementsParJour([annulee], new Date(2026, 10, 1), MAINTENANT).size).toBe(0);
   });
 });

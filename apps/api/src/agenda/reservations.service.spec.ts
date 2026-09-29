@@ -313,6 +313,8 @@ describe('ReservationsService — Sprint 8 Palier B', () => {
     await expect(svc.confirm(makeUser({ role: UserRole.VIEWER }), 'r1', {})).rejects.toBeInstanceOf(ForbiddenException);
   });
 
+  // Troisième relecture du 29/09 (T1) : valider et annuler exigent de GÉRER le véhicule de la
+  // réservation — les tests suivants montent donc un appelant qui le gère (`makePerms(true)`).
   it('confirm : conflit ferme détecté au pré-check -> 409 Conflict', async () => {
     const prisma = makePrisma({
       vehicleEvent: {
@@ -322,7 +324,7 @@ describe('ReservationsService — Sprint 8 Palier B', () => {
         update: jest.fn(),
       },
     });
-    const svc = new ReservationsService(prisma, access('ALL'), makeEvents(), makePerms());
+    const svc = new ReservationsService(prisma, access('ALL'), makeEvents(), makePerms(true));
     await expect(svc.confirm(makeUser(), 'r1', {})).rejects.toBeInstanceOf(ConflictException);
   });
 
@@ -336,7 +338,7 @@ describe('ReservationsService — Sprint 8 Palier B', () => {
       },
     });
     const p = prisma as { vehicleEvent: { update: jest.Mock } };
-    const svc = new ReservationsService(prisma, access('ALL'), makeEvents(), makePerms());
+    const svc = new ReservationsService(prisma, access('ALL'), makeEvents(), makePerms(true));
     const dto = await svc.confirm(makeUser(), 'r1', {});
     expect(dto.status).toBe('CONFIRMED');
     expect(p.vehicleEvent.update.mock.calls[0][0].data.status).toBe('CONFIRMED');
@@ -351,7 +353,7 @@ describe('ReservationsService — Sprint 8 Palier B', () => {
         create: jest.fn(),
       },
     });
-    const svc = new ReservationsService(prisma, access('ALL'), makeEvents(), makePerms());
+    const svc = new ReservationsService(prisma, access('ALL'), makeEvents(), makePerms(true));
     const dto = await svc.cancel(makeUser(), 'r1');
     expect(dto.status).toBe('CANCELLED');
   });
@@ -365,7 +367,7 @@ describe('ReservationsService — Sprint 8 Palier B', () => {
         update: jest.fn(),
       },
     });
-    const svc = new ReservationsService(prisma, access('ALL'), makeEvents(), makePerms());
+    const svc = new ReservationsService(prisma, access('ALL'), makeEvents(), makePerms(true));
     await expect(svc.confirm(makeUser(), 'r1', {})).rejects.toBeInstanceOf(BadRequestException);
   });
 
@@ -379,7 +381,7 @@ describe('ReservationsService — Sprint 8 Palier B', () => {
       },
       trip: { findMany: jest.fn().mockResolvedValue([]), findFirst: jest.fn().mockResolvedValue({ id: 't1' }) },
     });
-    const svc = new ReservationsService(prisma, access('ALL'), makeEvents(), makePerms());
+    const svc = new ReservationsService(prisma, access('ALL'), makeEvents(), makePerms(true));
     await expect(svc.confirm(makeUser(), 'r1', {})).rejects.toBeInstanceOf(ConflictException);
   });
 
@@ -392,7 +394,7 @@ describe('ReservationsService — Sprint 8 Palier B', () => {
         create: jest.fn(),
       },
     });
-    const svc = new ReservationsService(prisma, access('ALL'), makeEvents(), makePerms());
+    const svc = new ReservationsService(prisma, access('ALL'), makeEvents(), makePerms(true));
     await expect(svc.cancel(makeUser(), 'r1')).rejects.toBeInstanceOf(BadRequestException);
   });
 
@@ -407,7 +409,7 @@ describe('ReservationsService — Sprint 8 Palier B', () => {
         create: jest.fn(),
       },
     });
-    const svc = new ReservationsService(prisma, access('ALL'), makeEvents(), makePerms());
+    const svc = new ReservationsService(prisma, access('ALL'), makeEvents(), makePerms(true));
     await expect(svc.confirm(makeUser(), 'r1', {})).rejects.toBeInstanceOf(ConflictException);
   });
 
@@ -434,23 +436,47 @@ describe('ReservationsService — Sprint 8 Palier B', () => {
   });
 
   // ─── #4 — réservation validée éditable (réaffectation de véhicule) ───
-  it('update : réaffecte le véhicule d\'une réservation CONFIRMED (fleetId dérivé + re-check conflits)', async () => {
+  it('update : réaffecte le véhicule d\'une réservation CONFIRMED (accès vérifié + re-check conflits), la société ne bouge pas', async () => {
     const prisma = makePrisma({
       vehicleEvent: {
         findUnique: jest.fn().mockResolvedValue(evRow({ status: 'CONFIRMED' })),
         findMany: jest.fn().mockResolvedValue([]), // aucun conflit sur le nouveau véhicule
         create: jest.fn(),
-        update: jest.fn().mockResolvedValue(evRow({ status: 'CONFIRMED', vehicleId: 'v2', fleetId: 'f2' })),
+        update: jest.fn().mockResolvedValue(evRow({ status: 'CONFIRMED', vehicleId: 'v2' })),
       },
     });
-    const events = makeEvents({ assertVehicleAccess: jest.fn().mockResolvedValue('f2') });
-    const svc = new ReservationsService(prisma, access('ALL'), events, makePerms());
+    const events = makeEvents({ assertVehicleAccess: jest.fn().mockResolvedValue('f1') });
+    // Contre-revue du 29/09 (R1) : changer le véhicule exige de GÉRER l'origine et la cible — ce test
+    // passait avec un appelant qui ne gérait rien, c'est-à-dire qu'il verrouillait le trou.
+    const svc = new ReservationsService(prisma, access('ALL'), events, makePerms(true));
 
     await svc.update(makeUser(), 'r1', { vehicleId: 'v2' });
     const data = (prisma as { vehicleEvent: { update: jest.Mock } }).vehicleEvent.update.mock.calls[0][0].data;
     expect(data.vehicleId).toBe('v2');
-    expect(data.fleetId).toBe('f2'); // dérivé du nouveau véhicule, jamais du client
+    expect(data.fleetId).toBeUndefined(); // même société : rien à réécrire
     expect((events as { assertVehicleAccess: jest.Mock }).assertVehicleAccess).toHaveBeenCalledWith(expect.anything(), 'v2');
+  });
+
+  /**
+   * Revue du 29/09 (C4/C43) : ce test attendait l'INVERSE — une réservation de f1 passait chez f2 avec
+   * son groupe et le contact du demandeur public. Une réservation ne change pas de société.
+   */
+  it('update : un véhicule d\'une AUTRE société est refusé (400), rien n\'est écrit', async () => {
+    const prisma = makePrisma({
+      vehicleEvent: {
+        findUnique: jest.fn().mockResolvedValue(evRow({ status: 'CONFIRMED' })),
+        findMany: jest.fn().mockResolvedValue([]),
+        create: jest.fn(),
+        update: jest.fn(),
+      },
+    });
+    const events = makeEvents({ assertVehicleAccess: jest.fn().mockResolvedValue('f2') });
+    const svc = new ReservationsService(prisma, access('ALL'), events, makePerms(true));
+
+    await expect(svc.update(makeUser({ role: UserRole.SUPER_ADMIN }), 'r1', { vehicleId: 'v2' })).rejects.toThrow(
+      'Ce véhicule appartient à une autre société : une réservation ne change pas de société.',
+    );
+    expect((prisma as { vehicleEvent: { update: jest.Mock } }).vehicleEvent.update).not.toHaveBeenCalled();
   });
 
   // ─── P3 — création système (agent nocturne) ───
@@ -1164,7 +1190,9 @@ describe('ReservationsService — sièges auto : le stock de la société borne 
 
   it('update : un besoin revu à la hausse se vérifie (en s\'excluant soi-même) ; un motif seul ne relit pas le stock', async () => {
     const childSeats = makeChildSeats(false);
-    const row = evRow({ status: 'CONFIRMED', metadata: { criteria: { childSeatsBaby: 1 } } });
+    // Réservation À VENIR : depuis la revue du 29/09 (C44), le stock se juge sur la partie à venir —
+    // une réservation entièrement passée n'engage plus aucun siège.
+    const row = evRow({ status: 'CONFIRMED', metadata: { criteria: { childSeatsBaby: 1 } }, startAt: new Date(SLOT.startAt), endAt: new Date(SLOT.endAt) });
     const { svc } = creer(childSeats, {
       findUnique: jest.fn().mockResolvedValue(row),
       update: jest.fn().mockResolvedValue(row),
@@ -1237,7 +1265,7 @@ describe('ReservationsService — hors service : le choix EXPLICITE d’un véhi
       vehicle: { findMany: jest.fn().mockResolvedValue([]), findUnique: horsService() },
       vehicleEvent: { findUnique: jest.fn().mockResolvedValue(evRow()), findMany: jest.fn().mockResolvedValue([]), update: jest.fn(), create: jest.fn() },
     });
-    const svc = new ReservationsService(prisma, access('ALL'), makeEvents(), makePerms());
+    const svc = new ReservationsService(prisma, access('ALL'), makeEvents(), makePerms(true));
     await expect(svc.confirm(makeUser(), 'r1', {})).rejects.toBeInstanceOf(ConflictException);
     expect((prisma as { vehicleEvent: { update: jest.Mock } }).vehicleEvent.update).not.toHaveBeenCalled();
   });
@@ -1471,7 +1499,10 @@ describe('ReservationsService.reorganiser — réaffecter un lot, et les comptes
       ...fenetre(), action: 'reaffecter', origine: 'toutes', vehicleId: 'v1', simulation: false,
     });
     expect(reaffecter).toHaveBeenCalledTimes(2);
-    expect(reaffecter).toHaveBeenCalledWith(expect.anything(), 'e1', { versVehicleId: 'auto' });
+    // Coupe au début de la fenêtre (R2), écriture silencieuse : la réorganisation prévient elle-même (R3).
+    expect(reaffecter).toHaveBeenCalledWith(
+      expect.anything(), 'e1', { versVehicleId: 'auto', aPartirDe: expect.any(String) }, { silencieux: true },
+    );
     expect(r.appliquees).toBe(1);
     expect(r.refusees).toEqual([expect.objectContaining({ motif: 'Aucun autre véhicule libre et conforme sur ce créneau.' })]);
   });
@@ -1481,5 +1512,1244 @@ describe('ReservationsService.reorganiser — réaffecter un lot, et les comptes
     await expect(
       svc.reorganiser({ role: 'FLEET_ADMIN', fleetId: 'f1' } as never, { ...fenetre(), action: 'reaffecter', vehicleId: 'v1', versVehicleId: 'v1' }),
     ).rejects.toBeInstanceOf(BadRequestException);
+  });
+});
+
+/**
+ * ── REVUE ADVERSARIALE DU 29/09 — RÉSERVATIONS ─────────────────────────────────────────────────
+ *
+ * Chaque cas ci-dessous a été rejoué dans le code par deux sceptiques avant d'être corrigé :
+ * plancher de places (C0), demande en attente contrôlée (C1), stock de sièges sans soi-même (C2),
+ * « aucun groupe » explicite (C3), pas de changement de société (C4), demandeur public prévenu d'une
+ * modification (C5), scission d'une réservation commencée (C6), comptes du véhicule choisi (C9),
+ * « réaffecter » exige un véhicule (D0), droit de gérer PAR véhicule (D1), réservation commencée
+ * encore modifiable (C44).
+ */
+describe('ReservationsService — revue du 29/09', () => {
+  const H = 3_600_000;
+  const futur = (over: Record<string, unknown> = {}) =>
+    evRow({ status: 'CONFIRMED', startAt: new Date(Date.now() + 48 * H), endAt: new Date(Date.now() + 50 * H), ...over });
+
+  /** Vivier renvoyé par un `suggest` mocké. */
+  const vivier = (ids: string[], over: Record<string, unknown> = {}) => ({
+    startAt: '', endAt: '', excludedUnknownCapacity: 0, excludedImmobilized: 0, excludedDormant: 0,
+    vehicles: ids.map((id) => ({ vehicleId: id, vehiclePlate: id.toUpperCase(), seats: 9, features: [], utilizationRatio: 0.1, underutilized: true })),
+    ...over,
+  });
+
+  /** Un trajet simulé : `endedAt: null` = trajet EN COURS (le conducteur roule). */
+  type Trajet = { vehicleId?: string; startedAt: Date; endedAt: Date | null };
+
+  /**
+   * Contre-revue du 29/09 (R0) — le mock de `trip.findFirst` ÉVALUE la vraie clause de
+   * `hasTripOverlap` : `startedAt < fin`, puis trajet clos qui finit après le début (OR[0]) OU trajet
+   * ouvert démarré depuis moins de 8 h avant le début (OR[1]), et le `NOT` des trajets propres à la
+   * réservation. L'ancien mock ne lisait que OR[0] : la branche du trajet ouvert — la seule qui peut
+   * tomber dans une fenêtre à venir — n'était jamais exercée, et un test figeait le faux positif.
+   */
+  function trouverTrajet(trajets: Trajet[], where: Record<string, unknown>): Trajet | undefined {
+    const w = where as {
+      vehicleId?: string;
+      startedAt: { lt: Date };
+      OR: [{ endedAt: { gt: Date } }, { endedAt: null; startedAt: { gt: Date } }];
+      NOT?: { startedAt: { gte: Date } };
+    };
+    return trajets.find(
+      (t) =>
+        (!t.vehicleId || t.vehicleId === w.vehicleId) &&
+        t.startedAt.getTime() < w.startedAt.lt.getTime() &&
+        ((t.endedAt !== null && t.endedAt.getTime() > w.OR[0].endedAt.gt.getTime()) ||
+          (t.endedAt === null && !!w.OR[1] && t.startedAt.getTime() > w.OR[1].startedAt.gt.getTime())) &&
+        !(w.NOT && t.startedAt.getTime() >= w.NOT.startedAt.gte.getTime()),
+    );
+  }
+
+  /**
+   * Prisma aiguillé : `findMany` sur les réservations répond selon la requête — sœurs de la même
+   * demande (filtre `metadata`), immobilisations (`blocksVehicle`), sinon conflits fermes. Un conflit
+   * qui porte `startAt`/`endAt` n'est rendu que s'il chevauche la fenêtre demandée (R2 : une cible
+   * prise mardi et libre jeudi) ; sans dates, il est toujours rendu.
+   */
+  function monter(opts: {
+    row: Record<string, unknown>;
+    soeurs?: { vehicleId: string }[];
+    conflits?: unknown[];
+    immobilises?: unknown[];
+    /** Trajets du parc, évalués contre la vraie clause (cf. `trouverTrajet`). */
+    trajets?: Trajet[];
+    seats?: number | null;
+    perms?: unknown;
+    events?: unknown;
+    emitter?: { emit: jest.Mock };
+    childSeats?: unknown;
+  }) {
+    const update = jest.fn().mockImplementation(async (args: { data: Record<string, unknown> }) => ({
+      ...opts.row, ...args.data, vehicle: { plate: String(args.data['vehicleId'] ?? opts.row['vehicleId']).toUpperCase() },
+    }));
+    const create = jest.fn().mockImplementation(async (args: { data: Record<string, unknown> }) => ({
+      ...evRow(), id: 'r2', ...args.data, vehicle: { plate: String(args.data['vehicleId']).toUpperCase() },
+    }));
+    const prisma: Record<string, unknown> = makePrisma({
+      vehicleEvent: {
+        findUnique: jest.fn().mockResolvedValue(opts.row),
+        findMany: jest.fn().mockImplementation(async ({ where }: { where: Record<string, unknown> }) => {
+          if (where?.['metadata']) return opts.soeurs ?? [];
+          if (where?.['blocksVehicle']) return opts.immobilises ?? [];
+          const w = where as { startAt?: { lt?: Date }; endAt?: { gt?: Date } };
+          return (opts.conflits ?? []).filter((c) => {
+            const { startAt, endAt } = c as { startAt?: Date; endAt?: Date };
+            if (!startAt || !endAt) return true;
+            return (!w.startAt?.lt || startAt < w.startAt.lt) && (!w.endAt?.gt || endAt > w.endAt.gt);
+          });
+        }),
+        create,
+        update,
+      },
+      vehicle: {
+        findMany: jest.fn().mockResolvedValue([]),
+        findUnique: jest.fn().mockResolvedValue({
+          outOfServiceReason: null, plate: 'X', seats: opts.seats ?? null, tracker: { id: 't1', lastSeenAt: new Date() },
+        }),
+      },
+      trip: {
+        findMany: jest.fn().mockResolvedValue([]),
+        findFirst: jest.fn().mockImplementation(async ({ where }: { where: Record<string, unknown> }) =>
+          trouverTrajet(opts.trajets ?? [], where) ? { id: 't-trouve' } : null,
+        ),
+      },
+    }) as Record<string, unknown>;
+    prisma['$transaction'] = jest.fn(async (fn: (tx: unknown) => unknown) => fn(prisma));
+    const emitter = opts.emitter ?? { emit: jest.fn() };
+    const svc = new ReservationsService(
+      prisma as never, access('ALL'), (opts.events ?? makeEvents()) as never, (opts.perms ?? makePerms(true)) as never,
+      emitter as never, undefined, opts.childSeats as never,
+    );
+    return { svc, prisma, update, create, emitter };
+  }
+  const modifie = (emitter: { emit: jest.Mock }) => emitter.emit.mock.calls.filter((c) => c[0] === 'reservation.modified');
+
+  // ─── C0 — plancher de places en réaffectation automatique ───────────────────────────────────
+  describe('C0 — le groupe ne passe pas sur une voiture trop petite', () => {
+    it('demande publique sur un seul véhicule : min(seatsNeeded 8, places d’origine 9) = 8 — jamais écrit dans la metadata', async () => {
+      const { svc, update } = monter({ row: futur({ metadata: { public: true, bookingRef: 'g1', seatsNeeded: 8 } }), seats: 9 });
+      const suggest = jest.spyOn(svc, 'suggest').mockResolvedValue(vivier(['v2']) as never);
+      await svc.reaffecter(makeUser(), 'r1', {});
+      expect(suggest.mock.calls[0][1].criteria).toEqual({ minSeats: 8 });
+      expect(update.mock.calls[0][0].data.metadata).toBeUndefined();
+    });
+
+    it('ligne d’une demande répartie (11 personnes, véhicule de 5) : la part de CE véhicule, 5', async () => {
+      const { svc } = monter({ row: futur({ metadata: { public: true, bookingRef: 'g1', seatsNeeded: 11 } }), seats: 5 });
+      const suggest = jest.spyOn(svc, 'suggest').mockResolvedValue(vivier(['v2']) as never);
+      await svc.reaffecter(makeUser(), 'r1', {});
+      expect(suggest.mock.calls[0][1].criteria).toEqual({ minSeats: 5 });
+    });
+
+    it('réservation interne sans places saisies : les places du véhicule d’origine ; `minSeats` saisi l’emporte', async () => {
+      const a = monter({ row: futur({ metadata: { criteria: { childSeatsBaby: 1 } } }), seats: 5 });
+      const s1 = jest.spyOn(a.svc, 'suggest').mockResolvedValue(vivier(['v2']) as never);
+      await a.svc.reaffecter(makeUser(), 'r1', {});
+      expect(s1.mock.calls[0][1].criteria).toEqual({ childSeatsBaby: 1, minSeats: 5 });
+
+      const b = monter({ row: futur({ metadata: { public: true, seatsNeeded: 8, criteria: { minSeats: 3 } } }), seats: 9 });
+      const s2 = jest.spyOn(b.svc, 'suggest').mockResolvedValue(vivier(['v2']) as never);
+      await b.svc.reaffecter(makeUser(), 'r1', {});
+      expect(s2.mock.calls[0][1].criteria).toEqual({ minSeats: 3 });
+    });
+
+    it('aucun remplaçant : le 409 dit le plancher et les véhicules écartés faute de places renseignées', async () => {
+      const { svc } = monter({ row: futur({ metadata: { public: true, seatsNeeded: 8 } }), seats: 9 });
+      jest.spyOn(svc, 'suggest').mockResolvedValue(vivier([], { excludedUnknownCapacity: 2 }) as never);
+      await expect(svc.reaffecter(makeUser(), 'r1', {})).rejects.toThrow(/au moins 8 places.*2 écarté\(s\) faute de nombre de places/);
+    });
+  });
+
+  // ─── C1 — une demande EN ATTENTE est contrôlée sur la cible ─────────────────────────────────
+  describe('C1 — réaffecter une demande en attente', () => {
+    const demande = (over: Record<string, unknown> = {}) => futur({ status: 'REQUESTED', ...over });
+
+    it('cible déjà réservée fermement -> 409, rien n’est déplacé', async () => {
+      const { svc, update } = monter({ row: demande(), conflits: [{ id: 'autre', vehicle: { plate: 'BB-2' } }] });
+      await expect(svc.reaffecter(makeUser(), 'r1', { versVehicleId: 'v2' })).rejects.toBeInstanceOf(ConflictException);
+      expect(update).not.toHaveBeenCalled();
+    });
+
+    it('cible immobilisée ou qui roule sur le créneau -> 409', async () => {
+      const immo = monter({
+        row: demande(),
+        immobilises: [{ vehicleId: 'v2', type: 'INCIDENT', startAt: new Date(Date.now() - H), endAt: null }],
+      });
+      await expect(immo.svc.reaffecter(makeUser(), 'r1', { versVehicleId: 'v2' })).rejects.toThrow(/immobilisé/);
+      expect(immo.update).not.toHaveBeenCalled();
+
+      // La demande commence dans 1 h ; v2 roule depuis 30 min (trajet ouvert) : il ne sera pas rentré.
+      const roule = monter({
+        row: demande({ startAt: new Date(Date.now() + H), endAt: new Date(Date.now() + 3 * H) }),
+        trajets: [{ vehicleId: 'v2', startedAt: new Date(Date.now() - H / 2), endedAt: null }],
+      });
+      await expect(roule.svc.reaffecter(makeUser(), 'r1', { versVehicleId: 'v2' })).rejects.toThrow(/roule déjà/);
+    });
+
+    it('jamais sur le véhicule d’une autre ligne de la même demande : refus en explicite, véhicule sauté en auto', async () => {
+      const row = demande({ metadata: { public: true, bookingRef: 'g1', seatsNeeded: 4 } });
+      const explicite = monter({ row, soeurs: [{ vehicleId: 'v2' }], seats: 5 });
+      await expect(explicite.svc.reaffecter(makeUser(), 'r1', { versVehicleId: 'v2' })).rejects.toThrow(/même demande/);
+
+      const auto = monter({ row, soeurs: [{ vehicleId: 'v2' }], seats: 5 });
+      jest.spyOn(auto.svc, 'suggest').mockResolvedValue(vivier(['v1', 'v2', 'v3']) as never);
+      await auto.svc.reaffecter(makeUser(), 'r1', {});
+      expect(auto.update.mock.calls[0][0].data.vehicleId).toBe('v3');
+    });
+
+    it('cible libre -> déplacée (et une demande en attente ne prévient personne)', async () => {
+      const { svc, update, emitter } = monter({ row: demande({ metadata: { public: true, requesterContact: 'a@b.fr' } }) });
+      await svc.reaffecter(makeUser(), 'r1', { versVehicleId: 'v2' });
+      expect(update.mock.calls[0][0].data.vehicleId).toBe('v2');
+      expect(modifie(emitter)).toHaveLength(0);
+    });
+  });
+
+  // ─── C2 — le stock de sièges se lit sans la réservation qu'on déplace ───────────────────────
+  it('C2 — en `auto`, la disponibilité des sièges exclut la réservation et ses sœurs ; le seul siège du stock lui revient', async () => {
+    const childSeats = {
+      // Stock de 1 bébé, rien d'engagé une fois la réservation elle-même exclue.
+      availability: jest.fn().mockResolvedValue({
+        startAt: '', endAt: '', policy: 'STOCK_OR_INSTALLED', total: { baby: 1, child: 0 }, installed: { baby: 0, child: 0 },
+        stock: { baby: 1, child: 0 }, engaged: { baby: 0, child: 0 }, available: { baby: 1, child: 0 },
+      }),
+      assertAvailable: jest.fn().mockResolvedValue(undefined),
+    };
+    const { svc, prisma, update } = monter({
+      row: futur({ metadata: { bookingRef: 'g1', criteria: { minSeats: 4, childSeatsBaby: 1 } } }),
+      childSeats,
+    });
+    (prisma['vehicle'] as { findMany: jest.Mock }).findMany.mockResolvedValue([
+      { id: 'v2', plate: 'BB-2', seats: 5, childSeatsBaby: 0, childSeatsChild: 0, features: [], tracker: null },
+    ]);
+    await svc.reaffecter(makeUser(), 'r1', {});
+    expect(childSeats.availability).toHaveBeenCalledWith(
+      'f1', expect.any(Date), expect.any(Date), expect.objectContaining({ excludeId: 'r1', excludeBookingRef: 'g1' }),
+    );
+    expect(update.mock.calls[0][0].data.vehicleId).toBe('v2');
+  });
+
+  // ─── C3 — « aucun groupe » explicite ────────────────────────────────────────────────────────
+  describe('C3 — `group: null` = aucun groupe, absent = défaut', () => {
+    const avecGroupes = () => {
+      const m = monter({ row: evRow({ status: 'REQUESTED', metadata: { group: { id: 'g-nord', name: 'Nord' } } }) });
+      const p = m.prisma as { vehicleGroupAssignment: { findFirst: jest.Mock }; vehicleEvent: { create: jest.Mock; findUnique: jest.Mock } };
+      p.vehicleGroupAssignment.findFirst.mockResolvedValue({ group: { id: 'g-nord', name: 'Nord' } });
+      return { ...m, p };
+    };
+
+    it('à la demande : `null` n’hérite PAS du groupe du véhicule ; absent, si', async () => {
+      const { svc, create } = avecGroupes();
+      await svc.request(makeUser(), { vehicleId: 'v1', ...SLOT, group: null });
+      expect(create.mock.calls[0][0].data.metadata.group).toBeNull();
+      await svc.request(makeUser(), { vehicleId: 'v1', ...SLOT });
+      expect(create.mock.calls[1][0].data.metadata.group).toEqual({ id: 'g-nord', name: 'Nord' });
+    });
+
+    it('à la validation : `null` retire le groupe posé ; absent garde le « aucun » choisi au dépôt, sinon le véhicule', async () => {
+      const { svc, update, p } = avecGroupes();
+      await svc.confirm(makeUser(), 'r1', { group: null });
+      expect(update.mock.calls[0][0].data.metadata.group).toBeNull();
+
+      p.vehicleEvent.findUnique.mockResolvedValue(evRow({ status: 'REQUESTED', metadata: { group: null } }));
+      await svc.confirm(makeUser(), 'r1', {});
+      expect(update.mock.calls[1][0].data.metadata.group).toBeNull();
+
+      p.vehicleEvent.findUnique.mockResolvedValue(evRow({ status: 'REQUESTED', metadata: { public: true } }));
+      await svc.confirm(makeUser(), 'r1', {});
+      expect(update.mock.calls[2][0].data.metadata.group).toEqual({ id: 'g-nord', name: 'Nord' });
+    });
+  });
+
+  // ─── C4 — pas de changement de société à la validation non plus ─────────────────────────────
+  it('C4 — valider en réaffectant sur un véhicule d’une autre société -> 400, rien n’est validé', async () => {
+    const { svc, update } = monter({
+      row: evRow({ status: 'REQUESTED' }),
+      events: makeEvents({ assertVehicleAccess: jest.fn().mockResolvedValue('f2') }),
+    });
+    await expect(svc.confirm(makeUser({ role: UserRole.SUPER_ADMIN }), 'r1', { vehicleId: 'v9' })).rejects.toThrow(/autre société/);
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  it('C4 — réaffecter vers un véhicule d’une autre société -> 400', async () => {
+    const { svc, update } = monter({
+      row: futur(),
+      events: makeEvents({ assertVehicleAccess: jest.fn().mockResolvedValue('f2') }),
+    });
+    await expect(svc.reaffecter(makeUser({ role: UserRole.SUPER_ADMIN }), 'r1', { versVehicleId: 'v9' })).rejects.toBeInstanceOf(BadRequestException);
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  // ─── C5 — le demandeur public apprend la modification, une seule fois ───────────────────────
+  describe('C5 — `reservation.modified`', () => {
+    const publique = (over: Record<string, unknown> = {}) =>
+      futur({ metadata: { public: true, bookingRef: 'g1', requesterContact: 'ecole@test.fr', criteria: { minSeats: 4 } }, ...over });
+
+    it('réaffecter une réservation publique CONFIRMÉE : un seul événement, avec la nouvelle plaque', async () => {
+      const { svc, emitter } = monter({ row: publique() });
+      await svc.reaffecter(makeUser(), 'r1', { versVehicleId: 'v2' });
+      expect(modifie(emitter)).toHaveLength(1);
+      expect(modifie(emitter)[0][1]).toEqual(expect.objectContaining({ fleetId: 'f1', vehiclePlate: 'V2' }));
+      expect(emitter.emit).not.toHaveBeenCalledWith('reservation.confirmed', expect.anything());
+    });
+
+    it('décaler le créneau le dit aussi ; renvoyer le même créneau ou changer le motif, non', async () => {
+      const row = publique();
+      const { svc, emitter, update } = monter({ row });
+      await svc.update(makeUser(), 'r1', {
+        startAt: new Date((row.startAt as Date).getTime() + H).toISOString(),
+        endAt: new Date((row.endAt as Date).getTime() + H).toISOString(),
+      });
+      expect(modifie(emitter)).toHaveLength(1);
+
+      await svc.update(makeUser(), 'r1', {
+        startAt: (row.startAt as Date).toISOString(),
+        endAt: (row.endAt as Date).toISOString(),
+        reason: 'autre motif',
+      });
+      expect(modifie(emitter)).toHaveLength(1); // toujours un seul
+      expect(update.mock.calls[1][0].data.startAt).toBeUndefined(); // rien de déplacé, rien de réécrit
+    });
+
+    it('réservation interne, demande en attente ou consignation rétroactive : personne à prévenir', async () => {
+      const interne = monter({ row: futur({ metadata: { criteria: { minSeats: 4 } } }) });
+      await interne.svc.reaffecter(makeUser(), 'r1', { versVehicleId: 'v2' });
+      expect(modifie(interne.emitter)).toHaveLength(0);
+
+      const retro = monter({ row: publique({ metadata: { public: true, retroactive: true } }) });
+      await retro.svc.update(makeUser(), 'r1', { vehicleId: 'v2' });
+      expect(modifie(retro.emitter)).toHaveLength(0);
+    });
+  });
+
+  // ─── C6 — scinder une réservation déjà commencée ────────────────────────────────────────────
+  describe('C6 — la partie écoulée reste sur son véhicule', () => {
+    const enCours = (over: Record<string, unknown> = {}) =>
+      evRow({
+        status: 'CONFIRMED', source: 'MANUAL', createdBy: 'u-auteur', title: 'Sortie scolaire',
+        startAt: new Date(Date.now() - 4 * H), endAt: new Date(Date.now() + 4 * H),
+        metadata: { criteria: { minSeats: 4 }, group: { id: 'g-nord', name: 'Nord' } },
+        ...over,
+      });
+
+    it('auto : cherche un remplaçant sur [maintenant, fin), coupe l’origine et crée la suite, dans une transaction', async () => {
+      const row = enCours();
+      // v2 a roulé CE MATIN (trajet clos) : il ne doit plus être disqualifié pour la suite.
+      const { svc, prisma, update, create } = monter({
+        row,
+        trajets: [{ vehicleId: 'v2', startedAt: new Date(Date.now() - 3 * H), endedAt: new Date(Date.now() - H) }],
+      });
+      const suggest = jest.spyOn(svc, 'suggest').mockResolvedValue(vivier(['v2']) as never);
+      const coupe = new Date(Math.floor(Date.now() / 60_000) * 60_000);
+
+      const dto = await svc.reaffecter(makeUser(), 'r1', {});
+
+      expect(new Date(suggest.mock.calls[0][1].startAt).getTime()).toBeGreaterThanOrEqual(coupe.getTime());
+      expect((prisma['$transaction'] as jest.Mock)).toHaveBeenCalledTimes(1);
+      const original = update.mock.calls[0][0];
+      expect(original.where).toEqual({ id: 'r1' });
+      expect(original.data.vehicleId).toBeUndefined(); // le passé ne change pas de plaque
+      expect((original.data.endAt as Date).getTime()).toBeGreaterThanOrEqual(coupe.getTime());
+      const suite = create.mock.calls[0][0].data;
+      expect(suite).toEqual(expect.objectContaining({
+        vehicleId: 'v2', fleetId: 'f1', status: 'CONFIRMED', source: 'MANUAL', createdBy: 'u-auteur', title: 'Sortie scolaire', endAt: row.endAt,
+      }));
+      expect(suite.startAt).toEqual(original.data.endAt);
+      expect(suite.metadata).toEqual(expect.objectContaining({ suiteDe: 'r1', group: { id: 'g-nord', name: 'Nord' } }));
+      expect(dto.vehicleId).toBe('v2');
+    });
+
+    it('cible explicite : contrôlée sur la suite seulement (une réservation ferme sur la suite -> 409, rien n’est écrit)', async () => {
+      const { svc, create, update } = monter({ row: enCours(), conflits: [{ id: 'x', vehicle: { plate: 'V2' } }] });
+      await expect(svc.reaffecter(makeUser(), 'r1', { versVehicleId: 'v2' })).rejects.toBeInstanceOf(ConflictException);
+      expect(create).not.toHaveBeenCalled();
+      expect(update).not.toHaveBeenCalled();
+    });
+
+    it('une demande EN ATTENTE déjà commencée se refuse, avec un message clair', async () => {
+      const { svc, create, update } = monter({ row: enCours({ status: 'REQUESTED' }) });
+      await expect(svc.reaffecter(makeUser(), 'r1', { versVehicleId: 'v2' })).rejects.toThrow(/déjà commencé sans avoir été validée/);
+      expect(create).not.toHaveBeenCalled();
+      expect(update).not.toHaveBeenCalled();
+    });
+
+    it('changer le véhicule à l’édition scinde de la même façon', async () => {
+      const { svc, create } = monter({ row: enCours() });
+      await svc.update(makeUser(), 'r1', { vehicleId: 'v2' });
+      expect(create.mock.calls[0][0].data).toEqual(expect.objectContaining({ vehicleId: 'v2', metadata: expect.objectContaining({ suiteDe: 'r1' }) }));
+    });
+
+    it('Réorganiser → réaffecter reprend la réservation en cours ; annuler ne la touche toujours pas', async () => {
+      const liste = [{
+        id: 'e1', vehicleId: 'v1', vehiclePlate: 'AA-1', type: 'RESERVATION', status: 'CONFIRMED', source: 'MANUAL',
+        startAt: new Date(Date.now() - 2 * H).toISOString(), endAt: new Date(Date.now() + 2 * H).toISOString(),
+      }];
+      const svc = new ReservationsService(makePrisma(), access('ALL'), makeEvents({ list: jest.fn().mockResolvedValue(liste) }), makePerms(true));
+      const fenetre = { from: new Date(Date.now() - 24 * H).toISOString(), to: new Date(Date.now() + 7 * 24 * H).toISOString() };
+      const r = await svc.reorganiser(makeUser(), { ...fenetre, action: 'reaffecter', origine: 'toutes', vehicleId: 'v1' });
+      expect(r.concernees).toBe(1);
+      const a = await svc.reorganiser(makeUser(), { ...fenetre, action: 'annuler', origine: 'toutes', vehicleId: 'v1' });
+      expect(a.concernees).toBe(0);
+    });
+  });
+
+  // ─── C9 / D0 — réorganiser ──────────────────────────────────────────────────────────────────
+  describe('C9 / D0 — réorganiser', () => {
+    const resa = (over: Record<string, unknown> = {}) => ({
+      id: 'e1', vehicleId: 'v1', vehiclePlate: 'AA-111-BB', type: 'RESERVATION', status: 'CONFIRMED', source: 'SYSTEM',
+      startAt: new Date(Date.now() + 48 * H).toISOString(), endAt: new Date(Date.now() + 50 * H).toISOString(),
+      ...over,
+    });
+    const fenetre = () => ({ from: new Date(Date.now() - 24 * H).toISOString(), to: new Date(Date.now() + 30 * 24 * H).toISOString() });
+    const liste = () => [
+      resa(), // agent, v1
+      resa({ id: 'e2', vehicleId: 'v2', vehiclePlate: 'CC-3', source: 'MANUAL' }),
+      resa({ id: 'e3', vehicleId: 'v2', vehiclePlate: 'CC-3', source: 'SYSTEM', metadata: { public: true } }),
+    ];
+
+    it('C9 — un véhicule choisi : `totauxVehicule` compte CE véhicule (l’écran ne dit plus « rien à venir sur X »)', async () => {
+      const svc = new ReservationsService(makePrisma(), access('ALL'), makeEvents({ list: jest.fn().mockResolvedValue(liste()) }), makePerms(true));
+      const r = await svc.reorganiser(makeUser(), { ...fenetre(), action: 'annuler', origine: 'auto', vehicleId: 'v2' });
+      expect(r.concernees).toBe(0);
+      expect(r.totaux).toEqual({ agent: 1, public: 1, manuelle: 1 });
+      expect(r.totauxVehicule).toEqual({ agent: 0, public: 1, manuelle: 1 });
+
+      const sans = await svc.reorganiser(makeUser(), { ...fenetre(), action: 'annuler', origine: 'auto' });
+      expect(sans.totauxVehicule).toBeUndefined();
+    });
+
+    it('D0 — « réaffecter » sans véhicule à libérer est refusé, en simulation comme à l’application', async () => {
+      const svc = new ReservationsService(makePrisma(), access('ALL'), makeEvents({ list: jest.fn().mockResolvedValue(liste()) }), makePerms(true));
+      const reaffecter = jest.spyOn(svc, 'reaffecter');
+      await expect(svc.reorganiser(makeUser(), { ...fenetre(), action: 'reaffecter', origine: 'toutes' })).rejects.toThrow('Choisissez le véhicule à libérer.');
+      await expect(
+        svc.reorganiser(makeUser(), { ...fenetre(), action: 'reaffecter', origine: 'toutes', simulation: false }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(reaffecter).not.toHaveBeenCalled();
+    });
+  });
+
+  // ─── D1 — le droit de gérer se lit PAR véhicule ─────────────────────────────────────────────
+  describe('D1 — reservations_manage sur l’origine ET sur la cible', () => {
+    const perms = (gere: (vehicleId: string) => boolean) =>
+      ({ canOnVehicle: jest.fn().mockImplementation(async (_u: unknown, v: string) => gere(v)), canGlobally: jest.fn().mockResolvedValue(true) });
+
+    it('origine non gérée -> 403, rien n’est cherché ni écrit', async () => {
+      const { svc, update } = monter({ row: futur(), perms: perms((v) => v !== 'v1') });
+      const suggest = jest.spyOn(svc, 'suggest');
+      await expect(svc.reaffecter(makeUser({ role: UserRole.FLEET_MANAGER }), 'r1', {})).rejects.toBeInstanceOf(ForbiddenException);
+      expect(suggest).not.toHaveBeenCalled();
+      expect(update).not.toHaveBeenCalled();
+    });
+
+    it('cible explicite non gérée -> 403', async () => {
+      const { svc, update } = monter({ row: futur(), perms: perms((v) => v !== 'v2') });
+      await expect(svc.reaffecter(makeUser({ role: UserRole.FLEET_MANAGER }), 'r1', { versVehicleId: 'v2' })).rejects.toBeInstanceOf(ForbiddenException);
+      expect(update).not.toHaveBeenCalled();
+    });
+
+    it('auto : le premier candidat que l’appelant GÈRE, pas le premier du vivier ; aucun -> 409 qui le dit', async () => {
+      const ok = monter({ row: futur({ metadata: { criteria: { minSeats: 4 } } }), perms: perms((v) => v !== 'v2') });
+      jest.spyOn(ok.svc, 'suggest').mockResolvedValue(vivier(['v2', 'v3']) as never);
+      await ok.svc.reaffecter(makeUser({ role: UserRole.FLEET_MANAGER }), 'r1', {});
+      expect(ok.update.mock.calls[0][0].data.vehicleId).toBe('v3');
+
+      const aucun = monter({ row: futur({ metadata: { criteria: { minSeats: 4 } } }), perms: perms((v) => v === 'v1') });
+      jest.spyOn(aucun.svc, 'suggest').mockResolvedValue(vivier(['v2', 'v3']) as never);
+      await expect(aucun.svc.reaffecter(makeUser({ role: UserRole.FLEET_MANAGER }), 'r1', {})).rejects.toThrow(/2 véhicule\(s\) libre\(s\) dont vous ne gérez pas/);
+    });
+
+    /**
+     * Contre-revue du 29/09 (R1) — la porte d'à côté. `reaffecter` refusait, mais la feuille d'édition
+     * (PATCH) changeait la plaque avec le seul garde du contrôleur (union des droits) : un gestionnaire
+     * de Nord, simple demandeur sur Sud, posait une réservation FERME sur Sud — et, depuis la scission,
+     * une réservation commencée y créait sa suite ferme par le même chemin.
+     */
+    describe('R1 — la feuille d’édition et la validation exigent aussi de gérer l’origine ET la cible', () => {
+      const gestionnaire = () => makeUser({ role: UserRole.FLEET_MANAGER });
+
+      it('update : cible non gérée -> 403, rien n’est écrit', async () => {
+        const { svc, update, create, prisma } = monter({ row: futur(), perms: perms((v) => v !== 'v2') });
+        await expect(svc.update(gestionnaire(), 'r1', { vehicleId: 'v2' })).rejects.toThrow(
+          'Vous ne gérez pas les réservations du véhicule visé : vous ne pouvez rien y poser.',
+        );
+        expect(update).not.toHaveBeenCalled();
+        expect(create).not.toHaveBeenCalled();
+        expect(prisma['$transaction']).not.toHaveBeenCalled();
+      });
+
+      it('update : origine non gérée -> 403 qui nomme la plaque', async () => {
+        const { svc, update } = monter({ row: futur(), perms: perms((v) => v !== 'v1') });
+        await expect(svc.update(gestionnaire(), 'r1', { vehicleId: 'v2' })).rejects.toThrow(
+          /Vous ne gérez pas les réservations de AA-1 : vous ne pouvez pas les déplacer/,
+        );
+        expect(update).not.toHaveBeenCalled();
+      });
+
+      it('update d’une réservation COMMENCÉE vers une cible non gérée : 403 AVANT la scission', async () => {
+        const row = evRow({ status: 'CONFIRMED', startAt: new Date(Date.now() - 2 * H), endAt: new Date(Date.now() + 2 * H) });
+        const { svc, update, create, prisma } = monter({ row, perms: perms((v) => v !== 'v2') });
+        await expect(svc.update(gestionnaire(), 'r1', { vehicleId: 'v2' })).rejects.toBeInstanceOf(ForbiddenException);
+        expect(prisma['$transaction']).not.toHaveBeenCalled();
+        expect(create).not.toHaveBeenCalled();
+        expect(update).not.toHaveBeenCalled();
+      });
+
+      /**
+       * Troisième relecture du 29/09 (T1) — ce test verrouillait le trou : « aucun droit par véhicule
+       * demandé » pour décaler ou renommer. Un gestionnaire de Nord modifiait ainsi, une à une ou en
+       * masse (« Réorganiser → Décaler »), n'importe quelle réservation de Sud. Inversé : dès qu'un
+       * champ change, il faut gérer le véhicule ; un appel qui ne change rien n'a rien à prouver.
+       */
+      it('update sans changer de véhicule (créneau, motif) : 403 qui nomme la plaque, rien n’est écrit', async () => {
+        const row = futur();
+        const p = perms((v) => v !== 'v1');
+        const { svc, update } = monter({ row, perms: p });
+        await expect(svc.update(gestionnaire(), 'r1', { reason: 'autre motif' })).rejects.toThrow(
+          'Vous ne gérez pas les réservations de AA-1 : vous ne pouvez pas les modifier.',
+        );
+        await expect(
+          svc.update(gestionnaire(), 'r1', {
+            startAt: new Date((row.startAt as Date).getTime() + H).toISOString(),
+            endAt: new Date((row.endAt as Date).getTime() + H).toISOString(),
+          }),
+        ).rejects.toBeInstanceOf(ForbiddenException);
+        expect(update).not.toHaveBeenCalled();
+
+        // Rien ne change (le même créneau, renvoyé tel qu'affiché) : rien à prouver, rien d'écrit de neuf.
+        p.canOnVehicle.mockClear();
+        await svc.update(gestionnaire(), 'r1', { startAt: (row.startAt as Date).toISOString(), endAt: (row.endAt as Date).toISOString() });
+        expect(p.canOnVehicle).not.toHaveBeenCalled();
+      });
+
+      it('T1 — valider SUR PLACE une demande d’un véhicule non géré -> 403, rien n’est validé ; géré -> validée', async () => {
+        const ko = monter({ row: futur({ status: 'REQUESTED' }), perms: perms((v) => v !== 'v1') });
+        await expect(ko.svc.confirm(gestionnaire(), 'r1', {})).rejects.toThrow(
+          'Vous ne gérez pas les réservations de AA-1 : vous ne pouvez pas les valider.',
+        );
+        expect(ko.update).not.toHaveBeenCalled();
+        expect(ko.emitter.emit).not.toHaveBeenCalled();
+
+        const ok = monter({ row: futur({ status: 'REQUESTED' }), perms: perms(() => true) });
+        await ok.svc.confirm(gestionnaire(), 'r1', {});
+        expect(ok.update.mock.calls[0][0].data.status).toBe('CONFIRMED');
+      });
+
+      it('T1 — annuler une réservation d’un véhicule non géré -> 403, rien n’est écrit ni émis ; retirer SA demande reste permis', async () => {
+        const ko = monter({ row: futur({ metadata: { public: true, requesterContact: 'a@b.fr' } }), perms: perms((v) => v !== 'v1') });
+        await expect(ko.svc.cancel(gestionnaire(), 'r1')).rejects.toThrow(
+          'Vous ne gérez pas les réservations de AA-1 : vous ne pouvez pas les annuler.',
+        );
+        expect(ko.update).not.toHaveBeenCalled();
+        expect(ko.emitter.emit).not.toHaveBeenCalled();
+
+        // Sa propre demande encore en attente (déposée sur Sud, où il ne peut que demander) : il la retire.
+        const retrait = monter({ row: futur({ status: 'REQUESTED', metadata: { requesterId: 'u1' } }), perms: perms(() => false) });
+        await retrait.svc.cancel(gestionnaire(), 'r1');
+        expect(retrait.update.mock.calls[0][0].data.status).toBe('CANCELLED');
+        // … mais pas celle d'un autre.
+        const autre = monter({ row: futur({ status: 'REQUESTED', metadata: { requesterId: 'u-autre' } }), perms: perms(() => false) });
+        await expect(autre.svc.cancel(gestionnaire(), 'r1')).rejects.toBeInstanceOf(ForbiddenException);
+      });
+
+      it('T1 — « Réorganiser » sur un véhicule non géré : annuler et décaler refusent chaque ligne, avec son motif', async () => {
+        const rows = [futur({ id: 'a' }), futur({ id: 'b', startAt: new Date(Date.now() + 52 * H), endAt: new Date(Date.now() + 54 * H) })];
+        const parId = new Map(rows.map((r) => [r['id'] as string, r]));
+        const update = jest.fn();
+        const prisma = makePrisma({
+          vehicleEvent: {
+            findUnique: jest.fn().mockImplementation(async ({ where }: { where: { id: string } }) => parId.get(where.id) ?? null),
+            findMany: jest.fn().mockResolvedValue([]),
+            create: jest.fn(),
+            update,
+          },
+        });
+        const dtos = rows.map((r) => ({
+          id: r['id'], vehicleId: 'v1', vehiclePlate: 'AA-1', type: 'RESERVATION', status: 'CONFIRMED', source: 'MANUAL',
+          startAt: (r['startAt'] as Date).toISOString(), endAt: (r['endAt'] as Date).toISOString(), metadata: null,
+        }));
+        const svc = new ReservationsService(
+          prisma, access('ALL'), makeEvents({ list: jest.fn().mockResolvedValue(dtos) }), perms((v) => v !== 'v1') as never,
+          { emit: jest.fn() } as never,
+        );
+        const fenetre = { from: new Date(Date.now() - H).toISOString(), to: new Date(Date.now() + 7 * 24 * H).toISOString() };
+        for (const geste of [{ action: 'annuler' as const }, { action: 'decaler' as const, decalageMinutes: 30 }]) {
+          const res = await svc.reorganiser(gestionnaire(), { ...fenetre, ...geste, origine: 'toutes', vehicleId: 'v1', simulation: false });
+          expect(res.appliquees).toBe(0);
+          expect(res.refusees).toHaveLength(2);
+          for (const r of res.refusees) expect(r.motif).toMatch(/Vous ne gérez pas les réservations de AA-1/);
+        }
+        expect(update).not.toHaveBeenCalled();
+      });
+
+      it('confirm en réaffectant vers une cible non gérée -> 403, rien n’est validé', async () => {
+        const { svc, update } = monter({ row: futur({ status: 'REQUESTED' }), perms: perms((v) => v !== 'v2') });
+        await expect(svc.confirm(gestionnaire(), 'r1', { vehicleId: 'v2' })).rejects.toBeInstanceOf(ForbiddenException);
+        expect(update).not.toHaveBeenCalled();
+      });
+
+      it('les deux gérés : la feuille d’édition déplace', async () => {
+        const { svc, update } = monter({ row: futur(), perms: perms(() => true) });
+        await svc.update(gestionnaire(), 'r1', { vehicleId: 'v2' });
+        expect(update.mock.calls[0][0].data.vehicleId).toBe('v2');
+      });
+    });
+  });
+
+  // ─── R2 — la coupe au début de l'indisponibilité, pas à « maintenant » ──────────────────────
+  describe('R2 — réaffecter à partir d’un moment (`aPartirDe`)', () => {
+    const minute = (d: Date) => new Date(Math.floor(d.getTime() / 60_000) * 60_000);
+    /** Location commencée « lundi » (il y a 4 h), rendue « vendredi » (dans 96 h). */
+    const lundiVendredi = (over: Record<string, unknown> = {}) =>
+      evRow({
+        status: 'CONFIRMED', source: 'MANUAL', startAt: new Date(Date.now() - 4 * H), endAt: new Date(Date.now() + 96 * H),
+        metadata: { criteria: { minSeats: 4 } }, ...over,
+      });
+    const jeudi = () => new Date(Date.now() + 72 * H);
+
+    it('commencée, maintenance jeudi : garde son véhicule jusqu’à jeudi, la suite part jeudi (auto cherché sur [jeudi, fin))', async () => {
+      const row = lundiVendredi();
+      const { svc, update, create } = monter({ row });
+      const suggest = jest.spyOn(svc, 'suggest').mockResolvedValue(vivier(['v2']) as never);
+      const aPartirDe = jeudi();
+      await svc.reaffecter(makeUser(), 'r1', { aPartirDe: aPartirDe.toISOString() });
+      const coupe = minute(aPartirDe);
+      expect(new Date(suggest.mock.calls[0][1].startAt)).toEqual(coupe);
+      expect(update.mock.calls[0][0].data.endAt).toEqual(coupe); // l'origine garde lundi → jeudi
+      expect(create.mock.calls[0][0].data).toEqual(
+        expect.objectContaining({ vehicleId: 'v2', startAt: coupe, endAt: row.endAt, status: 'CONFIRMED' }),
+      );
+    });
+
+    it('cible prise MARDI mais libre à partir de jeudi : acceptée ; prise vendredi : 409, rien n’est écrit', async () => {
+      const mardi = { id: 'mardi', vehicle: { plate: 'V2' }, startAt: new Date(Date.now() + 24 * H), endAt: new Date(Date.now() + 26 * H) };
+      const ok = monter({ row: lundiVendredi(), conflits: [mardi] });
+      await ok.svc.reaffecter(makeUser(), 'r1', { versVehicleId: 'v2', aPartirDe: jeudi().toISOString() });
+      expect(ok.create).toHaveBeenCalledTimes(1);
+
+      const vendredi = { ...mardi, id: 'vendredi', startAt: new Date(Date.now() + 90 * H), endAt: new Date(Date.now() + 92 * H) };
+      const ko = monter({ row: lundiVendredi(), conflits: [vendredi] });
+      await expect(ko.svc.reaffecter(makeUser(), 'r1', { versVehicleId: 'v2', aPartirDe: jeudi().toISOString() })).rejects.toBeInstanceOf(ConflictException);
+      expect(ko.create).not.toHaveBeenCalled();
+      expect(ko.update).not.toHaveBeenCalled();
+    });
+
+    it('pas encore commencée mais qui déborde sur l’indisponibilité : scindée aussi (la partie d’avant reste)', async () => {
+      const row = lundiVendredi({ startAt: new Date(Date.now() + 24 * H) });
+      const { svc, update, create } = monter({ row });
+      const j = jeudi();
+      await svc.reaffecter(makeUser(), 'r1', { versVehicleId: 'v2', aPartirDe: j.toISOString() });
+      expect(update.mock.calls[0][0].data.endAt).toEqual(minute(j));
+      expect(create.mock.calls[0][0].data.startAt).toEqual(minute(j));
+    });
+
+    it('commence après l’indisponibilité : part EN ENTIER (aucune scission)', async () => {
+      const row = lundiVendredi({ startAt: new Date(Date.now() + 80 * H) });
+      const { svc, update, create } = monter({ row });
+      await svc.reaffecter(makeUser(), 'r1', { versVehicleId: 'v2', aPartirDe: jeudi().toISOString() });
+      expect(create).not.toHaveBeenCalled();
+      expect(update.mock.calls[0][0].data.vehicleId).toBe('v2');
+    });
+
+    it('finit avant l’indisponibilité : 400, rien n’est écrit', async () => {
+      const row = lundiVendredi({ endAt: new Date(Date.now() + 10 * H) });
+      const { svc, update, create } = monter({ row });
+      await expect(svc.reaffecter(makeUser(), 'r1', { versVehicleId: 'v2', aPartirDe: jeudi().toISOString() })).rejects.toThrow(
+        /se termine avant que le véhicule ne devienne indisponible/,
+      );
+      expect(update).not.toHaveBeenCalled();
+      expect(create).not.toHaveBeenCalled();
+    });
+
+    it('une demande EN ATTENTE qui déborde sur l’indisponibilité : refusée (jamais de suite CONFIRMÉE sans validation)', async () => {
+      const row = lundiVendredi({ status: 'REQUESTED', startAt: new Date(Date.now() + 24 * H) });
+      const { svc, update, create } = monter({ row });
+      await expect(svc.reaffecter(makeUser(), 'r1', { versVehicleId: 'v2', aPartirDe: jeudi().toISOString() })).rejects.toThrow(
+        /validez-la ou refusez-la/,
+      );
+      expect(update).not.toHaveBeenCalled();
+      expect(create).not.toHaveBeenCalled();
+    });
+
+    it('`aPartirDe` illisible : 400 ; dans le passé : la coupe reste « maintenant »', async () => {
+      const enCours = evRow({ status: 'CONFIRMED', startAt: new Date(Date.now() - 4 * H), endAt: new Date(Date.now() + 4 * H) });
+      const a = monter({ row: enCours });
+      await expect(a.svc.reaffecter(makeUser(), 'r1', { versVehicleId: 'v2', aPartirDe: 'jeudi' })).rejects.toBeInstanceOf(BadRequestException);
+
+      const b = monter({ row: enCours });
+      const avant = minute(new Date());
+      await b.svc.reaffecter(makeUser(), 'r1', { versVehicleId: 'v2', aPartirDe: new Date(Date.now() - 48 * H).toISOString() });
+      const coupe = b.create.mock.calls[0][0].data.startAt as Date;
+      expect(coupe.getTime()).toBeGreaterThanOrEqual(avant.getTime());
+      expect(coupe.getTime()).toBeLessThanOrEqual(Date.now());
+    });
+  });
+
+  // ─── R2 / attendu — réorganiser ─────────────────────────────────────────────────────────────
+  describe('R2 — réorganiser : le lot « réaffecter » chevauche la fenêtre, la coupe est son début', () => {
+    const r = (over: Record<string, unknown>) => ({
+      id: 'e1', vehicleId: 'v1', vehiclePlate: 'AA-1', type: 'RESERVATION', status: 'CONFIRMED', source: 'MANUAL',
+      startAt: new Date(Date.now() + 80 * H).toISOString(), endAt: new Date(Date.now() + 82 * H).toISOString(),
+      ...over,
+    });
+    const iso = (ms: number) => new Date(Date.now() + ms).toISOString();
+    const liste = () => [
+      r({ id: 'lundi-vendredi', startAt: iso(-4 * H), endAt: iso(96 * H) }), // en cours, chevauche jeudi
+      r({ id: 'vendredi' }), // commence dans la fenêtre
+      r({ id: 'finie-avant', startAt: iso(H), endAt: iso(2 * H) }), // finit avant jeudi : pas concernée
+      r({ id: 'panne', vehicleId: 'v3', vehiclePlate: 'CC-3', startAt: iso(-2 * H), endAt: iso(50 * H) }), // seule résa de v3, en cours
+      r({ id: 'annulee', status: 'CANCELLED', startAt: iso(-2 * H), endAt: iso(90 * H) }),
+    ];
+    const fenetre = () => ({ from: iso(48 * H), to: iso(120 * H) });
+    const monterReorg = (l: unknown[] = liste()) => {
+      const list = jest.fn().mockResolvedValue(l);
+      const svc = new ReservationsService(makePrisma(), access('ALL'), makeEvents({ list }), makePerms(true), { emit: jest.fn() } as never);
+      return { svc, list };
+    };
+
+    it('« réaffecter » prend aussi la réservation commencée AVANT la fenêtre ; « annuler » seulement ce qui y commence', async () => {
+      const { svc } = monterReorg();
+      const reaf = await svc.reorganiser(makeUser(), { ...fenetre(), action: 'reaffecter', origine: 'toutes', vehicleId: 'v1' });
+      expect(reaf.concernees).toBe(2); // lundi-vendredi + vendredi
+      const ann = await svc.reorganiser(makeUser(), { ...fenetre(), action: 'annuler', origine: 'toutes', vehicleId: 'v1' });
+      expect(ann.concernees).toBe(1); // vendredi seulement
+    });
+
+    it('`parVehicule` compte ce qui CHEVAUCHE la fenêtre, quelle que soit l’action : le véhicule en panne en pleine réservation y figure', async () => {
+      const { svc } = monterReorg();
+      const attendu = [
+        { vehicleId: 'v1', plate: 'AA-1', n: 2 },
+        { vehicleId: 'v3', plate: 'CC-3', n: 1 },
+      ];
+      const ann = await svc.reorganiser(makeUser(), { ...fenetre(), action: 'annuler', origine: 'toutes' });
+      expect(ann.parVehicule).toEqual(attendu);
+      const reaf = await svc.reorganiser(makeUser(), { ...fenetre(), action: 'reaffecter', origine: 'toutes', vehicleId: 'v3' });
+      expect(reaf.parVehicule).toEqual(attendu);
+      expect(reaf.concernees).toBe(1);
+    });
+
+    it('à l’application, chaque réservation est réaffectée À PARTIR du début de la fenêtre, en silence', async () => {
+      const { svc } = monterReorg();
+      const reaffecter = jest.spyOn(svc, 'reaffecter').mockResolvedValue({} as never);
+      const f = fenetre();
+      const res = await svc.reorganiser(makeUser(), { ...f, action: 'reaffecter', origine: 'toutes', vehicleId: 'v1', simulation: false });
+      expect(res.appliquees).toBe(2);
+      expect(reaffecter.mock.calls.map((c) => c[1])).toEqual(['lundi-vendredi', 'vendredi']);
+      for (const c of reaffecter.mock.calls) {
+        expect(c[2]).toEqual({ versVehicleId: 'auto', aPartirDe: f.from });
+        expect(c[3]).toEqual({ silencieux: true });
+      }
+    });
+
+    it('une demande jamais validée déjà commencée est DANS le lot : elle revient en refus nommé, pas en silence', async () => {
+      const { svc } = monterReorg([r({ id: 'demande', status: 'REQUESTED', startAt: iso(-H), endAt: iso(60 * H) })]);
+      const sim = await svc.reorganiser(makeUser(), { ...fenetre(), action: 'reaffecter', origine: 'toutes', vehicleId: 'v1' });
+      expect(sim.concernees).toBe(1);
+      // T4 (troisième relecture) : le refus est nommé DÈS la simulation, et l'aperçu dit « demande ».
+      expect(sim.refusees).toEqual([expect.objectContaining({ plate: 'AA-1', motif: expect.stringMatching(/déjà commencé sans avoir été validée/) })]);
+      expect(sim.apercu[0].status).toBe('REQUESTED');
+      jest.spyOn(svc, 'reaffecter').mockRejectedValue(
+        new BadRequestException('Cette demande a déjà commencé sans avoir été validée : validez-la ou refusez-la, elle ne se réaffecte pas.'),
+      );
+      const res = await svc.reorganiser(makeUser(), { ...fenetre(), action: 'reaffecter', origine: 'toutes', vehicleId: 'v1', simulation: false });
+      expect(res.refusees).toEqual([expect.objectContaining({ plate: 'AA-1', motif: expect.stringMatching(/validez-la ou refusez-la/) })]);
+    });
+
+    it('`attendu` : le lot recalculé n’a plus le nombre annoncé -> 409, rien n’est écrit ; le bon nombre -> appliqué ; absent -> appliqué', async () => {
+      const futurA = r({ id: 'a' });
+      const futurB = r({ id: 'b', startAt: iso(84 * H), endAt: iso(86 * H) });
+      const { svc, list } = monterReorg([futurA, futurB]);
+      const cancel = jest.spyOn(svc, 'cancel').mockResolvedValue({} as never);
+      const corps = { ...fenetre(), action: 'annuler' as const, origine: 'toutes' as const, vehicleId: 'v1' };
+      const sim = await svc.reorganiser(makeUser(), corps);
+      expect(sim.concernees).toBe(2);
+
+      // Entre la simulation et le clic, une demande arrive par le lien public.
+      list.mockResolvedValue([futurA, futurB, r({ id: 'arrivee', status: 'REQUESTED', source: 'SYSTEM', metadata: { public: true } })]);
+      await expect(svc.reorganiser(makeUser(), { ...corps, simulation: false, attendu: sim.concernees })).rejects.toThrow(
+        'La liste a changé depuis la simulation : relancez-la.',
+      );
+      await expect(svc.reorganiser(makeUser(), { ...corps, simulation: false, attendu: sim.concernees })).rejects.toBeInstanceOf(ConflictException);
+      expect(cancel).not.toHaveBeenCalled();
+
+      const ok = await svc.reorganiser(makeUser(), { ...corps, simulation: false, attendu: 3 });
+      expect(ok.appliquees).toBe(3);
+      const sans = await svc.reorganiser(makeUser(), { ...corps, simulation: false });
+      expect(sans.appliquees).toBe(3);
+    });
+  });
+
+  // ─── R3 — un seul courriel « modifiée » par demande groupée ─────────────────────────────────
+  describe('R3 — réorganiser prévient UNE fois par demande (bookingRef), sur l’état final', () => {
+    const debut = () => new Date(Date.now() + 48 * H);
+    const ligne = (id: string, vehicleId: string, over: Record<string, unknown> = {}) =>
+      evRow({
+        id, vehicleId, vehicle: { plate: vehicleId.toUpperCase() }, status: 'CONFIRMED', source: 'SYSTEM',
+        startAt: debut(), endAt: new Date(debut().getTime() + 2 * H),
+        metadata: { public: true, bookingRef: 'g1', requesterContact: 'ecole@test.fr' },
+        ...over,
+      });
+    function monterLot(rows: Record<string, unknown>[]) {
+      const parId = new Map(rows.map((row) => [row['id'] as string, row]));
+      const prisma = makePrisma({
+        vehicleEvent: {
+          findUnique: jest.fn().mockImplementation(async ({ where }: { where: { id: string } }) => parId.get(where.id) ?? null),
+          findMany: jest.fn().mockResolvedValue([]),
+          create: jest.fn(),
+          update: jest.fn().mockImplementation(async ({ where, data }: { where: { id: string }; data: Record<string, unknown> }) => ({
+            ...parId.get(where.id), ...data,
+          })),
+        },
+      });
+      const dtos = rows.map((row) => ({
+        id: row['id'], vehicleId: row['vehicleId'], vehiclePlate: (row['vehicle'] as { plate: string }).plate, type: 'RESERVATION',
+        status: row['status'], source: row['source'], startAt: (row['startAt'] as Date).toISOString(),
+        endAt: (row['endAt'] as Date).toISOString(), metadata: row['metadata'],
+      }));
+      const emitter = { emit: jest.fn() };
+      const svc = new ReservationsService(
+        prisma, access('ALL'), makeEvents({ list: jest.fn().mockResolvedValue(dtos) }), makePerms(true), emitter as never,
+      );
+      return { svc, emitter };
+    }
+    const decaler = { from: new Date(Date.now() - H).toISOString(), to: new Date(Date.now() + 7 * 24 * H).toISOString(), action: 'decaler' as const, decalageMinutes: 30, origine: 'toutes' as const, simulation: false };
+
+    it('deux lignes CONFIRMÉES du même bookingRef décalées ensemble : UN événement, émis après les deux écritures', async () => {
+      const { svc, emitter } = monterLot([ligne('a', 'v1'), ligne('b', 'v2')]);
+      const res = await svc.reorganiser(makeUser(), decaler);
+      expect(res.appliquees).toBe(2);
+      expect(modifie(emitter)).toHaveLength(1);
+      // La dernière ligne écrite porte le courriel de toute la demande.
+      expect(modifie(emitter)[0][1]).toEqual(expect.objectContaining({ vehiclePlate: 'V2', status: 'CONFIRMED' }));
+    });
+
+    it('deux demandes différentes : un événement chacune ; une réservation publique sans bookingRef : la sienne', async () => {
+      const { svc, emitter } = monterLot([
+        ligne('a', 'v1'),
+        ligne('b', 'v2', { metadata: { public: true, bookingRef: 'g2', requesterContact: 'autre@test.fr' } }),
+        ligne('c', 'v3', { metadata: { public: true, requesterContact: 'seul@test.fr' } }),
+      ]);
+      await svc.reorganiser(makeUser(), decaler);
+      expect(modifie(emitter)).toHaveLength(3);
+    });
+
+    it('seule une ligne DÉJÀ CONFIRMÉE avant le geste prévient (une demande en attente ou interne, non)', async () => {
+      const { svc, emitter } = monterLot([
+        ligne('a', 'v1', { status: 'REQUESTED' }),
+        ligne('b', 'v2', { metadata: { bookingRef: 'interne' } }),
+      ]);
+      await svc.reorganiser(makeUser(), decaler);
+      expect(modifie(emitter)).toHaveLength(0);
+    });
+
+    it('une édition unitaire (hors lot) prévient toujours, une fois', async () => {
+      const { svc, emitter } = monterLot([ligne('a', 'v1')]);
+      await svc.update(makeUser(), 'a', {
+        startAt: new Date(debut().getTime() + H).toISOString(),
+        endAt: new Date(debut().getTime() + 3 * H).toISOString(),
+      });
+      expect(modifie(emitter)).toHaveLength(1);
+    });
+  });
+
+  // ─── R4 — rien pour une réservation terminée ────────────────────────────────────────────────
+  describe('R4 — aucun courriel pour une réservation terminée, close ou annulée', () => {
+    const publique = { public: true, bookingRef: 'g1', requesterContact: 'ecole@test.fr' };
+
+    it('corriger après coup le véhicule d’une sortie d’HIER (toujours CONFIRMED) : écrit, personne n’est prévenu', async () => {
+      const row = evRow({ status: 'CONFIRMED', startAt: new Date(Date.now() - 26 * H), endAt: new Date(Date.now() - 23 * H), metadata: publique });
+      const { svc, update, emitter } = monter({ row });
+      await svc.update(makeUser(), 'r1', { vehicleId: 'v2' });
+      expect(update.mock.calls[0][0].data.vehicleId).toBe('v2');
+      expect(modifie(emitter)).toHaveLength(0);
+    });
+
+    it('réservation annulée ou close dont on touche le créneau : personne n’est prévenu', async () => {
+      for (const status of ['CANCELLED', 'DONE']) {
+        const row = futur({ status, metadata: publique });
+        const { svc, emitter } = monter({ row });
+        await svc.update(makeUser(), 'r1', {
+          startAt: new Date((row.startAt as Date).getTime() + H).toISOString(),
+          endAt: new Date((row.endAt as Date).getTime() + H).toISOString(),
+        });
+        expect(modifie(emitter)).toHaveLength(0);
+      }
+    });
+  });
+
+  // ─── C44 — une réservation commencée reste modifiable ───────────────────────────────────────
+  describe('C44 — prolonger une réservation déjà commencée', () => {
+    const commencee = () =>
+      evRow({ status: 'CONFIRMED', startAt: new Date(Date.now() - 24 * H), endAt: new Date(Date.now() + 24 * H), metadata: { reason: 'x' } });
+
+    it('début renvoyé à l’identique + fin repoussée : accepté, même si le véhicule a roulé depuis le début de la réservation', async () => {
+      const row = commencee();
+      // Trajet d'hier, pendant CETTE réservation : c'est son usage, pas un conflit.
+      const { svc, update } = monter({
+        row,
+        trajets: [{ vehicleId: 'v1', startedAt: new Date(Date.now() - 20 * H), endedAt: new Date(Date.now() - 19 * H) }],
+      });
+      const nouvelleFin = new Date((row.endAt as Date).getTime() + 24 * H);
+      await svc.update(makeUser(), 'r1', { startAt: (row.startAt as Date).toISOString(), endAt: nouvelleFin.toISOString() });
+      const data = update.mock.calls[0][0].data;
+      expect(data.startAt).toBeUndefined();
+      expect(data.endAt).toEqual(nouvelleFin);
+    });
+
+    /**
+     * Contre-revue du 29/09 (R0) — le cas « prolonger » le plus fréquent : le conducteur appelle de la
+     * route. La fenêtre contrôlée est à venir, donc seul un trajet OUVERT peut y tomber — et c'était
+     * celui de la réservation elle-même, qui répondait 409 « roule déjà ».
+     */
+    describe('R0 — le trajet en cours de la réservation n’est pas un conflit', () => {
+      const bientotFinie = (debutIlYa: number, finDans: number) =>
+        evRow({
+          status: 'CONFIRMED', startAt: new Date(Date.now() - debutIlYa), endAt: new Date(Date.now() + finDans), metadata: { reason: 'x' },
+        });
+
+      it('(a) fin dans 30 min, conducteur parti il y a 45 min (après le début de la réservation) : +2 h acceptées', async () => {
+        const row = bientotFinie(24 * H, H / 2);
+        const { svc, update } = monter({
+          row,
+          trajets: [{ vehicleId: 'v1', startedAt: new Date(Date.now() - 0.75 * H), endedAt: null }],
+        });
+        const nouvelleFin = new Date((row.endAt as Date).getTime() + 2 * H);
+        await svc.update(makeUser(), 'r1', { endAt: nouvelleFin.toISOString() });
+        expect(update.mock.calls[0][0].data.endAt).toEqual(nouvelleFin);
+      });
+
+      it('(b) le trajet ouvert a commencé AVANT la réservation (quelqu’un d’autre au volant) : 409, rien n’est écrit', async () => {
+        const row = bientotFinie(2 * H, H / 2);
+        const { svc, update } = monter({
+          row,
+          trajets: [{ vehicleId: 'v1', startedAt: new Date(Date.now() - 3 * H), endedAt: null }],
+        });
+        await expect(
+          svc.update(makeUser(), 'r1', { endAt: new Date((row.endAt as Date).getTime() + 2 * H).toISOString() }),
+        ).rejects.toThrow(/roule déjà/);
+        expect(update).not.toHaveBeenCalled();
+      });
+
+      it('(c) réservation déjà en retard (fin il y a 1 h, conducteur encore dehors depuis 3 h) : prolongée jusqu’à dans 2 h', async () => {
+        const row = evRow({
+          status: 'CONFIRMED', startAt: new Date(Date.now() - 5 * H), endAt: new Date(Date.now() - H), metadata: { reason: 'x' },
+        });
+        const { svc, update } = monter({
+          row,
+          trajets: [{ vehicleId: 'v1', startedAt: new Date(Date.now() - 3 * H), endedAt: null }],
+        });
+        const nouvelleFin = new Date(Date.now() + 2 * H);
+        await svc.update(makeUser(), 'r1', { endAt: nouvelleFin.toISOString() });
+        expect(update.mock.calls[0][0].data.endAt).toEqual(nouvelleFin);
+      });
+
+      it('sur un AUTRE véhicule, tout trajet compte : la cible qui roule refuse la suite, même démarrée pendant la réservation', async () => {
+        const row = bientotFinie(2 * H, 2 * H);
+        const { svc, create } = monter({
+          row,
+          trajets: [{ vehicleId: 'v2', startedAt: new Date(Date.now() - H), endedAt: null }],
+        });
+        await expect(svc.update(makeUser(), 'r1', { vehicleId: 'v2' })).rejects.toThrow(/roule déjà/);
+        expect(create).not.toHaveBeenCalled();
+      });
+
+      it('la clause envoyée à Prisma écarte les trajets démarrés depuis le début de la réservation (même véhicule seulement)', async () => {
+        const row = bientotFinie(24 * H, H / 2);
+        const { svc, prisma } = monter({ row });
+        await svc.update(makeUser(), 'r1', { endAt: new Date((row.endAt as Date).getTime() + 2 * H).toISOString() });
+        const where = (prisma['trip'] as { findFirst: jest.Mock }).findFirst.mock.calls[0][0].where;
+        expect(where.NOT).toEqual({ startedAt: { gte: row.startAt } });
+      });
+    });
+
+    it('changer seulement le groupe d’une réservation commencée : accepté', async () => {
+      const { svc, update } = monter({ row: commencee() });
+      await svc.update(makeUser(), 'r1', { group: null });
+      expect(update.mock.calls[0][0].data.metadata.group).toBeNull();
+    });
+
+    it('un début déplacé dans le passé reste refusé ; une nouvelle fin déjà passée aussi', async () => {
+      const row = commencee();
+      const { svc, update } = monter({ row });
+      await expect(
+        svc.update(makeUser(), 'r1', { startAt: new Date((row.startAt as Date).getTime() - H).toISOString() }),
+      ).rejects.toThrow(/dans le passé/);
+      await expect(
+        svc.update(makeUser(), 'r1', { endAt: new Date(Date.now() - H).toISOString() }),
+      ).rejects.toThrow(/fin est déjà passée/);
+      expect(update).not.toHaveBeenCalled();
+    });
+
+    /**
+     * Contre-revue (R0) : ce test simulait un trajet CLOS qui se terminait dans 100 h — impossible en
+     * production, et il figeait en fait le faux positif. La partie ajoutée reste contrôlée : ce qui
+     * peut réellement y tomber, c'est une immobilisation déclarée sur les heures ajoutées.
+     */
+    it('la prolongation se contrôle sur la partie AJOUTÉE : une immobilisation sur les heures ajoutées -> 409', async () => {
+      const row = commencee();
+      const { svc, update } = monter({
+        row,
+        immobilises: [{ vehicleId: 'v1', type: 'INCIDENT', startAt: new Date((row.endAt as Date).getTime() + H), endAt: null }],
+      });
+      await expect(
+        svc.update(makeUser(), 'r1', { endAt: new Date((row.endAt as Date).getTime() + 24 * H).toISOString() }),
+      ).rejects.toThrow(/immobilisé/);
+      expect(update).not.toHaveBeenCalled();
+    });
+  });
+
+  // ─── Troisième relecture du 29/09 ───────────────────────────────────────────────────────────
+  describe('Troisième relecture du 29/09 — T0, T2, T3, T4, T13', () => {
+    /**
+     * Un parc EN MÉMOIRE : `update` déplace vraiment la ligne, et le contrôle de conflit ferme
+     * (`findOverlaps`) relit l'état COURANT — c'est ce qui rend l'ordre d'écriture observable (T0).
+     * `events.list` rend le parc trié par début croissant, comme la vraie requête.
+     */
+    function monterParc(rows: Record<string, unknown>[]) {
+      const parc = new Map(rows.map((r) => [r['id'] as string, { ...r }]));
+      const update = jest.fn().mockImplementation(async ({ where, data }: { where: { id: string }; data: Record<string, unknown> }) => {
+        const ligne = { ...parc.get(where.id)!, ...data };
+        parc.set(where.id, ligne);
+        return ligne;
+      });
+      const findMany = jest.fn().mockImplementation(async ({ where }: { where: Record<string, unknown> }) => {
+        if (where?.['metadata'] || where?.['blocksVehicle']) return [];
+        const w = where as { vehicleId?: string; status?: { in?: string[] }; startAt?: { lt?: Date }; endAt?: { gt?: Date }; id?: { not?: string } };
+        return [...parc.values()].filter(
+          (r) =>
+            r['vehicleId'] === w.vehicleId &&
+            (!w.status?.in || w.status.in.includes(r['status'] as string)) &&
+            (!w.startAt?.lt || (r['startAt'] as Date) < w.startAt.lt) &&
+            (!w.endAt?.gt || (r['endAt'] as Date) > w.endAt.gt) &&
+            (!w.id?.not || r['id'] !== w.id.not),
+        );
+      });
+      const prisma = makePrisma({
+        vehicleEvent: {
+          findUnique: jest.fn().mockImplementation(async ({ where }: { where: { id: string } }) => parc.get(where.id) ?? null),
+          findMany,
+          create: jest.fn(),
+          update,
+        },
+      });
+      const list = jest.fn().mockImplementation(async () =>
+        [...parc.values()]
+          .sort((a, b) => (a['startAt'] as Date).getTime() - (b['startAt'] as Date).getTime())
+          .map((r) => ({
+            id: r['id'], fleetId: r['fleetId'], vehicleId: r['vehicleId'],
+            vehiclePlate: (r['vehicle'] as { plate: string } | undefined)?.plate ?? null,
+            type: 'RESERVATION', status: r['status'], source: r['source'], title: r['title'],
+            startAt: (r['startAt'] as Date).toISOString(), endAt: (r['endAt'] as Date).toISOString(), metadata: r['metadata'] ?? null,
+          })),
+      );
+      const emitter = { emit: jest.fn() };
+      const svc = new ReservationsService(prisma, access('ALL'), makeEvents({ list }), makePerms(true), emitter as never);
+      return { svc, parc, update, emitter };
+    }
+    /** Dans trois jours, à h:m (UTC) — toujours à venir. */
+    const jour = (h: number, m = 0) => {
+      const d = new Date(Date.now() + 3 * 24 * H);
+      d.setUTCHours(h, m, 0, 0);
+      return d;
+    };
+    const ferme = (id: string, debut: Date, fin: Date, over: Record<string, unknown> = {}) =>
+      evRow({ id, status: 'CONFIRMED', startAt: debut, endAt: fin, ...over });
+    const semaine = () => ({ from: new Date(Date.now() - H).toISOString(), to: new Date(Date.now() + 7 * 24 * H).toISOString() });
+    const emis = (emitter: { emit: jest.Mock }, nom: string) => emitter.emit.mock.calls.filter((c) => c[0] === nom);
+
+    // ─── T0 — l'ordre d'écriture d'un décalage ────────────────────────────────────────────────
+    it('T0 — décaler de +90 deux réservations fermes COLLÉES du même véhicule : la plus tardive part d’abord, les deux passent', async () => {
+      const { svc, parc, update } = monterParc([ferme('r1', jour(8), jour(12)), ferme('r2', jour(12), jour(16))]);
+      const res = await svc.reorganiser(makeUser(), {
+        ...semaine(), action: 'decaler', decalageMinutes: 90, origine: 'toutes', simulation: false, attendu: 2,
+      });
+      expect(res.refusees).toEqual([]);
+      expect(res.appliquees).toBe(2);
+      expect(update.mock.calls.map((c) => c[0].where.id)).toEqual(['r2', 'r1']);
+      expect(parc.get('r1')!['startAt']).toEqual(jour(9, 30));
+      expect(parc.get('r2')!['endAt']).toEqual(jour(17, 30));
+      // L'aperçu garde l'ordre du lot : seule l'écriture change d'ordre.
+      expect(res.apercu.map((a) => a.startAt)).toEqual([jour(8).toISOString(), jour(12).toISOString()]);
+    });
+
+    it('T0 — décaler de −90 : la plus tôt part d’abord, les deux passent', async () => {
+      const { svc, parc, update } = monterParc([ferme('r1', jour(8), jour(12)), ferme('r2', jour(12), jour(16))]);
+      const res = await svc.reorganiser(makeUser(), {
+        ...semaine(), action: 'decaler', decalageMinutes: -90, origine: 'toutes', simulation: false, attendu: 2,
+      });
+      expect(res.refusees).toEqual([]);
+      expect(res.appliquees).toBe(2);
+      expect(update.mock.calls.map((c) => c[0].where.id)).toEqual(['r1', 'r2']);
+      expect(parc.get('r1')!['startAt']).toEqual(jour(6, 30));
+      expect(parc.get('r2')!['startAt']).toEqual(jour(10, 30));
+    });
+
+    it('T0 — un vrai conflit (réservation ferme hors du lot) reste refusé, avec son motif', async () => {
+      const { svc } = monterParc([
+        ferme('r1', jour(8), jour(12)),
+        ferme('autre', jour(12), jour(16), { vehicle: { plate: 'AA-1' }, source: 'SYSTEM' }), // de l'agent : hors d'« manuelle »
+      ]);
+      const res = await svc.reorganiser(makeUser(), {
+        ...semaine(), action: 'decaler', decalageMinutes: 90, origine: 'manuelle', simulation: false,
+      });
+      expect(res.appliquees).toBe(0);
+      expect(res.refusees).toEqual([expect.objectContaining({ motif: 'Conflit sur le nouveau créneau.' })]);
+    });
+
+    // ─── T2 — l'annulation d'une réservation publique confirmée prévient le demandeur ────────────
+    describe('T2 — `reservation.cancelled`', () => {
+      const publique = (over: Record<string, unknown> = {}) =>
+        futur({ metadata: { public: true, bookingRef: 'g1', requesterContact: 'ecole@test.fr' }, ...over });
+
+      it('annuler une réservation publique CONFIRMÉE à venir : `reservation.cancelled`, jamais « refused »', async () => {
+        const { svc, emitter } = monter({ row: publique() });
+        await svc.cancel(makeUser(), 'r1');
+        expect(emis(emitter, 'reservation.cancelled')).toHaveLength(1);
+        expect(emis(emitter, 'reservation.cancelled')[0][1]).toEqual(
+          expect.objectContaining({ fleetId: 'f1', status: 'CANCELLED', metadata: expect.objectContaining({ bookingRef: 'g1' }) }),
+        );
+        expect(emis(emitter, 'reservation.refused')).toHaveLength(0);
+      });
+
+      it('rien pour une réservation interne, rétroactive, déjà finie ou en cours ; rien en silencieux', async () => {
+        for (const row of [
+          futur({ metadata: { requesterId: 'u1' } }),
+          publique({ metadata: { public: true, requesterContact: 'a@b.fr', retroactive: true } }),
+          publique({ startAt: new Date(Date.now() - 5 * H), endAt: new Date(Date.now() - 2 * H) }),
+          publique({ status: 'IN_PROGRESS' }),
+        ]) {
+          const { svc, emitter } = monter({ row });
+          await svc.cancel(makeUser(), 'r1');
+          expect(emis(emitter, 'reservation.cancelled')).toHaveLength(0);
+        }
+        for (const status of ['CONFIRMED', 'REQUESTED']) {
+          const { svc, emitter } = monter({ row: publique({ status }) });
+          await svc.cancel(makeUser(), 'r1', { silencieux: true });
+          expect(emitter.emit).not.toHaveBeenCalled();
+        }
+      });
+
+      it('Réorganiser → Annuler : UN événement par demande ; « annulée » l’emporte sur « refusée » dans une même demande', async () => {
+        const debut = new Date(Date.now() + 48 * H);
+        const ligne = (id: string, vehicleId: string, ref: string, over: Record<string, unknown> = {}) =>
+          evRow({
+            id, vehicleId, vehicle: { plate: vehicleId.toUpperCase() }, status: 'CONFIRMED', source: 'SYSTEM',
+            startAt: debut, endAt: new Date(debut.getTime() + 2 * H),
+            metadata: { public: true, bookingRef: ref, requesterContact: `${ref}@test.fr` },
+            ...over,
+          });
+        const { svc, emitter } = monterParc([
+          ligne('a', 'v1', 'g1'), ligne('b', 'v2', 'g1'), // g1 : deux lignes fermes
+          ligne('c', 'v3', 'g2', { status: 'REQUESTED' }), ligne('d', 'v4', 'g2'), // g2 : une en attente, une ferme
+          ligne('e', 'v5', 'g3', { status: 'REQUESTED' }), ligne('f', 'v6', 'g3', { status: 'REQUESTED' }), // g3 : deux en attente
+        ]);
+        const res = await svc.reorganiser(makeUser(), { ...semaine(), action: 'annuler', origine: 'toutes', simulation: false, attendu: 6 });
+        expect(res.appliquees).toBe(6);
+        const refDe = (c: unknown[]) => ((c[1] as { metadata: { bookingRef: string } }).metadata.bookingRef);
+        expect(emis(emitter, 'reservation.cancelled').map(refDe).sort()).toEqual(['g1', 'g2']);
+        expect(emis(emitter, 'reservation.refused').map(refDe)).toEqual(['g3']);
+      });
+    });
+
+    // ─── T3 — la liste blanche `ids` ─────────────────────────────────────────────────────────
+    it('T3 — `ids` : le lot ne garde que ces réservations, en simulation comme à l’application (`attendu` compris)', async () => {
+      const { svc } = monterParc([ferme('r1', jour(8), jour(9)), ferme('r2', jour(10), jour(11)), ferme('r3', jour(12), jour(13))]);
+      const corps = { ...semaine(), action: 'reaffecter' as const, origine: 'toutes' as const, vehicleId: 'v1', ids: ['r2'] };
+      const sim = await svc.reorganiser(makeUser(), corps);
+      expect(sim.concernees).toBe(1);
+      expect(sim.apercu.map((a) => a.startAt)).toEqual([jour(10).toISOString()]);
+      // Les comptes du véhicule restent ceux de toute la fenêtre : la liste blanche ne borne que le lot.
+      expect(sim.parVehicule).toEqual([{ vehicleId: 'v1', plate: 'AA-1', n: 3 }]);
+
+      const reaffecter = jest.spyOn(svc, 'reaffecter').mockResolvedValue({} as never);
+      const res = await svc.reorganiser(makeUser(), { ...corps, simulation: false, attendu: sim.concernees });
+      expect(reaffecter.mock.calls.map((c) => c[1])).toEqual(['r2']);
+      expect(res.appliquees).toBe(1);
+    });
+
+    it('T3 — une liste blanche VIDE ne garde rien (jamais « vide = tout ») ; illisible -> 400', async () => {
+      const { svc } = monterParc([ferme('r1', jour(8), jour(9)), ferme('r2', jour(10), jour(11))]);
+      const corps = { ...semaine(), action: 'annuler' as const, origine: 'toutes' as const };
+      expect((await svc.reorganiser(makeUser(), { ...corps, ids: [] })).concernees).toBe(0);
+      expect((await svc.reorganiser(makeUser(), corps)).concernees).toBe(2);
+      await expect(svc.reorganiser(makeUser(), { ...corps, ids: 'r1' as never })).rejects.toBeInstanceOf(BadRequestException);
+      await expect(svc.reorganiser(makeUser(), { ...corps, ids: [42] as never })).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    // ─── T4 — un refus certain s'annonce dès la simulation ───────────────────────────────────
+    it('T4 — « réaffecter » : une demande en attente qui déborde sur la coupe est annoncée refusée dès la simulation, avec le motif exact', async () => {
+      const jeudi = new Date(Date.now() + 72 * H);
+      const demande = evRow({ id: 'demande', status: 'REQUESTED', startAt: new Date(Date.now() + 24 * H), endAt: new Date(Date.now() + 96 * H) });
+      const { svc } = monterParc([demande, ferme('ferme', new Date(Date.now() + 80 * H), new Date(Date.now() + 82 * H))]);
+      const corps = {
+        from: jeudi.toISOString(), to: new Date(Date.now() + 120 * H).toISOString(),
+        action: 'reaffecter' as const, origine: 'toutes' as const, vehicleId: 'v1',
+      };
+      const sim = await svc.reorganiser(makeUser(), corps);
+      expect(sim.concernees).toBe(2); // le lot entier : c'est le contrat d'`attendu`
+      expect(sim.apercu.map((a) => a.status)).toEqual(['REQUESTED', 'CONFIRMED']);
+      expect(sim.refusees).toEqual([{ plate: 'AA-1', startAt: (demande.startAt as Date).toISOString(), motif: expect.stringMatching(/déborde sur l’indisponibilité/) }]);
+      // Le motif annoncé est celui que `reaffecter()` rend lui-même.
+      await expect(svc.reaffecter(makeUser(), 'demande', { versVehicleId: 'v2', aPartirDe: jeudi.toISOString() })).rejects.toThrow(sim.refusees[0].motif);
+
+      // À l'application, la même règle : la demande n'est pas tentée, le même refus revient, `attendu` passe.
+      const reaffecter = jest.spyOn(svc, 'reaffecter').mockResolvedValue({} as never);
+      const res = await svc.reorganiser(makeUser(), { ...corps, simulation: false, attendu: sim.concernees });
+      expect(reaffecter.mock.calls.map((c) => c[1])).toEqual(['ferme']);
+      expect(res.appliquees).toBe(1);
+      expect(res.refusees).toEqual(sim.refusees);
+    });
+
+    it('T4 — « annuler » et « décaler » n’annoncent aucun refus de ce genre : une demande s’y annule ou s’y décale', async () => {
+      const { svc } = monterParc([evRow({ id: 'demande', status: 'REQUESTED', startAt: jour(8), endAt: jour(12) })]);
+      const sim = await svc.reorganiser(makeUser(), { ...semaine(), action: 'annuler', origine: 'toutes' });
+      expect(sim.concernees).toBe(1);
+      expect(sim.refusees).toEqual([]);
+    });
+
+    // ─── T13 — le titre suit le motif qu'il reprenait ────────────────────────────────────────
+    it('T13 — changer le motif : le titre qui le reprenait suit ; un titre explicite reste ; motif vidé -> « Réservation »', async () => {
+      const derive = monter({ row: futur({ title: 'Ramassage nord', metadata: { reason: 'Ramassage nord' } }) });
+      await derive.svc.update(makeUser(), 'r1', { reason: 'Sortie piscine' });
+      expect(derive.update.mock.calls[0][0].data.title).toBe('Sortie piscine');
+      expect(derive.update.mock.calls[0][0].data.metadata.reason).toBe('Sortie piscine');
+
+      // Créée sans motif : le titre par défaut suit aussi.
+      const parDefaut = monter({ row: futur({ title: 'Réservation', metadata: { reason: null } }) });
+      await parDefaut.svc.update(makeUser(), 'r1', { reason: 'Sortie piscine' });
+      expect(parDefaut.update.mock.calls[0][0].data.title).toBe('Sortie piscine');
+
+      // Un titre qui ne venait pas du motif (lien public, API) est gardé.
+      const explicite = monter({ row: futur({ title: 'Demande publique → Albi', metadata: { public: true, reason: 'x' } }) });
+      await explicite.svc.update(makeUser(), 'r1', { reason: 'Sortie piscine' });
+      expect(explicite.update.mock.calls[0][0].data.title).toBeUndefined();
+
+      const vide = monter({ row: futur({ title: 'Ramassage nord', metadata: { reason: 'Ramassage nord' } }) });
+      await vide.svc.update(makeUser(), 'r1', { reason: '' });
+      expect(vide.update.mock.calls[0][0].data.title).toBe('Réservation');
+      expect(vide.update.mock.calls[0][0].data.metadata.reason).toBe('');
+
+      // Un titre fourni gagne toujours ; le même motif renvoyé ne touche pas au titre.
+      const fourni = monter({ row: futur({ title: 'Ramassage nord', metadata: { reason: 'Ramassage nord' } }) });
+      await fourni.svc.update(makeUser(), 'r1', { reason: 'Sortie piscine', title: 'Navette' });
+      expect(fourni.update.mock.calls[0][0].data.title).toBe('Navette');
+      await fourni.svc.update(makeUser(), 'r1', { reason: 'Ramassage nord' });
+      expect(fourni.update.mock.calls[1][0].data.title).toBeUndefined();
+    });
+
+    it('T13 — une réservation commencée qu’on scinde en changeant le motif : les deux parties portent le nouveau titre', async () => {
+      const row = evRow({
+        status: 'CONFIRMED', title: 'Ramassage nord', startAt: new Date(Date.now() - 2 * H), endAt: new Date(Date.now() + 2 * H),
+        metadata: { reason: 'Ramassage nord' },
+      });
+      const { svc, update, create } = monter({ row });
+      await svc.update(makeUser(), 'r1', { vehicleId: 'v2', reason: 'Sortie piscine' });
+      expect(update.mock.calls[0][0].data.title).toBe('Sortie piscine');
+      expect(create.mock.calls[0][0].data.title).toBe('Sortie piscine');
+    });
   });
 });

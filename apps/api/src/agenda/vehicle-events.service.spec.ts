@@ -123,6 +123,78 @@ describe('VehicleEventsService — scoping tenant (Sprint 7, anti-IDOR)', () => 
 });
 
 /**
+ * Troisième relecture du 29/09 (T16) — un incident OUVERT bloquant, sans date de fin, signalé AVANT la
+ * fenêtre (le 20/08, grille de septembre) n'était rendu par aucune liste : le panneau du jour disait le
+ * véhicule disponible, et la réservation répondait 409 (`findImmobilized` le tient bloquant jusqu'à
+ * résolution). La fenêtre rend désormais toute immobilisation SANS FIN encore active — même prédicat.
+ *
+ * Le filtre envoyé à Prisma est ÉVALUÉ ici (opérateurs réellement employés : égalité, null, gte, lte,
+ * lt, gt, in, notIn) sur des lignes types : on teste ce que la requête RAMÈNE, pas sa forme.
+ */
+describe('VehicleEventsService.list — immobilisation sans fin commencée avant la fenêtre (T16)', () => {
+  const DAY = 86_400_000;
+  const from = new Date('2026-08-30T22:00:00Z'); // lundi 31/08, minuit à Paris
+  const to = new Date('2026-10-11T22:00:00Z');
+
+  type Ligne = { type: string; status: string; blocksVehicle: boolean; startAt: Date; endAt: Date | null };
+  function correspond(ligne: Ligne, clause: Record<string, unknown>): boolean {
+    return Object.entries(clause).every(([champ, attendu]) => {
+      const v = (ligne as unknown as Record<string, unknown>)[champ];
+      if (attendu === null) return v === null;
+      if (attendu instanceof Date || typeof attendu !== 'object') return v === attendu;
+      const op = attendu as { gte?: Date; lte?: Date; lt?: Date; gt?: Date; in?: unknown[]; notIn?: unknown[] };
+      if (v === null || v === undefined) return false;
+      if (op.in && !op.in.includes(v)) return false;
+      if (op.notIn && op.notIn.includes(v)) return false;
+      const t = v instanceof Date ? v.getTime() : Number.NaN;
+      if (op.gte && !(t >= op.gte.getTime())) return false;
+      if (op.lte && !(t <= op.lte.getTime())) return false;
+      if (op.lt && !(t < op.lt.getTime())) return false;
+      if (op.gt && !(t > op.gt.getTime())) return false;
+      return true;
+    });
+  }
+  async function fenetre() {
+    const prisma = makePrisma();
+    const svc = new VehicleEventsService(prisma, access('ALL'));
+    await svc.list(makeUser(), { from, to });
+    const where = (prisma as { vehicleEvent: { findMany: jest.Mock } }).vehicleEvent.findMany.mock.calls[0][0].where;
+    const branches = where.AND[0].OR as Record<string, unknown>[];
+    return (l: Ligne) => branches.some((b) => correspond(l, b));
+  }
+  const incident = (over: Partial<Ligne> = {}): Ligne => ({
+    type: 'INCIDENT', status: 'OPEN', blocksVehicle: true, startAt: new Date('2026-08-20T10:00:00Z'), endAt: null, ...over,
+  });
+
+  it('l’incident OPEN bloquant du 20/08, jamais résolu, est rendu à la grille de septembre', async () => {
+    const rendu = await fenetre();
+    expect(rendu(incident())).toBe(true);
+    expect(rendu(incident({ status: 'IN_PROGRESS', startAt: new Date(from.getTime() - 40 * DAY) }))).toBe(true);
+  });
+
+  it('…mais pas un incident résolu, non bloquant, ni une réservation', async () => {
+    const rendu = await fenetre();
+    expect(rendu(incident({ status: 'RESOLVED' }))).toBe(false);
+    expect(rendu(incident({ blocksVehicle: false }))).toBe(false);
+    expect(rendu(incident({ type: 'RESERVATION', status: 'CONFIRMED' }))).toBe(false);
+  });
+
+  it('une maintenance SANS fin bloque sa journée (24 h) : commencée la veille au matin, rendue ; l’avant-veille, non', async () => {
+    const rendu = await fenetre();
+    const maintenance = (startAt: Date): Ligne => ({ type: 'MAINTENANCE', status: 'PLANNED', blocksVehicle: true, startAt, endAt: null });
+    expect(rendu(maintenance(new Date(from.getTime() - 10 * 3_600_000)))).toBe(true);
+    expect(rendu(maintenance(new Date(from.getTime() - 2 * DAY)))).toBe(false);
+  });
+
+  it('inchangé : un évènement dans la fenêtre, ou qui la chevauche avec une fin, est rendu ; un évènement clos avant, non', async () => {
+    const rendu = await fenetre();
+    expect(rendu(incident({ startAt: new Date(from.getTime() + DAY), status: 'RESOLVED' }))).toBe(true);
+    expect(rendu({ type: 'MAINTENANCE', status: 'DONE', blocksVehicle: false, startAt: new Date(from.getTime() - DAY), endAt: new Date(from.getTime() + DAY) })).toBe(true);
+    expect(rendu({ type: 'MAINTENANCE', status: 'DONE', blocksVehicle: true, startAt: new Date(from.getTime() - 3 * DAY), endAt: new Date(from.getTime() - 2 * DAY) })).toBe(false);
+  });
+});
+
+/**
  * ── P2-1 (audit du 22/09) — UNE MISSION NE SE TOUCHE PAS DEPUIS L'AGENDA ──────────────────
  *
  * L'évènement `MISSION` est l'ombre d'une mission, créée avec elle dans une transaction et

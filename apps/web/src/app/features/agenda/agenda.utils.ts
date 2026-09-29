@@ -4,6 +4,7 @@ import type {
   VehicleEventStatus,
   VehicleEventType,
 } from '@vizyo/tracky-shared';
+import { effectiveBlockingEndMs, isImmobilizingEvent } from '@vizyo/tracky-shared';
 
 /**
  * Sprint 7 — Agenda : conventions visuelles (couleurs / libellés) + helpers de
@@ -212,4 +213,198 @@ export function buildCells(monthFirst: Date): Date[] {
   const cells: Date[] = [];
   for (let i = 0; i < 42; i++) cells.push(addDays(start, i));
   return cells;
+}
+
+// ─── Durée d'un évènement en jours civils — LA règle, pour tous les écrans ──────────────────
+
+/**
+ * Nombre de jours civils qu'un évènement couvre (1 = une seule journée) : de minuit (local) de son
+ * début à minuit de sa fin, bornes comprises. Sans fin, fin illisible ou fin avant le début : 1.
+ *
+ * Revue du 29/09 : la règle vivait dans la page (panneau du jour, « À venir », formulaire), et la
+ * grille comptait autrement — la longueur d'une liste de jours bornée à 62. Une mise à disposition
+ * du 1er sept. au 30 nov. se lisait « 62 j » sur la pilule et « 91 jours · jour 70/91 » dans le
+ * panneau du jour. Une seule fonction, sans borne : les deux écrans disent la même durée.
+ */
+export function dureeEnJours(ev: Pick<VehicleEventDto, 'startAt' | 'endAt'>): number {
+  if (!ev.endAt) return 1;
+  const a = startOfDay(new Date(ev.startAt)).getTime();
+  const b = startOfDay(new Date(ev.endAt)).getTime();
+  if (Number.isNaN(a) || Number.isNaN(b) || b < a) return 1;
+  return Math.round((b - a) / 86400000) + 1;
+}
+
+/**
+ * Rang (1 = premier jour) du jour `jour` dans l'évènement, avec la même règle que `dureeEnJours`.
+ * Peut sortir de [1, durée] : c'est à l'appelant de dire ce qu'il fait d'un jour hors de l'évènement.
+ * NaN si le début est illisible.
+ */
+export function rangDuJour(ev: Pick<VehicleEventDto, 'startAt'>, jour: Date): number {
+  const debut = startOfDay(new Date(ev.startAt)).getTime();
+  const cible = startOfDay(jour).getTime();
+  // Math.round absorbe les 23 h / 25 h d'un changement d'heure entre deux minuits.
+  return Math.round((cible - debut) / 86400000) + 1;
+}
+
+/**
+ * Les jours qu'un évènement occupe DANS une fenêtre de `nbJours` jours à partir de `debutFenetre`
+ * (la grille du mois : 42 jours), chacun avec son VRAI rang et la VRAIE durée.
+ *
+ * Revue du 29/09 : la grille énumérait les jours depuis le début de l'évènement, bornés à 62 — un
+ * évènement commencé deux mois plus tôt s'affichait « ↳ 57/62 » puis disparaissait de la grille au
+ * 63e jour, alors que le véhicule était toujours pris. On n'énumère plus que les jours affichés :
+ * jamais plus de `nbJours` entrées, quelle que soit la durée, et aucune borne à inventer.
+ */
+export function joursDansFenetre(
+  ev: Pick<VehicleEventDto, 'startAt' | 'endAt'>,
+  debutFenetre: Date,
+  nbJours: number,
+): { iso: string; jour: number; total: number }[] {
+  const debut = new Date(ev.startAt);
+  if (Number.isNaN(debut.getTime())) return [];
+  const premier = startOfDay(debut);
+  const total = dureeEnJours(ev);
+  // Décalage (en jours) entre le premier jour de l'évènement et le premier jour de la fenêtre.
+  const decalage = rangDuJour(ev, debutFenetre) - 1;
+  const out: { iso: string; jour: number; total: number }[] = [];
+  for (let i = Math.max(0, decalage); i < total && i < decalage + nbJours; i++) {
+    out.push({ iso: localIso(addDays(premier, i)), jour: i + 1, total });
+  }
+  return out;
+}
+
+// ─── Prolonger une immobilisation : ce qui s'AJOUTE à la fenêtre bloquée ─────────────────────
+
+/** Horizon regardé pour une immobilisation sans fin (incident « jusqu'à résolution ») — celui du formulaire. */
+export const HORIZON_SANS_FIN_MS = 30 * 86400000;
+
+/**
+ * La fenêtre d'immobilisation EFFECTIVE [from, to] (ms) d'un évènement qui commence à `debutMs`,
+ * toujours bornée : sa fin si elle est donnée ; sinon la journée pour une maintenance
+ * (`effectiveBlockingEndMs`, la règle que le serveur applique aux réservations) et
+ * `HORIZON_SANS_FIN_MS` pour un incident, qui bloque jusqu'à résolution.
+ *
+ * Contre-revue du 29/09 (S1) : le formulaire LISAIT les réservations sur cette fenêtre, mais la
+ * création FIGEAIT la fenêtre brute — fin vide pour une maintenance d'une journée. Réorganiser
+ * recevait alors « du mardi à ∅ », retombait sur « les 30 prochains jours » et proposait de
+ * réaffecter tout le mois du véhicule pour une vidange. Une seule fonction pour lire et pour figer.
+ *
+ * Troisième passe (T17) : l'horizon d'une fin infinie se compte depuis `max(début, maintenant)`,
+ * comme dans `fenetresAjoutees` — plus depuis le début. Le champ d'un incident s'intitule « Depuis
+ * le » : un incident déclaré « depuis le 20/08 » et lu le 29/09 donnait [20/08, 19/09], une fenêtre
+ * déjà passée ; le bloc des réservations affichait « rien à reprendre » pendant que le véhicule,
+ * immobilisé jusqu'à résolution, gardait ses réservations du 1/10, du 3/10… `from` reste le début :
+ * la création l'envoie comme `aPartirDe`, et le serveur coupe lui-même à max(maintenant, aPartirDe).
+ * `maintenantMs` est obligatoire : aucun appelant ne peut l'oublier.
+ */
+export function fenetreImmobilisation(
+  type: VehicleEventType,
+  debutMs: number,
+  finMs: number | null,
+  maintenantMs: number,
+): { from: number; to: number } {
+  const eff = effectiveBlockingEndMs(type, debutMs, finMs);
+  return { from: debutMs, to: Number.isFinite(eff) ? eff : Math.max(debutMs, maintenantMs) + HORIZON_SANS_FIN_MS };
+}
+
+/**
+ * La vue DEMANDÉE de l'agenda doit-elle devenir la vue AFFICHÉE (contre-revue du 29/09, S2) ?
+ *
+ * Quand la vue demandée n'est pas permise, la page en affiche une autre. Tant que c'est une ATTENTE
+ * (statut IA ou propositions en chargement : un ?vue=ia au démarrage, un « Voir » qui vient de
+ * changer de société), la demande doit survivre — la vue apparaîtra d'elle-même. Mais un repli qui
+ * dure n'est plus une attente : gardée, la demande rebasculait seule la page sur l'Assistant IA
+ * au retour sur une société équipée, alors que l'onglet allumé était le Calendrier.
+ *  - Assistant IA : définitif dès que statut et propositions sont ceux de la société affichée ;
+ *  - les autres vues ne dépendent que des droits (relus au démarrage) : définitif seulement si la
+ *    vue demandée a déjà été MONTRÉE puis a perdu son onglet.
+ */
+export function repliDefinitif(
+  demandee: string,
+  affichee: string,
+  etatIaAJour: boolean,
+  derniereMontree: string | null,
+): boolean {
+  if (demandee === affichee) return false;
+  return demandee === 'ia' ? etatIaAJour : derniereMontree === demandee;
+}
+
+/**
+ * Sur QUELLE fenêtre ajoutée ouvrir Réorganiser après une prolongation, et quelles réservations
+ * restent en dehors (contre-revue du 29/09, R18).
+ *
+ * Début avancé ET fin repoussée donnent deux fenêtres, de part et d'autre de l'ANCIENNE — que
+ * l'utilisateur a déjà tranchée à la création, parfois par « Laisser ». Ouvrir Réorganiser sur
+ * [min, max] couvrait ce trou : la simulation comptait, et « Appliquer » réaffectait, des
+ * réservations qu'on avait choisi de laisser. On ouvre donc sur UNE fenêtre ajoutée — celle qui
+ * porte le plus de réservations (la plus proche à égalité) — et l'on rend les autres, pour que
+ * l'appelant les nomme. `trouvees[i]` : les réservations lues sur `fenetres[i]`. Null si aucune.
+ */
+export function fenetreAReorganiser<T extends { id: string }>(
+  fenetres: { from: number; to: number }[],
+  trouvees: T[][],
+): { fenetre: { from: number; to: number }; dedans: T[]; ailleurs: T[] } | null {
+  let choix = -1;
+  fenetres.forEach((_, i) => {
+    const n = trouvees[i]?.length ?? 0;
+    if (n > 0 && (choix < 0 || n > trouvees[choix].length)) choix = i;
+  });
+  if (choix < 0) return null;
+  const dedans = trouvees[choix];
+  const vues = new Set(dedans.map((r) => r.id));
+  const ailleurs: T[] = [];
+  trouvees.forEach((liste, i) => {
+    if (i === choix) return;
+    for (const r of liste ?? []) {
+      if (vues.has(r.id)) continue; // à cheval sur les deux fenêtres : Réorganiser la reprend déjà
+      vues.add(r.id);
+      ailleurs.push(r);
+    }
+  });
+  return { fenetre: fenetres[choix], dedans, ailleurs };
+}
+
+/**
+ * Les intervalles [from, to] (ms) qu'une modification AJOUTE à l'immobilisation d'un évènement :
+ * la nouvelle fenêtre bloquée moins l'ancienne, bornés à maintenant (le passé ne se reprend pas),
+ * une fin infinie ramenée à `HORIZON_SANS_FIN_MS`.
+ *
+ * Revue du 29/09 (C45) : repousser la fin (« À clore »), modifier les dates ou glisser une
+ * immobilisation laissait sans un mot les réservations prises sur les jours ajoutés — un véhicule
+ * promis deux fois, le cas même que le bloc « Réservations pendant cette période » de la création
+ * devait empêcher. On ne regarde que ce qui s'AJOUTE : les réservations de l'ancienne fenêtre ont
+ * déjà été décidées (ou laissées exprès) à la création.
+ *
+ *  - `apres` n'immobilise pas (ou plus) : rien.
+ *  - `avant` n'immobilisait pas (case cochée en modification) : toute la nouvelle fenêtre.
+ *  - sinon : [nouveau début, ancien début] et [ancienne fin effective, nouvelle fin effective].
+ */
+export function fenetresAjoutees(
+  avant: Pick<VehicleEventDto, 'type' | 'status' | 'blocksVehicle' | 'startAt' | 'endAt'> | null,
+  apres: Pick<VehicleEventDto, 'type' | 'status' | 'blocksVehicle' | 'startAt' | 'endAt'>,
+  maintenantMs: number,
+): { from: number; to: number }[] {
+  const fenetre = (ev: NonNullable<typeof avant>): { from: number; to: number } | null => {
+    if (!isImmobilizingEvent(ev)) return null;
+    const s = new Date(ev.startAt).getTime();
+    if (Number.isNaN(s)) return null;
+    const e = ev.endAt ? new Date(ev.endAt).getTime() : null;
+    return { from: s, to: effectiveBlockingEndMs(ev.type, s, e != null && !Number.isNaN(e) ? e : null) };
+  };
+  const nouv = fenetre(apres);
+  if (!nouv) return [];
+  const anc = avant ? fenetre(avant) : null;
+  const brutes = anc
+    ? [
+        { from: nouv.from, to: Math.min(nouv.to, anc.from) },
+        { from: Math.max(nouv.from, anc.to), to: nouv.to },
+      ]
+    : [nouv];
+  return brutes
+    .map((w) => {
+      const from = Math.max(w.from, maintenantMs);
+      const to = Number.isFinite(w.to) ? w.to : from + HORIZON_SANS_FIN_MS;
+      return { from, to };
+    })
+    .filter((w) => Number.isFinite(w.from) && w.to > w.from);
 }

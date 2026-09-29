@@ -1,6 +1,7 @@
 import { HttpClient } from '@angular/common/http';
 import { inject, Injectable } from '@angular/core';
 import type {
+  ReaffecterReservationDto,
   AgendaSummaryDto,
   ChildSeatAvailabilityDto,
   ChildSeatStockDto,
@@ -200,9 +201,17 @@ export class AgendaApiService {
     return this.http.post<VehicleEventDto>(`/api/reservations/${id}/cancel`, {});
   }
 
-  /** POST /api/reservations/:id/reaffecter — passer la réservation sur un autre véhicule (`auto` = premier libre et conforme). */
-  reaffecterReservation(id: string, versVehicleId?: string): Observable<VehicleEventDto> {
-    return this.http.post<VehicleEventDto>(`/api/reservations/${id}/reaffecter`, versVehicleId ? { versVehicleId } : {});
+  /**
+   * POST /api/reservations/:id/reaffecter — passer la réservation sur un autre véhicule (`auto` = premier
+   * libre et conforme). `aPartirDe` (ISO) : le véhicule d'origine n'est plus disponible à partir de là ;
+   * une réservation qui déborde sur ce moment est scindée par le serveur.
+   */
+  reaffecterReservation(id: string, versVehicleId?: string, aPartirDe?: string): Observable<VehicleEventDto> {
+    const corps: ReaffecterReservationDto = {
+      ...(versVehicleId ? { versVehicleId } : {}),
+      ...(aPartirDe ? { aPartirDe } : {}),
+    };
+    return this.http.post<VehicleEventDto>(`/api/reservations/${id}/reaffecter`, corps);
   }
 
   /** PATCH /api/reservations/:id — éditer (créneau / critères / libellé). */

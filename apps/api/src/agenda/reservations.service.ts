@@ -56,6 +56,55 @@ const UNDERUTILIZED_RATIO = 0.12;
  * ET l'écran le dit : un lot silencieusement incomplet serait pire qu'un refus franc.
  */
 const MAX_REORGANISATION = 500;
+/**
+ * Revue du 29/09 (C4/C43) — une réservation NE CHANGE PAS de société. Un super-admin en « Toutes
+ * les sociétés » se voyait proposer les plaques de tous les clients : réaffecter une réservation de
+ * cdef31 sur un véhicule de Client test la faisait passer dans l'agenda de Client test, avec son
+ * groupe et le contact du demandeur public. Refusé partout où le véhicule peut changer.
+ */
+const AUTRE_SOCIETE = 'Ce véhicule appartient à une autre société : une réservation ne change pas de société.';
+/** D1 / R1 — le véhicule visé est dans un groupe où l'appelant ne peut que DEMANDER. */
+const MESSAGE_CIBLE_NON_GEREE = 'Vous ne gérez pas les réservations du véhicule visé : vous ne pouvez rien y poser.';
+
+/**
+ * Options INTERNES d'une écriture — jamais exposées par un contrôleur (qui n'en passe aucune).
+ * `silencieux` (contre-revue du 29/09, R3) : ne pas prévenir le demandeur public ligne par ligne ;
+ * l'appelant (la réorganisation) écrit UNE fois par demande groupée, après la boucle.
+ */
+interface OptionsInternes {
+  silencieux?: boolean;
+}
+
+/** Début de la minute en cours : le point de coupe d'une réservation scindée (l'écran raisonne à la minute). */
+function debutDeMinute(ms: number): Date {
+  return new Date(Math.floor(ms / 60_000) * 60_000);
+}
+
+/**
+ * Une demande jamais validée n'a pas de « suite » ferme à reprendre : elle se valide ou se refuse.
+ * UNE règle, lue par `reaffecter()` (qui refuse) et par `reorganiser()` (qui l'annonce dès la
+ * simulation — troisième relecture du 29/09, T4 : l'écran annonçait « scindée » une demande que
+ * l'application refusait à coup sûr). Renvoie le motif du refus, ou null si la demande se réaffecte.
+ */
+function motifDemandeNonReaffectable(status: string, debutMs: number, maintenant: number, coupeMs: number): string | null {
+  if (status !== VehicleEventStatus.REQUESTED) return null;
+  if (debutMs < maintenant) {
+    return 'Cette demande a déjà commencé sans avoir été validée : validez-la ou refusez-la, elle ne se réaffecte pas.';
+  }
+  if (debutMs < coupeMs) {
+    return 'Cette demande n’a pas été validée et déborde sur l’indisponibilité du véhicule : validez-la ou refusez-la, elle ne se réaffecte pas.';
+  }
+  return null;
+}
+
+/**
+ * Même minute ? L'écran tronque les heures à la minute : une réservation posée par le lien public ou
+ * par l'agent porte des secondes, et la renvoyer telle qu'affichée ne doit pas passer pour un
+ * déplacement (revue du 29/09, C44).
+ */
+function memeMinute(a: Date, b: Date): boolean {
+  return Math.floor(a.getTime() / 60_000) === Math.floor(b.getTime() / 60_000);
+}
 
 /**
  * D'où vient une réservation — ce que « Réorganiser » entend par « posée par l'agent ».
@@ -261,10 +310,24 @@ export class ReservationsService {
     return [{ endedAt: null, startedAt: { gt: new Date(start.getTime() - MAX_OPEN_TRIP_MS) } }];
   }
 
-  /** Un trajet RÉEL chevauche-t-il le créneau (véhicule effectivement pris) ? */
-  private async hasTripOverlap(vehicleId: string, start: Date, end: Date): Promise<boolean> {
+  /**
+   * Un trajet RÉEL chevauche-t-il le créneau (véhicule effectivement pris) ?
+   *
+   * `ignorerDepuis` (contre-revue du 29/09, R0) : les trajets démarrés À PARTIR de cet instant ne
+   * comptent pas. Sert à prolonger une réservation déjà commencée, sur le même véhicule : le trajet
+   * que le conducteur est en train de faire — ouvert, donc sans fin — est l'usage de CETTE
+   * réservation, pas un conflit. Sans ça, « il rentre à 19:00 au lieu de 17:00 » répondait 409
+   * « Ce véhicule roule déjà » dès que la voiture roulait. Un trajet ouvert AVANT le début de la
+   * réservation (quelqu'un d'autre au volant, trajet jamais clos) continue de bloquer.
+   */
+  private async hasTripOverlap(vehicleId: string, start: Date, end: Date, opts?: { ignorerDepuis?: Date }): Promise<boolean> {
     const t = await this.prisma.trip.findFirst({
-      where: { vehicleId, startedAt: { lt: end }, OR: [{ endedAt: { gt: start } }, ...this.openTripOr(start)] },
+      where: {
+        vehicleId,
+        startedAt: { lt: end },
+        OR: [{ endedAt: { gt: start } }, ...this.openTripOr(start)],
+        ...(opts?.ignorerDepuis ? { NOT: { startedAt: { gte: opts.ignorerDepuis } } } : {}),
+      },
       select: { id: true },
     });
     return !!t;
@@ -353,16 +416,23 @@ export class ReservationsService {
 
   // ─── Auto-complétion ──────────────────────────────────────────────────────
 
+  /**
+   * `interne` (revue du 29/09, C2) — jamais exposé par un contrôleur : quand on cherche où DÉPLACER
+   * une réservation, son propre besoin de sièges auto (et celui de ses sœurs, même `bookingRef`) ne
+   * doit pas se compter contre elle dans le stock. Sans ça, « auto » répondait « aucun autre véhicule
+   * libre et conforme » là où la cible choisie à la main passait (update() exclut déjà la réservation).
+   */
   async suggest(
     user: AuthUser,
     query: { startAt: string; endAt: string; criteria?: RequestReservationDto['criteria']; fleetId?: string },
+    interne?: { excludeId?: string; excludeBookingRef?: string | null },
   ): Promise<SuggestReservationResultDto> {
     const { start, end } = this.parseSlot(query.startAt, query.endAt);
     const scope = await this.resolveScope(user, query.fleetId);
     const where: Prisma.VehicleWhereInput = {};
     if (scope.fleetId) where.fleetId = scope.fleetId;
     if (scope.ids !== 'ALL') where.id = { in: scope.ids };
-    return this.computeSuggestions(where, start, end, query.criteria);
+    return this.computeSuggestions(where, start, end, query.criteria, interne ? { siegesHors: interne } : undefined);
   }
 
   /**
@@ -391,7 +461,11 @@ export class ReservationsService {
     start: Date,
     end: Date,
     criteria?: RequestReservationDto['criteria'],
-    opts?: { excludeRequested?: boolean },
+    opts?: {
+      excludeRequested?: boolean;
+      /** Réservation (et sœurs) qu'on déplace : son besoin de sièges ne se compte pas contre elle. */
+      siegesHors?: { excludeId?: string; excludeBookingRef?: string | null };
+    },
   ): Promise<SuggestReservationResultDto> {
     const c = this.sanitizeCriteria(criteria);
     // Statuts occupants : fermes (défaut) ou fermes + en attente (flux public, anti-double-suggestion).
@@ -444,7 +518,11 @@ export class ReservationsService {
     // du reste : c'est une requête de plus, mais une seule, et seulement si un stock peut exister.
     const fleetId = typeof where.fleetId === 'string' ? where.fleetId : null;
     const childSeatsAvail = fleetId && this.childSeats
-      ? await this.childSeats.availability(fleetId, start, end, { includeRequested: opts?.excludeRequested })
+      ? await this.childSeats.availability(fleetId, start, end, {
+          includeRequested: opts?.excludeRequested,
+          ...(opts?.siegesHors?.excludeId ? { excludeId: opts.siegesHors.excludeId } : {}),
+          ...(opts?.siegesHors?.excludeBookingRef ? { excludeBookingRef: opts.siegesHors.excludeBookingRef } : {}),
+        })
       : null;
 
     // Équipements : superset insensible à la casse (non exprimable en `hasEvery` Prisma).
@@ -721,8 +799,13 @@ export class ReservationsService {
             // sièges se recompte à chaque validation — une chaîne « 2 » ou un -1 y fausserait tout.
             criteria: ChildSeatsService.criteresPropres(dto.criteria),
             ...(retro ? { retroactive: true } : {}),
-            // Groupe qui utilise le véhicule : celui demandé, sinon celui du véhicule retenu.
-            group: (await this.groupePropre(fleetId, dto.group)) ?? (await this.groupeDuVehicule(vehicleId)),
+            // Groupe qui utilise le véhicule : ABSENT = celui du véhicule retenu ; `null` = aucun groupe,
+            // choisi explicitement (revue du 29/09, C3/C41 : un `?? groupeDuVehicule` remettait en
+            // silence le groupe du véhicule que le gestionnaire venait de retirer).
+            group:
+              dto.group === undefined
+                ? await this.groupeDuVehicule(vehicleId)
+                : await this.groupePropre(fleetId, dto.group),
           } as Prisma.InputJsonValue,
           createdBy: user.id,
           source: 'MANUAL',
@@ -751,11 +834,23 @@ export class ReservationsService {
     if (resa.status !== VehicleEventStatus.REQUESTED) {
       throw new BadRequestException('Seule une demande en attente peut être validée.');
     }
+    /**
+     * Troisième relecture du 29/09 (T1) — VALIDER, c'est gérer les réservations de CE véhicule, qu'on
+     * le déplace ou non. Le contrôle n'avait lieu qu'en cas de réaffectation : un gestionnaire du
+     * groupe Nord, simple demandeur sur Sud, déposait une demande sur Sud (`request()` la mettait en
+     * REQUESTED, justement parce qu'il ne gère pas Sud)… puis la validait lui-même en un second appel.
+     */
+    await this.exigerGestion(user, resa.vehicleId, this.messageNonGeree(resa, 'valider'));
 
     let vehicleId = resa.vehicleId;
-    let fleetId = resa.fleetId;
+    // La société ne change jamais à la validation (revue du 29/09, C4) : le véhicule de réaffectation
+    // doit être de la même société que la demande.
+    const fleetId = resa.fleetId;
     if (dto.vehicleId && dto.vehicleId !== vehicleId) {
-      fleetId = await this.events.assertVehicleAccess(user, dto.vehicleId); // réaffectation
+      // Valider EN DÉPLAÇANT, c'est déplacer (contre-revue du 29/09, R1) : mêmes droits que `update()`
+      // et `reaffecter()` — l'origine est contrôlée juste au-dessus, la cible ici.
+      await this.cibleDeLaMemeSociete(user, resa, dto.vehicleId); // réaffectation
+      await this.exigerGestion(user, dto.vehicleId, MESSAGE_CIBLE_NON_GEREE);
       vehicleId = dto.vehicleId;
     }
 
@@ -789,13 +884,18 @@ export class ReservationsService {
       );
     }
 
-    // Groupe qui utilise le véhicule : celui choisi à la validation, sinon celui déjà posé sur la
-    // demande, sinon celui du véhicule (une demande publique ou une proposition de l'agent n'en a pas).
+    // Groupe qui utilise le véhicule (revue du 29/09, C3/C41) :
+    //  - choisi à la validation : un objet le pose, `null` = AUCUN groupe (choix explicite du valideur,
+    //    que l'ancien `?? groupeDe(meta) ?? groupeDuVehicule` remplaçait en silence) ;
+    //  - absent : celui déjà posé sur la demande dès qu'elle porte une clé `group` — y compris `null`,
+    //    un « aucun groupe » choisi au dépôt — sinon (demande publique, ancienne demande) celui du véhicule.
     const metaConfirm = (resa.metadata as Record<string, unknown> | null) ?? {};
     const groupe =
-      (dto.group !== undefined ? await this.groupePropre(fleetId, dto.group) : null) ??
-      ReservationsService.groupeDe(metaConfirm) ??
-      (await this.groupeDuVehicule(vehicleId));
+      dto.group !== undefined
+        ? await this.groupePropre(fleetId, dto.group)
+        : Object.hasOwn(metaConfirm, 'group')
+          ? ReservationsService.groupeDe(metaConfirm)
+          : await this.groupeDuVehicule(vehicleId);
 
     try {
       const row = await this.prisma.vehicleEvent.update({
@@ -827,14 +927,30 @@ export class ReservationsService {
     }
   }
 
-  /** Refus / annulation -> CANCELLED. Perm reservations_manage. */
-  async cancel(user: AuthUser, id: string): Promise<VehicleEventDto> {
+  /**
+   * Refus / annulation -> CANCELLED. Perm reservations_manage.
+   *
+   * `interne` (troisième relecture du 29/09, T2) : `silencieux` — la réorganisation prévient elle-même,
+   * UNE fois par demande groupée, après sa boucle. Le contrôleur n'en passe aucune.
+   */
+  async cancel(user: AuthUser, id: string, interne?: OptionsInternes): Promise<VehicleEventDto> {
     const resa = await this.loadScoped(user, id);
     // Un DONE est terminal (immuable) ; un CANCELLED est idempotent.
     if (resa.status === VehicleEventStatus.DONE) {
       throw new BadRequestException('Une réservation terminée ne peut pas être annulée.');
     }
     if (resa.status === VehicleEventStatus.CANCELLED) return this.toDto(resa);
+    /**
+     * T1 — annuler ou refuser, c'est GÉRER les réservations de CE véhicule (droit résolu par
+     * véhicule). Le garde du contrôleur lit l'UNION des droits : un gestionnaire de Nord, simple
+     * demandeur sur Sud, annulait n'importe quelle réservation de Sud — une à une, ou en masse par
+     * « Réorganiser → Annuler », pendant que « Réaffecter » refusait ces mêmes lignes.
+     * Seule exception : retirer SA PROPRE demande encore en attente — ce n'est pas gérer Sud, c'est
+     * reprendre ce qu'on a soi-même déposé.
+     */
+    const meta = (resa.metadata as { requesterId?: unknown } | null) ?? null;
+    const retraitDeSaDemande = resa.status === VehicleEventStatus.REQUESTED && meta?.requesterId === user.id;
+    if (!retraitDeSaDemande) await this.exigerGestion(user, resa.vehicleId, this.messageNonGeree(resa, 'annuler'));
     const etait = resa.status;
     const row = await this.prisma.vehicleEvent.update({
       where: { id },
@@ -845,19 +961,62 @@ export class ReservationsService {
     // demande en attente n'a pas le même sens qu'annuler une réservation déjà ferme. Le journal
     // doit les distinguer, sinon il raconte une histoire fausse.
     this.tracerDecision(etait === VehicleEventStatus.REQUESTED ? 'refusee' : 'annulee', user, row);
-    // F16 (recette du 28/09) : le demandeur d'une demande PUBLIQUE apprenait la validation, jamais
-    // le refus — il attendait un véhicule qui ne viendrait pas. Même événement que la confirmation,
-    // l'autre verbe ; le notifier ne réagit qu'aux demandes publiques avec un contact.
-    if (etait === VehicleEventStatus.REQUESTED) {
-      this.emitter?.emit('reservation.refused', {
-        fleetId: row.fleetId,
-        vehiclePlate: row.vehicle?.plate ?? null,
-        startAt: row.startAt.toISOString(),
-        endAt: row.endAt ? row.endAt.toISOString() : null,
-        metadata: (row.metadata as Record<string, unknown> | null) ?? null,
-      });
+    const ecrite = this.toDto(row);
+    if (!interne?.silencieux) {
+      // F16 (recette du 28/09) : le demandeur d'une demande PUBLIQUE apprenait la validation, jamais
+      // le refus — il attendait un véhicule qui ne viendrait pas. Même événement que la confirmation,
+      // l'autre verbe ; le notifier ne réagit qu'aux demandes publiques avec un contact.
+      if (etait === VehicleEventStatus.REQUESTED) this.annoncerRefus(ecrite);
+      // T2 — et une réservation publique DÉJÀ CONFIRMÉE qu'on annule : le demandeur avait reçu
+      // « confirmée — AA-111-BB » et se présentait pour une réservation annulée.
+      else if (this.annulationAAnnoncer(etait, ecrite)) this.annoncerAnnulation(ecrite);
     }
-    return this.toDto(row);
+    return ecrite;
+  }
+
+  /** `reservation.refused` : une demande en attente n'a pas été retenue (F16). */
+  private annoncerRefus(ligne: VehicleEventDto): void {
+    this.emitter?.emit('reservation.refused', {
+      fleetId: ligne.fleetId,
+      vehiclePlate: ligne.vehiclePlate ?? null,
+      startAt: ligne.startAt,
+      endAt: ligne.endAt,
+      metadata: ligne.metadata ?? null,
+    });
+  }
+
+  /**
+   * T2 (troisième relecture du 29/09) — faut-il prévenir le demandeur de l'ANNULATION de cette ligne ?
+   * Mêmes bornes que {@link annoncerModification} : seulement une réservation publique qui était
+   * CONFIRMÉE (une demande en attente reçoit un refus ; une réservation en cours, le demandeur a déjà
+   * la voiture), jamais une consignation rétroactive, jamais une réservation déjà finie.
+   * `statutAvant` : le statut AVANT l'annulation — c'est lui qui dit « déjà confirmée ».
+   */
+  private annulationAAnnoncer(
+    statutAvant: VehicleEventStatus | string,
+    ligne: Pick<VehicleEventDto, 'endAt' | 'metadata'>,
+  ): boolean {
+    if (statutAvant !== VehicleEventStatus.CONFIRMED) return false;
+    const meta = ligne.metadata ?? null;
+    if (meta?.['public'] !== true || meta['retroactive'] === true) return false;
+    return !ligne.endAt || new Date(ligne.endAt).getTime() > Date.now();
+  }
+
+  /**
+   * `reservation.cancelled` — un événement DÉDIÉ, pas `reservation.refused` : « votre demande n'a pas
+   * pu être retenue » est faux pour une réservation que le demandeur tenait pour ferme. Le notifier
+   * tranche sur l'état du groupe : s'il reste des lignes fermes à venir, la demande est MODIFIÉE (et
+   * le courriel les nomme) ; sinon, elle est annulée.
+   */
+  private annoncerAnnulation(ligne: VehicleEventDto): void {
+    this.emitter?.emit('reservation.cancelled', {
+      fleetId: ligne.fleetId,
+      vehiclePlate: ligne.vehiclePlate ?? null,
+      startAt: ligne.startAt,
+      endAt: ligne.endAt,
+      status: ligne.status,
+      metadata: ligne.metadata ?? null,
+    });
   }
 
   /**
@@ -896,96 +1055,267 @@ export class ReservationsService {
    * Une réservation VALIDÉE (CONFIRMED) reste éditable : le créneau, le motif, les critères ET le
    * véhicule affecté peuvent changer, avec re-vérification des conflits sur la cible (véhicule +
    * créneau) et la contrainte EXCLUDE en dernier rempart.
+   *
+   * `interne` : options de l'appelant INTERNE (réorganisation) — le contrôleur n'en passe aucune.
    */
-  async update(user: AuthUser, id: string, dto: UpdateReservationDto): Promise<VehicleEventDto> {
+  async update(user: AuthUser, id: string, dto: UpdateReservationDto, interne?: OptionsInternes): Promise<VehicleEventDto> {
     const resa = await this.loadScoped(user, id);
+    const maintenant = Date.now();
 
     let start = resa.startAt;
     let end = resa.endAt;
     const data: Prisma.VehicleEventUncheckedUpdateInput = {};
-    const slotChanged = dto.startAt !== undefined || dto.endAt !== undefined;
-    if (slotChanged) {
+    /**
+     * CE QUI CHANGE VRAIMENT (revue du 29/09, C44). Une réservation multi-jours déjà commencée ne
+     * pouvait plus être prolongée ni regroupée : le client renvoyait toujours `startAt`, donc le
+     * créneau passait pour « déplacé », et un début passé tombait sous la garde « dans le passé ».
+     * On compare désormais à ce qui est en base (à la minute : l'écran tronque les secondes) — un
+     * début renvoyé à l'identique n'est pas un déplacement, et on ne le réécrit pas.
+     */
+    let debutChange = false;
+    let finChange = false;
+    if (dto.startAt !== undefined || dto.endAt !== undefined) {
       const slot = this.parseSlot(dto.startAt ?? resa.startAt.toISOString(), dto.endAt ?? resa.endAt?.toISOString() ?? '');
-      start = slot.start;
-      end = slot.end;
-      data.startAt = start;
-      data.endAt = end;
+      debutChange = !memeMinute(slot.start, resa.startAt);
+      finChange = !resa.endAt || !memeMinute(slot.end, resa.endAt);
+      if (debutChange) start = slot.start;
+      if (finChange) end = slot.end;
+      if (end && end.getTime() <= start.getTime()) {
+        throw new BadRequestException('La fin du créneau doit être après le début.');
+      }
+      if (debutChange) data.startAt = start;
+      if (finChange) data.endAt = end;
     }
+    const slotChanged = debutChange || finChange;
     // Une réservation « déjà effectuée » (metadata.retroactive, ou marquée telle par le client) reste
-    // éditable même sur un créneau passé. Sinon, on interdit de DÉPLACER une réservation dans le passé.
+    // éditable même sur un créneau passé. Sinon, on interdit de DÉPLACER le début dans le passé — mais
+    // un début déjà écoulé qu'on ne touche pas (réservation en cours qu'on prolonge) n'est pas un
+    // déplacement ; et une fin qu'on change doit rester à venir.
     const isRetro =
       (resa.metadata as { retroactive?: unknown } | null)?.retroactive === true || dto.retroactive === true;
-    if (slotChanged && start.getTime() < Date.now() && !isRetro) {
+    if (debutChange && start.getTime() < maintenant && !isRetro) {
       throw new BadRequestException(
         'Impossible de déplacer une réservation dans le passé. Pour une réservation déjà effectuée, activez l’option « réservation déjà effectuée ».',
       );
     }
+    if (finChange && end && end.getTime() <= maintenant && !isRetro) {
+      throw new BadRequestException(
+        'La nouvelle fin est déjà passée. Pour une réservation déjà effectuée, activez l’option « réservation déjà effectuée ».',
+      );
+    }
+
+    // Réaffectation de véhicule (ex. changer le véhicule d'une réservation validée). Vérifiée AVANT
+    // le groupe : la société est celle de la réservation, et elle ne change pas (revue du 29/09, C4 —
+    // le groupe était validé contre l'ancienne société pendant que la réservation passait chez une autre).
+    let targetVehicleId = resa.vehicleId;
+    const vehicleChanged = !!dto.vehicleId && dto.vehicleId !== resa.vehicleId;
+    /**
+     * Contre-revue du 29/09 (R1), puis troisième relecture (T1) — GÉRER le véhicule d'origine, contrôlé
+     * AVANT toute écriture, scission comprise, DÈS QU'UN CHAMP CHANGE. R1 ne le demandait qu'au
+     * changement de véhicule : un gestionnaire de Nord, simple demandeur sur Sud, décalait, renommait ou
+     * changeait les critères de n'importe quelle réservation de Sud — une à une, ou toutes d'un coup par
+     * « Réorganiser → Décaler ». Un appel qui ne change rien n'écrit rien : il n'a rien à prouver.
+     */
+    const champChange =
+      slotChanged || vehicleChanged ||
+      dto.title !== undefined || dto.reason !== undefined || dto.criteria !== undefined || dto.group !== undefined;
+    if (champChange) {
+      await this.exigerGestion(
+        user,
+        resa.vehicleId,
+        vehicleChanged ? this.messageOrigineNonGeree(resa) : this.messageNonGeree(resa, 'modifier'),
+      );
+    }
+    if (vehicleChanged) {
+      /**
+       * Contre-revue du 29/09 (R1) — D1 n'était fermé que dans `reaffecter` : la feuille d'édition
+       * (PATCH) changeait toujours la plaque avec le seul garde du contrôleur, qui lit l'UNION des
+       * droits. Un gestionnaire du groupe Nord, simple demandeur sur Sud, posait ainsi une
+       * réservation FERME sur un véhicule de Sud sans que Sud la valide — et, depuis la scission, une
+       * réservation commencée créait sa suite ferme sur Sud par le même chemin. Déplacer exige de
+       * GÉRER l'origine (contrôlée juste au-dessus) ET la cible.
+       */
+      await this.cibleDeLaMemeSociete(user, resa, dto.vehicleId!); // 403/404, puis 400 si autre société
+      await this.exigerGestion(user, dto.vehicleId!, MESSAGE_CIBLE_NON_GEREE);
+      targetVehicleId = dto.vehicleId!;
+      data.vehicleId = targetVehicleId;
+      // Réaffecter vers un véhicule hors service serait le même défaut que le réserver.
+      if (!isRetro) await this.assertEnService(targetVehicleId);
+    }
+
     if (dto.title !== undefined) data.title = dto.title.trim() || 'Réservation';
     const metaActuelle = (resa.metadata as Record<string, unknown> | null) ?? {};
+    /**
+     * Troisième relecture du 29/09 (T13) — LE TITRE SUIT LE MOTIF QU'IL REPRENAIT. À la création, le
+     * motif saisi devient le titre (cf. `request()`), et c'est le titre que le calendrier affiche. À
+     * l'édition, seul `metadata.reason` changeait : « Ramassage nord » devenu « Sortie piscine »
+     * restait « Ramassage nord » sur la grille, et la carte du jour montrait les deux.
+     * Le titre ne suit que s'il ÉTAIT dérivé du motif (égal à l'ancien motif, ou « Réservation » par
+     * défaut) : un titre explicite (API, import, « Demande publique → … ») est gardé. Motif vidé →
+     * « Réservation ». Posé avant la scission : les deux parties le portent.
+     */
+    if (dto.title === undefined && dto.reason !== undefined) {
+      const ancienMotif = typeof metaActuelle['reason'] === 'string' ? (metaActuelle['reason'] as string).trim() : '';
+      const nouveauMotif = typeof dto.reason === 'string' ? dto.reason.trim() : '';
+      const titreActuel = (resa.title ?? '').trim();
+      if (nouveauMotif !== ancienMotif && (titreActuel === ancienMotif || titreActuel === 'Réservation')) {
+        data.title = nouveauMotif || 'Réservation';
+      }
+    }
     const criteresApres = dto.criteria !== undefined
       ? ChildSeatsService.criteresPropres(dto.criteria)
       : ((metaActuelle['criteria'] as RequestReservationDto['criteria'] | null | undefined) ?? null);
+    let metaApres: Record<string, unknown> | null = null;
     if (dto.reason !== undefined || dto.criteria !== undefined || dto.group !== undefined) {
-      data.metadata = {
+      metaApres = {
         ...metaActuelle,
         ...(dto.reason !== undefined ? { reason: dto.reason } : {}),
         ...(dto.criteria !== undefined ? { criteria: criteresApres } : {}),
         // Un objet remplace, `null` retire ; absent, on ne touche à rien (même si le véhicule change).
         ...(dto.group !== undefined ? { group: await this.groupePropre(resa.fleetId, dto.group) } : {}),
-      } as Prisma.InputJsonValue;
+      };
+      data.metadata = metaApres as Prisma.InputJsonValue;
     }
 
-    // Réaffectation de véhicule (ex. changer le véhicule d'une réservation validée). Le fleetId
-    // est DÉRIVÉ du nouveau véhicule via assertVehicleAccess (anti-IDOR, jamais lu du client).
-    let targetVehicleId = resa.vehicleId;
-    const vehicleChanged = !!dto.vehicleId && dto.vehicleId !== resa.vehicleId;
-    if (vehicleChanged) {
-      const newFleetId = await this.events.assertVehicleAccess(user, dto.vehicleId!); // 403/404
-      targetVehicleId = dto.vehicleId!;
-      data.vehicleId = targetVehicleId;
-      data.fleetId = newFleetId;
-      // Réaffecter vers un véhicule hors service serait le même défaut que le réserver.
-      if (!isRetro) await this.assertEnService(targetVehicleId);
+    const blocking = resa.status === VehicleEventStatus.CONFIRMED || resa.status === VehicleEventStatus.IN_PROGRESS;
+    /**
+     * Changer le véhicule d'une réservation ferme DÉJÀ COMMENCÉE (revue du 29/09, C6) : la matinée
+     * qu'elle a roulée sur l'ancien véhicule reste à lui, seule la suite passe sur le nouveau — la
+     * même scission que « Réaffecter ». Sans ça, la ligne entière changeait de plaque et l'historique
+     * disait que le nouveau véhicule était réservé pendant que l'ancien roulait.
+     */
+    const coupe = debutDeMinute(maintenant);
+    if (
+      vehicleChanged && blocking && !isRetro && !debutChange && end &&
+      coupe.getTime() > resa.startAt.getTime() && end.getTime() > coupe.getTime()
+    ) {
+      return this.scinder(user, resa, targetVehicleId, coupe, {
+        fin: end,
+        title: data.title as string | undefined,
+        metadata: metaApres,
+        criteres: criteresApres,
+        silencieux: interne?.silencieux,
+      });
     }
 
     // Réservation bloquante + (créneau OU véhicule change) → re-vérifier les conflits sur la CIBLE.
-    const blocking = resa.status === VehicleEventStatus.CONFIRMED || resa.status === VehicleEventStatus.IN_PROGRESS;
     if (blocking && (slotChanged || vehicleChanged) && end) {
       const conflicts = await this.findOverlaps(targetVehicleId, start, end, id);
       if (conflicts.length > 0) throw new ConflictException('Conflit sur le nouveau créneau.');
       // Rétroactif : le trajet réel / l'immobilisation passée sont attendus → on ne bloque pas dessus.
+      // Sinon, seulement ce qui est À VENIR et NOUVEAU pour ce véhicule (C44) : les trajets qu'il a
+      // faits depuis le début de CETTE réservation sont son usage, pas un conflit — y compris celui
+      // qu'il est EN TRAIN de faire (contre-revue, R0 : la fenêtre contrôlée est toujours à venir, donc
+      // seul un trajet ouvert pouvait y tomber, et c'était celui de la réservation qu'on prolonge).
+      // Même véhicule et réservation commencée seulement : sur un autre véhicule, tout trajet compte.
       if (!isRetro) {
-        if (await this.hasTripOverlap(targetVehicleId, start, end)) {
-          throw new ConflictException('Ce véhicule roule déjà sur le nouveau créneau.');
-        }
-        if ((await this.findImmobilized([targetVehicleId], start, end)).has(targetVehicleId)) {
-          throw new ConflictException('Ce véhicule est immobilisé (incident ou maintenance) sur le nouveau créneau.');
+        const usagePropre = !vehicleChanged && resa.startAt.getTime() <= maintenant ? resa.startAt : undefined;
+        for (const [a, b] of this.fenetresAControler(resa, start, end, vehicleChanged, maintenant)) {
+          if (await this.hasTripOverlap(targetVehicleId, a, b, { ignorerDepuis: usagePropre })) {
+            throw new ConflictException('Ce véhicule roule déjà sur le nouveau créneau.');
+          }
+          if ((await this.findImmobilized([targetVehicleId], a, b)).has(targetVehicleId)) {
+            throw new ConflictException('Ce véhicule est immobilisé (incident ou maintenance) sur le nouveau créneau.');
+          }
         }
       }
     }
     // Sièges auto : un créneau déplacé ou un besoin revu se re-vérifie contre le stock — pour une
     // réservation ferme comme pour une demande encore en attente (le valideur ne doit pas hériter
-    // d'un refus). Une réservation close ne bouge plus ; une rétroactive n'engage plus rien.
+    // d'un refus). Une réservation close ne bouge plus ; une rétroactive n'engage plus rien. Jugé sur
+    // la partie À VENIR (C44) : les heures écoulées n'engagent plus aucun siège du stock.
     const vivante = resa.status !== VehicleEventStatus.DONE && resa.status !== VehicleEventStatus.CANCELLED;
     if (vivante && !isRetro && end && (slotChanged || dto.criteria !== undefined || vehicleChanged)) {
-      await this.childSeats?.assertAvailable(
-        (data.fleetId as string | undefined) ?? resa.fleetId,
-        start,
-        end,
-        ChildSeatsService.needOf(criteresApres),
-        { vehicleId: targetVehicleId, excludeId: id, excludeBookingRef: this.bookingRefOf(resa.metadata) },
-      );
+      const debutUtile = start.getTime() >= maintenant ? start : new Date(maintenant);
+      if (debutUtile.getTime() < end.getTime()) {
+        await this.childSeats?.assertAvailable(
+          resa.fleetId,
+          debutUtile,
+          end,
+          ChildSeatsService.needOf(criteresApres),
+          { vehicleId: targetVehicleId, excludeId: id, excludeBookingRef: this.bookingRefOf(resa.metadata) },
+        );
+      }
     }
 
     try {
       const row = await this.prisma.vehicleEvent.update({ where: { id }, data, include: INCLUDE_PLATE });
-      return this.toDto(row);
+      const ecrite = this.toDto(row);
+      // Silencieux : la réorganisation prévient une fois par demande groupée, après sa boucle (R3).
+      if (!interne?.silencieux && !isRetro && (vehicleChanged || slotChanged)) this.annoncerModification(resa.status, ecrite);
+      return ecrite;
     } catch (err) {
       if (this.isExclusionConflict(err)) {
         throw new ConflictException('Conflit : créneau déjà réservé.');
       }
       throw err;
     }
+  }
+
+  /**
+   * Les fenêtres où re-vérifier trajets et immobilisations sur la cible, bornées au FUTUR (C44) :
+   *  - véhicule changé : toute la partie à venir du créneau ;
+   *  - même véhicule : seulement ce que le nouveau créneau AJOUTE à l'ancien (avancée du début,
+   *    prolongation de la fin). Raccourcir ne crée aucun conflit ; et ce que le véhicule a fait
+   *    pendant cette réservation est l'usage de la réservation elle-même.
+   */
+  private fenetresAControler(
+    resa: { startAt: Date; endAt: Date | null },
+    start: Date,
+    end: Date,
+    vehicleChanged: boolean,
+    maintenant: number,
+  ): [Date, Date][] {
+    const borne = (a: number, b: number): [Date, Date][] => {
+      const debut = Math.max(a, maintenant);
+      return debut < b ? [[new Date(debut), new Date(b)]] : [];
+    };
+    if (vehicleChanged || !resa.endAt) return borne(start.getTime(), end.getTime());
+    return [
+      ...(start.getTime() < resa.startAt.getTime()
+        ? borne(start.getTime(), Math.min(end.getTime(), resa.startAt.getTime()))
+        : []),
+      ...(end.getTime() > resa.endAt.getTime()
+        ? borne(Math.max(start.getTime(), resa.endAt.getTime()), end.getTime())
+        : []),
+    ];
+  }
+
+  /**
+   * C5 (revue du 29/09) — LE DEMANDEUR PUBLIC APPREND QUE SA RÉSERVATION A CHANGÉ.
+   *
+   * Sa confirmation nommait « AA-111-BB » ; le véhicule part au garage, la réservation passe sur un
+   * autre, et personne ne lui écrivait : il se présentait pour une voiture au garage. Émis d'UN seul
+   * endroit par écriture (update, ou la scission), jamais par `reaffecter` en plus — un seul courriel ;
+   * et une seule fois par DEMANDE pour un geste de masse (`reorganiser`, contre-revue R3).
+   *
+   * Seulement une réservation CONFIRMÉE issue du lien public : une demande encore en attente recevra
+   * la confirmation avec les bonnes données ; une réservation en cours, le demandeur a déjà la voiture.
+   * Un événement DÉDIÉ, pas `reservation.confirmed` : l'agent d'agenda écoute celui-là pour son ménage.
+   *
+   * Contre-revue du 29/09 (R4) : rien non plus pour une réservation TERMINÉE — close, annulée, ou
+   * simplement finie (une réservation n'est jamais passée à DONE : celle d'hier reste CONFIRMED et
+   * éditable). Corriger après coup le véhicule réellement utilisé écrivait au demandeur « votre
+   * réservation a été modifiée » pour une sortie finie depuis la veille. La suite d'une scission finit
+   * toujours dans le futur : elle n'est pas touchée.
+   *
+   * `statutAvant` : le statut AVANT l'écriture (c'est lui qui dit « déjà confirmée ») ; `apres` : la
+   * ligne écrite, celle que le demandeur doit connaître.
+   */
+  private annoncerModification(statutAvant: VehicleEventStatus | string, apres: VehicleEventDto): void {
+    if (statutAvant !== VehicleEventStatus.CONFIRMED) return;
+    if (apres.status === VehicleEventStatus.DONE || apres.status === VehicleEventStatus.CANCELLED) return;
+    if (apres.endAt && new Date(apres.endAt).getTime() <= Date.now()) return;
+    const meta = apres.metadata ?? null;
+    if (meta?.['public'] !== true) return;
+    this.emitter?.emit('reservation.modified', {
+      fleetId: apres.fleetId,
+      vehiclePlate: apres.vehiclePlate ?? null,
+      startAt: apres.startAt,
+      endAt: apres.endAt,
+      status: apres.status,
+      metadata: meta,
+    });
   }
 
   /** Liste des réservations (scopée). Délègue au scoping/mapping S7. Perm reservations_view. */
@@ -1028,11 +1358,23 @@ export class ReservationsService {
    *     compte-rendu. C'est la discipline du DRY-RUN de la rétention (Sprint 6) : on montre ce
    *     qui va se passer avant de le faire, et l'écran ouvre là-dessus.
    *  2. **À VENIR seulement.** Annuler ou décaler une réservation passée ne libère rien et
-   *     réécrit de l'historique. La borne basse est `max(from, maintenant)`.
+   *     réécrit de l'historique. La borne basse est `max(from, maintenant)`. Seule exception
+   *     (revue du 29/09) : « réaffecter » reprend toute réservation qui CHEVAUCHE la fenêtre,
+   *     parce qu'il la scinde à cette borne (contre-revue, R2) — la partie d'avant reste sur son
+   *     véhicule, l'historique n'est pas réécrit.
+   *  2 bis. **Le lot appliqué est celui qu'on a vu** (`attendu`, contre-revue du 29/09) : si le lot
+   *     recalculé n'a plus le nombre annoncé par la simulation, 409 et rien n'est écrit.
+   *  2 ter. **Liste blanche** (`ids`, troisième relecture du 29/09, T3) : présente, le lot ne garde
+   *     QUE ces réservations — filtré avant le plafond, l'aperçu et `attendu`. C'est le renvoi depuis
+   *     le formulaire d'immobilisation : seules les réservations refusées y sont reprises, jamais
+   *     celles que le gestionnaire a choisi de « Laisser », ni celles arrivées depuis.
    *  3. **Plafond de {@link MAX_REORGANISATION}.** Au-delà, on tronque et on le DIT (`plafonne`) :
    *     un lot silencieusement incomplet serait pire qu'un refus.
    *  4. **Chaque refus est nommé.** Un décalage qui tomberait sur un créneau occupé est rendu
-   *     avec sa plaque et son motif — jamais un total qui ne correspond pas au constat.
+   *     avec sa plaque et son motif — jamais un total qui ne correspond pas au constat. Un refus
+   *     CERTAIN (une demande en attente qui déborde sur la coupe de « réaffecter », T4) est rendu dès
+   *     la simulation, avec le même motif qu'à l'application ; `concernees` reste le lot entier (c'est
+   *     le contrat d'`attendu`), l'écran annonce `concernees − refusees`.
    *
    * Le périmètre passe par `events.list`, donc par la chaîne de scoping anti-IDOR habituelle :
    * aucune réservation hors du périmètre de l'appelant ne peut entrer dans le lot.
@@ -1043,37 +1385,322 @@ export class ReservationsService {
    * Le geste qui manquait à la réorganisation : un véhicule part au garage, ses réservations
    * passent sur un autre. Cible explicite (`versVehicleId`), ou `auto` : le premier véhicule libre
    * et conforme aux critères de LA réservation (places, sièges auto, équipements), jamais le véhicule
-   * d'origine. Tout le reste — conflits, hors service, sièges, groupe qui reste celui de
-   * l'utilisateur — est ce que `update()` vérifie déjà : une seule règle, un seul endroit.
+   * d'origine. Pour une réservation à venir, conflits, hors service, sièges et groupe sont ce que
+   * `update()` vérifie déjà : une seule règle, un seul endroit.
+   *
+   * Revue du 29/09 — ce que « déjà vérifié par update() » laissait passer :
+   *  - D1 : il faut GÉRER les réservations du véhicule d'origine ET de la cible (droit par véhicule,
+   *    comme `request()` qui en fait dépendre CONFIRMED ou REQUESTED) ; en `auto`, le premier
+   *    candidat que l'appelant gère — pas une voiture d'un groupe où il ne peut que demander ;
+   *  - C0 : une demande publique ne porte pas `minSeats`, seulement `seatsNeeded` → plancher de places ;
+   *  - C1 : `update()` ne contrôle les conflits que d'une réservation FERME → une demande en attente
+   *    est contrôlée ici, et jamais posée sur le véhicule d'une autre ligne de la même demande ;
+   *  - C2 : en `auto`, le stock de sièges se lit sans le besoin de la réservation elle-même ;
+   *  - C6 : une réservation DÉJÀ COMMENCÉE est scindée — le passé reste sur son véhicule.
+   *
+   * Contre-revue du 29/09 (R2) — la coupe n'est plus toujours « maintenant ». Une maintenance déclarée
+   * lundi pour jeudi scindait lundi 14:00 la réservation lundi → vendredi : A paraissait libre (et
+   * réservable) trois jours pendant que le conducteur en gardait les clés, B réservé sans rouler.
+   * `aPartirDe` dit quand le véhicule d'origine cesse d'être disponible ; la coupe est
+   * max(maintenant, aPartirDe), à la minute :
+   *  - la réservation CHEVAUCHE la coupe (début < coupe < fin) → SCINDÉE là : la partie d'avant reste
+   *    sur son véhicule, la suite part sur la cible, contrôlée sur [coupe, fin) seulement ;
+   *  - elle commence à la coupe ou après → elle part EN ENTIER ;
+   *  - elle finit avant la coupe → elle n'est pas concernée (400) ;
+   *  - une demande jamais validée qui chevauche la coupe se refuse : elle n'a pas de « suite » ferme.
+   *
+   * `interne` : options de la réorganisation (courriel groupé) — le contrôleur n'en passe aucune.
    */
-  async reaffecter(user: AuthUser, id: string, dto: ReaffecterReservationDto = {}): Promise<VehicleEventDto> {
+  async reaffecter(
+    user: AuthUser,
+    id: string,
+    dto: ReaffecterReservationDto = {},
+    interne?: OptionsInternes,
+  ): Promise<VehicleEventDto> {
     const resa = await this.loadScoped(user, id);
     if (resa.status === VehicleEventStatus.DONE || resa.status === VehicleEventStatus.CANCELLED) {
       throw new BadRequestException('Une réservation terminée ou annulée ne se réaffecte pas.');
     }
     if (!resa.endAt) throw new BadRequestException('Réservation sans créneau de fin.');
-    if (resa.endAt.getTime() < Date.now()) throw new BadRequestException('Une réservation passée ne se réaffecte pas.');
+    const fin = resa.endAt;
+    const maintenant = Date.now();
+    if (fin.getTime() < maintenant) throw new BadRequestException('Une réservation passée ne se réaffecte pas.');
+
+    // R2 — à partir de quand le véhicule d'origine n'est plus disponible. Absent = maintenant.
+    let indisponibleDes = maintenant;
+    if (dto?.aPartirDe !== undefined && dto?.aPartirDe !== null && dto?.aPartirDe !== '') {
+      const t = typeof dto.aPartirDe === 'string' ? Date.parse(dto.aPartirDe) : Number.NaN;
+      if (Number.isNaN(t)) throw new BadRequestException('« aPartirDe » invalide : une date ISO est attendue.');
+      indisponibleDes = Math.max(maintenant, t);
+    }
+    // Coupe à la minute (l'écran raisonne à la minute).
+    const coupe = debutDeMinute(indisponibleDes);
+    if (fin.getTime() <= coupe.getTime()) {
+      throw new BadRequestException(
+        'Cette réservation se termine avant que le véhicule ne devienne indisponible : rien à reprendre.',
+      );
+    }
+
+    // D1 — déplacer la réservation de quelqu'un, c'est GÉRER les réservations de CE véhicule.
+    await this.exigerGestion(user, resa.vehicleId, this.messageOrigineNonGeree(resa));
+
+    // C6 / R2 — la réservation déborde-t-elle sur la coupe ? Une demande jamais validée n'a pas de
+    // « suite » ferme à reprendre : elle se valide ou se refuse (la suite d'une scission est CONFIRMÉE).
+    // Même règle que l'annonce de `reorganiser()` en simulation (T4).
+    const chevauche = resa.startAt.getTime() < coupe.getTime(); // fin > coupe, acquis plus haut
+    const refusDemande = motifDemandeNonReaffectable(resa.status, resa.startAt.getTime(), maintenant, coupe.getTime());
+    if (refusDemande) throw new BadRequestException(refusDemande);
+    // Une réservation commencée dans la minute en cours (début ≥ coupe) se déplace en entier.
+    const aScinder = chevauche;
+    const debut = aScinder ? coupe : resa.startAt;
+
+    // C1 — les véhicules qui portent déjà une ligne vivante de la MÊME demande sur le créneau.
+    const soeurs = await this.vehiculesDeSoeurs(resa, debut, fin);
 
     const voulu = typeof dto?.versVehicleId === 'string' ? dto.versVehicleId.trim() : '';
     let cible = voulu && voulu !== 'auto' ? voulu : null;
-    if (!cible) {
-      const meta = (resa.metadata as { criteria?: RequestReservationDto['criteria'] } | null) ?? null;
-      const sug = await this.suggest(user, {
-        startAt: resa.startAt.toISOString(),
-        endAt: resa.endAt.toISOString(),
-        criteria: meta?.criteria ?? undefined,
-        fleetId: resa.fleetId,
-      });
-      const candidat = sug.vehicles.find((v) => v.vehicleId !== resa.vehicleId);
-      if (!candidat) {
-        throw new ConflictException('Aucun autre véhicule libre et conforme sur ce créneau.');
+    if (cible) {
+      if (cible === resa.vehicleId) {
+        throw new BadRequestException('La réservation est déjà sur ce véhicule.');
       }
-      cible = candidat.vehicleId;
+      await this.cibleDeLaMemeSociete(user, resa, cible); // accès d'abord : rien à dire d'un véhicule hors périmètre
+      await this.exigerGestion(user, cible, MESSAGE_CIBLE_NON_GEREE);
+      if (soeurs.has(cible)) {
+        throw new ConflictException('Ce véhicule porte déjà une autre ligne de la même demande sur ce créneau.');
+      }
+    } else {
+      const { criteres, minSeats } = await this.criteresDeReaffectation(resa);
+      const sug = await this.suggest(
+        user,
+        { startAt: debut.toISOString(), endAt: fin.toISOString(), criteria: criteres, fleetId: resa.fleetId },
+        { excludeId: resa.id, excludeBookingRef: this.bookingRefOf(resa.metadata) },
+      );
+      const libres = sug.vehicles.filter((v) => v.vehicleId !== resa.vehicleId && !soeurs.has(v.vehicleId));
+      for (const v of libres) {
+        if (await this.permissions.canOnVehicle(user, v.vehicleId, 'reservations_manage')) {
+          cible = v.vehicleId;
+          break;
+        }
+      }
+      if (!cible) throw new ConflictException(this.motifAucunCandidat(sug, libres.length, minSeats));
     }
-    if (cible === resa.vehicleId) {
-      throw new BadRequestException('La réservation est déjà sur ce véhicule.');
+
+    if (aScinder) return this.scinder(user, resa, cible, coupe, { fin, silencieux: interne?.silencieux });
+    // C1 — une demande EN ATTENTE : `update()` ne contrôle que les réservations fermes. Mêmes
+    // contrôles que `request()` et `confirm()`, sinon la demande atterrit sur un véhicule pris et le
+    // valideur hérite d'un refus (« Validé 1 sur 2 »).
+    if (resa.status === VehicleEventStatus.REQUESTED) await this.controlerCible(cible, resa.startAt, fin, resa.id);
+    return this.update(user, id, { vehicleId: cible }, interne);
+  }
+
+  /**
+   * D1 / R1 — le droit de GÉRER se lit PAR véhicule (`reservations_manage` résolu sur son groupe).
+   * Une seule règle pour tous les chemins qui ÉCRIVENT une réservation existante : `update()` (feuille
+   * d'édition, scission comprise, dès qu'un champ change), `reaffecter()`, `confirm()` et `cancel()`
+   * (troisième relecture du 29/09, T1 : valider, annuler et modifier sur place ne lisaient que
+   * l'union des droits).
+   */
+  private async exigerGestion(user: AuthUser, vehicleId: string, message: string): Promise<void> {
+    if (!(await this.permissions.canOnVehicle(user, vehicleId, 'reservations_manage'))) {
+      throw new ForbiddenException(message);
     }
-    return this.update(user, id, { vehicleId: cible });
+  }
+
+  /** « Vous ne gérez pas les réservations de AA-111-BB : vous ne pouvez pas les <verbe>. » */
+  private messageNonGeree(
+    resa: { vehicle?: { plate: string | null } | null },
+    verbe: 'déplacer' | 'valider' | 'annuler' | 'modifier',
+  ): string {
+    return `Vous ne gérez pas les réservations de ${resa.vehicle?.plate ?? 'ce véhicule'} : vous ne pouvez pas les ${verbe}.`;
+  }
+
+  /** « Vous ne gérez pas les réservations de AA-111-BB… » — le véhicule d'ORIGINE nommé. */
+  private messageOrigineNonGeree(resa: { vehicle?: { plate: string | null } | null }): string {
+    return this.messageNonGeree(resa, 'déplacer');
+  }
+
+  /** Refuse (400) un véhicule d'une autre société que la réservation ; 403/404 hors périmètre. */
+  private async cibleDeLaMemeSociete(user: AuthUser, resa: { fleetId: string }, vehicleId: string): Promise<void> {
+    const fleetId = await this.events.assertVehicleAccess(user, vehicleId);
+    if (fleetId !== resa.fleetId) throw new BadRequestException(AUTRE_SOCIETE);
+  }
+
+  /** Conflit ferme, trajet réel, immobilisation : ce qui rend une cible inutilisable sur [start,end). */
+  private async controlerCible(vehicleId: string, start: Date, end: Date, excludeId: string): Promise<void> {
+    if ((await this.findOverlaps(vehicleId, start, end, excludeId)).length > 0) {
+      throw new ConflictException('Ce véhicule est déjà réservé sur ce créneau.');
+    }
+    if (await this.hasTripOverlap(vehicleId, start, end)) {
+      throw new ConflictException('Ce véhicule roule déjà sur ce créneau.');
+    }
+    if ((await this.findImmobilized([vehicleId], start, end)).has(vehicleId)) {
+      throw new ConflictException('Ce véhicule est immobilisé (incident ou maintenance) sur ce créneau.');
+    }
+  }
+
+  /**
+   * C1 — véhicules portant une AUTRE ligne vivante (en attente ou ferme) de la même demande groupée
+   * (`bookingRef`) sur le créneau. Deux lignes d'une demande de 11 places sur le même véhicule, et la
+   * validation groupée finissait en « Validé 1 sur 2 ».
+   */
+  private async vehiculesDeSoeurs(resa: EventRow, start: Date, end: Date): Promise<Set<string>> {
+    const ref = this.bookingRefOf(resa.metadata);
+    if (!ref) return new Set();
+    const rows = await this.prisma.vehicleEvent.findMany({
+      where: {
+        fleetId: resa.fleetId,
+        type: VehicleEventType.RESERVATION,
+        id: { not: resa.id },
+        status: { in: [...BLOCKING, VehicleEventStatus.REQUESTED] },
+        startAt: { lt: end },
+        endAt: { gt: start },
+        metadata: { path: ['bookingRef'], equals: ref },
+      },
+      select: { vehicleId: true },
+    });
+    return new Set(rows.map((r) => r.vehicleId));
+  }
+
+  /**
+   * C0 — les critères avec lesquels chercher un remplaçant. Le plancher de places, jamais écrit dans la
+   * metadata (la réservation ne change pas, seule la recherche est bornée) :
+   *  1. `criteria.minSeats` s'il a été saisi ;
+   *  2. sinon, pour une demande PUBLIQUE, `min(seatsNeeded, places du véhicule d'origine)` : une
+   *     demande sur un seul véhicule vaut `seatsNeeded` (le vivier du lien public a pris un véhicule
+   *     assez grand) ; une demande répartie sur plusieurs vaut la part de CE véhicule ;
+   *  3. sinon, les places du véhicule d'origine — le groupe ne tient pas dans moins.
+   */
+  private async criteresDeReaffectation(
+    resa: EventRow,
+  ): Promise<{ criteres: RequestReservationDto['criteria'] | undefined; minSeats: number | null }> {
+    const meta = (resa.metadata as { criteria?: unknown; public?: unknown; seatsNeeded?: unknown } | null) ?? null;
+    const criteres = {
+      ...(meta?.criteria && typeof meta.criteria === 'object' ? (meta.criteria as Record<string, unknown>) : {}),
+    } as NonNullable<RequestReservationDto['criteria']> & { minSeats?: unknown };
+    const saisi = Math.floor(Number(criteres.minSeats));
+    if (Number.isFinite(saisi) && saisi > 0) return { criteres, minSeats: saisi };
+
+    const origine = await this.prisma.vehicle.findUnique({ where: { id: resa.vehicleId }, select: { seats: true } });
+    const places = typeof origine?.seats === 'number' && origine.seats > 0 ? origine.seats : null;
+    let plancher = places;
+    if (meta?.public === true) {
+      const besoin = Math.floor(Number(meta.seatsNeeded));
+      if (Number.isFinite(besoin) && besoin > 0) plancher = places ? Math.min(besoin, places) : besoin;
+    }
+    if (plancher) criteres.minSeats = plancher;
+    else delete criteres.minSeats;
+    return { criteres: Object.keys(criteres).length > 0 ? criteres : undefined, minSeats: plancher };
+  }
+
+  /**
+   * « Aucun remplaçant » qui dit POURQUOI : un plancher de places écarte les véhicules dont le nombre
+   * de places n'est pas renseigné, et une exclusion ne doit jamais se lire comme un agenda plein.
+   */
+  private motifAucunCandidat(sug: SuggestReservationResultDto, sansDroit: number, minSeats: number | null): string {
+    const details: string[] = [];
+    if (sansDroit > 0) details.push(`${sansDroit} véhicule(s) libre(s) dont vous ne gérez pas les réservations`);
+    if (sug.excludedUnknownCapacity > 0) details.push(`${sug.excludedUnknownCapacity} écarté(s) faute de nombre de places renseigné`);
+    if ((sug.excludedChildSeats ?? 0) > 0) details.push(`${sug.excludedChildSeats} écarté(s) : sièges auto insuffisants`);
+    if (sug.excludedDormant > 0) details.push(`${sug.excludedDormant} écarté(s) : boîtier muet depuis plus de 7 jours`);
+    const places = minSeats ? ` (au moins ${minSeats} places)` : '';
+    return `Aucun autre véhicule libre et conforme sur ce créneau${places}${details.length > 0 ? ` — ${details.join(' ; ')}` : ''}.`;
+  }
+
+  /**
+   * C6 (revue du 29/09) — SCINDER une réservation ferme déjà commencée.
+   *
+   * R va de 08:00 à 18:00 sur A ; à 12:00, A tombe en panne. Réaffecter R en entier réécrivait
+   * l'histoire (B « réservé » le matin pendant que A roulait) et exigeait que B ait été libre aussi
+   * les heures écoulées. Désormais : R reste sur A jusqu'à la coupe, et la SUITE — même titre, même
+   * metadata (critères, groupe, `bookingRef`), `suiteDe` = R — part sur la cible, de la coupe à la
+   * fin. Les deux écritures dans une transaction ; la contrainte EXCLUDE reste le dernier rempart.
+   *
+   * Les contrôles de la cible portent sur [coupe, fin) seulement. L'accès, la société et le droit de
+   * gérer (origine ET cible) sont vérifiés par l'appelant, avant l'appel.
+   *
+   * Contre-revue du 29/09 (R2) : la coupe peut être FUTURE — le début d'une indisponibilité déclarée
+   * pour jeudi. La réservation garde alors son véhicule jusqu'à jeudi, pas jusqu'à « maintenant ».
+   */
+  private async scinder(
+    user: AuthUser,
+    resa: EventRow,
+    cible: string,
+    coupe: Date,
+    opts: {
+      fin: Date;
+      /** Nouveau titre (édition), appliqué aux deux parties. */
+      title?: string;
+      /** Nouvelle metadata (édition : motif, critères, groupe), appliquée aux deux parties. */
+      metadata?: Record<string, unknown> | null;
+      /** Critères de la suite, si l'édition les change. */
+      criteres?: RequestReservationDto['criteria'] | null;
+      /** R3 — la réorganisation prévient elle-même, une fois par demande groupée. */
+      silencieux?: boolean;
+    },
+  ): Promise<VehicleEventDto> {
+    const { fin } = opts;
+    await this.assertEnService(cible);
+    await this.controlerCible(cible, coupe, fin, resa.id);
+    const metaOrigine = opts.metadata ?? (resa.metadata as Record<string, unknown> | null) ?? {};
+    const criteres =
+      opts.criteres !== undefined ? opts.criteres : ((metaOrigine['criteria'] as RequestReservationDto['criteria'] | null | undefined) ?? null);
+    await this.childSeats?.assertAvailable(resa.fleetId, coupe, fin, ChildSeatsService.needOf(criteres), {
+      vehicleId: cible,
+      excludeId: resa.id,
+      excludeBookingRef: this.bookingRefOf(resa.metadata),
+    });
+
+    let suite: EventRow;
+    try {
+      suite = await this.prisma.$transaction(async (tx) => {
+        await tx.vehicleEvent.update({
+          where: { id: resa.id },
+          data: {
+            endAt: coupe,
+            ...(opts.title !== undefined ? { title: opts.title } : {}),
+            ...(opts.metadata ? { metadata: opts.metadata as Prisma.InputJsonValue } : {}),
+          },
+        });
+        return tx.vehicleEvent.create({
+          data: {
+            fleetId: resa.fleetId,
+            vehicleId: cible,
+            type: VehicleEventType.RESERVATION,
+            // La suite n'a pas encore été prise en main : ferme, pas « en cours ».
+            status: VehicleEventStatus.CONFIRMED,
+            title: opts.title ?? resa.title,
+            description: resa.description,
+            startAt: coupe,
+            endAt: fin,
+            allDay: false,
+            metadata: { ...metaOrigine, suiteDe: resa.id } as Prisma.InputJsonValue,
+            // Même auteur, même source : l'origine (agent / public / manuelle) ne change pas en route.
+            createdBy: resa.createdBy,
+            source: resa.source,
+          },
+          include: INCLUDE_PLATE,
+        });
+      });
+    } catch (err) {
+      if (this.isExclusionConflict(err)) {
+        throw new ConflictException('Conflit : ce créneau vient d’être réservé sur le véhicule visé (course concurrente).');
+      }
+      throw err;
+    }
+    this.systemActivity?.record?.({
+      category: 'RESERVATION',
+      action: 'reservation_scindee',
+      status: 'SUCCESS',
+      actor: 'utilisateur',
+      detail:
+        `Réservation scindée — ${resa.vehicle?.plate ?? 'véhicule inconnu'} jusqu'à ${coupe.toISOString()}, ` +
+        `suite sur ${suite.vehicle?.plate ?? 'véhicule inconnu'} jusqu'à ${fin.toISOString()}`,
+      fleetId: resa.fleetId,
+      meta: { reservationId: resa.id, suiteId: suite.id, coupe: coupe.toISOString(), parUtilisateur: user.id },
+    });
+    const ecrite = this.toDto(suite);
+    if (!opts.silencieux) this.annoncerModification(resa.status, ecrite);
+    return ecrite;
   }
 
   async reorganiser(user: AuthUser, dto: ReorganiserReservationsDto): Promise<ReorganisationResultDto> {
@@ -1083,12 +1710,33 @@ export class ReservationsService {
       throw new BadRequestException('Action inconnue : « annuler », « decaler » ou « reaffecter ».');
     }
     const versVehicleId = typeof dto?.versVehicleId === 'string' && dto.versVehicleId.trim() ? dto.versVehicleId.trim() : 'auto';
+    // Revue du 29/09 (D0) : « réaffecter » sans véhicule source passait TOUTES les réservations à
+    // venir de la société (jusqu'à 500) sur « le premier véhicule libre » — un brassage du parc que
+    // rien ne demandait, et des plaques fausses chez les conducteurs et les demandeurs publics. Le
+    // geste, c'est « un véhicule part au garage » : il faut dire lequel.
+    if (action === 'reaffecter' && !dto?.vehicleId) {
+      throw new BadRequestException('Choisissez le véhicule à libérer.');
+    }
     if (action === 'reaffecter' && versVehicleId !== 'auto' && dto?.vehicleId && versVehicleId === dto.vehicleId) {
       throw new BadRequestException('Le véhicule de destination est celui qu’on libère.');
     }
     const decalage = Math.trunc(Number(dto?.decalageMinutes ?? 0));
     if (action === 'decaler' && (!Number.isFinite(decalage) || decalage === 0)) {
       throw new BadRequestException('Préciser de combien de minutes décaler (positif ou négatif).');
+    }
+    // T3 — liste blanche. Absente (ou null) : aucun filtre. Présente : un tableau d'identifiants, borné
+    // par le plafond ; VIDE, elle ne garde rien — jamais « vide = tout », qui rendrait le lot entier.
+    let listeBlanche: Set<string> | null = null;
+    if (dto?.ids !== undefined && dto?.ids !== null) {
+      const ids: unknown = dto.ids;
+      if (
+        !Array.isArray(ids) ||
+        ids.length > MAX_REORGANISATION ||
+        ids.some((x) => typeof x !== 'string' || !x.trim())
+      ) {
+        throw new BadRequestException('« ids » invalide : une liste d’identifiants de réservations est attendue.');
+      }
+      listeBlanche = new Set((ids as string[]).map((x) => x.trim()));
     }
 
     const from = new Date(dto?.from ?? '');
@@ -1112,27 +1760,65 @@ export class ReservationsService {
       fleetId: dto?.fleetId,
     });
 
-    const vivantes = toutes.filter((e) => {
-      if (new Date(e.startAt).getTime() < debut.getTime()) return false; // chevauchant mais déjà commencée
-      return e.status !== VehicleEventStatus.DONE && e.status !== VehicleEventStatus.CANCELLED;
-    });
-    const totaux = { agent: 0, public: 0, manuelle: 0 };
-    for (const e of vivantes) totaux[origineReservation(e)]++;
+    const vivante = (e: VehicleEventDto) =>
+      e.status !== VehicleEventStatus.DONE && e.status !== VehicleEventStatus.CANCELLED;
+    /**
+     * Contre-revue du 29/09 (R2) — DEUX périmètres, dits une fois pour toutes :
+     *  - `chevauchantes` : toute réservation vivante qui CHEVAUCHE [debut, to), commencée avant `from`
+     *    ou non. C'est le lot de « réaffecter » : chacune est reprise À PARTIR DE `debut` — scindée si
+     *    elle déborde dessus (la partie d'avant reste sur son véhicule, l'historique n'est pas réécrit),
+     *    en entier si elle commence après. C'est le cas du véhicule qui tombe en panne en pleine
+     *    réservation, ou d'une maintenance jeudi sous une location lundi → vendredi. Une demande jamais
+     *    validée qui déborde y figure aussi : elle revient en REFUS nommé (« validez-la ou refusez-la »)
+     *    au lieu de disparaître de l'écran.
+     *    C'est aussi ce que compte `parVehicule`, quelle que soit l'action : la liste où l'on choisit
+     *    le véhicule à libérer doit montrer celui dont la seule réservation est en cours.
+     *  - « annuler » et « décaler » : seulement ce qui COMMENCE dans la fenêtre — annuler ou décaler une
+     *    réservation en cours réécrirait sa partie écoulée.
+     */
+    const chevauchantes = toutes.filter(
+      (e) =>
+        vivante(e) &&
+        !!e.endAt &&
+        new Date(e.endAt).getTime() > debut.getTime() &&
+        new Date(e.startAt).getTime() < to.getTime(),
+    );
+    const vivantes =
+      action === 'reaffecter'
+        ? chevauchantes
+        : toutes.filter((e) => vivante(e) && new Date(e.startAt).getTime() >= debut.getTime());
+    const compter = (liste: VehicleEventDto[]) => {
+      const t = { agent: 0, public: 0, manuelle: 0 };
+      for (const e of liste) t[origineReservation(e)]++;
+      return t;
+    };
+    const totaux = compter(vivantes);
+    // C9 (revue du 29/09) : un véhicule choisi, l'écran doit pouvoir dire « rien de l'agent sur X ;
+    // 3 saisies à la main » au lieu de « rien à venir sur X » — `totaux` couvre toute la société.
+    const totauxVehicule = dto?.vehicleId ? compter(vivantes.filter((e) => e.vehicleId === dto.vehicleId)) : undefined;
     const retenueParOrigine = (e: VehicleEventDto): boolean => {
       // « auto » = l'agent seul ; une demande publique (SYSTEM elle aussi) n'en est pas.
       if (origine === 'auto') return origineReservation(e) === 'agent';
       if (origine === 'manuelle') return origineReservation(e) !== 'agent';
       return true;
     };
+    // Par véhicule : les réservations qui CHEVAUCHENT la fenêtre, quelle que soit l'action (cf. plus haut).
     const parVehiculeMap = new Map<string, { vehicleId: string; plate: string | null; n: number }>();
-    for (const e of vivantes.filter(retenueParOrigine)) {
+    for (const e of chevauchantes.filter(retenueParOrigine)) {
       const v = parVehiculeMap.get(e.vehicleId);
       if (v) v.n++;
       else parVehiculeMap.set(e.vehicleId, { vehicleId: e.vehicleId, plate: e.vehiclePlate, n: 1 });
     }
     const parVehicule = [...parVehiculeMap.values()].sort((a, b) => (a.plate ?? '').localeCompare(b.plate ?? ''));
 
-    const candidates = vivantes.filter((e) => retenueParOrigine(e) && (!dto?.vehicleId || e.vehicleId === dto.vehicleId));
+    // T3 : la liste blanche filtre ICI, avant le plafond, l'aperçu et `attendu` — la simulation et
+    // l'application recalculent le même lot. Elle restreint, elle n'élargit jamais (origine, véhicule).
+    const candidates = vivantes.filter(
+      (e) =>
+        retenueParOrigine(e) &&
+        (!dto?.vehicleId || e.vehicleId === dto.vehicleId) &&
+        (!listeBlanche || listeBlanche.has(e.id)),
+    );
 
     const plafonne = candidates.length > MAX_REORGANISATION;
     const lot = candidates.slice(0, MAX_REORGANISATION);
@@ -1142,20 +1828,103 @@ export class ReservationsService {
       endAt: e.endAt,
       source: e.source,
       origine: origineReservation(e),
+      // T4 : l'écran n'annonce « scindée » qu'une réservation FERME — une demande se valide ou se refuse.
+      status: e.status,
     }));
     const refusees: ReorganisationRefusDto[] = [];
 
+    /**
+     * T4 (troisième relecture du 29/09) — un refus CERTAIN s'annonce dès la simulation. Une demande
+     * jamais validée qui déborde sur la coupe de « réaffecter » (ou déjà commencée) sera refusée par
+     * `reaffecter()` : la simulation la comptait « réaffectée » et l'écran la disait « scindée ». La
+     * MÊME règle (`motifDemandeNonReaffectable`, même coupe, même motif) sert aux deux temps : en
+     * simulation elle remplit `refusees`, à l'application elle refuse la ligne sans l'écrire. Le lot
+     * n'est pas réduit : `concernees` reste `lot.length`, sinon `attendu` ne correspondrait plus.
+     */
+    const coupeReaffectation = debutDeMinute(Math.max(Date.now(), debut.getTime())).getTime();
+    const refusCertain = (e: VehicleEventDto): string | null =>
+      action === 'reaffecter'
+        ? motifDemandeNonReaffectable(e.status, Date.parse(e.startAt), Date.now(), coupeReaffectation)
+        : null;
+
     if (simulation) {
-      return { simulation: true, concernees: lot.length, appliquees: 0, refusees, apercu, plafonne, totaux, parVehicule };
+      for (const e of lot) {
+        const motif = refusCertain(e);
+        if (motif) refusees.push({ plate: e.vehiclePlate, startAt: e.startAt, motif });
+      }
+      return {
+        simulation: true, concernees: lot.length, appliquees: 0, refusees, apercu, plafonne, totaux,
+        ...(totauxVehicule ? { totauxVehicule } : {}),
+        parVehicule,
+      };
     }
 
+    /**
+     * Contre-revue du 29/09 — on n'applique QUE le lot que la simulation a montré. Le lot est recalculé
+     * au moment d'écrire : si des demandes sont arrivées par le lien public (ou des réservations ont
+     * commencé) entre la simulation et le clic, « Annuler ces 3 réservations » en aurait annulé 5, dont
+     * deux que personne n'a vues — et envoyé leurs courriels de refus. Rien n'est écrit : on relance.
+     */
+    if (dto?.attendu !== undefined && dto?.attendu !== null && Number(dto.attendu) !== lot.length) {
+      throw new ConflictException('La liste a changé depuis la simulation : relancez-la.');
+    }
+
+    /**
+     * Contre-revue du 29/09 (R3) — UN courriel « modifiée » par demande, pas un par ligne. Une demande
+     * publique de 11 personnes tient sur deux lignes (même `bookingRef`) : décaler le lot envoyait deux
+     * courriels identiques — le F13 revenu par l'événement de modification. Chaque écriture se fait en
+     * silence ; on retient une ligne écrite de chaque demande (sinon de chaque réservation) — la
+     * dernière écrite, qui en décalage vers l'avant est la plus tôt (T0) : le notifier relit l'état du
+     * groupe en base, la ligne ne sert qu'à le désigner —, et l'on prévient après la boucle, quand
+     * toutes les lignes sont à leur place : le courriel décrit l'état final du groupe. Seule une
+     * réservation publique DÉJÀ CONFIRMÉE avant le geste compte (statut lu dans le lot, AVANT
+     * l'écriture), comme pour une écriture unitaire.
+     */
+    const aPrevenir = new Map<string, VehicleEventDto>();
+    /**
+     * T2 (troisième relecture du 29/09) — même règle pour « annuler » : UN événement par demande. Une
+     * ligne publique CONFIRMÉE annoncée « annulée » l'emporte sur une ligne en attente « refusée » de la
+     * même demande — sinon le demandeur recevait « non retenue » puis « annulée » pour une seule demande.
+     */
+    const aPrevenirAnnulation = new Map<string, { verbe: 'annulation' | 'refus'; ligne: VehicleEventDto }>();
+    const aPartirDe = debut.toISOString();
+    /**
+     * T0 (troisième relecture du 29/09) — l'ORDRE D'ÉCRITURE d'un décalage. Le lot sort trié par début
+     * croissant ; décalées dans cet ordre de +90 min, deux réservations fermes collées du même véhicule
+     * se bloquaient : la première visait le créneau de la seconde, pas encore déplacée → 409 « Conflit
+     * sur le nouveau créneau », lot à moitié appliqué, et un motif faux. Vers l'avant, on écrit donc la
+     * plus TARDIVE d'abord ; vers l'arrière, la plus tôt d'abord : chaque ligne ne rencontre que des
+     * voisines déjà parties. Un refus qui reste est un vrai conflit. L'aperçu, `attendu` et les comptes
+     * gardent l'ordre du lot : seule l'écriture change d'ordre.
+     */
+    const ordreEcriture =
+      action === 'decaler'
+        ? [...lot].sort((a, b) => Math.sign(decalage) * (Date.parse(b.startAt) - Date.parse(a.startAt)))
+        : lot;
     let appliquees = 0;
-    for (const e of lot) {
+    for (const e of ordreEcriture) {
       try {
+        let ecrite: VehicleEventDto | null = null;
         if (action === 'annuler') {
-          await this.cancel(user, e.id);
+          const annulee = await this.cancel(user, e.id, { silencieux: true });
+          // Statut lu dans le lot, AVANT l'écriture : c'est lui qui dit « refusée » ou « annulée ».
+          const verbe =
+            e.status === VehicleEventStatus.REQUESTED ? 'refus' : this.annulationAAnnoncer(e.status, e) ? 'annulation' : null;
+          if (verbe) {
+            const cle = this.bookingRefOf(e.metadata) ?? e.id;
+            const deja = aPrevenirAnnulation.get(cle);
+            if (!deja || verbe === 'annulation' || deja.verbe === 'refus') aPrevenirAnnulation.set(cle, { verbe, ligne: annulee });
+          }
         } else if (action === 'reaffecter') {
-          await this.reaffecter(user, e.id, { versVehicleId });
+          // T4 — la même règle qu'en simulation : un refus certain n'est pas tenté.
+          const motif = refusCertain(e);
+          if (motif) {
+            refusees.push({ plate: e.vehiclePlate, startAt: e.startAt, motif });
+            continue;
+          }
+          // R2 — la coupe est le début de la fenêtre, pas « maintenant » : une maintenance jeudi ne
+          // retire pas lundi la voiture d'une location lundi → vendredi.
+          ecrite = await this.reaffecter(user, e.id, { versVehicleId, aPartirDe }, { silencieux: true });
         } else {
           const debutNouveau = new Date(new Date(e.startAt).getTime() + decalage * 60_000);
           const finNouvelle = e.endAt ? new Date(new Date(e.endAt).getTime() + decalage * 60_000) : null;
@@ -1167,12 +1936,18 @@ export class ReservationsService {
             refusees.push({ plate: e.vehiclePlate, startAt: e.startAt, motif: 'Le décalage la ferait passer dans le passé.' });
             continue;
           }
-          await this.update(user, e.id, {
-            startAt: debutNouveau.toISOString(),
-            endAt: finNouvelle.toISOString(),
-          });
+          ecrite = await this.update(
+            user,
+            e.id,
+            { startAt: debutNouveau.toISOString(), endAt: finNouvelle.toISOString() },
+            { silencieux: true },
+          );
         }
         appliquees++;
+        const meta = (e.metadata as { public?: unknown; retroactive?: unknown } | null | undefined) ?? null;
+        if (ecrite && e.status === VehicleEventStatus.CONFIRMED && meta?.public === true && meta.retroactive !== true) {
+          aPrevenir.set(this.bookingRefOf(e.metadata) ?? e.id, ecrite);
+        }
       } catch (err) {
         // Garde 4 : le motif REMONTE. Un conflit de créneau (EXCLUDE) ou un refus métier doit se
         // lire ligne par ligne — « 12 sur 108 » sans dire lesquelles ne s'explique pas.
@@ -1182,6 +1957,12 @@ export class ReservationsService {
           motif: err instanceof Error ? err.message : 'Refus inattendu.',
         });
       }
+    }
+    // Après la boucle : chaque demande prévenue une seule fois, sur son état final (R3, T2).
+    for (const ecrite of aPrevenir.values()) this.annoncerModification(VehicleEventStatus.CONFIRMED, ecrite);
+    for (const { verbe, ligne } of aPrevenirAnnulation.values()) {
+      if (verbe === 'annulation') this.annoncerAnnulation(ligne);
+      else this.annoncerRefus(ligne);
     }
 
     this.systemActivity?.record?.({
@@ -1199,7 +1980,11 @@ export class ReservationsService {
       meta: { action, decalage, origine, concernees: lot.length, appliquees, refusees: refusees.length },
     });
 
-    return { simulation: false, concernees: lot.length, appliquees, refusees, apercu, plafonne, totaux, parVehicule };
+    return {
+      simulation: false, concernees: lot.length, appliquees, refusees, apercu, plafonne, totaux,
+      ...(totauxVehicule ? { totauxVehicule } : {}),
+      parVehicule,
+    };
   }
 
   // ─── Agent d'agenda (P3) : disponibilité + création système ────────────────

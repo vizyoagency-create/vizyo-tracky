@@ -53,6 +53,7 @@ function makePrisma(settings: unknown, existingProposal: unknown = null) {
       findMany: jest.fn().mockResolvedValue([]),
       create: jest.fn().mockImplementation(async () => ({ id: `p${++seq}` })),
       updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+      update: jest.fn().mockImplementation(async ({ data }: { data: Record<string, unknown> }) => ({ ...(existingProposal as object), ...data })),
       // P2-5 — la purge des propositions closes : `findMany` (lot borné) puis `deleteMany`.
       deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
     },
@@ -894,5 +895,81 @@ describe('AgendaAgentRunnerService (P3.3 — agent nocturne)', () => {
     ]);
     const patterns = travauxIa.enfiler.mock.calls[0][1].userPayload.patterns;
     expect(patterns.map((p: { index: number; plate: string }) => [p.index, p.plate])).toEqual([[0, 'AA-1'], [1, 'BB-2']]);
+  });
+
+  /**
+   * Revue du 29/09 — une proposition ne se tranche qu'UNE fois. Deux onglets (« Réserver » ici,
+   * « Écarter » là, ou « Tout réserver » lancé deux fois) passaient tous deux le contrôle
+   * « pending » lu avant l'écriture : la proposition finissait « écartée » au-dessus d'une
+   * réservation ferme. L'écriture est désormais conditionnée au statut.
+   */
+  describe('apply / dismiss : une proposition ne se tranche qu’une fois', () => {
+    const user = { id: 'u1', role: 'FLEET_ADMIN', fleetId: 'f1' } as never;
+    const pending = {
+      id: 'p1', fleetId: 'f1', vehicleId: 'v1', startAt: new Date('2026-10-05T07:00:00Z'), endAt: new Date('2026-10-05T10:00:00Z'),
+      dayOfWeek: 1, destinationLabel: 'Carcassonne', confidence: 0.9, basis: 'b', reasoning: 'r', status: 'pending', origin: 'scheduled',
+      createdEventId: null, createdAt: new Date('2026-09-28T00:00:00Z'), aiVerdictAt: null, aiKeep: null,
+    };
+
+    it('apply PREND la proposition (pending → applied sous condition) AVANT de réserver, puis note la réservation', async () => {
+      const { svc, prisma, reservations } = monter({ existing: pending });
+
+      const dto = await svc.apply(user, 'p1');
+
+      const prise = proposalsOf(prisma).updateMany.mock.calls[0][0];
+      expect(prise).toEqual({ where: { id: 'p1', status: 'pending' }, data: { status: 'applied' } });
+      expect(proposalsOf(prisma).updateMany.mock.invocationCallOrder[0]).toBeLessThan(reservations.systemConfirm.mock.invocationCallOrder[0]);
+      expect(proposalsOf(prisma).update).toHaveBeenCalledWith({ where: { id: 'p1' }, data: { status: 'applied', createdEventId: 'ev1' } });
+      expect(dto).toEqual(expect.objectContaining({ status: 'applied', createdEventId: 'ev1', vehiclePlate: 'AA-1' }));
+    });
+
+    it('apply perdu (un autre onglet l’a tranchée entre-temps) → « déjà traitée », AUCUNE réservation', async () => {
+      const { svc, prisma, reservations } = monter({ existing: pending });
+      proposalsOf(prisma).updateMany.mockResolvedValueOnce({ count: 0 });
+
+      await expect(svc.apply(user, 'p1')).rejects.toThrow('Proposition déjà traitée.');
+      expect(reservations.systemConfirm).not.toHaveBeenCalled();
+      expect(proposalsOf(prisma).update).not.toHaveBeenCalled();
+    });
+
+    it('créneau occupé → 409 et la proposition est RENDUE (retour à pending) : elle reste réservable', async () => {
+      const reservations = makeReservations({ systemConfirm: jest.fn().mockResolvedValue(null) });
+      const { svc, prisma } = monter({ existing: pending, reservations });
+
+      await expect(svc.apply(user, 'p1')).rejects.toThrow('Le créneau est déjà occupé.');
+      expect(proposalsOf(prisma).updateMany.mock.calls[1][0]).toEqual({
+        where: { id: 'p1', status: 'applied', createdEventId: null },
+        data: { status: 'pending' },
+      });
+      expect(proposalsOf(prisma).update).not.toHaveBeenCalled();
+    });
+
+    it('réservation en erreur → la proposition est rendue, l’erreur remonte telle quelle', async () => {
+      const reservations = makeReservations({ systemConfirm: jest.fn().mockRejectedValue(new Error('base indisponible')) });
+      const { svc, prisma } = monter({ existing: pending, reservations });
+
+      await expect(svc.apply(user, 'p1')).rejects.toThrow('base indisponible');
+      expect(proposalsOf(prisma).updateMany.mock.calls[1][0].data).toEqual({ status: 'pending' });
+    });
+
+    it('dismiss écrit sous condition (jamais sur une proposition devenue réservation)', async () => {
+      const { svc, prisma } = monter({ existing: pending });
+
+      const dto = await svc.dismiss(user, 'p1');
+
+      expect(proposalsOf(prisma).updateMany).toHaveBeenCalledWith({
+        where: { id: 'p1', status: { notIn: ['applied', 'auto_applied'] } },
+        data: { status: 'dismissed' },
+      });
+      expect(dto.status).toBe('dismissed');
+    });
+
+    it('dismiss perdu (réservée entre la lecture et l’écriture) → 400, rien d’écrit', async () => {
+      const { svc, prisma } = monter({ existing: pending });
+      proposalsOf(prisma).updateMany.mockResolvedValueOnce({ count: 0 });
+
+      await expect(svc.dismiss(user, 'p1')).rejects.toThrow('Une réservation déjà créée s\'annule depuis l\'agenda.');
+      expect(proposalsOf(prisma).update).not.toHaveBeenCalled();
+    });
   });
 });

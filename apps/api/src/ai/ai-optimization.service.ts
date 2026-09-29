@@ -9,6 +9,7 @@ import { Prisma, UserRole, VehicleEventStatus, VehicleEventType } from '@prisma/
 import type {
   AiCapacityAnalysisDto,
   AiCapacityApplyDto,
+  AiCapacityApplyResultDto,
   AiCapacityLatestDto,
   AiCapacityInputDto,
   AiCapacityProposalDto,
@@ -34,6 +35,7 @@ import { VehicleEventsService } from '../agenda/vehicle-events.service';
 import { resolveReportVehicleScope } from '../common/report-vehicle-scope';
 import { AiUsageService } from '../ai-usage/ai-usage.service';
 import { ErrorLogger } from '../observability/error-logger.service';
+import { PermissionsResolverService } from '../permissions/permissions-resolver.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { VehicleAccessService } from '../vehicle-access/vehicle-access.service';
 import { AiServiceError, type AiErrorKind, type NiveauEchecIa } from './anthropic.client';
@@ -52,17 +54,120 @@ function clamp01(n: unknown): number {
   if (!Number.isFinite(x)) return 0;
   return Math.max(0, Math.min(1, x));
 }
-/** Entier ≥ 0 ou null (refuse les valeurs aberrantes proposées par l'IA). */
-function cleanInt(n: unknown): number | null {
-  if (n === null || n === undefined) return null;
+/**
+ * Nombre de places plausible : entier de 1 à 99, les bornes de `UpdateVehicleDto` — sinon null.
+ *
+ * Revue du 29/09 : l'ancien `cleanInt` laissait passer 0 (que la vue Parc refuse) et tronquait
+ * 2,7 en 2 — une valeur que personne n'a dite. Une place inventée finit dans le placement.
+ */
+function cleanSeats(n: unknown): number | null {
+  if (n === null || n === undefined || n === '') return null;
   const x = Number(n);
-  if (!Number.isFinite(x) || x < 0) return null;
-  return Math.floor(x);
+  return Number.isInteger(x) && x >= 1 && x <= 99 ? x : null;
 }
-function cleanFeatures(f: unknown): string[] {
+
+/** Bornes de `UpdateVehicleDto` : la fiche écrite par « Appliquer » doit rester une fiche que la vue Parc accepte. */
+const FEATURES_MAX = 30;
+const FEATURE_LEN_MAX = 40;
+/** Équipements AJOUTÉS qu'on conserve d'une réponse de l'IA (au-delà, c'est du bruit, pas une fiche). */
+const FEATURES_IA_MAX = 20;
+/** Clé de comparaison d'un équipement : « Climatisation » et « climatisation » sont le même. */
+const cleEquipement = (s: string): string => s.trim().toLowerCase();
+
+/**
+ * Équipements nettoyés : chaînes non vides d'au plus 40 caractères, sans doublon (casse ignorée),
+ * sans ceux d'`exclus` (clés `cleEquipement`), et au plus `max`.
+ *
+ * Contre-revue du 29/09 (R7/R24) : la borne (20) tombait AVANT qu'on écarte les équipements déjà
+ * sur la fiche. L'écran envoyant l'union « fiche + ajouts », une fiche de 20 équipements perdait
+ * tous ses ajouts — et la proposition était notée appliquée sans rien écrire. On écarte d'abord,
+ * on borne ensuite.
+ */
+function cleanFeatures(f: unknown, max: number, exclus: ReadonlySet<string> = new Set()): string[] {
   if (!Array.isArray(f)) return [];
-  return f.filter((x): x is string => typeof x === 'string').map((s) => s.trim()).filter(Boolean).slice(0, 20);
+  const vus = new Set<string>(exclus);
+  const out: string[] = [];
+  for (const x of f) {
+    if (out.length >= max) break;
+    if (typeof x !== 'string') continue;
+    const s = x.trim();
+    if (!s || s.length > FEATURE_LEN_MAX || vus.has(cleEquipement(s))) continue;
+    vus.add(cleEquipement(s));
+    out.push(s);
+  }
+  return out;
 }
+
+/** Ce que porte une fiche véhicule côté capacité. */
+type FicheCapacite = { seats: number | null; features: string[] };
+
+/**
+ * Ce qu'une proposition AJOUTE à une fiche (revue du 29/09) : un nombre de places valide et
+ * différent de l'actuel, et les équipements absents de la fiche (casse ignorée). Jamais de
+ * retrait : une proposition ne vide ni une place ni un équipement saisis à la main — « Appliquer »
+ * complète, il ne remplace pas.
+ *
+ * Les ajouts ne sont PAS rognés à la place restante (contre-revue du 29/09, R7) : la lecture
+ * (`latest`) et l'écriture (`apply`) comptent ainsi les mêmes ajouts, et c'est « Appliquer » qui
+ * refuse, avec son motif, une fiche qui dépasserait 30 — plutôt que d'en écrire une partie en
+ * silence. Au-delà de 30 ajouts la réponse est la même (trop) : inutile de compter plus loin.
+ * `features` reçu peut être les seuls ajouts (l'écran, depuis le 29/09) ou l'union avec la fiche
+ * (écran encore en cache) : les équipements déjà présents sont écartés dans les deux cas.
+ */
+function apportSurFiche(prop: { seats?: unknown; features?: unknown }, fiche: FicheCapacite): FicheCapacite {
+  const seats = cleanSeats(prop.seats);
+  const connus = new Set((fiche.features ?? []).map(cleEquipement));
+  return {
+    seats: seats !== null && seats !== (fiche.seats ?? null) ? seats : null,
+    features: cleanFeatures(prop.features, FEATURES_MAX + 1, connus),
+  };
+}
+const apporteQuelqueChose = (a: FicheCapacite): boolean => a.seats !== null || a.features.length > 0;
+
+function memesEquipements(a: string[], b: string[]): boolean {
+  const ka = new Set(a.map(cleEquipement));
+  const kb = new Set(b.map(cleEquipement));
+  return ka.size === kb.size && [...ka].every((k) => kb.has(k));
+}
+
+/** Vrai si la proposition porte l'instantané de la fiche pris à l'analyse (analyses du 29/09 et après). */
+function aUnInstantane(p: AiCapacityProposalDto | undefined): p is AiCapacityProposalDto {
+  return !!p && (p.currentSeats !== undefined || p.currentFeatures !== undefined);
+}
+
+/**
+ * La fiche a-t-elle bougé depuis l'analyse ? (revue du 29/09)
+ *
+ * Avec instantané : places ou équipements différents de ceux lus à l'analyse — typiquement une
+ * correction faite à la main dans la vue Parc, que « Tout sélectionner → Appliquer » écrasait.
+ *
+ * Sans instantané (analyses du 28/09, déjà en base) : on ne peut pas savoir, donc jamais
+ * « modifiée » (contre-revue du 29/09, R8). L'ancienne règle de repli marquait toute fiche qui
+ * portait déjà un autre nombre de places — c'était le cas DÈS l'analyse, l'IA du 28/09 répondant
+ * pour chaque véhicule — et l'écran comme le 429 affirmaient alors une correction manuelle que
+ * personne n'avait faite. La carte montre « actuel → proposé » : c'est le gestionnaire qui coche.
+ */
+function ficheModifiee(p: AiCapacityProposalDto | undefined, fiche: FicheCapacite): boolean {
+  if (!aUnInstantane(p)) return false;
+  return (p.currentSeats ?? null) !== (fiche.seats ?? null) || !memesEquipements(p.currentFeatures ?? [], fiche.features ?? []);
+}
+
+/** Forme d'un identifiant d'analyse (colonne uuid) : un id mal formé ferait échouer Prisma. */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Motifs rendus à l'écran, véhicule par véhicule, quand « Appliquer » en écarte un. */
+const MOTIF_INTROUVABLE = "véhicule introuvable : supprimé depuis l'analyse";
+const MOTIF_HORS_PERIMETRE = 'véhicule hors de votre périmètre ou passé dans une autre société';
+/** T9 : le véhicule est dans le périmètre, mais sa ligne d'accès n'accorde pas « Modifier un véhicule ». */
+const MOTIF_SANS_DROIT_EDITION = "vous n'avez pas le droit « Modifier un véhicule » sur ce véhicule";
+const MOTIF_FICHE_MODIFIEE = "fiche modifiée depuis l'analyse";
+const MOTIF_TROP_EQUIPEMENTS = `trop d'équipements (${FEATURES_MAX} au plus)`;
+
+/** Pourquoi CE compte ne lance pas l'analyse du parc (revue du 29/09, C10). */
+const MOTIF_PERIMETRE =
+  "L'analyse du parc porte sur toute la société : elle est lancée par un compte qui voit tous ses véhicules. " +
+  'Vous voyez ici ses propositions pour les vôtres.';
+const MOTIF_EN_COURS = 'Une analyse de ce parc est déjà en cours.';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 /** Fenêtre « maintenance imminente » : maintenance prévue dans les 7 jours suivant le créneau. */
@@ -134,6 +239,12 @@ type PlacementAiOutput = {
   notes?: string | null;
 };
 
+/**
+ * Ce que rend `GET /ai/capacity/latest` : le contrat partagé, plus `enCours` (contre-revue du 29/09,
+ * R9) — vrai tant que le verrou mémoire de la société est pris par une analyse en cours.
+ */
+export type AiCapacityLatestReponse = AiCapacityLatestDto & { enCours: boolean };
+
 /** Anti-spam des alertes IA : 1 entrée / fenêtre par (capacité, flotte, nature). */
 const AI_ALERT_THROTTLE_MS = 5 * 60 * 1000;
 
@@ -153,6 +264,19 @@ export class AiOptimizationService {
   /** Dernière alerte IA émise par clé (anti-spam). */
   private readonly aiErrLast = new Map<string, number>();
 
+  /**
+   * Sociétés dont une analyse de capacités est EN COURS (revue du 29/09, C13).
+   *
+   * La garde « une par jour » lit la dernière ligne, puis l'appel IA dure jusqu'à deux minutes,
+   * et la ligne n'est créée qu'après : deux onglets, deux gestionnaires, ou un rechargement
+   * pendant l'attente passaient tous la garde — deux analyses facturées. Un verrou en mémoire
+   * suffit : l'API tourne en UNE instance (un seul conteneur `tracky-api`, aucune réplique), le
+   * service est un singleton, et un redémarrage libère le verrou tout seul — pas d'orphelin
+   * possible, contrairement à une ligne « en cours » en base. Si l'API passe un jour à plusieurs
+   * instances, il faudra réserver le créneau en base.
+   */
+  private readonly analysesEnCours = new Set<string>();
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly vehicleAccess: VehicleAccessService,
@@ -163,6 +287,9 @@ export class AiOptimizationService {
     private readonly aiAvail: AiAvailabilityService,
     private readonly errors: ErrorLogger,
     private readonly aiUsage: AiUsageService,
+    // Revue du 29/09 (T9) — `vehicles_edit` résolu véhicule par véhicule dans `applyCapacity`.
+    // Module global (`PermissionsModule`) : rien à importer dans `AiModule`.
+    private readonly permissions: PermissionsResolverService,
   ) {}
 
   // ─── Capacité 1 — enrichissement de capacité ───────────────────────────────
@@ -172,16 +299,33 @@ export class AiOptimizationService {
    * nouvelle est possible. C'est ce que l'écran Assistant IA lit à l'ouverture : le résultat
    * d'hier reste à appliquer, et le bouton dit quand il pourra repayer.
    */
-  async latestCapacity(user: AuthUser, fleetId?: string): Promise<AiCapacityLatestDto> {
+  async latestCapacity(user: AuthUser, fleetId?: string): Promise<AiCapacityLatestReponse> {
     const id = this.resolveFleetId(user, fleetId);
+    // Revue du 29/09 (C10) : l'analyse est celle de la SOCIÉTÉ, mais chacun n'en lit que la part de
+    // son périmètre — un gestionnaire limité au « secteur nord » voyait les plaques, modèles et
+    // raisonnements de tout le parc, ce que `/vehicles` et la vue Parc lui cachent.
+    const accessible = await this.vehicleAccess.getAccessibleVehicleIds(user);
     const last = await this.prisma.aiCapacityAnalysis.findFirst({ where: { fleetId: id }, orderBy: { createdAt: 'desc' } });
     const next = last ? new Date(last.createdAt.getTime() + CAPACITY_WINDOW_MS) : null;
-    const canRun = !next || next.getTime() <= Date.now();
+    const fenetreOuverte = !next || next.getTime() <= Date.now();
+    // Contre-revue du 29/09 (R9) : l'état du verrou est rendu tel quel, quel que soit le périmètre.
+    // Un onglet qui n'a pas lancé l'analyse (rechargé pendant l'attente, autre poste) n'a aucun
+    // travail à suivre : sans ce booléen il gardait « déjà en cours » après la fin — et, si l'IA
+    // avait échoué, refusait à tort une analyse redevenue possible. L'écran relit tant qu'il est vrai,
+    // sans avoir à reconnaître la phrase du motif.
+    const enCours = this.analysesEnCours.has(id);
+    // Le motif dit pourquoi CE compte ne peut pas lancer, quand ce n'est pas la fenêtre de 24 h :
+    // un périmètre partiel (l'analyse est réservée à qui voit tout le parc), ou une analyse déjà
+    // en cours — un onglet rechargé pendant l'attente voit alors le bouton grisé, et pourquoi.
+    const motif = accessible !== 'ALL' ? MOTIF_PERIMETRE : enCours ? MOTIF_EN_COURS : null;
     return {
-      analysis: last ? this.toAnalysisDto(last) : null,
-      canRun,
-      nextAllowedAt: canRun ? null : next!.toISOString(),
+      analysis: last ? await this.analyseVisible(last, id, accessible) : null,
+      canRun: fenetreOuverte && motif === null,
+      // Pour un périmètre partiel il n'y a pas de « prochaine fois » : ce n'est pas une question d'heure.
+      nextAllowedAt: fenetreOuverte || accessible !== 'ALL' ? null : next!.toISOString(),
       windowHours: CAPACITY_WINDOW_MS / 3_600_000,
+      motif,
+      enCours,
     };
   }
 
@@ -194,8 +338,55 @@ export class AiOptimizationService {
       analysedAt: row.createdAt.toISOString(),
       metier: row.metier as FleetMetier,
       proposals: Array.isArray(row.proposals) ? (row.proposals as AiCapacityProposalDto[]) : [],
-      appliedVehicleIds: row.appliedVehicleIds ?? [],
+      appliedVehicleIds: [...new Set(row.appliedVehicleIds ?? [])],
     };
+  }
+
+  /**
+   * L'analyse conservée telle qu'un compte doit la voir (revue du 29/09) :
+   * - bornée à son PÉRIMÈTRE véhicules (C10) — propositions et `appliedVehicleIds` ;
+   * - sans les véhicules qui n'existent plus dans CETTE société (C11) : supprimés (suppression
+   *   physique) ou transférés. Sinon « Tout sélectionner → Appliquer » échouait à chaque essai sur
+   *   le même véhicule disparu ;
+   * - chaque proposition porte la fiche ACTUELLE (`nowSeats`/`nowFeatures`) et `ficheModifiee`,
+   *   pour que l'écran montre « actuel → proposé » et n'applique pas d'office une fiche corrigée à
+   *   la main depuis (C12) ;
+   * - sans les propositions pas encore appliquées qui n'apportent PLUS rien à la fiche (corrigée
+   *   entre-temps, ou analyse du 28/09 qui proposait chaque véhicule, même complet) : le badge
+   *   « N à appliquer » disait la taille du parc. Les appliquées restent : l'écran les liste.
+   *
+   * Une seule requête véhicules, bornée aux ids des propositions.
+   */
+  private async analyseVisible(
+    row: { id: string; fleetId: string; createdAt: Date; metier: string; proposals: unknown; appliedVehicleIds: string[] },
+    fleetId: string,
+    accessible: string[] | 'ALL',
+  ): Promise<AiCapacityAnalysisDto> {
+    const dto = this.toAnalysisDto(row);
+    const permis = accessible === 'ALL' ? null : new Set(accessible);
+    const dansPerimetre = (vehicleId: string): boolean => !permis || permis.has(vehicleId);
+    const ids = [...new Set(dto.proposals.map((p) => p?.vehicleId).filter((v): v is string => !!v && dansPerimetre(v)))];
+    const fiches = ids.length
+      ? await this.prisma.vehicle.findMany({ where: { fleetId, id: { in: ids } }, select: { id: true, seats: true, features: true } })
+      : [];
+    const ficheParId = new Map(fiches.map((f) => [f.id, { seats: f.seats ?? null, features: f.features ?? [] }]));
+    const faites = new Set(dto.appliedVehicleIds);
+    const proposals: AiCapacityProposalDto[] = [];
+    for (const p of dto.proposals) {
+      const fiche = p?.vehicleId ? ficheParId.get(p.vehicleId) : undefined;
+      if (!fiche) continue; // hors périmètre, supprimé, ou passé dans une autre société
+      const appliquee = faites.has(p.vehicleId);
+      if (!appliquee && !apporteQuelqueChose(apportSurFiche(p, fiche))) continue;
+      proposals.push({
+        ...p,
+        nowSeats: fiche.seats,
+        nowFeatures: fiche.features,
+        // Une proposition appliquée a forcément changé la fiche : ce n'est pas une « modification ».
+        // Sans instantané (analyse du 28/09), jamais « modifiée » : on ne peut pas le savoir (R8).
+        ficheModifiee: !appliquee && ficheModifiee(p, fiche),
+      });
+    }
+    return { ...dto, proposals, appliedVehicleIds: dto.appliedVehicleIds.filter(dansPerimetre) };
   }
 
   /** « 28/09 à 14:02 », heure de Paris — celle que lit le gestionnaire. */
@@ -208,14 +399,23 @@ export class AiOptimizationService {
   /**
    * La garde « une analyse par jour et par société ». Refuse (429) tant que la dernière analyse a
    * moins de 24 h — sauf `force` par un super-admin (recette, démonstration). Le message dit la
-   * date de la dernière, celle de la prochaine, et que le résultat conservé reste à appliquer.
+   * date de la dernière, celle de la prochaine, et ce qu'il reste RÉELLEMENT de son résultat.
+   *
+   * Revue du 29/09 (C14) : la dernière phrase affirmait toujours « reste à appliquer », y compris
+   * quand l'analyse n'avait rien proposé ou que tout avait été appliqué — la pastille annonçait un
+   * travail que l'écran, juste en dessous, disait inexistant. Le reste se compte avec la même règle
+   * que l'écran (`analyseVisible`), jamais par `proposalsCount − appliedVehicleIds.length` :
+   * `appliedVehicleIds` a pu recevoir des véhicules absents des propositions.
+   *
+   * Le changement de métier ne rouvre PAS la garde (D2, écarté) : basculer le métier dans un sens
+   * puis dans l'autre suffirait à payer autant d'analyses qu'on veut.
    */
   private async assertCapacityQuota(user: AuthUser, fleetId: string, force: boolean | undefined): Promise<void> {
     if (force && user.role === UserRole.SUPER_ADMIN) return;
     const derniere = await this.prisma.aiCapacityAnalysis.findFirst({
       where: { fleetId },
       orderBy: { createdAt: 'desc' },
-      select: { createdAt: true },
+      select: { id: true, fleetId: true, createdAt: true, metier: true, proposals: true, appliedVehicleIds: true },
     });
     if (!derniere) return;
     const prochaine = new Date(derniere.createdAt.getTime() + CAPACITY_WINDOW_MS);
@@ -223,9 +423,40 @@ export class AiOptimizationService {
     throw new HttpException(
       `Une analyse par jour et par société : la dernière date du ${AiOptimizationService.heureParis(derniere.createdAt)}, ` +
         `la prochaine sera possible le ${AiOptimizationService.heureParis(prochaine)}. ` +
-        'Son résultat est conservé ci-dessous et reste à appliquer.',
+        (await this.resteDeLAnalyse(derniere, fleetId)),
       429,
     );
+  }
+
+  /**
+   * La phrase qui dit ce qu'il reste d'une analyse conservée — même décompte que l'écran.
+   *
+   * Contre-revue du 29/09 (R8) : « fiche modifiée depuis » ne compte plus que les fiches dont
+   * l'instantané prouve la modification (`ficheModifiee` est faux sans instantané) ; et les deux
+   * restes sont dits ensemble quand il y a les deux — la phrase taisait les fiches à revoir dès
+   * qu'une proposition restait à appliquer.
+   */
+  private async resteDeLAnalyse(
+    row: { id: string; fleetId: string; createdAt: Date; metier: string; proposals: unknown; appliedVehicleIds: string[] },
+    fleetId: string,
+  ): Promise<string> {
+    const proposees = Array.isArray(row.proposals) ? row.proposals.length : 0;
+    if (proposees === 0) return "Elle n'avait rien trouvé à compléter : le parc semble déjà renseigné.";
+    // L'appelant voit tout le parc (seul un tel compte lance l'analyse) : aucune borne de périmètre.
+    const vue = await this.analyseVisible(row, fleetId, 'ALL');
+    const faites = new Set(vue.appliedVehicleIds);
+    const ouvertes = vue.proposals.filter((p) => !faites.has(p.vehicleId));
+    const aAppliquer = ouvertes.filter((p) => !p.ficheModifiee).length;
+    const aRevoir = ouvertes.length - aAppliquer;
+    const restes: string[] = [];
+    if (aAppliquer > 0) {
+      restes.push(aAppliquer === 1 ? '1 proposition reste à appliquer' : `${aAppliquer} propositions restent à appliquer`);
+    }
+    if (aRevoir > 0) {
+      restes.push(aRevoir === 1 ? '1 fiche modifiée depuis est à revoir' : `${aRevoir} fiches modifiées depuis sont à revoir`);
+    }
+    if (restes.length > 0) return `Son résultat est conservé dans l'Assistant IA : ${restes.join(', ')}.`;
+    return 'Toutes ses propositions ont été appliquées, ou figurent déjà sur les fiches.';
   }
 
   /** Construit le payload capacité (scopé). Réutilisé par preview + suggest. */
@@ -297,99 +528,304 @@ export class AiOptimizationService {
     return (await this.buildCapacityPayload(user, dto)).payload;
   }
 
+  /**
+   * L'analyse conservée est celle de TOUTE la société (revue du 29/09, C10) : elle n'est donc
+   * lancée — donc payée, conservée et comptée dans « une par jour » — que par un compte qui voit
+   * tout le parc, et jamais sur une sélection de véhicules. Avant, un gestionnaire limité à son
+   * groupe (ou un `vehicleIds` passé à l'API) enregistrait SON sous-ensemble comme l'analyse de la
+   * société : l'administrateur ne voyait plus que ces véhicules et se voyait refuser l'analyse du
+   * parc complet pendant 24 h. Le compte limité lit l'analyse de l'administrateur, bornée à ses
+   * véhicules (`latestCapacity`).
+   */
+  private async assertAnalyseDeSociete(user: AuthUser, dto: AiCapacitySuggestRequestDto): Promise<void> {
+    const selection = dto?.vehicleIds as unknown;
+    if (selection !== undefined && selection !== null && (!Array.isArray(selection) || selection.length > 0)) {
+      throw new ForbiddenException(
+        "L'analyse du parc porte sur toute la société : elle ne se lance pas sur une sélection de véhicules.",
+      );
+    }
+    if ((await this.vehicleAccess.getAccessibleVehicleIds(user)) !== 'ALL') {
+      throw new ForbiddenException(
+        "L'analyse du parc porte sur toute la société : elle est réservée à un compte qui voit tous ses véhicules. " +
+          "Ses propositions pour les vôtres s'affichent dans l'Assistant IA.",
+      );
+    }
+  }
+
   async suggestCapacity(user: AuthUser, dto: AiCapacitySuggestRequestDto): Promise<AiCapacityResultDto> {
+    // Refusé AVANT toute lecture du parc et tout appel payant.
+    await this.assertAnalyseDeSociete(user, dto);
     const { payload, vehicles, metier, fleetId } = await this.buildCapacityPayload(user, dto);
     if (vehicles.length === 0) return { metier, proposals: [] };
     // Interrupteur maître : IA désactivée pour la flotte → aucune proposition (l'app tourne sans IA).
     if (!(await this.aiAvail.isEnabledForFleet(fleetId, 'capacity'))) return { metier, proposals: [] };
-    // Une par jour et par société — vérifié AVANT de payer l'appel.
-    await this.assertCapacityQuota(user, fleetId, dto?.force);
 
-    let ai: CapacityAiOutput;
+    // Une seule analyse à la fois par société (C13). Le test et la prise du verrou se suivent
+    // SANS `await` entre eux : deux requêtes ne peuvent pas passer toutes les deux. Même un
+    // super-admin qui force attend la fin de celle en cours.
+    if (this.analysesEnCours.has(fleetId)) throw new HttpException(MOTIF_EN_COURS, 429);
+    this.analysesEnCours.add(fleetId);
     try {
-      const call = await this.ai.completeJson<CapacityAiOutput>({
-        system: renderCapacitySystem(metier),
-        userPayload: payload,
-        schema: CAPACITY_SCHEMA,
-        // Une proposition par véhicule : marge pour une grande flotte sans risquer le
-        // timeout HTTP (16k = plafond non-stream confortable, ~200 véhicules).
-        maxTokens: 16000,
-      }, { trace: { action: 'capacity', userId: user.id, fleetId } });
-      ai = call.result;
-      // Palier « Coûts IA » — journalise l'usage (non bloquant).
-      void this.aiUsage.record({
-        userId: user.id, fleetId, action: 'capacity', model: call.model, provider: call.provider,
-        inputTokens: call.usage.inputTokens, outputTokens: call.usage.outputTokens,
-        cacheWriteTokens: call.usage.cacheWriteTokens, cacheReadTokens: call.usage.cacheReadTokens,
-        latencyMs: call.latencyMs, ok: true,
-      });
-    } catch (err) {
-      await this.recordAiFailure(err, 'capacity', { userId: user.id, fleetId, vehicleCount: vehicles.length });
-      throw err;
-    }
+      // Une par jour et par société — vérifié AVANT de payer l'appel.
+      await this.assertCapacityQuota(user, fleetId, dto?.force);
 
-    const byId = new Map(vehicles.map((v) => [v.id, v]));
-    const proposals: AiCapacityProposalDto[] = (ai?.proposals ?? [])
-      .filter((p) => p && byId.has(p.vehicleId)) // anti-hallucination : on ignore tout id inconnu
-      .map((p) => {
+      let ai: CapacityAiOutput;
+      try {
+        const call = await this.ai.completeJson<CapacityAiOutput>({
+          system: renderCapacitySystem(metier),
+          userPayload: payload,
+          schema: CAPACITY_SCHEMA,
+          // Une proposition par véhicule : marge pour une grande flotte sans risquer le
+          // timeout HTTP (16k = plafond non-stream confortable, ~200 véhicules).
+          maxTokens: 16000,
+        }, { trace: { action: 'capacity', userId: user.id, fleetId } });
+        ai = call.result;
+        // Palier « Coûts IA » — journalise l'usage (non bloquant).
+        void this.aiUsage.record({
+          userId: user.id, fleetId, action: 'capacity', model: call.model, provider: call.provider,
+          inputTokens: call.usage.inputTokens, outputTokens: call.usage.outputTokens,
+          cacheWriteTokens: call.usage.cacheWriteTokens, cacheReadTokens: call.usage.cacheReadTokens,
+          latencyMs: call.latencyMs, ok: true,
+        });
+      } catch (err) {
+        await this.recordAiFailure(err, 'capacity', { userId: user.id, fleetId, vehicleCount: vehicles.length });
+        throw err;
+      }
+
+      const byId = new Map(vehicles.map((v) => [v.id, v]));
+      const vus = new Set<string>();
+      const proposals: AiCapacityProposalDto[] = [];
+      for (const p of ai?.proposals ?? []) {
+        // Anti-hallucination : on ignore tout id inconnu ; et une seule proposition par véhicule.
+        if (!p || !byId.has(p.vehicleId) || vus.has(p.vehicleId)) continue;
         const v = byId.get(p.vehicleId)!;
-        return {
+        const fiche: FicheCapacite = { seats: v.seats ?? null, features: v.features ?? [] };
+        // Revue du 29/09 (C12/C22) : le prompt fait répondre l'IA pour CHAQUE véhicule, même
+        // complet. On ne garde que les propositions qui APPORTENT quelque chose — sinon le badge
+        // « N à appliquer » valait la taille du parc et l'étape ne se cochait qu'une fois tout
+        // appliqué, ce qui poussait à « Tout sélectionner » et réécrivait des fiches justes.
+        const ajout = apportSurFiche(p, fiche);
+        if (!apporteQuelqueChose(ajout)) continue;
+        vus.add(p.vehicleId);
+        proposals.push({
           vehicleId: p.vehicleId,
           plate: v.plate,
           model: v.model,
-          seats: cleanInt(p.seats),
-          features: cleanFeatures(p.features),
+          seats: cleanSeats(p.seats),
+          // Contre-revue du 29/09 (R7) : les seuls équipements AJOUTÉS, bornés APRÈS avoir écarté ceux
+          // de la fiche — une IA qui recopiait d'abord les équipements actuels voyait ses ajouts
+          // tomber sous la borne de 20. L'écran n'affiche que les ajouts : rien d'autre n'est perdu.
+          features: ajout.features.slice(0, FEATURES_IA_MAX),
           confidence: clamp01(p.confidence),
           reasoning: typeof p.reasoning === 'string' ? p.reasoning.slice(0, 400) : '',
-        };
+          // L'instantané de la fiche lue à l'analyse : « Appliquer » saura si elle a bougé depuis.
+          currentSeats: fiche.seats,
+          currentFeatures: fiche.features,
+        });
+      }
+      // Conservée : c'est elle que l'écran relit demain, d'un autre poste, ou après un rechargement.
+      const analyse = await this.prisma.aiCapacityAnalysis.create({
+        data: {
+          fleetId,
+          createdBy: user.id,
+          metier,
+          proposals: proposals as unknown as Prisma.InputJsonValue,
+          proposalsCount: proposals.length,
+        },
+        select: { id: true, createdAt: true },
       });
-    // Conservée : c'est elle que l'écran relit demain, d'un autre poste, ou après un rechargement.
-    const analyse = await this.prisma.aiCapacityAnalysis.create({
-      data: {
-        fleetId,
-        createdBy: user.id,
-        metier,
-        proposals: proposals as unknown as Prisma.InputJsonValue,
-        proposalsCount: proposals.length,
-      },
-      select: { id: true, createdAt: true },
-    });
-    return { metier, proposals, analysisId: analyse.id, analysedAt: analyse.createdAt.toISOString() };
+      return { metier, proposals, analysisId: analyse.id, analysedAt: analyse.createdAt.toISOString() };
+    } finally {
+      this.analysesEnCours.delete(fleetId);
+    }
   }
 
-  /** Application HUMAINE des propositions acceptées → écrit les véhicules (scopé). */
-  async applyCapacity(user: AuthUser, dto: AiCapacityApplyDto): Promise<{ updated: number }> {
-    const items = Array.isArray(dto?.items) ? dto.items : [];
-    if (items.length === 0) throw new BadRequestException('Aucune capacité à appliquer.');
-    if (items.length > 500) throw new BadRequestException('Trop de véhicules en une fois (max 500).');
+  /**
+   * Application HUMAINE des propositions acceptées → écrit les véhicules (scopé).
+   *
+   * Revue du 29/09 — l'analyse vit désormais des jours et se partage entre postes ; « Appliquer »
+   * ne peut plus écrire à l'aveugle :
+   * - chaque véhicule est traité SEUL (C11/C24). Un véhicule supprimé (404) ou hors périmètre /
+   *   passé dans une autre société (403) est ÉCARTÉ avec son motif au lieu de faire échouer tout
+   *   l'envoi — avant, les fiches déjà écrites restaient écrites, rien n'était noté, et chaque
+   *   nouvel essai réécrivait les mêmes puis échouait au même endroit. La barrière anti-IDOR tient
+   *   toujours : un 403 n'écrit rien. Seuls 403 et 404 sont rattrapés ; une panne de base remonte ;
+   * - `vehicles_edit` est exigé SUR CHAQUE véhicule (T9), pas seulement en union au contrôleur : un
+   *   véhicule du périmètre dont la ligne d'accès n'accorde que la lecture est écarté avec son motif ;
+   * - ce qui a été écrit est TOUJOURS noté sur l'analyse, même si une erreur imprévue interrompt
+   *   la boucle ;
+   * - on COMPLÈTE, on ne remplace pas (C12/C22) : jamais `seats` à null ni à 0 (une proposition
+   *   « — places » effaçait une valeur saisie), et les équipements reçus s'AJOUTENT à ceux de
+   *   la fiche (union, casse ignorée) — « attelage » saisi à la main ne disparaît plus. `features`
+   *   porte les AJOUTS (contrat du 29/09) ; une union reçue d'un écran en cache revient au même ;
+   * - la fiche reste une fiche que la vue Parc accepte (contre-revue du 29/09, R7/R24) : si l'union
+   *   dépasse 30 équipements, le véhicule est ÉCARTÉ avec son motif et rien n'est écrit — avant,
+   *   une borne à 20 posée sur l'union perdait des ajouts en silence et notait quand même la
+   *   proposition appliquée ;
+   * - une fiche modifiée depuis l'analyse (instantané `currentSeats`/`currentFeatures`) est
+   *   écartée : une correction faite dans la vue Parc n'est plus réécrite par l'ancienne valeur.
+   *   Seul `forcer: true` (geste explicite « Appliquer quand même », contre-revue R6/R23) la
+   *   réécrit. On ne compare JAMAIS `Vehicle.updatedAt` : il bouge avec la calibration carburant,
+   *   les horaires, les sièges à bord, le kilométrage…
+   * - l'analyse notée est celle que l'écran affichait (`analysisId`, si elle est bien de la
+   *   société du véhicule), sinon la dernière de la société (D3) ; seuls ses propres véhicules y
+   *   sont notés.
+   */
+  async applyCapacity(user: AuthUser, dto: AiCapacityApplyDto): Promise<AiCapacityApplyResultDto> {
+    const recus = Array.isArray(dto?.items) ? dto.items : [];
+    if (recus.length === 0) throw new BadRequestException('Aucune capacité à appliquer.');
+    if (recus.length > 500) throw new BadRequestException('Trop de véhicules en une fois (max 500).');
+    // Un véhicule envoyé deux fois n'est traité qu'une fois : la fiche lue ci-dessous serait périmée au second.
+    const vus = new Set<string>();
+    const items = recus.filter((it) => {
+      if (!it?.vehicleId || typeof it.vehicleId !== 'string' || vus.has(it.vehicleId)) return false;
+      vus.add(it.vehicleId);
+      return true;
+    });
+
+    // Les fiches vivantes, lues d'un coup (VPS à 2 vCPU : pas une requête par véhicule). Rien n'en
+    // sort avant que `assertVehicleAccess` ait validé le véhicule.
+    const fiches = items.length
+      ? await this.prisma.vehicle.findMany({
+          where: { id: { in: items.map((it) => it.vehicleId) } },
+          select: { id: true, plate: true, seats: true, features: true },
+        })
+      : [];
+    const ficheParId = new Map(fiches.map((f) => [f.id, f]));
+
+    // Revue du 29/09 (T9) — le contrôleur ne vérifie `vehicles_edit` qu'en UNION des scopes : un
+    // gestionnaire qui l'a sur le groupe Nord et n'a que la lecture sur le groupe Sud passait, et
+    // `assertVehicleAccess` ne contrôle que le périmètre — les places et équipements d'un véhicule
+    // Sud étaient réécrits. Le droit se résout donc ici sur la ligne d'accès qui couvre CHAQUE
+    // véhicule, comme `@RequireVehiclePermission` le fait pour `PATCH /vehicles/:id`. Une seule
+    // requête pour tout le lot : `resolveForVehicles` remplit le cache de la requête, que
+    // `canOnVehicle` relit ensuite sans retourner en base (super-admin et admin de flotte passent).
+    if (items.length) await this.permissions.resolveForVehicles(user, items.map((it) => it.vehicleId));
+
+    // L'analyse à noter, par société (un super-admin peut toucher plusieurs sociétés).
+    type AnalyseCible = { id: string; proposals: Map<string, AiCapacityProposalDto>; deja: Set<string> };
+    const analyses = new Map<string, AnalyseCible | null>();
+    const demandee = typeof dto?.analysisId === 'string' && UUID_RE.test(dto.analysisId) ? dto.analysisId : null;
+    const analyseDe = async (fleetId: string): Promise<AnalyseCible | null> => {
+      if (analyses.has(fleetId)) return analyses.get(fleetId) ?? null;
+      const select = { id: true, proposals: true, appliedVehicleIds: true } as const;
+      const row =
+        (demandee ? await this.prisma.aiCapacityAnalysis.findFirst({ where: { id: demandee, fleetId }, select }) : null) ??
+        (await this.prisma.aiCapacityAnalysis.findFirst({ where: { fleetId }, orderBy: { createdAt: 'desc' }, select }));
+      const cible: AnalyseCible | null = row
+        ? {
+            id: row.id,
+            proposals: new Map(
+              (Array.isArray(row.proposals) ? (row.proposals as unknown as AiCapacityProposalDto[]) : [])
+                .filter((p) => !!p?.vehicleId)
+                .map((p) => [p.vehicleId, p]),
+            ),
+            deja: new Set(row.appliedVehicleIds ?? []),
+          }
+        : null;
+      analyses.set(fleetId, cible);
+      return cible;
+    };
+
     let updated = 0;
-    const appliquesParFlotte = new Map<string, string[]>();
-    for (const it of items) {
-      if (!it?.vehicleId) continue;
-      const fleetId = await this.events.assertVehicleAccess(user, it.vehicleId); // 403/404 si hors périmètre
-      const data: Prisma.VehicleUpdateInput = {};
-      if (it.seats !== undefined) data.seats = cleanInt(it.seats);
-      // Plus de `childSeats` (2026-09-28) : les sièges auto sont un stock de la société.
-      if (it.features !== undefined) data.features = cleanFeatures(it.features);
-      if (Object.keys(data).length === 0) continue;
-      await this.prisma.vehicle.update({ where: { id: it.vehicleId }, data });
-      updated++;
-      appliquesParFlotte.set(fleetId, [...(appliquesParFlotte.get(fleetId) ?? []), it.vehicleId]);
+    const skipped: AiCapacityApplyResultDto['skipped'] = [];
+    const aNoter = new Map<string, string[]>(); // id d'analyse → véhicules traités
+    const noter = (analyse: AnalyseCible | null, vehicleId: string): void => {
+      // Seuls les véhicules que CETTE analyse proposait y sont notés.
+      if (!analyse || !analyse.proposals.has(vehicleId)) return;
+      aNoter.set(analyse.id, [...(aNoter.get(analyse.id) ?? []), vehicleId]);
+    };
+
+    let erreur: unknown;
+    try {
+      for (const it of items) {
+        let fleetId: string;
+        try {
+          fleetId = await this.events.assertVehicleAccess(user, it.vehicleId);
+        } catch (e) {
+          // Pas de plaque lue en base pour un véhicule refusé : ce serait la fuite que le 403
+          // empêche. L'écran connaît la plaque par la proposition qu'il affichait.
+          if (e instanceof NotFoundException) skipped.push({ vehicleId: it.vehicleId, plate: null, motif: MOTIF_INTROUVABLE });
+          else if (e instanceof ForbiddenException) skipped.push({ vehicleId: it.vehicleId, plate: null, motif: MOTIF_HORS_PERIMETRE });
+          else throw e;
+          continue;
+        }
+        // Dans le périmètre, mais sans le droit d'écrire CE véhicule : écarté, rien n'est écrit ni
+        // noté sur l'analyse (la proposition reste à appliquer par un compte qui en a le droit).
+        // Pas de plaque lue en base ici non plus : l'écran la tient de sa proposition.
+        if (!(await this.permissions.canOnVehicle(user, it.vehicleId, 'vehicles_edit'))) {
+          skipped.push({ vehicleId: it.vehicleId, plate: null, motif: MOTIF_SANS_DROIT_EDITION });
+          continue;
+        }
+        const lue = ficheParId.get(it.vehicleId);
+        if (!lue) {
+          skipped.push({ vehicleId: it.vehicleId, plate: null, motif: MOTIF_INTROUVABLE });
+          continue;
+        }
+        const fiche: FicheCapacite = { seats: lue.seats ?? null, features: lue.features ?? [] };
+        const analyse = await analyseDe(fleetId);
+        const proposition = analyse?.proposals.get(it.vehicleId);
+        // Plus de `childSeats` (2026-09-28) : les sièges auto sont un stock de la société ; un
+        // `childSeats` reçu n'est pas lu.
+        const ajout = apportSurFiche(it, fiche);
+        if (!apporteQuelqueChose(ajout)) {
+          // La fiche porte déjà ces valeurs : rien à écrire, mais la proposition est faite — sans
+          // quoi elle resterait « à appliquer » pour toujours.
+          noter(analyse, it.vehicleId);
+          continue;
+        }
+        // Une correction faite à la main prime — sauf geste explicite « Appliquer quand même ».
+        // `=== true` : un « true » en chaîne ou un 1 ne passe pas outre une correction manuelle.
+        if (it.forcer !== true && ficheModifiee(proposition, fiche)) {
+          skipped.push({ vehicleId: it.vehicleId, plate: lue.plate ?? null, motif: MOTIF_FICHE_MODIFIEE });
+          continue;
+        }
+        // Jamais une fiche que la vue Parc refuserait, jamais une partie des ajouts en silence :
+        // l'écran lit le motif, et on fait de la place dans la vue Parc avant de réappliquer. Sans
+        // ajout d'équipement, la liste n'est pas réécrite : une fiche déjà pleine reçoit ses places.
+        if (ajout.features.length > 0 && fiche.features.length + ajout.features.length > FEATURES_MAX) {
+          skipped.push({ vehicleId: it.vehicleId, plate: lue.plate ?? null, motif: MOTIF_TROP_EQUIPEMENTS });
+          continue;
+        }
+        const data: Prisma.VehicleUpdateInput = {};
+        if (ajout.seats !== null) data.seats = ajout.seats;
+        if (ajout.features.length > 0) data.features = [...fiche.features, ...ajout.features];
+        try {
+          await this.prisma.vehicle.update({ where: { id: it.vehicleId }, data });
+        } catch (e) {
+          // Supprimé entre la lecture et l'écriture : écarté comme les autres introuvables.
+          if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2025') {
+            skipped.push({ vehicleId: it.vehicleId, plate: lue.plate ?? null, motif: MOTIF_INTROUVABLE });
+            continue;
+          }
+          throw e;
+        }
+        updated++;
+        noter(analyse, it.vehicleId);
+      }
+    } catch (e) {
+      erreur = e;
     }
-    // L'analyse conservée note ce qui est fait : l'écran ne repropose pas une fiche déjà écrite.
-    for (const [fleetId, ids] of appliquesParFlotte) {
-      const derniere = await this.prisma.aiCapacityAnalysis.findFirst({
-        where: { fleetId },
-        orderBy: { createdAt: 'desc' },
-        select: { id: true, appliedVehicleIds: true },
-      });
-      if (!derniere) continue;
-      await this.prisma.aiCapacityAnalysis.update({
-        where: { id: derniere.id },
-        data: { appliedVehicleIds: [...new Set([...(derniere.appliedVehicleIds ?? []), ...ids])], appliedAt: new Date() },
-      });
+
+    // L'analyse note ce qui est fait — y compris quand la boucle a été interrompue : les fiches
+    // déjà écrites le sont, l'écran ne doit plus les proposer. `push` est un ajout atomique en
+    // base : deux applications simultanées ne s'effacent plus l'une l'autre (l'ancienne
+    // lecture-modification-écriture perdait un des deux lots).
+    try {
+      for (const [analysisId, ids] of aNoter) {
+        const deja = [...analyses.values()].find((a) => a?.id === analysisId)?.deja ?? new Set<string>();
+        const nouveaux = [...new Set(ids)].filter((v) => !deja.has(v));
+        if (nouveaux.length === 0) continue;
+        await this.prisma.aiCapacityAnalysis.update({
+          where: { id: analysisId },
+          data: { appliedVehicleIds: { push: nouveaux }, appliedAt: new Date() },
+        });
+      }
+    } catch (e) {
+      if (erreur === undefined) throw e; // sinon l'erreur de la boucle, première cause, l'emporte
     }
-    return { updated };
+    if (erreur !== undefined) throw erreur;
+    return { updated, skipped };
   }
 
   // ─── Capacité 2 — optimiseur de placement ──────────────────────────────────

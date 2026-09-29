@@ -28,6 +28,12 @@ function minutesDe(hhmm: string): number {
   const [h, m] = hhmm.split(':').map((x) => Number(x));
   return (Number.isFinite(h) ? h : 0) * 60 + (Number.isFinite(m) ? m : 0);
 }
+/** « lun. 28 sept. » — le jour tel que le résumé l'écrit (vide ou illisible : « — »). */
+function jourLisible(iso: string): string {
+  const d = iso ? dateDe(iso) : null;
+  if (!d || Number.isNaN(d.getTime())) return '—';
+  return new Intl.DateTimeFormat('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' }).format(d);
+}
 function hhmmDe(minutes: number): string {
   const m = Math.max(0, Math.min(23 * 60 + 59, minutes));
   const p = (n: number) => String(n).padStart(2, '0');
@@ -105,8 +111,11 @@ export function resumeCreneau(
         <div class="dtr-f">
           <span class="dtr-lbl"><lucide-icon [img]="CalendarIcon" [size]="12"></lucide-icon> Début</span>
           <div class="dtr-pair">
+            <!-- L'élément est passé au gestionnaire (revue du 29/09, C39 puis R11) : une date sous la borne
+                 n'est PAS retenue — l'avis sous les champs le dit pendant la frappe — et, à la sortie du
+                 champ, le champ est réécrit à la main sur la date retenue. -->
             <input type="date" class="dtr-in dtr-in--date" [value]="startDayIso()" [attr.min]="minDay() || null"
-                   aria-label="Date de début" (input)="setStartDay($any($event.target).value)">
+                   aria-label="Date de début" (input)="setStartDay($any($event.target))" (blur)="quitterDebut($any($event.target))">
             <input type="time" class="dtr-in dtr-in--time" [value]="startTime()"
                    aria-label="Heure de début" (input)="setStartTime($any($event.target).value)">
           </div>
@@ -116,12 +125,19 @@ export function resumeCreneau(
           <span class="dtr-lbl"><lucide-icon [img]="ClockIcon" [size]="12"></lucide-icon> Fin</span>
           <div class="dtr-pair">
             <input type="date" class="dtr-in dtr-in--date" [value]="endDayIso()" [attr.min]="startDayIso() || minDay() || null"
-                   aria-label="Date de fin" (input)="setEndDay($any($event.target).value)">
+                   aria-label="Date de fin" (input)="setEndDay($any($event.target))" (blur)="quitterFin($any($event.target))">
             <input type="time" class="dtr-in dtr-in--time" [value]="endTime()"
                    aria-label="Heure de fin" (input)="setEndTime($any($event.target).value)">
           </div>
         </div>
       </div>
+
+      <!-- Date tapée sous la borne (revue du 29/09, R11) : dit TOUT DE SUITE, sous les champs, qu'elle
+           n'est pas retenue et quelle date l'est — un clic direct sur « Enregistrer » envoie celle-là,
+           celle du résumé, jamais une troisième que personne n'a vue. -->
+      @if (avisSaisie(); as avis) {
+        <p class="dtr-refus" role="status" aria-live="polite">{{ avis.texte }}</p>
+      }
 
       <!-- Raccourcis : les cas qui reviennent chaque jour dans une flotte (une demi-journée, une
            journée, prolonger d'un jour ou d'une semaine). Ils RÈGLENT les champs, ils ne les
@@ -170,6 +186,8 @@ export function resumeCreneau(
     .dtr-sum { margin: 0; font-size: 13px; font-weight: 700; color: var(--fg-primary); text-transform: none; letter-spacing: 0; }
     .dtr-sum--warn { color: var(--texte-alerte); }
     .dtr-sum-note { font-weight: 600; }
+    /* Date tapée non retenue : sous les champs, dans la couleur d'alerte, lisible sans être un refus. */
+    .dtr-refus { margin: -2px 0 0; font-size: 12px; font-weight: 600; line-height: 1.35; color: var(--texte-alerte); }
 
     /* Téléphone : Début et Fin l'un sous l'autre, la flèche disparaît. */
     @media (max-width: 480px) {
@@ -185,8 +203,11 @@ export class DateTimeRangePickerComponent {
   /** Début / fin au format `YYYY-MM-DDTHH:mm` (datetime-local). */
   readonly start = input<string>('');
   readonly end = input<string>('');
-  /** Jour minimum sélectionnable (`YYYY-MM-DD`) — les jours antérieurs sont refusés par le champ.
-   *  Vide = aucune borne (ex. consignation d'une réservation déjà effectuée). */
+  /** Jour minimum sélectionnable (`YYYY-MM-DD`) — le calendrier du champ grise les jours antérieurs ;
+   *  un jour antérieur TAPÉ au clavier n'est pas retenu (avis sous les champs), et le champ revient
+   *  à la date retenue à sa sortie.
+   *  Vide = aucune borne (ex. consignation d'une réservation déjà effectuée, ou début inchangé d'une
+   *  réservation déjà commencée qu'on modifie) — et alors pas d'avertissement « début passé ». */
   readonly minDay = input<string>('');
   readonly startChange = output<string>();
   readonly endChange = output<string>();
@@ -200,6 +221,12 @@ export class DateTimeRangePickerComponent {
   protected readonly startTime = signal('09:00'); // HH:mm
   protected readonly endTime = signal('10:00');
 
+  /**
+   * Date tapée sous la borne, NON retenue (revue du 29/09, R11) : quel champ, et la phrase qui le dit
+   * sous les champs. Null quand le champ dit la date retenue.
+   */
+  protected readonly avisSaisie = signal<{ champ: 'debut' | 'fin'; texte: string } | null>(null);
+
   constructor() {
     // Synchro ENTRANTE : (ré)initialise l'état depuis les entrées (ex. reset à l'ouverture
     // du sheet). `untracked` sur les écritures → l'effet ne dépend que de start()/end().
@@ -209,8 +236,14 @@ export class DateTimeRangePickerComponent {
       untracked(() => {
         const sp = this.parse(s);
         const ep = this.parse(e);
+        // Créneau (re)posé par le PARENT (réouverture de la feuille) : un avis d'avant ne vaut plus.
+        // L'écho de nos propres émissions ne change rien à l'état, et ne l'efface donc pas.
+        const pose =
+          (!!sp && (sp.day !== this.startDayIso() || sp.time !== this.startTime())) ||
+          (!!ep && (ep.day !== this.endDayIso() || ep.time !== this.endTime()));
         if (sp) { this.startDayIso.set(sp.day); this.startTime.set(sp.time); }
         if (ep) { this.endDayIso.set(ep.day); this.endTime.set(ep.time); }
+        if (pose) this.avisSaisie.set(null);
       });
     });
   }
@@ -243,20 +276,90 @@ export class DateTimeRangePickerComponent {
     return `${e}T${this.endTime()}` <= `${s}T${this.startTime()}`;
   });
 
-  protected setStartDay(v: string): void {
-    if (!v) return;
+  /*
+   * DATES SOUS LA BORNE (revue du 29/09, C39 puis R11).
+   *
+   * Au clavier, Chrome accepte dans un champ date une valeur sous « min », et une saisie française
+   * se tape CASE PAR CASE (jj, puis mm, puis aaaa) : chaque case émet un (input) avec une date
+   * complète, souvent sous la borne EN PASSANT (le 29/09, on tape « 05 » pour viser le 05/10 : le
+   * champ vaut un instant le 05/09).
+   *
+   * Avant, la date était ramenée à la borne dans (input) :
+   *  - si l'état était DÉJÀ sur la borne, le signal ne changeait pas, Angular ne réécrivait pas
+   *    [value] (il compare à la dernière valeur liée, pas au champ) et le champ montrait « hier »
+   *    alors que le résumé et la valeur émise disaient « aujourd'hui » ;
+   *  - sinon, le champ était réécrit en pleine frappe, et la case suivante tombait sur la borne
+   *    (« 05 » puis « 10 » donnait le 29/10 au lieu du 05/10).
+   * La première correction ne retenait rien dans (input) et ramenait la date à la borne à la SORTIE
+   * du champ (revue du 29/09, R11) : taper « 04 » puis cliquer « Enregistrer » envoyait une TROISIÈME
+   * date — le blur du clic recalait la fin au jour du début —, que ni le champ (04) ni le résumé
+   * (l'ancienne fin) n'avaient montrée. La réservation était raccourcie en silence.
+   *
+   * Maintenant, une date sous la borne n'est JAMAIS retenue, ni pendant la frappe ni à la sortie :
+   *  - pendant la frappe, l'état garde la dernière date valide (c'est elle qui est émise, et que le
+   *    résumé affiche), et un avis sous les champs le dit AUSSITÔT (« … : date non retenue — le début
+   *    reste le mar. 29 sept. ») ; la case suivante se tape librement (« 05 » puis « 10 ») ;
+   *  - à la sortie du champ, le champ est réécrit à la main sur la date retenue, et l'avis s'efface.
+   * Ce qui part au clic sur « Enregistrer » est donc toujours ce que le résumé montrait.
+   */
+  protected setStartDay(el: HTMLInputElement): void {
+    const v = el.value;
+    if (!v) { this.effacerAvis('debut'); return; } // case vidée ou incomplète : rien à dire, rien à retenir
     const min = this.minDay();
-    const jour = min && v < min ? min : v;
+    if (min && v < min) {
+      const borne = min === localIso(new Date()) ? 'est passé' : `est avant le ${jourLisible(min)}`;
+      this.avisSaisie.set({
+        champ: 'debut',
+        texte: `Le ${jourLisible(v)} ${borne} : date non retenue — le début reste le ${jourLisible(this.startDayIso())}.`,
+      });
+      return;
+    }
+    this.effacerAvis('debut');
+    this.appliquerDebut(v);
+  }
+
+  protected setEndDay(el: HTMLInputElement): void {
+    const v = el.value;
+    if (!v) { this.effacerAvis('fin'); return; }
+    const s = this.startDayIso();
+    if (s && v < s) {
+      this.avisSaisie.set({
+        champ: 'fin',
+        texte: `Le ${jourLisible(v)} est avant le début : date non retenue — la fin reste le ${jourLisible(this.endDayIso() || s)}.`,
+      });
+      return;
+    }
+    this.effacerAvis('fin');
+    this.appliquerFin(v);
+  }
+
+  /** Sortie du champ « Date de début » : le champ revient sur la date retenue (état inchangé). */
+  protected quitterDebut(el: HTMLInputElement): void {
+    this.effacerAvis('debut');
+    // Date non retenue, champ vidé ou incomplet (valeur '') : on remet la date retenue plutôt qu'un
+    // champ qui ment — c'est elle qu'affiche le résumé, et elle qui part.
+    if (el.value !== this.startDayIso()) el.value = this.startDayIso();
+  }
+
+  /** Sortie du champ « Date de fin » : idem, sur la fin retenue. */
+  protected quitterFin(el: HTMLInputElement): void {
+    this.effacerAvis('fin');
+    if (el.value !== this.endDayIso()) el.value = this.endDayIso();
+  }
+
+  private effacerAvis(champ: 'debut' | 'fin'): void {
+    if (this.avisSaisie()?.champ === champ) this.avisSaisie.set(null);
+  }
+
+  private appliquerDebut(jour: string): void {
     this.startDayIso.set(jour);
     if (!this.endDayIso() || this.endDayIso() < jour) this.endDayIso.set(jour);
     this.recalerFin();
     this.emit();
   }
 
-  protected setEndDay(v: string): void {
-    if (!v) return;
-    const s = this.startDayIso();
-    this.endDayIso.set(s && v < s ? s : v);
+  private appliquerFin(jour: string): void {
+    this.endDayIso.set(jour);
     this.recalerFin();
     this.emit();
   }

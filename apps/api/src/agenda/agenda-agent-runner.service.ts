@@ -513,7 +513,16 @@ export class AgendaAgentRunnerService {
     return rows.map((r) => this.toDto(r, plate.get(r.vehicleId) ?? null));
   }
 
-  /** Valide une SUGGESTION -> crée la réservation ferme. Perm reservations_manage (controller). */
+  /**
+   * Valide une SUGGESTION -> crée la réservation ferme. Perm reservations_manage (controller).
+   *
+   * Revue du 29/09 — la proposition est PRISE avant de réserver (`pending` → `applied` sous
+   * condition). Avant, deux onglets passaient tous deux le contrôle « pending » : « Réserver » d'un
+   * côté et « Écarter » de l'autre laissaient une réservation ferme sous une proposition marquée
+   * écartée (et « Tout réserver » lancé deux fois ne devait son salut qu'à la contrainte
+   * d'exclusion). Un seul gagne ; l'autre reçoit « déjà traitée ». Si la réservation échoue, la
+   * proposition est RENDUE (retour à `pending`) : elle reste réservable.
+   */
   async apply(user: AuthUser, id: string): Promise<AgendaAgentProposalDto> {
     const p = (await this.prisma.agendaAgentProposal.findUnique({ where: { id } })) as ProposalRow | null;
     if (!p) throw new NotFoundException('Proposition introuvable');
@@ -521,16 +530,35 @@ export class AgendaAgentRunnerService {
     await this.events.assertVehicleAccess(user, p.vehicleId); // 403/404 périmètre véhicule
     if (p.status !== 'pending') throw new BadRequestException('Proposition déjà traitée.');
 
-    const resa = await this.reservations.systemConfirm({
-      fleetId: p.fleetId,
-      vehicleId: p.vehicleId,
-      start: p.startAt,
-      end: p.endAt,
-      title: this.title(p),
-      createdBy: user.id,
-      metadata: { agent: true, appliedBy: user.id, destinationLabel: p.destinationLabel, confidence: p.confidence, basis: p.basis },
+    const prise = await this.prisma.agendaAgentProposal.updateMany({
+      where: { id, status: 'pending' },
+      data: { status: 'applied' },
     });
-    if (!resa) throw new ConflictException('Le créneau est déjà occupé.');
+    if (prise.count === 0) throw new BadRequestException('Proposition déjà traitée.');
+    const rendre = () =>
+      this.prisma.agendaAgentProposal
+        .updateMany({ where: { id, status: 'applied', createdEventId: null }, data: { status: 'pending' } })
+        .catch((e: unknown) => this.logger.error(`apply ${id} : proposition non rendue : ${(e as Error)?.message ?? e}`));
+
+    let resa: Awaited<ReturnType<ReservationsService['systemConfirm']>>;
+    try {
+      resa = await this.reservations.systemConfirm({
+        fleetId: p.fleetId,
+        vehicleId: p.vehicleId,
+        start: p.startAt,
+        end: p.endAt,
+        title: this.title(p),
+        createdBy: user.id,
+        metadata: { agent: true, appliedBy: user.id, destinationLabel: p.destinationLabel, confidence: p.confidence, basis: p.basis },
+      });
+    } catch (e) {
+      await rendre();
+      throw e;
+    }
+    if (!resa) {
+      await rendre();
+      throw new ConflictException('Le créneau est déjà occupé.');
+    }
     const updated = (await this.prisma.agendaAgentProposal.update({
       where: { id },
       data: { status: 'applied', createdEventId: resa.id },
@@ -538,19 +566,24 @@ export class AgendaAgentRunnerService {
     return this.toDto(updated, resa.vehiclePlate ?? null);
   }
 
-  /** Rejette une SUGGESTION. Perm reservations_manage (controller). */
+  /**
+   * Rejette une SUGGESTION. Perm reservations_manage (controller).
+   *
+   * Revue du 29/09 — écrite SOUS CONDITION : jamais sur une proposition devenue réservation entre
+   * la lecture et l'écriture (voir {@link apply}).
+   */
   async dismiss(user: AuthUser, id: string): Promise<AgendaAgentProposalDto> {
     const p = (await this.prisma.agendaAgentProposal.findUnique({ where: { id } })) as ProposalRow | null;
     if (!p) throw new NotFoundException('Proposition introuvable');
     this.assertScope(user, p.fleetId);
-    if (p.status === 'auto_applied' || p.status === 'applied') {
-      throw new BadRequestException('Une réservation déjà créée s\'annule depuis l\'agenda.');
-    }
-    const updated = (await this.prisma.agendaAgentProposal.update({
-      where: { id },
+    const dejaReservee = 'Une réservation déjà créée s\'annule depuis l\'agenda.';
+    if (p.status === 'auto_applied' || p.status === 'applied') throw new BadRequestException(dejaReservee);
+    const ecrit = await this.prisma.agendaAgentProposal.updateMany({
+      where: { id, status: { notIn: ['applied', 'auto_applied'] } },
       data: { status: 'dismissed' },
-    })) as ProposalRow;
-    return this.toDto(updated, null);
+    });
+    if (ecrit.count === 0) throw new BadRequestException(dejaReservee);
+    return this.toDto({ ...p, status: 'dismissed' }, null);
   }
 
   // ─── Helpers ───────────────────────────────────────────────────────────────

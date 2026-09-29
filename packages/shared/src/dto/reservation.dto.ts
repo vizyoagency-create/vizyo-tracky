@@ -132,7 +132,7 @@ export interface RequestReservationDto {
   /** Consigner une réservation DÉJÀ EFFECTUÉE mais non enregistrée (créneau passé). Réservé aux
    *  gestionnaires : entre CONFIRMÉE à sa date réelle, sans bloquer sur le trajet réel (attendu). */
   retroactive?: boolean;
-  /** Groupe qui utilise le véhicule. Absent = celui du véhicule retenu. */
+  /** Groupe qui utilise le véhicule. Absent = celui du véhicule retenu ; `null` = aucun groupe (choix explicite). */
   group?: ReservationGroupDto | null;
 }
 
@@ -183,7 +183,10 @@ export interface SuggestReservationResultDto {
 /** Validation d'une demande : fixe le véhicule (si « ouverte ») et passe CONFIRMED. */
 export interface ConfirmReservationDto {
   vehicleId?: string;
-  /** Groupe qui utilise le véhicule. Absent = celui déjà posé sur la demande, sinon celui du véhicule. */
+  /**
+   * Groupe qui utilise le véhicule. Absent = celui déjà posé sur la demande, sinon celui du véhicule ;
+   * `null` = aucun groupe (choix explicite du valideur).
+   */
   group?: ReservationGroupDto | null;
 }
 

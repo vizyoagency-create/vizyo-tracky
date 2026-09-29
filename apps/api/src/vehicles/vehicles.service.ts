@@ -91,6 +91,11 @@ export interface FleetVehicleStats {
  * capacités et sa source planning — on ne fait que le SIGNALER (pastille + ancienneté).
  */
 export type VehicleCapacityRow = VehicleCapacityRowDto & {
+  /**
+   * Hors service déclaré (null = en service). Revue du 29/09 : la vue Parc lit l'état de la
+   * ligne elle-même, au lieu de le chercher dans une liste de véhicules plafonnée à 50.
+   */
+  outOfServiceReason: string | null;
   /** `true` = boîtier muet depuis plus de {@link DORMANT_STOP_COUNTING_MS}. */
   dormant: boolean;
   /** ISO — dernier signal du boîtier, ou null (pas de boîtier / jamais émis). */
@@ -822,12 +827,17 @@ export class VehiclesService {
    * véhicule dont le boîtier s'est tu reste un véhicule du parc : il a toujours 9 places et 2
    * sièges-enfant, il reste planifiable, et c'est justement cette page qui doit permettre de
    * remarquer qu'on compte sur une capacité qu'on ne voit plus depuis 89 jours.
+   *
+   * `superFleetId` (revue du 29/09) : société du bandeau pour un SUPER_ADMIN — même règle que
+   * `stats` et la feuille QR. Sans lui, le plafond de 500 s'appliquait à TOUTES les sociétés
+   * mêlées. Un non-super est déjà borné à sa flotte : le paramètre est ignoré.
    */
-  async capacityOverview(requestedBy: RequestedBy): Promise<VehicleCapacityRow[]> {
+  async capacityOverview(requestedBy: RequestedBy, superFleetId?: string | null): Promise<VehicleCapacityRow[]> {
     const scope = resolveTenantScope(requestedBy);
     if (scope.mode === 'DENY') return [];
     const where: Prisma.VehicleWhereInput = {};
     if (scope.mode === 'FLEET') where.fleetId = scope.fleetId;
+    else if (scope.mode === 'ALL' && superFleetId) where.fleetId = superFleetId;
     if (requestedBy.accessibleVehicleIds && requestedBy.accessibleVehicleIds !== 'ALL') {
       where.id = { in: requestedBy.accessibleVehicleIds };
     }
@@ -836,6 +846,8 @@ export class VehiclesService {
       select: {
         id: true, plate: true, type: true, brand: true, model: true, energy: true,
         seats: true, childSeatsBaby: true, childSeatsChild: true, features: true,
+        // Revue du 29/09 : l'état « hors service » voyage avec la ligne (vue Parc de l'agenda).
+        outOfServiceReason: true,
         // Greffé sur la requête EXISTANTE (jointure 1-1 déjà indexée) plutôt qu'une 2e requête :
         // le VPS 2 vCPU ne doit pas payer un aller-retour de plus pour deux colonnes.
         tracker: { select: { id: true, lastSeenAt: true } },
@@ -888,13 +900,14 @@ export class VehiclesService {
         model: v.model,
         energy: v.energy,
         seats: v.seats,
-        // Sièges auto à bord (lecture seule ici : se règlent dans Paramètres de l'agenda).
+        // Sièges auto à bord (lecture seule ici : se règlent dans la vue Parc de l'agenda).
         childSeatsBaby: v.childSeatsBaby ?? 0,
         childSeatsChild: v.childSeatsChild ?? 0,
         features: v.features,
         group: v.groups?.[0]?.group ?? null,
         installationSource: source,
         divergentFields,
+        outOfServiceReason: v.outOfServiceReason ?? null,
         // Dérivé au read-time : aucun champ en base, aucun drapeau à lever ni à baisser.
         // Le jour où le boîtier ré-émet, `dormant` retombe à false tout seul au prochain appel.
         dormant: isVehicleDormant({ trackerId: v.tracker?.id ?? null, lastSeenAt }, now),

@@ -1,5 +1,6 @@
-import { BadRequestException, ForbiddenException } from '@nestjs/common';
-import { UserRole } from '@prisma/client';
+import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
+import { AccessType, UserRole } from '@prisma/client';
+import { PermissionsResolverService } from '../permissions/permissions-resolver.service';
 import { AiOptimizationService } from './ai-optimization.service';
 import { AiServiceError } from './anthropic.client';
 
@@ -69,6 +70,18 @@ function makeAiUsage() {
   } as never;
 }
 
+/**
+ * Droits par véhicule (T9) — par défaut, tout est permis : les tests historiques tournent en admin
+ * de flotte, que le vrai résolveur laisse passer sans requête. Le cas « lecture seule sur un
+ * groupe » se teste avec le VRAI `PermissionsResolverService` (voir le bloc T9).
+ */
+function makePermissions() {
+  return {
+    resolveForVehicles: jest.fn().mockResolvedValue(new Map()),
+    canOnVehicle: jest.fn().mockResolvedValue(true),
+  } as never;
+}
+
 function build(over: {
   prisma?: unknown;
   access?: unknown;
@@ -79,6 +92,7 @@ function build(over: {
   aiAvail?: unknown;
   errors?: unknown;
   aiUsage?: unknown;
+  permissions?: unknown;
 } = {}) {
   return new AiOptimizationService(
     (over.prisma ?? makePrisma()) as never,
@@ -90,6 +104,7 @@ function build(over: {
     (over.aiAvail ?? makeAiAvail()) as never,
     (over.errors ?? makeErrors()) as never,
     (over.aiUsage ?? makeAiUsage()) as never,
+    (over.permissions ?? makePermissions()) as never,
   );
 }
 
@@ -121,6 +136,8 @@ describe('AiOptimizationService — Sprint 9 (copilote IA)', () => {
     expect(res.metier).toBe('CHILDREN_TRANSPORT');
     expect(res.proposals.map((p) => p.vehicleId)).toEqual(['v1']); // GHOST ignoré
     expect(res.proposals[0]).toMatchObject({ plate: 'AA', model: 'ë-Jumpy', seats: 9 });
+    // Revue du 29/09 : la fiche lue à l'analyse voyage avec la proposition.
+    expect(res.proposals[0]).toMatchObject({ currentSeats: null, currentFeatures: [] });
     // Sièges auto (28/09) : un stock de la société, plus une capacité devinée par véhicule.
     expect(res.proposals[0]).not.toHaveProperty('childSeats');
     const payload = (anthropic as unknown as { completeJson: jest.Mock }).completeJson.mock.calls[0][0].userPayload;
@@ -148,20 +165,30 @@ describe('AiOptimizationService — Sprint 9 (copilote IA)', () => {
     expect((anthropic as unknown as { completeJson: jest.Mock }).completeJson).not.toHaveBeenCalled();
   });
 
-  it('suggestCapacity : assainit les valeurs aberrantes (seats négatif → null, confidence clampée, features non-array → [])', async () => {
+  it('suggestCapacity : assainit les valeurs aberrantes (seats hors 1..99 → null, confidence clampée, équipements nettoyés)', async () => {
     const prisma = makePrisma({
       vehicle: {
-        findMany: jest.fn().mockResolvedValue([{ id: 'v1', plate: 'AA', type: 'CAR', brand: 'X', model: 'Y', seats: null, childSeats: null, features: [] }]),
+        findMany: jest.fn().mockResolvedValue([
+          { id: 'v1', plate: 'AA', type: 'CAR', brand: 'X', model: 'Y', seats: null, childSeats: null, features: [] },
+          { id: 'v2', plate: 'BB', type: 'CAR', brand: 'X', model: 'Y', seats: null, childSeats: null, features: [] },
+        ]),
         update: jest.fn(),
       },
     });
     const anthropic = makeAnthropic({
-      proposals: [{ vehicleId: 'v1', seats: -3, childSeats: 2.7, features: 'pas-un-tableau', confidence: 5, reasoning: 42 }],
+      proposals: [
+        // Places négatives, équipements sales : doublon de casse, non-chaîne, vide, trop long (> 40).
+        { vehicleId: 'v1', seats: -3, childSeats: 2.7, features: [' clim ', 42, '', 'CLIM', 'x'.repeat(41)], confidence: 5, reasoning: 42 },
+        // Équipements qui ne sont pas un tableau → [] ; 2,5 places n'est pas un nombre de places.
+        { vehicleId: 'v2', seats: 2.5, features: 'pas-un-tableau', confidence: -1, reasoning: 'ok' },
+      ],
     });
     const svc = build({ prisma, anthropic });
 
     const res = await svc.suggestCapacity(makeUser(), {});
-    expect(res.proposals[0]).toMatchObject({ seats: null, features: [], confidence: 1, reasoning: '' });
+    expect(res.proposals[0]).toMatchObject({ vehicleId: 'v1', seats: null, features: ['clim'], confidence: 1, reasoning: '' });
+    // v2 n'apporte rien une fois assaini (ni place valide, ni équipement) : il n'est pas conservé.
+    expect(res.proposals.map((p) => p.vehicleId)).toEqual(['v1']);
   });
 
   it('suggestCapacity : échec IA → journalisé (centre d\'alerte) + propagé', async () => {
@@ -228,24 +255,85 @@ describe('AiOptimizationService — Sprint 9 (copilote IA)', () => {
   });
 
   it('applyCapacity : écrit la capacité scopée (assertVehicleAccess) + assainit', async () => {
-    const prisma = makePrisma({ vehicle: { findMany: jest.fn(), update: jest.fn().mockResolvedValue({}) } });
+    const prisma = makePrisma({
+      vehicle: {
+        findMany: jest.fn().mockResolvedValue([{ id: 'v1', plate: 'AA', seats: null, features: [] }]),
+        update: jest.fn().mockResolvedValue({}),
+      },
+    });
     const events = makeEvents();
     const svc = build({ prisma, events });
 
     const res = await svc.applyCapacity(makeUser(), { items: [{ vehicleId: 'v1', seats: 9, childSeats: 3, features: ['clim'] } as never] });
-    expect(res.updated).toBe(1);
+    expect(res).toEqual({ updated: 1, skipped: [] });
     expect((events as unknown as { assertVehicleAccess: jest.Mock }).assertVehicleAccess).toHaveBeenCalledWith(expect.anything(), 'v1');
     const data = (prisma as unknown as { vehicle: { update: jest.Mock } }).vehicle.update.mock.calls[0][0].data;
     expect(data).toEqual({ seats: 9, features: ['clim'] }); // un `childSeats` reçu n'est plus écrit : stock société (28/09)
   });
 
-  it('applyCapacity : véhicule hors périmètre -> rejette sans écrire', async () => {
-    const prisma = makePrisma({ vehicle: { findMany: jest.fn(), update: jest.fn() } });
+  it('applyCapacity : véhicule hors périmètre -> ÉCARTÉ avec son motif, sans écrire ni livrer sa plaque (revue du 29/09)', async () => {
+    const prisma = makePrisma({
+      vehicle: { findMany: jest.fn().mockResolvedValue([{ id: 'vX', plate: 'SECRET', seats: null, features: [] }]), update: jest.fn() },
+    });
     const events = makeEvents({ assertVehicleAccess: jest.fn().mockRejectedValue(new ForbiddenException()) });
     const svc = build({ prisma, events });
 
-    await expect(svc.applyCapacity(makeUser(), { items: [{ vehicleId: 'vX', seats: 5 }] })).rejects.toBeInstanceOf(ForbiddenException);
+    const res = await svc.applyCapacity(makeUser(), { items: [{ vehicleId: 'vX', seats: 5 }] });
+    expect(res).toEqual({ updated: 0, skipped: [{ vehicleId: 'vX', plate: null, motif: expect.stringMatching(/hors de votre périmètre/) }] });
     expect((prisma as unknown as { vehicle: { update: jest.Mock } }).vehicle.update).not.toHaveBeenCalled();
+  });
+
+  // Revue du 29/09 (T9) — le contrôleur ne voit `vehicles_edit` qu'en union des scopes. Un
+  // gestionnaire « Nord : modifier / Sud : lire » réécrivait les places d'un véhicule Sud.
+  describe('T9 : vehicles_edit résolu sur CHAQUE véhicule (vrai résolveur de droits)', () => {
+    const scopes = [
+      { accessType: AccessType.GROUP, permissions: { vehicles_view: true, vehicles_edit: true }, vehicleId: null, group: { vehicles: [{ vehicleId: 'vN' }] } },
+      { accessType: AccessType.GROUP, permissions: { vehicles_view: true, vehicles_edit: false }, vehicleId: null, group: { vehicles: [{ vehicleId: 'vS' }] } },
+    ];
+    const parc = () =>
+      makePrisma({
+        vehicle: {
+          findMany: jest.fn().mockResolvedValue([
+            { id: 'vN', plate: 'NORD', seats: null, features: [] },
+            { id: 'vS', plate: 'SUD', seats: null, features: [] },
+          ]),
+          update: jest.fn().mockResolvedValue({}),
+        },
+      });
+    const resolveur = () => {
+      const acces = { findMany: jest.fn().mockResolvedValue(scopes) };
+      return { acces, service: new PermissionsResolverService({ userVehicleAccess: acces } as never) };
+    };
+
+    it('un véhicule du périmètre en LECTURE SEULE est écarté avec son motif, sans être écrit ni noté ; l’autre est écrit', async () => {
+      const prisma = parc();
+      const { acces, service } = resolveur();
+      const svc = build({ prisma, permissions: service });
+
+      const gestionnaire = makeUser({ role: UserRole.FLEET_MANAGER });
+      const res = await svc.applyCapacity(gestionnaire, { items: [{ vehicleId: 'vN', seats: 9 }, { vehicleId: 'vS', seats: 9 }] });
+
+      expect(res).toEqual({
+        updated: 1,
+        // Pas de plaque lue en base pour un refus : l'écran la tient de sa proposition.
+        skipped: [{ vehicleId: 'vS', plate: null, motif: expect.stringMatching(/Modifier un véhicule/) }],
+      });
+      const update = (prisma as unknown as { vehicle: { update: jest.Mock } }).vehicle.update;
+      expect(update).toHaveBeenCalledTimes(1);
+      expect(update.mock.calls[0][0].where).toEqual({ id: 'vN' });
+      // Une seule lecture des droits pour tout le lot (VPS à 2 vCPU) : le cache de la requête sert ensuite.
+      expect(acces.findMany).toHaveBeenCalledTimes(1);
+    });
+
+    it('un admin de flotte passe sans lire les droits (même règle que la garde)', async () => {
+      const prisma = parc();
+      const { acces, service } = resolveur();
+      const svc = build({ prisma, permissions: service });
+
+      const res = await svc.applyCapacity(makeUser(), { items: [{ vehicleId: 'vN', seats: 9 }, { vehicleId: 'vS', seats: 9 }] });
+      expect(res).toEqual({ updated: 2, skipped: [] });
+      expect(acces.findMany).not.toHaveBeenCalled();
+    });
   });
 
   // ─── Placement ─────────────────────────────────────────────────────────────
@@ -674,17 +762,558 @@ describe('AiOptimizationService — analyse de capacités : une par jour, conser
 
   it('latestCapacity : sans analyse, on peut lancer', async () => {
     const svc = build({ prisma: unVehicule() });
-    await expect(svc.latestCapacity(makeUser(), undefined)).resolves.toMatchObject({ analysis: null, canRun: true, nextAllowedAt: null });
+    await expect(svc.latestCapacity(makeUser(), undefined)).resolves.toMatchObject({
+      analysis: null, canRun: true, nextAllowedAt: null, enCours: false,
+    });
   });
 
   it('applyCapacity : note sur l’analyse conservée les véhicules appliqués', async () => {
     const prisma = unVehicule();
     const an = (prisma as unknown as { aiCapacityAnalysis: { findFirst: jest.Mock; update: jest.Mock } }).aiCapacityAnalysis;
-    an.findFirst.mockResolvedValue({ id: 'an1', appliedVehicleIds: ['v0'] });
+    an.findFirst.mockResolvedValue({
+      id: 'an1',
+      proposals: [
+        { vehicleId: 'v0', plate: 'ZZ', model: null, seats: 5, features: [], confidence: 0.8, reasoning: 'ok', currentSeats: null, currentFeatures: [] },
+        { vehicleId: 'v1', plate: 'AA', model: null, seats: 9, features: [], confidence: 0.8, reasoning: 'ok', currentSeats: null, currentFeatures: [] },
+      ],
+      appliedVehicleIds: ['v0'],
+    });
     const svc = build({ prisma });
     await svc.applyCapacity(makeUser(), { items: [{ vehicleId: 'v1', seats: 9 }] });
+    // Ajout ATOMIQUE (`push`) des seuls nouveaux : deux applications simultanées ne s'effacent plus.
     expect(an.update).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { id: 'an1' }, data: expect.objectContaining({ appliedVehicleIds: ['v0', 'v1'] }) }),
+      expect.objectContaining({ where: { id: 'an1' }, data: expect.objectContaining({ appliedVehicleIds: { push: ['v1'] } }) }),
     );
+  });
+});
+
+/**
+ * ── REVUE DU 29/09 — L'ANALYSE CONSERVÉE NE DOIT NI FUIR, NI BLOQUER, NI ÉCRASER ──────────────────
+ * Depuis la refonte, l'analyse vit en base des jours et se partage entre postes : elle doit rester
+ * bornée au périmètre de chacun, ne pas se payer deux fois, et « Appliquer » doit compléter une
+ * fiche sans rien effacer ni réécrire une correction faite à la main.
+ */
+describe('AiOptimizationService — revue du 29/09 : analyse de capacités conservée', () => {
+  const A1 = '11111111-1111-4111-8111-111111111111';
+  const A2 = '22222222-2222-4222-8222-222222222222';
+  const A3 = '33333333-3333-4333-8333-333333333333';
+
+  type Fiche = { id: string; plate?: string; seats: number | null; features: string[] };
+  /** `vehicle.findMany` qui respecte `where.id.in` : sert au payload (sans filtre) comme aux relectures. */
+  function parc(rows: Fiche[]) {
+    return jest.fn().mockImplementation((args: { where?: { id?: { in?: string[] } } }) => {
+      const ids = args?.where?.id?.in;
+      return Promise.resolve(
+        rows
+          .filter((r) => !ids || ids.includes(r.id))
+          .map((r) => ({ type: 'VAN', brand: 'Citroën', model: 'Jumpy', plate: r.id.toUpperCase(), ...r })),
+      );
+    });
+  }
+  function prismaAvec(rows: Fiche[], analyseConservee: unknown = null) {
+    return makePrisma({
+      vehicle: { findMany: parc(rows), update: jest.fn().mockResolvedValue({}) },
+      aiCapacityAnalysis: {
+        findFirst: jest.fn().mockResolvedValue(analyseConservee),
+        create: jest.fn().mockResolvedValue({ id: A1, createdAt: new Date('2026-09-29T08:00:00Z') }),
+        update: jest.fn().mockResolvedValue({}),
+      },
+    });
+  }
+  /** Une proposition telle que conservée depuis le 29/09 (avec l'instantané de la fiche). */
+  const prop = (vehicleId: string, seats: number | null, currentSeats: number | null, extra: Record<string, unknown> = {}) => ({
+    vehicleId, plate: vehicleId.toUpperCase(), model: 'Jumpy', seats, features: [], confidence: 0.8, reasoning: 'ok',
+    currentSeats, currentFeatures: [], ...extra,
+  });
+  const analyse = (proposals: unknown[], appliedVehicleIds: string[] = [], ilYA = 2 * 3_600_000) => ({
+    id: A1, fleetId: 'f1', createdAt: new Date(Date.now() - ilYA), metier: 'CHILDREN_TRANSPORT', proposals, appliedVehicleIds,
+  });
+  const mocks = (prisma: unknown) =>
+    prisma as unknown as {
+      vehicle: { findMany: jest.Mock; update: jest.Mock };
+      aiCapacityAnalysis: { findFirst: jest.Mock; create: jest.Mock; update: jest.Mock };
+    };
+  const manager = () => makeUser({ id: 'm1', role: UserRole.FLEET_MANAGER });
+  const reponseIa = (proposals: unknown[]) => ({
+    result: { proposals },
+    usage: { inputTokens: 0, outputTokens: 0, cacheWriteTokens: 0, cacheReadTokens: 0 },
+    model: 'm',
+    latencyMs: 1,
+  });
+
+  // ─── C10 — l'analyse de la SOCIÉTÉ n'est lancée et lue que dans le bon périmètre ─────────────
+
+  it('C10 : un gestionnaire au périmètre partiel ne lance pas l’analyse de la société (403, ni lecture, ni appel IA, ni ligne)', async () => {
+    const prisma = prismaAvec([{ id: 'v1', seats: null, features: [] }]);
+    const anthropic = makeAnthropic({ proposals: [{ vehicleId: 'v1', seats: 9, features: [], confidence: 0.8, reasoning: 'ok' }] });
+    const svc = build({ prisma, anthropic, access: access(['v1']) });
+
+    await expect(svc.suggestCapacity(manager(), {})).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(svc.suggestCapacity(manager(), {})).rejects.toThrow(/toute la société/);
+    expect((anthropic as unknown as { completeJson: jest.Mock }).completeJson).not.toHaveBeenCalled();
+    expect(mocks(prisma).aiCapacityAnalysis.create).not.toHaveBeenCalled();
+    expect(mocks(prisma).vehicle.findMany).not.toHaveBeenCalled();
+  });
+
+  it('C10 : une sélection vehicleIds est refusée, même à un administrateur (une analyse partielle confisquait le quota)', async () => {
+    const prisma = prismaAvec([{ id: 'v1', seats: null, features: [] }]);
+    const anthropic = makeAnthropic({ proposals: [{ vehicleId: 'v1', seats: 9, features: [], confidence: 0.8, reasoning: 'ok' }] });
+    const svc = build({ prisma, anthropic });
+
+    await expect(svc.suggestCapacity(makeUser(), { vehicleIds: ['v1'] })).rejects.toBeInstanceOf(ForbiddenException);
+    expect((anthropic as unknown as { completeJson: jest.Mock }).completeJson).not.toHaveBeenCalled();
+    // Une liste vide n'est pas une sélection.
+    await expect(svc.suggestCapacity(makeUser(), { vehicleIds: [] })).resolves.toMatchObject({ analysisId: A1 });
+  });
+
+  it('C10 : latestCapacity borne propositions et appliedVehicleIds au périmètre ; canRun=false avec un motif', async () => {
+    const prisma = prismaAvec(
+      [
+        { id: 'v1', seats: null, features: [] },
+        { id: 'v2', seats: null, features: [] },
+        { id: 'v3', seats: 9, features: [] },
+      ],
+      // Fenêtre de 24 h OUVERTE (30 h) : seul le périmètre empêche de lancer.
+      analyse([prop('v1', 9, null), prop('v2', 9, null), prop('v3', 9, null)], ['v2', 'v3'], 30 * 3_600_000),
+    );
+    const svc = build({ prisma, access: access(['v1', 'v3']) });
+
+    const res = await svc.latestCapacity(manager(), undefined);
+    expect(res.analysis!.proposals.map((p) => p.vehicleId)).toEqual(['v1', 'v3']); // v2 : hors périmètre
+    expect(res.analysis!.appliedVehicleIds).toEqual(['v3']);
+    expect(res.canRun).toBe(false);
+    expect(res.nextAllowedAt).toBeNull();
+    expect(res.motif).toMatch(/toute la société/);
+    // La relecture des fiches ne touche jamais un véhicule hors périmètre.
+    expect(mocks(prisma).vehicle.findMany.mock.calls[0][0].where.id.in).not.toContain('v2');
+  });
+
+  it('C10 : un administrateur lit toute l’analyse, sans motif', async () => {
+    const prisma = prismaAvec(
+      [{ id: 'v1', seats: null, features: [] }, { id: 'v2', seats: null, features: [] }],
+      analyse([prop('v1', 9, null), prop('v2', 9, null)], [], 30 * 3_600_000),
+    );
+    const svc = build({ prisma });
+    const res = await svc.latestCapacity(makeUser(), undefined);
+    expect(res).toMatchObject({ canRun: true, motif: null, nextAllowedAt: null });
+    expect(res.analysis!.proposals).toHaveLength(2);
+  });
+
+  // ─── C11/C24 — un véhicule disparu ou refusé n'arrête plus « Appliquer » ────────────────────
+
+  it('C11 : un véhicule supprimé ou hors périmètre est ÉCARTÉ avec son motif ; les autres sont écrits ET notés', async () => {
+    const prisma = prismaAvec(
+      [{ id: 'v1', plate: 'AA-111-AA', seats: null, features: [] }],
+      { id: A1, proposals: [prop('v1', 9, null), prop('v3', 9, null), prop('v4', 9, null)], appliedVehicleIds: [] },
+    );
+    const events = makeEvents({
+      assertVehicleAccess: jest.fn().mockImplementation((_u: unknown, id: string) => {
+        if (id === 'v3') return Promise.reject(new NotFoundException('Véhicule introuvable'));
+        if (id === 'v4') return Promise.reject(new ForbiddenException('Véhicule hors de votre flotte'));
+        return Promise.resolve('f1');
+      }),
+    });
+    const svc = build({ prisma, events });
+
+    const res = await svc.applyCapacity(makeUser(), {
+      items: [{ vehicleId: 'v3', seats: 9 }, { vehicleId: 'v1', seats: 9 }, { vehicleId: 'v4', seats: 9 }],
+    });
+    expect(res.updated).toBe(1);
+    expect(res.skipped).toEqual([
+      { vehicleId: 'v3', plate: null, motif: expect.stringMatching(/introuvable/) },
+      { vehicleId: 'v4', plate: null, motif: expect.stringMatching(/périmètre/) },
+    ]);
+    expect(mocks(prisma).vehicle.update).toHaveBeenCalledTimes(1);
+    expect(mocks(prisma).vehicle.update.mock.calls[0][0].where).toEqual({ id: 'v1' });
+    expect(mocks(prisma).aiCapacityAnalysis.update).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: A1 }, data: expect.objectContaining({ appliedVehicleIds: { push: ['v1'] } }) }),
+    );
+  });
+
+  it('C11 : une erreur imprévue interrompt l’envoi, mais ce qui a déjà été écrit est NOTÉ, et l’erreur remonte', async () => {
+    const prisma = prismaAvec(
+      [{ id: 'v1', seats: null, features: [] }, { id: 'v2', seats: null, features: [] }],
+      { id: A1, proposals: [prop('v1', 9, null), prop('v2', 9, null)], appliedVehicleIds: [] },
+    );
+    mocks(prisma).vehicle.update.mockResolvedValueOnce({}).mockRejectedValueOnce(new Error('base indisponible'));
+    const svc = build({ prisma });
+
+    await expect(
+      svc.applyCapacity(makeUser(), { items: [{ vehicleId: 'v1', seats: 9 }, { vehicleId: 'v2', seats: 9 }] }),
+    ).rejects.toThrow('base indisponible');
+    expect(mocks(prisma).aiCapacityAnalysis.update).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: A1 }, data: expect.objectContaining({ appliedVehicleIds: { push: ['v1'] } }) }),
+    );
+  });
+
+  it('C11 : latestCapacity écarte les propositions dont le véhicule n’existe plus dans la société', async () => {
+    // v3 a été supprimé (ou transféré) : la relecture bornée à la société ne le rend plus.
+    const prisma = prismaAvec([{ id: 'v1', seats: null, features: [] }], analyse([prop('v1', 9, null), prop('v3', 9, null)]));
+    const svc = build({ prisma });
+    const res = await svc.latestCapacity(makeUser(), undefined);
+    expect(res.analysis!.proposals.map((p) => p.vehicleId)).toEqual(['v1']);
+    expect(mocks(prisma).vehicle.findMany.mock.calls[0][0].where).toMatchObject({ fleetId: 'f1' });
+  });
+
+  // ─── C12/C22 — « Appliquer » complète la fiche, il ne l'écrase pas ─────────────────────────
+
+  it('C12 : suggestCapacity garde l’instantané de la fiche et ne conserve que les propositions qui APPORTENT quelque chose', async () => {
+    const prisma = prismaAvec([
+      { id: 'v1', seats: 9, features: ['Climatisation'] },
+      { id: 'v2', seats: null, features: [] },
+      { id: 'v3', seats: 5, features: ['attelage'] },
+      { id: 'v4', seats: 9, features: [] },
+    ]);
+    const anthropic = makeAnthropic({
+      proposals: [
+        { vehicleId: 'v1', seats: 9, features: ['climatisation'], confidence: 0.9, reasoning: 'déjà complet' }, // rien de neuf (casse ignorée)
+        { vehicleId: 'v2', seats: 9, features: [], confidence: 0.8, reasoning: 'navette' },
+        { vehicleId: 'v3', seats: 5, features: ['Attelage', 'rampe'], confidence: 0.7, reasoning: 'rampe PMR' },
+        { vehicleId: 'v4', seats: 0, features: [], confidence: 0.4, reasoning: '0 place' }, // 0 refusé
+      ],
+    });
+    const svc = build({ prisma, anthropic });
+
+    const res = await svc.suggestCapacity(makeUser(), {});
+    expect(res.proposals.map((p) => p.vehicleId)).toEqual(['v2', 'v3']);
+    expect(res.proposals[0]).toMatchObject({ seats: 9, currentSeats: null, currentFeatures: [] });
+    // Contre-revue du 29/09 (R7) : seuls les AJOUTS sont conservés — « Attelage » est déjà sur la fiche.
+    expect(res.proposals[1]).toMatchObject({ seats: 5, features: ['rampe'], currentSeats: 5, currentFeatures: ['attelage'] });
+    expect(mocks(prisma).aiCapacityAnalysis.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ proposalsCount: 2 }) }),
+    );
+  });
+
+  it('C12 : applyCapacity n’écrit jamais seats à null ni à 0, et FUSIONNE les équipements (union, casse ignorée)', async () => {
+    const prisma = prismaAvec([
+      { id: 'v1', seats: 9, features: ['Attelage'] },
+      { id: 'v2', seats: 7, features: [] },
+    ]);
+    const svc = build({ prisma });
+
+    const res = await svc.applyCapacity(makeUser(), {
+      items: [
+        { vehicleId: 'v1', seats: null, features: ['attelage', 'climatisation'] },
+        { vehicleId: 'v2', seats: 0, features: ['rampe'] },
+      ],
+    });
+    expect(res).toEqual({ updated: 2, skipped: [] });
+    const [v1, v2] = mocks(prisma).vehicle.update.mock.calls.map((c) => c[0]);
+    expect(v1).toEqual({ where: { id: 'v1' }, data: { features: ['Attelage', 'climatisation'] } }); // « Attelage » saisi à la main reste
+    expect(v2).toEqual({ where: { id: 'v2' }, data: { features: ['rampe'] } }); // 7 places gardées
+  });
+
+  it('C12 : une fiche modifiée depuis l’analyse est ÉCARTÉE, pas réécrite (correction manuelle dans la vue Parc)', async () => {
+    // Analyse : Jumpy sans places, l'IA propose 3. Depuis, le gestionnaire a mis 9 dans la vue Parc.
+    const prisma = prismaAvec(
+      [{ id: 'v1', plate: 'AB-123-CD', seats: 9, features: [] }],
+      { id: A1, proposals: [prop('v1', 3, null)], appliedVehicleIds: [] },
+    );
+    const svc = build({ prisma });
+
+    const res = await svc.applyCapacity(makeUser(), { items: [{ vehicleId: 'v1', seats: 3, features: [] }] });
+    expect(res).toEqual({ updated: 0, skipped: [{ vehicleId: 'v1', plate: 'AB-123-CD', motif: "fiche modifiée depuis l'analyse" }] });
+    expect(mocks(prisma).vehicle.update).not.toHaveBeenCalled();
+    expect(mocks(prisma).aiCapacityAnalysis.update).not.toHaveBeenCalled(); // pas « déjà appliqué » : il est à revoir
+  });
+
+  it('C12 : une fiche qui porte déjà la proposition n’est pas réécrite, mais la proposition est notée faite', async () => {
+    const prisma = prismaAvec([{ id: 'v1', seats: 9, features: [] }], { id: A1, proposals: [prop('v1', 9, null)], appliedVehicleIds: [] });
+    const svc = build({ prisma });
+
+    const res = await svc.applyCapacity(makeUser(), { items: [{ vehicleId: 'v1', seats: 9, features: [] }] });
+    expect(res).toEqual({ updated: 0, skipped: [] });
+    expect(mocks(prisma).vehicle.update).not.toHaveBeenCalled();
+    expect(mocks(prisma).aiCapacityAnalysis.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ appliedVehicleIds: { push: ['v1'] } }) }),
+    );
+  });
+
+  it('C12 : latestCapacity rend la fiche actuelle, signale une fiche modifiée, et retire ce qui n’apporte plus rien', async () => {
+    const prisma = prismaAvec(
+      [
+        { id: 'v1', seats: 9, features: [] }, // corrigée à 9 à la main, l'IA proposait 3
+        { id: 'v2', seats: null, features: ['attelage'] }, // intacte
+        { id: 'v3', seats: 9, features: [] }, // corrigée à la main à la valeur proposée : plus rien à faire
+      ],
+      analyse([prop('v1', 3, null), prop('v2', 9, null, { currentFeatures: ['attelage'] }), prop('v3', 9, null)]),
+    );
+    const svc = build({ prisma });
+
+    const res = await svc.latestCapacity(makeUser(), undefined);
+    const parId = new Map(res.analysis!.proposals.map((p) => [p.vehicleId, p]));
+    expect([...parId.keys()]).toEqual(['v1', 'v2']);
+    expect(parId.get('v1')).toMatchObject({ nowSeats: 9, nowFeatures: [], ficheModifiee: true });
+    expect(parId.get('v2')).toMatchObject({ nowSeats: null, nowFeatures: ['attelage'], ficheModifiee: false });
+  });
+
+  it('R8 : analyse du 28/09 SANS instantané — jamais « modifiée depuis l’analyse » (ni à l’écran, ni dans le 429) ; cochée, elle s’applique', async () => {
+    // Le 28/09, l'IA répondait pour chaque véhicule : la fiche portait DÉJÀ 5 places, personne n'y a touché.
+    const ancienne = { vehicleId: 'v1', plate: 'AA', model: 'Jumpy', seats: 9, features: [], confidence: 0.5, reasoning: 'fourgon 9 places' };
+    const prisma = prismaAvec([{ id: 'v1', plate: 'AA', seats: 5, features: [] }], analyse([ancienne]));
+    const svc = build({ prisma });
+
+    const latest = await svc.latestCapacity(makeUser(), undefined);
+    // L'écran montre « Places : 5 → 9 », sans affirmer une correction manuelle.
+    expect(latest.analysis!.proposals[0]).toMatchObject({ ficheModifiee: false, nowSeats: 5, seats: 9 });
+    const err = await svc.suggestCapacity(makeUser(), {}).catch((e: unknown) => e);
+    expect(err).toMatchObject({ status: 429 });
+    expect((err as Error).message).toMatch(/1 proposition reste à appliquer\.$/);
+    expect((err as Error).message).not.toMatch(/modifiée/);
+    // Le gestionnaire l'a cochée en voyant « 5 → 9 » : elle s'applique, aucun motif inventé.
+    const res = await svc.applyCapacity(makeUser(), { items: [{ vehicleId: 'v1', seats: 9 }] });
+    expect(res).toEqual({ updated: 1, skipped: [] });
+    expect(mocks(prisma).vehicle.update).toHaveBeenCalledWith({ where: { id: 'v1' }, data: { seats: 9 } });
+  });
+
+  // ─── C13 — une seule analyse à la fois par société ─────────────────────────────────────────
+
+  it('C13 : deux lancements simultanés — un seul appel payé, le second reçoit 429 « déjà en cours »', async () => {
+    const prisma = prismaAvec([{ id: 'v1', seats: null, features: [] }]);
+    let repondre: (v: unknown) => void = () => undefined;
+    let signaler: () => void = () => undefined;
+    const appele = new Promise<void>((r) => {
+      signaler = r;
+    });
+    const reponse = new Promise((r) => {
+      repondre = r;
+    });
+    const completeJson = jest.fn().mockImplementation(() => {
+      signaler();
+      return reponse;
+    });
+    // Le gestionnaire « m1 » ne voit qu'une partie du parc ; les autres comptes voient tout.
+    const acces = {
+      getAccessibleVehicleIds: jest.fn().mockImplementation((u: { id: string }) => Promise.resolve(u.id === 'm1' ? ['v1'] : 'ALL')),
+    };
+    const svc = build({ prisma, access: acces, anthropic: { completeJson, isConfigured: () => true } });
+
+    const premier = svc.suggestCapacity(makeUser(), {});
+    await appele; // la première est chez l'IA, sa ligne n'existe pas encore
+    await expect(svc.suggestCapacity(makeUser({ id: 'u2' }), {})).rejects.toMatchObject({
+      status: 429,
+      message: 'Une analyse de ce parc est déjà en cours.',
+    });
+    // Un onglet rechargé pendant l'attente voit le bouton grisé, et pourquoi — et `enCours` (R9),
+    // pour relire jusqu'à la fin sans reconnaître la phrase du motif.
+    await expect(svc.latestCapacity(makeUser(), undefined)).resolves.toMatchObject({
+      canRun: false,
+      motif: 'Une analyse de ce parc est déjà en cours.',
+      enCours: true,
+    });
+    // Un périmètre partiel garde son motif, mais apprend aussi qu'une analyse tourne : il relira ses propositions.
+    await expect(svc.latestCapacity(manager(), undefined)).resolves.toMatchObject({
+      motif: expect.stringMatching(/toute la société/),
+      enCours: true,
+    });
+
+    repondre(reponseIa([{ vehicleId: 'v1', seats: 9, features: [], confidence: 0.8, reasoning: 'ok' }]));
+    await expect(premier).resolves.toMatchObject({ analysisId: A1 });
+    expect(completeJson).toHaveBeenCalledTimes(1);
+    expect(mocks(prisma).aiCapacityAnalysis.create).toHaveBeenCalledTimes(1);
+    // Verrou libéré à la fin.
+    await expect(svc.latestCapacity(makeUser(), undefined)).resolves.toMatchObject({ motif: null, enCours: false });
+  });
+
+  it('C13 : le verrou est libéré même quand l’IA échoue', async () => {
+    const prisma = prismaAvec([{ id: 'v1', seats: null, features: [] }]);
+    const completeJson = jest
+      .fn()
+      .mockRejectedValueOnce(new AiServiceError('quota', 'Quota IA atteint'))
+      .mockResolvedValueOnce(reponseIa([]));
+    const svc = build({ prisma, anthropic: { completeJson, isConfigured: () => true } });
+
+    await expect(svc.suggestCapacity(makeUser(), {})).rejects.toBeInstanceOf(AiServiceError);
+    // R9 : un autre onglet qui relit voit l'analyse redevenue possible — plus « déjà en cours ».
+    await expect(svc.latestCapacity(makeUser(), undefined)).resolves.toMatchObject({ enCours: false, canRun: true, motif: null });
+    await expect(svc.suggestCapacity(makeUser(), {})).resolves.toMatchObject({ analysisId: A1 });
+    expect(completeJson).toHaveBeenCalledTimes(2);
+  });
+
+  // ─── C14 — le refus 429 dit ce qu'il reste VRAIMENT ────────────────────────────────────────
+
+  it('C14 : 429 — « restent à appliquer » seulement s’il reste des propositions non appliquées', async () => {
+    const fiches = [{ id: 'v1', seats: null, features: [] }, { id: 'v2', seats: null, features: [] }];
+    const prisma = prismaAvec(fiches, analyse([prop('v1', 9, null), prop('v2', 9, null)]));
+    const svc = build({ prisma });
+    const err = await svc.suggestCapacity(makeUser(), {}).catch((e: unknown) => e);
+    expect(err).toMatchObject({ status: 429 });
+    expect((err as Error).message).toMatch(/^Une analyse par jour et par société.*2 propositions restent à appliquer\.$/);
+  });
+
+  it('C14 : 429 — une analyse sans proposition ne prétend pas qu’il reste quelque chose', async () => {
+    const prisma = prismaAvec([{ id: 'v1', seats: null, features: [] }], analyse([]));
+    const svc = build({ prisma });
+    const err = await svc.suggestCapacity(makeUser(), {}).catch((e: unknown) => e);
+    expect((err as Error).message).toMatch(/rien trouvé à compléter/);
+    expect((err as Error).message).not.toMatch(/reste/);
+  });
+
+  it('C14 : 429 — une analyse entièrement appliquée le dit', async () => {
+    const prisma = prismaAvec([{ id: 'v1', seats: 9, features: [] }], analyse([prop('v1', 9, null)], ['v1']));
+    const svc = build({ prisma });
+    const err = await svc.suggestCapacity(makeUser(), {}).catch((e: unknown) => e);
+    expect((err as Error).message).toMatch(/Toutes ses propositions ont été appliquées/);
+    expect((err as Error).message).not.toMatch(/reste/);
+  });
+
+  // ─── D3 — on note l'analyse que l'écran affichait ─────────────────────────────────────────
+
+  it('D3 : applyCapacity note l’analyse analysisId si elle est de la société, sinon la dernière', async () => {
+    const prisma = prismaAvec([{ id: 'v1', seats: null, features: [] }]);
+    mocks(prisma).aiCapacityAnalysis.findFirst.mockImplementation((args: { where: { id?: string; fleetId: string } }) => {
+      const { id, fleetId } = args.where;
+      if (id === A1 && fleetId === 'f1') return Promise.resolve({ id: A1, proposals: [prop('v1', 9, null)], appliedVehicleIds: [] });
+      if (id) return Promise.resolve(null); // A3 appartient à une autre société
+      return Promise.resolve({ id: A2, proposals: [prop('v1', 9, null)], appliedVehicleIds: [] }); // la dernière
+    });
+    const svc = build({ prisma });
+    const marquee = () => {
+      const appels = mocks(prisma).aiCapacityAnalysis.update.mock.calls;
+      return appels[appels.length - 1][0].where.id;
+    };
+
+    await svc.applyCapacity(makeUser(), { analysisId: A1, items: [{ vehicleId: 'v1', seats: 9 }] });
+    expect(marquee()).toBe(A1);
+    await svc.applyCapacity(makeUser(), { analysisId: A3, items: [{ vehicleId: 'v1', seats: 9 }] });
+    expect(marquee()).toBe(A2);
+    // Un identifiant mal formé n'atteint pas la base (la colonne est un uuid) : repli sur la dernière.
+    await svc.applyCapacity(makeUser(), { analysisId: 'pas-un-uuid', items: [{ vehicleId: 'v1', seats: 9 }] });
+    expect(marquee()).toBe(A2);
+    expect(mocks(prisma).aiCapacityAnalysis.findFirst.mock.calls.some((c) => c[0].where.id === 'pas-un-uuid')).toBe(false);
+  });
+
+  // ─── Contre-revue du 29/09 ─────────────────────────────────────────────────────────────────
+
+  /** `n` équipements distincts, tels qu'une fiche peut en porter (30 au plus, 40 caractères chacun). */
+  const equipements = (n: number): string[] => Array.from({ length: n }, (_, i) => `équipement ${i + 1}`);
+  const noteSurAnalyse = (prisma: unknown) =>
+    mocks(prisma).aiCapacityAnalysis.update.mock.calls.flatMap((c) => c[0].data.appliedVehicleIds.push as string[]);
+
+  it('R6 : une fiche modifiée depuis l’analyse n’est réécrite qu’avec forcer: true (« Appliquer quand même »)', async () => {
+    // Analyse : Jumpy sans places, l'IA propose 3. Depuis, le gestionnaire a mis 9 dans la vue Parc.
+    const prisma = prismaAvec(
+      [{ id: 'v1', plate: 'AB-123-CD', seats: 9, features: [] }],
+      { id: A1, proposals: [prop('v1', 3, null)], appliedVehicleIds: [] },
+    );
+    const svc = build({ prisma });
+
+    // Sans le geste : écartée avec son motif, rien d'écrit, rien de noté.
+    const sans = await svc.applyCapacity(makeUser(), { analysisId: A1, items: [{ vehicleId: 'v1', seats: 3 }] });
+    expect(sans).toEqual({ updated: 0, skipped: [{ vehicleId: 'v1', plate: 'AB-123-CD', motif: "fiche modifiée depuis l'analyse" }] });
+    // Un « true » qui n'est pas un booléen ne passe pas outre une correction manuelle.
+    const chaine = await svc.applyCapacity(makeUser(), { analysisId: A1, items: [{ vehicleId: 'v1', seats: 3, forcer: 'true' as never }] });
+    expect(chaine.updated).toBe(0);
+    expect(mocks(prisma).vehicle.update).not.toHaveBeenCalled();
+    expect(mocks(prisma).aiCapacityAnalysis.update).not.toHaveBeenCalled();
+
+    // Avec le geste : réécrite, et notée faite.
+    const avec = await svc.applyCapacity(makeUser(), { analysisId: A1, items: [{ vehicleId: 'v1', seats: 3, forcer: true }] });
+    expect(avec).toEqual({ updated: 1, skipped: [] });
+    expect(mocks(prisma).vehicle.update).toHaveBeenCalledWith({ where: { id: 'v1' }, data: { seats: 3 } });
+    expect(noteSurAnalyse(prisma)).toEqual(['v1']);
+  });
+
+  it('R7 : fiche de 20 équipements — l’union envoyée par un écran en cache garde son ajout (la borne ne tombe plus avant le tri)', async () => {
+    const vingt = equipements(20);
+    const prisma = prismaAvec(
+      [{ id: 'v1', seats: 9, features: vingt }],
+      { id: A1, proposals: [prop('v1', 9, 9, { features: ['rampe PMR'], currentFeatures: vingt })], appliedVehicleIds: [] },
+    );
+    const svc = build({ prisma });
+
+    const res = await svc.applyCapacity(makeUser(), { analysisId: A1, items: [{ vehicleId: 'v1', features: [...vingt, 'rampe PMR'] }] });
+    expect(res).toEqual({ updated: 1, skipped: [] });
+    // Avant : les 20 existants remplissaient la borne, « rampe PMR » disparaissait, et le véhicule était noté appliqué.
+    expect(mocks(prisma).vehicle.update).toHaveBeenCalledWith({ where: { id: 'v1' }, data: { features: [...vingt, 'rampe PMR'] } });
+    expect(noteSurAnalyse(prisma)).toEqual(['v1']);
+  });
+
+  it('R24 : features = les seuls AJOUTS (contrat du 29/09) — fiche de 19 + 2 ajouts : les deux sont écrits', async () => {
+    const dixNeuf = equipements(19);
+    const prisma = prismaAvec(
+      [{ id: 'v1', seats: 9, features: dixNeuf }],
+      { id: A1, proposals: [prop('v1', 9, 9, { features: ['clim', 'rampe'], currentFeatures: dixNeuf })], appliedVehicleIds: [] },
+    );
+    const svc = build({ prisma });
+
+    const res = await svc.applyCapacity(makeUser(), { analysisId: A1, items: [{ vehicleId: 'v1', features: ['clim', 'rampe'] }] });
+    expect(res).toEqual({ updated: 1, skipped: [] });
+    const ecrit = mocks(prisma).vehicle.update.mock.calls[0][0].data.features as string[];
+    expect(ecrit).toHaveLength(21);
+    expect(ecrit.slice(-2)).toEqual(['clim', 'rampe']);
+    expect(ecrit.slice(0, 19)).toEqual(dixNeuf); // l'existant, intact et en tête
+  });
+
+  it('R7 : une union qui dépasserait 30 équipements est ÉCARTÉE avec son motif — rien d’écrit en partie, rien de noté ; 30 tout juste passe', async () => {
+    const prisma = prismaAvec(
+      [
+        { id: 'v1', plate: 'PLEIN-29', seats: 5, features: equipements(29) },
+        { id: 'v2', plate: 'JUSTE-28', seats: 5, features: equipements(28) },
+        { id: 'v3', plate: 'PLEIN-30', seats: null, features: equipements(30) },
+      ],
+      {
+        id: A1,
+        proposals: [
+          prop('v1', 9, 5, { features: ['clim', 'rampe'], currentFeatures: equipements(29) }),
+          prop('v2', 5, 5, { features: ['clim', 'rampe'], currentFeatures: equipements(28) }),
+          prop('v3', 9, null, { currentFeatures: equipements(30) }),
+        ],
+        appliedVehicleIds: [],
+      },
+    );
+    const svc = build({ prisma });
+
+    const res = await svc.applyCapacity(makeUser(), {
+      analysisId: A1,
+      items: [
+        // Les places aussi restent en l'état : le véhicule est écarté en entier, jamais à moitié.
+        { vehicleId: 'v1', seats: 9, features: ['clim', 'rampe'] },
+        { vehicleId: 'v2', features: ['clim', 'rampe'] },
+        // Une fiche déjà pleine qui ne reçoit que des places n'est pas refusée : sa liste n'est pas réécrite.
+        { vehicleId: 'v3', seats: 9 },
+      ],
+    });
+    expect(res).toEqual({
+      updated: 2,
+      skipped: [{ vehicleId: 'v1', plate: 'PLEIN-29', motif: "trop d'équipements (30 au plus)" }],
+    });
+    expect(mocks(prisma).vehicle.update.mock.calls.map((c) => c[0])).toEqual([
+      { where: { id: 'v2' }, data: { features: [...equipements(28), 'clim', 'rampe'] } },
+      { where: { id: 'v3' }, data: { seats: 9 } },
+    ]);
+    expect(noteSurAnalyse(prisma)).toEqual(['v2', 'v3']); // v1 reste à appliquer : on fait de la place dans la vue Parc
+  });
+
+  it('R7 : l’analyse garde l’ajout même quand l’IA recopie d’abord la fiche, et latest le montre sur une fiche de 20', async () => {
+    const vingt = equipements(20);
+    const prisma = prismaAvec([{ id: 'v1', seats: 9, features: vingt }]);
+    const anthropic = makeAnthropic({
+      proposals: [{ vehicleId: 'v1', seats: 9, features: [...vingt, 'rampe PMR'], confidence: 0.8, reasoning: 'rampe' }],
+    });
+    const svc = build({ prisma, anthropic });
+
+    const res = await svc.suggestCapacity(makeUser(), {});
+    expect(res.proposals).toHaveLength(1);
+    expect(res.proposals[0]).toMatchObject({ features: ['rampe PMR'], currentFeatures: vingt });
+
+    // Relue demain : la fiche est inchangée, la proposition reste à appliquer — pas « modifiée ».
+    mocks(prisma).aiCapacityAnalysis.findFirst.mockResolvedValue(analyse(res.proposals));
+    const latest = await svc.latestCapacity(makeUser(), undefined);
+    expect(latest.analysis!.proposals).toEqual([expect.objectContaining({ vehicleId: 'v1', ficheModifiee: false, nowFeatures: vingt })]);
+  });
+
+  it('R8 : 429 — les propositions à appliquer ET les fiches modifiées depuis sont dites ensemble', async () => {
+    const prisma = prismaAvec(
+      [
+        { id: 'v1', seats: null, features: [] },
+        { id: 'v2', seats: 9, features: [] }, // corrigée à 9 à la main, l'IA proposait 3
+      ],
+      analyse([prop('v1', 9, null), prop('v2', 3, null)]),
+    );
+    const svc = build({ prisma });
+    const err = await svc.suggestCapacity(makeUser(), {}).catch((e: unknown) => e);
+    expect(err).toMatchObject({ status: 429 });
+    expect((err as Error).message).toMatch(/1 proposition reste à appliquer, 1 fiche modifiée depuis est à revoir\.$/);
   });
 });

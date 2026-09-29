@@ -3,9 +3,10 @@ import {
   ChangeDetectionStrategy,
   Component,
   computed,
+  effect,
   inject,
-  OnInit,
   signal,
+  untracked,
 } from '@angular/core';
 import { HttpErrorResponse } from '@angular/common/http';
 import {
@@ -20,6 +21,9 @@ import type {
 import { RouterLink } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
 import { VehiclesApiService } from '../../core/services/vehicles.service';
+import { AiStatusService } from '../../core/services/ai-status.service';
+import { AuthService } from '../../core/services/auth.service';
+import { FleetFilterService } from '../../core/services/fleet-filter.service';
 import { PermissionsService } from '../../core/services/permissions.service';
 import { ToastService } from '../../shared/ui/toast/toast.service';
 
@@ -46,12 +50,31 @@ interface EditRow extends VehicleCapacityRowDto {
 }
 
 /**
- * Sprint 10 — Vue « Parc & capacités ». Un endroit unique pour voir QUI a QUOI et éditer
- * la capacité (places / équipements / énergie) de chaque véhicule, avec en
- * (Les sièges auto ne sont plus ici depuis le 28/09 : c'est un STOCK de la société, réglé dans
- * « Paramètres de l'agenda » — pas une capacité du véhicule.)
- * regard le modèle/énergie issus du planning d'installation + une synchro 1-clic (aperçu des
- * écarts, application au choix). Édition gardée `vehicles_edit` (lecture seule sinon).
+ * Sprint 10 — Vue « Parc & capacités ». Voir QUI a QUOI et éditer la capacité (places /
+ * équipements / énergie) de chaque véhicule, avec en regard le modèle/énergie issus du planning
+ * d'installation + une synchro 1-clic (aperçu des écarts, application au choix). Édition gardée
+ * `vehicles_edit` (lecture seule sinon).
+ *
+ * Les sièges auto à bord ne se règlent pas ici : c'est un STOCK de la société, réglé dans la vue
+ * Parc de l'agenda (refonte du 28/09) — pas une capacité du véhicule.
+ *
+ * Revue du 29/09 : les renvois nommaient des écrans supprimés par la refonte (« Agenda →
+ * Optimisation ») ou vidés (« Agenda → Paramètres »), et menaient au Calendrier. Ils pointent
+ * désormais sur la vue concernée (lien profond `?vue=`), et seulement pour qui peut l'ouvrir.
+ * L'édition RESTE ici : c'est le seul écran de réglage d'un gestionnaire sans `reservations_view`
+ * (FLEET_MANAGER par défaut), et le seul qui porte la synchro depuis le planning.
+ *
+ * Contre-revue du 29/09 : les gardes des renvois sont celles de l'écran d'ARRIVÉE, recopiées de
+ * l'agenda (elles ne sont pas partagées : l'agenda les porte dans `vuePermise`) —
+ *  - vue Parc : `reservations_view` seul, comme `vuePermise('parc')`. L'ancienne garde
+ *    (`agenda_view` + `reservations_view`) datait de la barre de vues sous `agenda_view`, supprimée
+ *    par la même revue : un délégué qui pouvait ouvrir la vue ne voyait pas le lien ;
+ *  - sièges auto : se RÈGLENT dans la vue Parc pour SUPER_ADMIN et FLEET_ADMIN seulement (rôle, et
+ *    non permission — `canSeats` de la vue, `@Roles` du serveur). Aux autres, on ne promet plus
+ *    un réglage qu'ils ne trouveraient pas : la vue leur est proposée en consultation ;
+ *  - Assistant IA → Vérifier le parc : seulement si l'étape EXISTE et que le compte peut la lancer
+ *    — analyse de capacité ouverte pour la société du bandeau (`AiStatusService.can('capacity')`)
+ *    et `ai_optimize`. Sans l'option IA (le cas par défaut), le lien menait au Calendrier.
  */
 @Component({
   selector: 'app-vehicle-capacity-table',
@@ -63,7 +86,12 @@ interface EditRow extends VehicleCapacityRowDto {
       <div class="cap-head">
         <div class="cap-intro">
           <p class="cap-lead">Capacité de chaque véhicule, alignée sur les données du planning d'installation.</p>
-          <p class="cap-hint"><lucide-icon [img]="SparklesIcon" [size]="12"></lucide-icon> Remplissage assisté par IA : <a routerLink="/agenda" class="cap-link">Agenda → Optimisation</a>.</p>
+          @if (canSeeIa()) {
+            <p class="cap-hint"><lucide-icon [img]="SparklesIcon" [size]="12"></lucide-icon> Remplissage assisté par IA : <a routerLink="/agenda" [queryParams]="{ vue: 'ia' }" class="cap-link">Agenda → Assistant IA → Vérifier le parc</a>.</p>
+          }
+          @if (canSeeParc()) {
+            <p class="cap-hint"><lucide-icon [img]="InfoIcon" [size]="12"></lucide-icon> {{ renvoiParc() }} : <a routerLink="/agenda" [queryParams]="{ vue: 'parc' }" class="cap-link">Agenda → vue Parc</a>.</p>
+          }
         </div>
         @if (!canEdit()) {
           <span class="cap-ro"><lucide-icon [img]="InfoIcon" [size]="13"></lucide-icon> Lecture seule — droit « Modifier un véhicule » requis pour éditer.</span>
@@ -139,16 +167,24 @@ interface EditRow extends VehicleCapacityRowDto {
                 </label>
                 <label class="cap-f">
                   <span><lucide-icon [img]="FuelIcon" [size]="12"></lucide-icon> Énergie</span>
+                  <!-- [selected] sur chaque option : avec [value] seul, les options créées par la boucle
+                       arrivent après la liaison et le select retombait sur « — ». -->
                   <select class="cap-in" [disabled]="!canEdit()" [value]="r.draftEnergy" (change)="patch(r, 'draftEnergy', $any($event.target).value)">
-                    <option value="">—</option>
-                    @for (e of energies; track e) { <option [value]="e">{{ energyLabel(e) }}</option> }
+                    <option value="" [selected]="!r.draftEnergy">—</option>
+                    @for (e of energies; track e) { <option [value]="e" [selected]="e === r.draftEnergy">{{ energyLabel(e) }}</option> }
                   </select>
                 </label>
                 <!-- Sièges auto à bord : lecture seule ici — ils se règlent, avec le total possédé et le
-                     stock, dans Agenda → Paramètres de l'agenda (une seule règle, un seul endroit). -->
+                     stock, dans la vue Parc de l'agenda (une seule règle, un seul endroit), par un
+                     administrateur seulement. Un non-administrateur qui peut ouvrir la vue y est
+                     renvoyé pour CONSULTER, sans promesse de réglage. -->
                 <div class="cap-f cap-f--wide">
                   <span><lucide-icon [img]="UsersIcon" [size]="12"></lucide-icon> Sièges auto à bord</span>
-                  <span class="cap-ro-val">{{ r.childSeatsBaby }} bébé · {{ r.childSeatsChild }} enfant — se règle dans <a routerLink="/agenda" class="cap-link">Agenda → Paramètres</a></span>
+                  <span class="cap-ro-val">{{ r.childSeatsBaby }} bébé · {{ r.childSeatsChild }} enfant —
+                    @if (canReglerSieges()) { se règle dans <a routerLink="/agenda" [queryParams]="{ vue: 'parc' }" class="cap-link">Agenda → vue Parc</a> }
+                    @else if (canSeeParc()) { réglés par un administrateur, visibles dans <a routerLink="/agenda" [queryParams]="{ vue: 'parc' }" class="cap-link">Agenda → vue Parc</a> }
+                    @else { réglés par un administrateur, dans la vue Parc de l'agenda }
+                  </span>
                 </div>
                 <label class="cap-f cap-f--wide">
                   <span><lucide-icon [img]="ClipboardIcon" [size]="12"></lucide-icon> Équipements (séparés par des virgules)</span>
@@ -230,10 +266,13 @@ interface EditRow extends VehicleCapacityRowDto {
     @keyframes cap-spin { to { transform: rotate(360deg); } }
   `],
 })
-export class VehicleCapacityTableComponent implements OnInit {
+export class VehicleCapacityTableComponent {
   private readonly api = inject(VehiclesApiService);
   private readonly perms = inject(PermissionsService);
   private readonly toast = inject(ToastService);
+  private readonly fleetFilter = inject(FleetFilterService);
+  private readonly auth = inject(AuthService);
+  private readonly aiStatus = inject(AiStatusService);
 
   protected readonly FuelIcon = Fuel;
   protected readonly SaveIcon = Save;
@@ -249,6 +288,47 @@ export class VehicleCapacityTableComponent implements OnInit {
   protected readonly energies = ENERGIES;
 
   protected readonly canEdit = computed(() => this.perms.can('vehicles_edit'));
+  /**
+   * Vue Parc de l'agenda : même garde que `vuePermise('parc')` de la page (onglet, lien profond
+   * `?vue=parc`, route) — `reservations_view` seul. Contre-revue du 29/09 : `agenda_view` en plus
+   * cachait le lien à un délégué qui peut ouvrir la vue.
+   */
+  protected readonly canSeeParc = computed(() => this.perms.can('reservations_view'));
+  /**
+   * Sièges auto (à bord, stock) : réglables par SUPER_ADMIN et FLEET_ADMIN seulement — même règle
+   * que `canSeats` de la vue Parc et que les `@Roles` de `PUT /agenda/child-seats*`. Un RÔLE et
+   * non une permission : un gestionnaire à qui l'on a ouvert l'agenda n'y trouve aucun champ sièges.
+   * Ces deux rôles passent toutes les permissions : la vue Parc leur est toujours ouverte.
+   */
+  protected readonly canReglerSieges = computed(() => {
+    const r = this.auth.user()?.role;
+    return r === 'SUPER_ADMIN' || r === 'FLEET_ADMIN';
+  });
+  /** Libellé du renvoi vers la vue Parc : n'annonce que ce que le compte pourra y faire. */
+  protected readonly renvoiParc = computed(() => {
+    if (this.canReglerSieges()) return 'Réglage rapide et stock de sièges auto';
+    return this.canEdit()
+      ? 'Réglage rapide (places, énergie, équipements) et stock de sièges auto en lecture'
+      : 'Le parc et le stock de sièges auto, en lecture';
+  });
+  /**
+   * « Assistant IA → Vérifier le parc » : montré seulement si la vue IA S'OUVRIRA et y portera
+   * l'étape que le compte peut LANCER (contre-revue du 29/09) —
+   *  - `reservations_view` : `canOptimize` de la page (lien profond `?vue=ia`, `montrerVueIa`) ;
+   *  - `AiStatusService.can('capacity')` : l'étape n'existe que si l'analyse de capacité est
+   *    ouverte pour la société du bandeau (option payante, coupée par défaut : sans elle la page
+   *    retombait sur le Calendrier) ; elle suffit aussi à `montrerVueIa` ;
+   *  - `ai_optimize` : sans lui l'étape dit « réservée aux comptes autorisés à lancer l'IA » ;
+   *  - super-admin : une société choisie (sinon la vue demande d'en choisir une). Le statut d'IA
+   *    sans société est de toute façon tout coupé ; ceci couvre l'instant où il se recharge.
+   */
+  protected readonly canSeeIa = computed(
+    () =>
+      this.perms.can('reservations_view') &&
+      this.perms.can('ai_optimize') &&
+      this.aiStatus.can('capacity') &&
+      !(this.auth.user()?.role === 'SUPER_ADMIN' && !this.fleetFilter.selectedFleetId()),
+  );
   protected readonly loading = signal(true);
   protected readonly error = signal<string | null>(null);
   protected readonly rows = signal<EditRow[]>([]);
@@ -257,8 +337,21 @@ export class VehicleCapacityTableComponent implements OnInit {
   protected readonly syncOpenId = signal<string | null>(null);
   protected readonly syncSel = signal<Set<VehicleSyncableField>>(new Set());
 
-  async ngOnInit(): Promise<void> {
-    await this.load();
+  /** Numéro de la dernière lecture lancée : une réponse plus ancienne (société changée) est ignorée. */
+  private lecture = 0;
+
+  constructor() {
+    // Revue du 29/09 — le serveur accepte désormais la société du bandeau (super-admin) : l'onglet
+    // suit le bandeau comme la liste des véhicules, au lieu des 500 premières plaques de TOUTES les
+    // sociétés. « Toutes les sociétés » (aucun choix) garde l'ancien comportement.
+    effect(() => {
+      const fleetId = this.fleetFilter.isActive() ? this.fleetFilter.selectedFleetId() : null;
+      untracked(() => void this.load(fleetId));
+    });
+    // Statut d'IA de la société du bandeau, pour le renvoi « Vérifier le parc » (`canSeeIa`).
+    // Idempotent ; le service se recharge de lui-même quand la société change. Opt-in : tant qu'il
+    // n'est pas arrivé, le renvoi reste caché (pas de lien montré puis retiré au chargement).
+    this.aiStatus.ensureLoaded();
   }
 
   protected energyLabel(e: InstallationEnergy): string { return ENERGY_LABELS[e]; }
@@ -275,17 +368,19 @@ export class VehicleCapacityTableComponent implements OnInit {
     };
   }
 
-  private async load(): Promise<void> {
+  private async load(fleetId: string | null): Promise<void> {
+    const n = ++this.lecture;
     this.loading.set(true);
     this.error.set(null);
+    this.closeSync();
     try {
-      const data = await firstValueFrom(this.api.capacityOverview());
-      this.rows.set(data.map((r) => this.toEditRow(r)));
+      const data = await firstValueFrom(this.api.capacityOverview(fleetId));
+      if (n === this.lecture) this.rows.set(data.map((r) => this.toEditRow(r)));
     } catch (e) {
-      swallow('vehicle-capacity-table:String', e);
-      this.error.set(this.errMsg(e));
+      swallow('vehicle-capacity-table:load', e);
+      if (n === this.lecture) this.error.set(this.errMsg(e));
     } finally {
-      this.loading.set(false);
+      if (n === this.lecture) this.loading.set(false);
     }
   }
 
@@ -306,21 +401,35 @@ export class VehicleCapacityTableComponent implements OnInit {
     this.rows.update((list) => list.map((r) => (r.vehicleId === row.vehicleId ? this.toEditRow(r) : r)));
   }
 
-  private parseIntOrNull(s: string, min: number, max: number): number | null {
-    const n = parseInt(s, 10);
-    if (!Number.isFinite(n)) return null;
-    return Math.min(max, Math.max(min, n));
+  /**
+   * Places saisies → nombre à écrire, `undefined` (inchangé) ou un message de refus.
+   *
+   * Revue du 29/09 (même règle que la vue Parc de l'agenda) : la valeur était RAMENÉE en silence
+   * dans 1..99 — « 120 » tapé pour « 12 » devenait 99 places, « 0 » devenait 1 — et un champ vidé
+   * gardait l'ancienne valeur sous un « Capacité enregistrée ». On refuse désormais avec un message.
+   * `Number` et non `parseInt` (qui lisait « 1e2 » comme 1 et « 9.5 » comme 9). Vider un nombre
+   * connu est refusé : un champ numérique rend aussi une chaîne vide pour une frappe invalide.
+   */
+  private placesAEcrire(row: EditRow): { seats?: number } | { erreur: string } {
+    const brut = row.draftSeats.trim();
+    if (brut === (row.seats != null ? String(row.seats) : '')) return {};
+    if (brut === '') return { erreur: 'Le nombre de places ne peut pas être effacé : gardez-le ou saisissez un nombre entier de 1 à 99.' };
+    const n = Number(brut);
+    if (!Number.isInteger(n) || n < 1 || n > 99) return { erreur: 'Places : un nombre entier de 1 à 99, conducteur compris.' };
+    return n === row.seats ? {} : { seats: n };
   }
 
   protected async save(row: EditRow): Promise<void> {
     if (!this.canEdit() || row.saving) return;
-    const seats = this.parseIntOrNull(row.draftSeats, 1, 99);
+    const places = this.placesAEcrire(row);
+    if ('erreur' in places) {
+      this.toast.error(`${row.plate} — non enregistré`, places.erreur);
+      return;
+    }
     const features = row.draftFeatures.split(',').map((x) => x.trim()).filter(Boolean).slice(0, 30);
     const energy = (row.draftEnergy || null) as InstallationEnergy | null;
-    // Le DTO d'update ne valide pas `seats:null` (Min 1) — on n'envoie le champ que s'il a une valeur ;
-    // un champ vidé reste donc à sa valeur précédente (capacité non destructive côté formulaire).
     const payload: Record<string, unknown> = { features, energy };
-    if (seats != null) payload['seats'] = seats;
+    if (places.seats !== undefined) payload['seats'] = places.seats;
 
     this.setRow(row.vehicleId, { saving: true });
     try {

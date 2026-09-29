@@ -57,10 +57,61 @@ export interface ReservationSheetVehicle {
   childSeatsChild?: number | null;
   /** Groupe du véhicule — le DÉFAUT du groupe de réservation, jamais son maître. */
   group?: { id: string; name: string } | null;
+  /**
+   * Société du véhicule (revue du 29/09, C40). Les listes de groupes se construisent PAR SOCIÉTÉ :
+   * un super-admin sans société choisie recevait tout le parc, donc les « Nord » de deux clients
+   * côte à côte, indiscernables — et le serveur refuse (400) le groupe d'une autre société.
+   * `VehicleDetailDto` le porte déjà : l'agenda n'a rien à changer.
+   */
+  fleetId?: string;
 }
 
 /** Valeur du sélecteur de groupe quand l'utilisateur veut saisir un nom qui n'est pas un groupe de la société. */
 const GROUPE_AUTRE = '__autre__';
+/**
+ * Demande en « Auto » (aucun véhicule choisi) : le groupe sera celui du véhicule que le serveur
+ * attribuera. Le champ le DIT au lieu d'afficher « — Aucun groupe — », et rien n'est envoyé.
+ */
+const GROUPE_DEFAUT = '__defaut__';
+/**
+ * Carte « À valider » : préfixe d'une option « groupe saisi en texte libre sur la demande » (id null) —
+ * la valeur est `__pose__:<nom>`, pour que deux noms libres différents ne se confondent pas.
+ */
+const GROUPE_POSE_LIBRE = '__pose__';
+/**
+ * Carte « À valider » de plusieurs véhicules dont les groupes par défaut DIFFÈRENT (revue du 29/09,
+ * R10) : l'option « Groupes différents (Nord, Sud) », présélectionnée, qui ne change rien — chaque
+ * véhicule garde le sien. Tout autre choix s'applique à tous.
+ */
+const GROUPE_PAR_VEHICULE = '__par_vehicule__';
+
+/** Ce que le sélecteur d'une carte de la file montre sans geste, et ce qu'il propose. */
+interface CarteGroupe {
+  /** Valeur présélectionnée : le défaut commun des véhicules de la carte, ou GROUPE_PAR_VEHICULE. */
+  defaut: string;
+  options: GroupeOption[];
+  /** « Groupes différents (Nord, Sud) » quand les défauts diffèrent, sinon null. */
+  mixte: string | null;
+}
+
+/** Une option de groupe ; `note` précise une option qui n'est pas (ou plus) portée par un véhicule listé. */
+interface GroupeOption {
+  id: string;
+  name: string;
+  note?: string;
+}
+
+/**
+ * Le groupe posé sur une réservation (`metadata.group`), lu avec les MÊMES règles que le serveur
+ * (`ReservationsService.groupeDe`) : un nom non vide, un id facultatif. Sinon null.
+ */
+function groupePoseDe(metadata: unknown): ReservationGroupDto | null {
+  const g = (metadata as { group?: unknown } | null | undefined)?.group;
+  if (!g || typeof g !== 'object') return null;
+  const { id, name } = g as { id?: unknown; name?: unknown };
+  if (typeof name !== 'string' || !name.trim()) return null;
+  return { id: typeof id === 'string' && id ? id : null, name: name.trim() };
+}
 
 /** « 1 bébé · 2 enfant », ou null quand tout est à zéro. */
 export function siegesLabel(c: { baby: number; child: number } | null | undefined): string | null {
@@ -122,7 +173,10 @@ function toLocalInput(d: Date): string {
             }
             <div class="rs-f">
               <span>Créneau</span>
-              <app-datetime-range [start]="startAt()" [end]="endAt()" [minDay]="retroactive() ? '' : todayIso()" (startChange)="startAt.set($event)" (endChange)="endAt.set($event)"></app-datetime-range>
+              <!-- En édition, le début INCHANGÉ d'une réservation DÉJÀ COMMENCÉE n'est pas borné : commencée
+                   hier, elle se prolonge sans le « début déjà passé » rouge (revue du 29/09, C44). Une
+                   réservation à venir garde sa borne (T10). -->
+              <app-datetime-range [start]="startAt()" [end]="endAt()" [minDay]="minDayCreneau()" (startChange)="startAt.set($event)" (endChange)="endAt.set($event)"></app-datetime-range>
             </div>
             <!-- Consignation rétroactive : autorise un créneau passé pour enregistrer une sortie DÉJÀ faite. -->
             <label class="rs-retro" [class.rs-retro--on]="retroactive()">
@@ -137,7 +191,8 @@ function toLocalInput(d: Date): string {
               SIÈGES AUTO (2026-09-28) — pris sur le STOCK de la société, pas sur le véhicule. Deux
               types, jamais interchangeables : un bébé ne va pas dans un siège enfant, ni l'inverse.
               La ligne sous les champs dit ce qu'il reste sur le créneau saisi : celui qui demande
-              sait avant d'envoyer, et pas par un refus.
+              sait avant d'envoyer, et pas par un refus. En édition, sur la partie À VENIR seulement,
+              comme le serveur ; rien en « déjà effectuée », que le serveur ne contrôle pas (T11).
             -->
             <div class="rs-f">
               <span class="rs-lbl-row"><span><lucide-icon [img]="BabyIcon" [size]="12"></lucide-icon> Sièges auto à installer</span></span>
@@ -147,7 +202,7 @@ function toLocalInput(d: Date): string {
               </div>
               @if (seatsAvail(); as a) {
                 @if (a.total.baby === 0 && a.total.child === 0) {
-                  <span class="rs-hint">Aucun siège auto renseigné pour cette société — à compter dans « Paramètres de l'agenda ». Une réservation qui en demande sera refusée.</span>
+                  <span class="rs-hint">Aucun siège auto renseigné pour cette société — à compter dans la vue Parc de l'agenda. Une réservation qui en demande sera refusée.</span>
                 } @else {
                   <!-- Ce que le véhicule choisi a À BORD, puis ce que le stock peut encore donner sur
                        ce créneau — ou, sous « installés seulement », le rappel que le stock n'est pas promis. -->
@@ -158,7 +213,7 @@ function toLocalInput(d: Date): string {
                     @if (a.policy === 'INSTALLED_ONLY') {
                       sièges installés seulement (réglage de la société : le stock n'est pas promis)
                     } @else {
-                      stock disponible sur ce créneau : <strong>{{ a.available.baby }}</strong> bébé sur {{ a.stock.baby }} · <strong>{{ a.available.child }}</strong> enfant sur {{ a.stock.child }}
+                      stock disponible {{ seatsDepuisMaintenant() ? 'sur la suite du créneau (à partir de maintenant)' : 'sur ce créneau' }} : <strong>{{ a.available.baby }}</strong> bébé sur {{ a.stock.baby }} · <strong>{{ a.available.child }}</strong> enfant sur {{ a.stock.child }}
                     }
                     @if (seatsManqueTexte(); as m) { — {{ m }} }
                   </span>
@@ -183,8 +238,16 @@ function toLocalInput(d: Date): string {
                    seulement non sélectionnables (cf. vehicleOptions pour les exceptions). -->
               <!-- « [selected] » sur chaque option, pas « [value] » seul : ouvert directement en édition, le
                    select retombait sur « Auto » alors que le signal portait bien le véhicule (recette du 28/09 au soir). -->
+              <!-- « Auto » en DEMANDE seulement (troisième passe, T12) : en édition, le PATCH sans véhicule
+                   n'en change pas — la réservation restait sur le sien sous un toast « enregistré ». Le
+                   véhicule de la réservation absent de la liste (hors du périmètre affiché) y figure
+                   quand même, présélectionné : sans lui, le navigateur montrait le premier de la liste. -->
               <select class="rs-in" [value]="vehicleId()" (change)="vehicleId.set($any($event.target).value)">
-                <option value="" [selected]="!vehicleId()">Auto (le 1er disponible conforme)</option>
+                @if (mode() !== 'edit') {
+                  <option value="" [selected]="!vehicleId()">Auto (le 1er disponible conforme)</option>
+                } @else if (vehiculeHorsListe(); as vh) {
+                  <option [value]="vh.id" [selected]="vh.id === vehicleId()">{{ vh.label }} — véhicule actuel de la réservation</option>
+                }
                 @for (v of vehicleOptions(); track v.id) {
                   <option [value]="v.id" [disabled]="v.disabled" [selected]="v.id === vehicleId()">{{ v.label }}@if (v.aBord) { · à bord : {{ v.aBord }} }@if (v.horsService) { — hors service ({{ v.horsService }}) } @else if (v.silence) { — boîtier muet depuis {{ v.silence }} }</option>
                 }
@@ -212,21 +275,44 @@ function toLocalInput(d: Date): string {
             @if (canManage()) {
               <div class="rs-f">
                 <span class="rs-lbl-row"><span><lucide-icon [img]="UsersIcon" [size]="12"></lucide-icon> Groupe qui utilise le véhicule</span></span>
+                <!--
+                  Revue du 29/09 (C7/C34/C48, C33, C40) :
+                  - les options sont celles de LA société (du véhicule choisi, du bandeau, ou de la
+                    réservation éditée) — jamais un mélange de clients ;
+                  - en édition, le groupe posé figure dans la liste même quand plus aucun véhicule listé
+                    ne le porte : le champ dit la vérité, et l'enregistrer ne l'efface plus ;
+                  - en « Auto », le champ dit « Groupe du véhicule attribué » : c'est ce que le serveur posera.
+                -->
                 <div class="rs-grid">
                   <select class="rs-in" [value]="groupChoice()" (change)="choisirGroupe($any($event.target).value)" aria-label="Groupe de la réservation">
+                    @if (mode() === 'request' && (!vehicleId() || groupChoice() === GROUPE_DEFAUT)) {
+                      <option [value]="GROUPE_DEFAUT" [selected]="groupChoice() === GROUPE_DEFAUT">{{ vehicleId() ? 'Groupe du véhicule (par défaut)' : 'Groupe du véhicule attribué' }}</option>
+                    }
                     <option value="" [selected]="groupChoice() === ''">— Aucun groupe —</option>
-                    @for (g of groupOptions(); track g.id) {
-                      <option [value]="g.id" [selected]="g.id === groupChoice()">{{ g.name }}</option>
+                    @for (g of groupOptionsFeuille(); track g.id) {
+                      <option [value]="g.id" [selected]="g.id === groupChoice()">{{ g.name }}@if (g.note) { ({{ g.note }}) }</option>
                     }
                     <option [value]="GROUPE_AUTRE" [selected]="groupChoice() === GROUPE_AUTRE">Autre…</option>
                   </select>
                   @if (groupChoice() === GROUPE_AUTRE) {
                     <input type="text" class="rs-in" maxlength="60" placeholder="Nom du groupe" aria-label="Nom du groupe"
-                           [value]="groupName()" (input)="groupName.set($any($event.target).value); groupTouched.set(true)">
+                           [value]="groupName()" (input)="saisirNomGroupe($any($event.target).value)">
                   }
                 </div>
+                @if (groupChoice() === GROUPE_AUTRE && !groupName().trim()) {
+                  <!-- « Autre… » sans nom = aucun groupe : ça se dit avant l'envoi, pas après. -->
+                  <span class="rs-hint rs-hint--manque">Sans nom, la réservation n'aura aucun groupe.</span>
+                }
                 <span class="rs-hint">
-                  @if (vehicleGroupName(); as vg) { Par défaut, le groupe du véhicule ({{ vg }}). } @else if (vehicleId()) { Ce véhicule n'a pas de groupe. }
+                  @if (mode() === 'edit') {
+                    Le groupe posé sur la réservation : changer de véhicule ne le change pas.
+                  } @else if (vehicleGroupName(); as vg) {
+                    Par défaut, le groupe du véhicule ({{ vg }}).
+                  } @else if (vehicleId()) {
+                    Ce véhicule n'a pas de groupe.
+                  } @else {
+                    Par défaut, le groupe du véhicule que la réservation recevra.
+                  }
                   Le véhicule garde son propre groupe : ici, c'est celui qui s'en sert pour cette réservation.
                 </span>
               </div>
@@ -334,14 +420,22 @@ function toLocalInput(d: Date): string {
                     <p class="rs-q-req"><lucide-icon [img]="BabyIcon" [size]="12"></lucide-icon> Sièges auto : {{ bs }}</p>
                   }
                   <!-- Groupe qui utilise le véhicule, décidé À LA VALIDATION (point 9) : pré-rempli avec le
-                       groupe du véhicule pré-retenu, modifiable avant de dire oui. -->
+                       groupe DÉJÀ POSÉ sur la demande (même saisi en texte libre, même porté par aucun
+                       véhicule listé), sinon celui du véhicule pré-retenu ; les options sont celles de la
+                       société de la demande. Rien n'est envoyé tant que le valideur n'y touche pas
+                       (revue du 29/09, C8/C36/C40). Plusieurs véhicules aux groupes différents : la
+                       carte le dit (« Groupes différents (Nord, Sud) », qui ne change rien), et un
+                       choix s'applique à tous (R10). -->
                   <div class="rs-q-groupe">
                     <lucide-icon [img]="UsersIcon" [size]="12"></lucide-icon>
                     <span class="rs-q-groupe-l">Groupe</span>
                     <select class="rs-in rs-in--xs" [value]="groupeValidation(g)" (change)="choisirGroupeValidation(g.cle, $any($event.target).value)" [attr.aria-label]="'Groupe qui utilise le véhicule'">
+                      @if (libelleMixte(g); as mixte) {
+                        <option [value]="GROUPE_PAR_VEHICULE" [selected]="groupeValidation(g) === GROUPE_PAR_VEHICULE">{{ mixte }}</option>
+                      }
                       <option value="" [selected]="groupeValidation(g) === ''">— Aucun —</option>
-                      @for (og of groupOptions(); track og.id) {
-                        <option [value]="og.id" [selected]="og.id === groupeValidation(g)">{{ og.name }}</option>
+                      @for (og of optionsCarte(g); track og.id) {
+                        <option [value]="og.id" [selected]="og.id === groupeValidation(g)">{{ og.name }}@if (og.note) { ({{ og.note }}) }</option>
                       }
                     </select>
                   </div>
@@ -509,6 +603,8 @@ export class ReservationSheetComponent {
   protected readonly BabyIcon = Baby;
   protected readonly UsersIcon = Users;
   protected readonly GROUPE_AUTRE = GROUPE_AUTRE;
+  protected readonly GROUPE_DEFAUT = GROUPE_DEFAUT;
+  protected readonly GROUPE_PAR_VEHICULE = GROUPE_PAR_VEHICULE;
 
   protected readonly mode = signal<'request' | 'validate' | 'edit'>('request');
   protected readonly canManage = computed(() => this.perms.can('reservations_manage'));
@@ -551,29 +647,189 @@ export class ReservationSheetComponent {
   });
   protected readonly seatsManque = computed(() => this.seatsManqueTexte() !== null);
   protected readonly reason = signal('');
+  /**
+   * Édition : le motif tel qu'à l'ouverture (troisième passe, T13). L'enregistrement n'envoie `reason`
+   * que s'il en diffère — chaîne vide comprise : `reason || undefined` ne transmettait jamais un motif
+   * vidé, et l'ancien revenait à la réouverture sous un toast « enregistré ».
+   */
+  private readonly motifOuverture = signal('');
   protected readonly vehicleId = signal('');
 
   // ─── Groupe qui utilise le véhicule (point 9) ────────────────────────────────────────────
-  /** Choix du sélecteur : '' (aucun), un id de groupe de la société, ou GROUPE_AUTRE (texte libre). */
+  /**
+   * Choix du sélecteur : '' (aucun), un id de groupe de la société, GROUPE_AUTRE (texte libre) ou,
+   * en demande « Auto », GROUPE_DEFAUT (le groupe du véhicule que le serveur attribuera).
+   */
   protected readonly groupChoice = signal('');
   /** Nom saisi quand « Autre… » est choisi. */
   protected readonly groupName = signal('');
-  /** Vrai dès que l'utilisateur a touché au groupe : le défaut (groupe du véhicule) ne l'écrase plus. */
+  /**
+   * Vrai dès que le défaut (groupe du véhicule) ne doit plus suivre le véhicule choisi : l'utilisateur
+   * a touché au champ, ou la feuille est en édition (le groupe posé tient).
+   */
   protected readonly groupTouched = signal(false);
-  /** Groupes de la société, tirés des véhicules proposés (dédup par id, triés). */
-  protected readonly groupOptions = computed(() => {
-    const map = new Map<string, { id: string; name: string }>();
-    for (const v of this.vehicles()) if (v.group?.id && !map.has(v.group.id)) map.set(v.group.id, { id: v.group.id, name: v.group.name });
-    return [...map.values()].sort((a, b) => a.name.localeCompare(b.name));
+  /**
+   * Édition : vrai seulement si l'utilisateur a touché au champ APRÈS l'ouverture (revue du 29/09,
+   * C7/C34/C48). Distinct de `groupTouched`, que l'ouverture en édition pose à vrai : l'édition
+   * envoyait TOUJOURS `group`, et un groupe posé absent des options partait en `null` — le serveur
+   * l'effaçait (« null retire ») quand on ne décalait que l'heure de fin.
+   */
+  private readonly groupEdited = signal(false);
+  /** Édition : le groupe posé sur la réservation à l'ouverture (null = aucun). */
+  private readonly groupePose = signal<ReservationGroupDto | null>(null);
+
+  /**
+   * Groupes PAR SOCIÉTÉ, tirés des véhicules proposés (dédup par id, triés) — revue du 29/09, C40.
+   * Un véhicule sans société connue (appelant qui ne la fournit pas) compte pour toutes.
+   */
+  private readonly groupesIndex = computed(() => {
+    const tous = new Map<string, GroupeOption>();
+    const sansSociete = new Map<string, GroupeOption>();
+    const parSociete = new Map<string, Map<string, GroupeOption>>();
+    for (const v of this.vehicles()) {
+      if (!v.group?.id) continue;
+      const o: GroupeOption = { id: v.group.id, name: v.group.name };
+      if (!tous.has(o.id)) tous.set(o.id, o);
+      let cible = sansSociete;
+      if (v.fleetId) {
+        cible = parSociete.get(v.fleetId) ?? new Map<string, GroupeOption>();
+        parSociete.set(v.fleetId, cible);
+      }
+      if (!cible.has(o.id)) cible.set(o.id, o);
+    }
+    const trie = (m: Map<string, GroupeOption>) => [...m.values()].sort((a, b) => a.name.localeCompare(b.name));
+    const listes = new Map<string, GroupeOption[]>();
+    for (const [fleetId, m] of parSociete) {
+      for (const [id, o] of sansSociete) if (!m.has(id)) m.set(id, o);
+      listes.set(fleetId, trie(m));
+    }
+    return { tous: trie(tous), sansSociete: trie(sansSociete), listes };
   });
+
+  /** Les groupes d'UNE société (sans société : tous — le cas d'un utilisateur qui n'en a qu'une). */
+  private groupesDe(fleetId: string | null | undefined): GroupeOption[] {
+    const idx = this.groupesIndex();
+    if (!fleetId) return idx.tous;
+    return idx.listes.get(fleetId) ?? idx.sansSociete;
+  }
+
+  /**
+   * Société du bandeau — SEULEMENT pour un super-admin qui en a choisi une (revue du 29/09, S0).
+   * `selectedFleetId()` lit le localStorage sans regarder le rôle, et la déconnexion ne l'efface pas :
+   * un gestionnaire client qui ouvrait la feuille après une session super-admin sur le même navigateur
+   * héritait de la société d'un AUTRE client — liste de groupes vide en « Auto », et 403 « Flotte
+   * hors périmètre » sur la demande, la suggestion IA, les sièges et la file. Non-super-admin : null,
+   * le serveur le scope sur sa société.
+   */
+  private readonly societeBandeau = computed<string | null>(() =>
+    this.fleetFilter.isActive() ? this.fleetFilter.selectedFleetId() : null,
+  );
+
+  /**
+   * Société d'une demande : celle du véhicule choisi ; sinon, pour un super-admin, celle du bandeau,
+   * et pour tout autre compte, LA SIENNE — jamais une société restée dans le localStorage (S0).
+   */
+  private readonly societeDemande = computed(() => {
+    const id = this.vehicleId();
+    const v = id ? this.vehicles().find((x) => x.id === id) : undefined;
+    if (v?.fleetId) return v.fleetId;
+    const user = this.auth.user();
+    return user?.role === 'SUPER_ADMIN' ? this.societeBandeau() : (user?.fleetId ?? null);
+  });
+
+  /**
+   * Options du champ Groupe de la feuille. Demande : groupes de la société de la demande. Édition :
+   * groupes de la société de la réservation, PLUS le groupe posé s'il n'y figure pas (plus aucun
+   * véhicule listé ne le porte, ou il n'est pas dans le périmètre de l'utilisateur).
+   */
+  protected readonly groupOptionsFeuille = computed<GroupeOption[]>(() => {
+    if (this.mode() !== 'edit') return this.groupesDe(this.societeDemande());
+    const liste = this.groupesDe(this.editReservation()?.fleetId);
+    const pose = this.groupePose();
+    if (pose?.id && !liste.some((o) => o.id === pose.id)) return [...liste, { id: pose.id, name: pose.name, note: 'groupe actuel' }];
+    return liste;
+  });
+
   /** Nom du groupe du véhicule choisi — la phrase d'aide le nomme. */
   protected readonly vehicleGroupName = computed(() => {
     const id = this.vehicleId();
     if (!id) return null;
     return this.vehicles().find((v) => v.id === id)?.group?.name ?? null;
   });
-  /** Groupe choisi À LA VALIDATION, par carte de la file (clé de groupe → id de groupe, '' = aucun). */
+  /** Groupe choisi À LA VALIDATION, par carte de la file (clé de groupe → valeur du sélecteur, '' = aucun). */
   protected readonly groupesValidation = signal<Record<string, string>>({});
+
+  /**
+   * Par carte de la file : ce que le sélecteur montre sans geste du valideur (`defaut`), ses options
+   * (groupes de LA société de la demande + les groupes posés qui n'y sont pas) et, si les véhicules de
+   * la carte n'ont pas le même défaut, le libellé « Groupes différents (…) » (`mixte`).
+   *
+   * Le défaut suit l'ordre du serveur quand `group` est absent (`confirm`) : dès que la demande porte
+   * une clé `group`, c'est ce groupe posé — texte libre compris, et `null` = « aucun groupe » choisi
+   * au dépôt — ; sans clé (demande publique, ancienne demande), celui du véhicule pré-retenu
+   * (revue du 29/09, C8/C36).
+   *
+   * Ce défaut se calcule pour CHAQUE véhicule de la carte, pas pour le seul premier (revue du 29/09,
+   * R10). Une demande publique de 11 places pré-retient V1 (Nord) et V2 (Sud) : la carte affichait
+   * « Nord » (le premier), la validation sans geste posait Nord sur V1 et Sud sur V2, et re-choisir
+   * Nord — égal au défaut affiché — n'envoyait toujours rien : impossible d'imposer un groupe à tous.
+   * Maintenant : défauts identiques, la carte montre ce groupe ; défauts différents, elle montre
+   * « Groupes différents (Nord, Sud) », présélectionné, qui ne change rien — et tout autre choix, même
+   * Nord, part pour tous les véhicules.
+   */
+  private readonly cartesGroupe = computed(() => {
+    const cartes = new Map<string, CarteGroupe>();
+    for (const g of this.groupes()) {
+      const liste = this.groupesDe(g.chef.fleetId);
+      const libres: GroupeOption[] = []; // noms libres posés sur une ligne — en tête
+      const ajouts: GroupeOption[] = []; // groupes posés (ou de véhicule) absents de la liste — en queue
+      const ajouter = (o: GroupeOption) => {
+        if (!liste.some((x) => x.id === o.id) && !ajouts.some((x) => x.id === o.id)) ajouts.push(o);
+      };
+      // Défaut serveur de chaque ligne : valeur du sélecteur → nom lisible.
+      const defauts = new Map<string, string>();
+      for (const r of g.items) {
+        const meta = (r.metadata as Record<string, unknown> | null) ?? {};
+        if ('group' in meta) {
+          const pose = groupePoseDe(meta);
+          if (pose?.id) {
+            ajouter({ id: pose.id, name: pose.name, note: 'groupe posé' });
+            defauts.set(pose.id, pose.name);
+          } else if (pose) {
+            const id = `${GROUPE_POSE_LIBRE}:${pose.name}`;
+            if (!libres.some((x) => x.id === id)) libres.push({ id, name: pose.name, note: 'saisi' });
+            defauts.set(id, pose.name);
+          } else {
+            defauts.set('', 'aucun'); // « aucun groupe » posé sur la demande : le serveur le garde
+          }
+        } else {
+          const vg = this.vehicles().find((v) => v.id === r.vehicleId)?.group;
+          if (vg?.id) {
+            ajouter({ id: vg.id, name: vg.name });
+            defauts.set(vg.id, vg.name);
+          } else {
+            defauts.set('', 'aucun');
+          }
+        }
+      }
+      const mixte = defauts.size > 1 ? `Groupes différents (${[...defauts.values()].join(', ')})` : null;
+      cartes.set(g.cle, {
+        defaut: mixte ? GROUPE_PAR_VEHICULE : ([...defauts.keys()][0] ?? ''),
+        options: [...libres, ...liste, ...ajouts],
+        mixte,
+      });
+    }
+    return cartes;
+  });
+
+  /** « Groupes différents (Nord, Sud) » pour une carte dont les véhicules n'ont pas le même défaut. */
+  protected libelleMixte(g: { cle: string }): string | null {
+    return this.cartesGroupe().get(g.cle)?.mixte ?? null;
+  }
+
+  protected optionsCarte(g: { cle: string }): GroupeOption[] {
+    return this.cartesGroupe().get(g.cle)?.options ?? [];
+  }
   protected readonly submitting = signal(false);
   protected readonly reqError = signal<string | null>(null);
   /** Consigner une réservation DÉJÀ effectuée (autorise un créneau passé). Réservé aux gestionnaires. */
@@ -588,6 +844,43 @@ export class ReservationSheetComponent {
   });
 
   /**
+   * Édition : le créneau tel qu'à l'ouverture, en chaînes LOCALES à la minute (celles du sélecteur).
+   * On compare ces chaînes, jamais les ISO : `toLocalInput` tronque les secondes, et un début posé
+   * avec des secondes (lien public, agent) paraîtrait toujours « modifié ». Null hors édition.
+   */
+  private readonly creneauOuverture = signal<{ debut: string; fin: string } | null>(null);
+
+  /**
+   * Édition d'une réservation dont le début n'a pas bougé (revue du 29/09, C44). Une réservation du
+   * lundi au mercredi, modifiée le mardi, ne pouvait plus être prolongée, regroupée ni réaffectée :
+   * le sélecteur criait « début déjà passé », `slot()` refusait, et le client renvoyait toujours
+   * `startAt` — le serveur refusait donc aussi. Un début inchangé n'est plus ni renvoyé ni contrôlé.
+   */
+  protected readonly debutInchange = computed(() => {
+    const o = this.creneauOuverture();
+    return this.mode() === 'edit' && !!o && this.startAt() === o.debut;
+  });
+
+  /**
+   * Borne du sélecteur : aucune en « déjà effectuée » ni pour le début inchangé d'une réservation
+   * DÉJÀ COMMENCÉE (C44 — sinon le « début déjà passé » rouge revient). Une réservation À VENIR garde
+   * sa borne même début inchangé (troisième passe, T10) : levée, le calendrier natif ne grisait plus
+   * les jours passés, un clic sur hier était retenu, et la borne ne revenait qu'après coup — résumé
+   * rouge et refus à l'enregistrement, au lieu de l'avis « date non retenue » du sélecteur (R11).
+   * Début déplacé en édition : aujourd'hui, ou le jour d'origine s'il est plus ancien — sinon, revenir
+   * au début d'origine en le tapant le ferait ramener à aujourd'hui.
+   */
+  protected readonly minDayCreneau = computed(() => {
+    if (this.retroactive()) return '';
+    const o = this.mode() === 'edit' ? this.creneauOuverture() : null;
+    // `o.debut` est une chaîne LOCALE 'YYYY-MM-DDTHH:mm' : `new Date` la lit à l'heure locale.
+    if (this.debutInchange() && o && new Date(o.debut).getTime() <= Date.now()) return '';
+    const today = this.todayIso();
+    const jourOrigine = o?.debut.slice(0, 10) ?? '';
+    return jourOrigine && jourOrigine < today ? jourOrigine : today;
+  });
+
+  /**
    * Options du sélecteur de véhicule, dormance comprise.
    *
    * SEUIL : {@link DORMANT_STOP_COUNTING_MS} (7 j) et NON le seuil d'action (72 h). Ce
@@ -599,14 +892,17 @@ export class ReservationSheetComponent {
    * (couper, armer, sonder), où l'échec est certain et immédiat.
    *
    * Deux exceptions volontaires au grisage, sinon on casserait des usages légitimes :
-   *  - le véhicule DÉJÀ sélectionné (mode édition d'une réservation existante) reste
-   *    sélectionnable, sans quoi la feuille deviendrait inenregistrable ;
+   *  - le véhicule DÉJÀ sélectionné, et en édition le véhicule DE LA RÉSERVATION même après un
+   *    détour par un autre (T12 : sinon, dormant ou hors service, on ne pouvait plus y revenir —
+   *    et le serveur l'accepte, puisqu'il n'y a alors aucun changement de véhicule), restent
+   *    sélectionnables, sans quoi la feuille deviendrait inenregistrable ;
    *  - en « réservation déjà effectuée », on consigne une sortie PASSÉE : l'état actuel du
    *    boîtier n'a aucune importance, et refuser l'écriture ferait perdre l'information.
    */
   protected readonly vehicleOptions = computed(() => {
     const now = Date.now();
     const selected = this.vehicleId();
+    const propre = this.mode() === 'edit' ? (this.editReservation()?.vehicleId ?? null) : null;
     const retro = this.retroactive();
     return this.vehicles().map((v) => {
       const tracker = v.tracker ?? null;
@@ -627,9 +923,22 @@ export class ReservationSheetComponent {
         aBord: siegesLabel({ baby: v.childSeatsBaby ?? 0, child: v.childSeatsChild ?? 0 }),
         // On DATE le silence au lieu de dire « indisponible » : l'exploitant sait quoi faire.
         silence: dormant ? formatSilenceLabel(tracker?.lastSeenAt, now) : null,
-        disabled: (!!horsService && v.id !== selected && !retro) || (dormant && v.id !== selected && !retro),
+        disabled: (!!horsService || dormant) && v.id !== selected && v.id !== propre && !retro,
       };
     });
+  });
+
+  /**
+   * Édition : le véhicule de la réservation quand la liste ne le propose pas (hors du périmètre
+   * affiché par l'agenda). Une option le représente, présélectionnée — sans elle, et sans « Auto »
+   * en édition (T12), le navigateur affichait le premier véhicule de la liste pendant que
+   * l'enregistrement gardait l'ancien. Null hors édition, ou s'il est listé.
+   */
+  protected readonly vehiculeHorsListe = computed<{ id: string; label: string } | null>(() => {
+    if (this.mode() !== 'edit') return null;
+    const edit = this.editReservation();
+    if (!edit?.vehicleId || this.vehicles().some((v) => v.id === edit.vehicleId)) return null;
+    return { id: edit.vehicleId, label: edit.vehiclePlate || 'Véhicule actuel' };
   });
 
   /** Nombre de véhicules grisés pour DORMANCE — sert la phrase d'explication sous le champ. */
@@ -668,17 +977,25 @@ export class ReservationSheetComponent {
       this.reqError.set(null);
       if (edit) {
         const meta = (edit.metadata ?? {}) as { reason?: string; retroactive?: boolean; criteria?: ReservationCriteria };
-        this.startAt.set(toLocalInput(new Date(edit.startAt)));
-        this.endAt.set(edit.endAt ? toLocalInput(new Date(edit.endAt)) : '');
+        const debut = toLocalInput(new Date(edit.startAt));
+        const fin = edit.endAt ? toLocalInput(new Date(edit.endAt)) : '';
+        this.startAt.set(debut);
+        this.endAt.set(fin);
+        this.creneauOuverture.set({ debut, fin });
         this.vehicleId.set(edit.vehicleId);
         this.reason.set(meta.reason ?? '');
+        this.motifOuverture.set(meta.reason ?? '');
         this.retroactive.set(meta.retroactive === true);
         this.minSeats.set(meta.criteria?.minSeats ? String(meta.criteria.minSeats) : '');
         this.childSeatsBaby.set(meta.criteria?.childSeatsBaby ? String(meta.criteria.childSeatsBaby) : '');
         this.childSeatsChild.set(meta.criteria?.childSeatsChild ? String(meta.criteria.childSeatsChild) : '');
         // Le groupe posé sur la réservation, tel quel — on n'y substitue pas celui du véhicule.
-        const g = (edit.metadata as { group?: ReservationGroupDto | null } | null)?.group ?? null;
+        // `groupTouched` à vrai : le défaut ne suit pas le véhicule. `groupEdited` à faux : tant que
+        // l'utilisateur n'y touche pas, l'enregistrement n'envoie pas `group` (le serveur n'y touche pas).
+        const g = groupePoseDe(edit.metadata);
+        this.groupePose.set(g);
         this.groupTouched.set(true);
+        this.groupEdited.set(false);
         if (!g) { this.groupChoice.set(''); this.groupName.set(''); }
         else if (g.id) { this.groupChoice.set(g.id); this.groupName.set(''); }
         else { this.groupChoice.set(GROUPE_AUTRE); this.groupName.set(g.name); }
@@ -690,9 +1007,11 @@ export class ReservationSheetComponent {
       this.startAt.set(toLocalInput(base));
       this.endAt.set(toLocalInput(new Date(base.getTime() + 60 * 60 * 1000)));
       this.vehicleId.set('');
-      this.minSeats.set(''); this.childSeatsBaby.set(''); this.childSeatsChild.set(''); this.reason.set('');
+      this.minSeats.set(''); this.childSeatsBaby.set(''); this.childSeatsChild.set(''); this.reason.set(''); this.motifOuverture.set('');
       this.retroactive.set(false);
+      this.creneauOuverture.set(null);
       this.groupChoice.set(''); this.groupName.set(''); this.groupTouched.set(false); this.groupesValidation.set({});
+      this.groupEdited.set(false); this.groupePose.set(null);
       const m = this.startMode() === 'validate' && this.canManage() ? 'validate' : 'request';
       this.mode.set(m);
       if (m === 'validate') void this.loadQueue();
@@ -704,6 +1023,9 @@ export class ReservationSheetComponent {
       const touche = this.groupTouched();
       const ouvert = this.open();
       if (!ouvert || touche || this.mode() !== 'request') return;
+      // « Auto » : aucun véhicule encore — le champ dit que ce sera celui du véhicule attribué
+      // (revue du 29/09, C33), au lieu d'un « — Aucun groupe — » que le serveur démentirait.
+      if (!id) { this.groupChoice.set(GROUPE_DEFAUT); this.groupName.set(''); return; }
       const g = this.vehicles().find((v) => v.id === id)?.group ?? null;
       this.groupChoice.set(g?.id ?? '');
       this.groupName.set('');
@@ -711,33 +1033,70 @@ export class ReservationSheetComponent {
     // Disponibilité des sièges auto sur le créneau saisi — relue à chaque changement de créneau
     // (ou de société), en mode demande et en mode édition. Best-effort : une lecture qui échoue
     // laisse simplement la ligne vide ; le serveur revalide de toute façon à l'envoi.
+    //
+    // La fenêtre lue est CELLE QUE LE SERVEUR CONTRÔLERA (troisième passe, T11) — sinon la ligne dit
+    // le contraire de ce qu'il appliquera :
+    //  - édition : [max(début, maintenant), fin), comme `update()` (C44) — les heures écoulées
+    //    n'engagent plus aucun siège. Lue depuis le début, une réservation terminée lundi matin (mais
+    //    jamais close) comptait encore, et la prolongation du mardi s'affichait « il en manque » alors
+    //    que le serveur l'accepte. Tout le créneau écoulé : rien à contrôler, rien à afficher ;
+    //  - « déjà effectuée » : le serveur ne contrôle aucun siège (édition : la case OU la réservation
+    //    déjà marquée telle ; demande : la case ET un début passé) — rien à afficher non plus.
     effect(() => {
       const ouvert = this.open();
       const mode = this.mode();
       const s = this.startAt();
       const e = this.endAt();
-      const fleetId = this.fleetFilter.selectedFleetId() ?? undefined;
+      const fleetId = this.societeBandeau() ?? undefined;
       const edit = this.editReservation();
       const vehicleId = this.vehicleId() || undefined; // ses sièges à bord entrent dans le compte
-      if (!ouvert || mode === 'validate' || !s || !e) { this.seatsAvail.set(null); return; }
+      const retro = this.retroactive();
+      if (!ouvert || mode === 'validate' || !s || !e) { this.viderSieges(); return; }
       const si = new Date(s); const ei = new Date(e);
-      if (Number.isNaN(si.getTime()) || Number.isNaN(ei.getTime()) || ei.getTime() <= si.getTime()) { this.seatsAvail.set(null); return; }
-      if (this.needsFleet()) { this.seatsAvail.set(null); return; }
-      void this.chargerSieges({ startAt: si.toISOString(), endAt: ei.toISOString(), fleetId, excludeId: mode === 'edit' ? edit?.id : undefined, vehicleId });
+      if (Number.isNaN(si.getTime()) || Number.isNaN(ei.getTime()) || ei.getTime() <= si.getTime()) { this.viderSieges(); return; }
+      if (this.needsFleet()) { this.viderSieges(); return; }
+      const maintenant = Date.now();
+      const dejaEffectuee = mode === 'edit'
+        ? retro || (edit?.metadata as { retroactive?: unknown } | null | undefined)?.retroactive === true
+        : retro && si.getTime() < maintenant;
+      if (dejaEffectuee) { this.viderSieges(); return; }
+      const debutLu = mode === 'edit' ? Math.max(si.getTime(), maintenant) : si.getTime();
+      if (debutLu >= ei.getTime()) { this.viderSieges(); return; }
+      void this.chargerSieges(
+        { startAt: new Date(debutLu).toISOString(), endAt: ei.toISOString(), fleetId, excludeId: mode === 'edit' ? edit?.id : undefined, vehicleId },
+        debutLu > si.getTime(),
+      );
     });
   }
 
   /** Numéro de la dernière lecture partie : une réponse en retard ne doit pas écraser la dernière. */
   private siegesLecture = 0;
-  private async chargerSieges(q: { startAt: string; endAt: string; fleetId?: string; excludeId?: string; vehicleId?: string }): Promise<void> {
+  /**
+   * Vrai quand la ligne des sièges a été lue à partir de MAINTENANT (édition d'une réservation
+   * commencée) : le libellé dit « sur la suite du créneau », pas « sur ce créneau ».
+   */
+  protected readonly seatsDepuisMaintenant = signal(false);
+  private async chargerSieges(
+    q: { startAt: string; endAt: string; fleetId?: string; excludeId?: string; vehicleId?: string },
+    depuisMaintenant = false,
+  ): Promise<void> {
     const n = ++this.siegesLecture;
     try {
       const a = await firstValueFrom(this.api.childSeatAvailability(q));
-      if (n === this.siegesLecture) this.seatsAvail.set(a);
+      if (n === this.siegesLecture) { this.seatsAvail.set(a); this.seatsDepuisMaintenant.set(depuisMaintenant); }
     } catch (e) {
       swallow('reservation-sheet:childSeats', e);
       if (n === this.siegesLecture) this.seatsAvail.set(null);
     }
+  }
+
+  /**
+   * Vide la ligne des sièges ET périme la lecture en vol : cocher « déjà effectuée » pendant une
+   * lecture la laissait sinon réafficher, à son retour, un stock que le serveur ne contrôlera pas.
+   */
+  private viderSieges(): void {
+    this.siegesLecture++;
+    this.seatsAvail.set(null);
   }
 
   /** Le besoin de sièges saisi, en entiers (vide ou invalide = 0). */
@@ -819,11 +1178,16 @@ export class ReservationSheetComponent {
     this.busyId.set(g.cle);
     let faits = 0;
     try {
-      // Le groupe choisi sur la carte part avec la validation ('' = aucun groupe, explicitement).
-      const choix = this.groupeValidation(g);
-      const groupe = choix ? this.groupOptions().find((x) => x.id === choix) ?? null : null;
+      // Le groupe part avec la validation SEULEMENT si le valideur a changé le choix de la carte
+      // (revue du 29/09, C8/C36/C33). Sans geste — ou revenu au choix d'origine —, la clé est omise :
+      // chaque véhicule garde son défaut serveur (groupe déjà posé, texte libre compris, sinon celui
+      // de SON véhicule) — et la carte l'a dit : ce groupe commun, ou « Groupes différents (…) » (R10).
+      // Un choix, lui, part pour TOUS les véhicules de la carte, même s'il est le groupe de l'un d'eux.
+      // Envoyer la valeur affichée écrasait un groupe libre par celui du véhicule.
+      // « — Aucun — » choisi part en `null` : aucun groupe, explicitement.
+      const corps = this.corpsValidation(g);
       for (const r of g.items) {
-        await firstValueFrom(this.api.confirmReservation(r.id, { group: groupe ? { id: groupe.id, name: groupe.name } : null }));
+        await firstValueFrom(this.api.confirmReservation(r.id, corps));
         faits++;
         this.pending.update((l) => l.filter((x) => x.id !== r.id));
       }
@@ -907,31 +1271,82 @@ export class ReservationSheetComponent {
 
   protected choisirGroupe(valeur: string): void {
     this.groupTouched.set(true);
+    this.groupEdited.set(true);
     this.groupChoice.set(valeur);
     if (valeur !== GROUPE_AUTRE) this.groupName.set('');
   }
 
-  /** Ce qui part au serveur : un groupe de la société (id), un nom libre, ou null (aucun). */
+  protected saisirNomGroupe(nom: string): void {
+    this.groupName.set(nom);
+    this.groupTouched.set(true);
+    this.groupEdited.set(true);
+  }
+
+  /**
+   * Ce que dit le champ, pour le serveur : un groupe de la société (id), un nom libre, ou null
+   * (aucun — « — Aucun groupe — », ou « Autre… » laissé sans nom, ce que la feuille dit à l'écran).
+   * Un id introuvable dans les options part avec son id (le serveur relit le nom, ou refuse en 400
+   * visible) : le transformer en null effaçait un groupe en silence.
+   */
   private groupePayload(): ReservationGroupDto | null {
     const c = this.groupChoice();
-    if (!c) return null;
+    if (!c || c === GROUPE_DEFAUT) return null;
     if (c === GROUPE_AUTRE) {
       const name = this.groupName().trim();
       return name ? { id: null, name } : null;
     }
-    const g = this.groupOptions().find((x) => x.id === c);
-    return g ? { id: g.id, name: g.name } : null;
+    const g = this.groupOptionsFeuille().find((x) => x.id === c);
+    return { id: c, name: g?.name ?? '' };
   }
 
-  /** Groupe affiché sur une carte de la file : choisi par le valideur, sinon celui du véhicule pré-retenu. */
-  protected groupeValidation(g: { cle: string; items: VehicleEventDto[] }): string {
+  /** Édition : le champ dit-il encore le groupe posé à l'ouverture ? (re-choisi après un détour compris) */
+  private groupeCommeALOuverture(): boolean {
+    const p = this.groupePose();
+    const c = this.groupChoice();
+    if (!p) return c === '' || (c === GROUPE_AUTRE && !this.groupName().trim());
+    if (p.id) return c === p.id;
+    return c === GROUPE_AUTRE && this.groupName().trim() === p.name;
+  }
+
+  /**
+   * La clé `group` du corps envoyé, ou rien (revue du 29/09). Le contrat serveur : absent = le
+   * défaut (demande : groupe du véhicule retenu ; édition : on ne touche à rien), `null` = aucun.
+   *  - Demande : envoyée seulement si un gestionnaire a touché au champ et n'a pas laissé « Groupe
+   *    du véhicule attribué ».
+   *  - Édition : envoyée seulement si le champ a été modifié APRÈS l'ouverture et ne dit plus le
+   *    groupe posé — renvoyer un groupe posé depuis supprimé ferait refuser (400) une simple
+   *    prolongation.
+   */
+  private champGroupe(): { group?: ReservationGroupDto | null } {
+    if (!this.canManage()) return {};
+    if (this.mode() === 'edit') {
+      if (!this.groupEdited() || this.groupeCommeALOuverture()) return {};
+      return { group: this.groupePayload() };
+    }
+    if (!this.groupTouched() || this.groupChoice() === GROUPE_DEFAUT) return {};
+    return { group: this.groupePayload() };
+  }
+
+  /** Groupe affiché sur une carte de la file : choisi par le valideur, sinon le défaut de la carte. */
+  protected groupeValidation(g: { cle: string }): string {
     const choisi = this.groupesValidation()[g.cle];
     if (choisi !== undefined) return choisi;
-    const chef = g.items[0];
-    if (!chef) return '';
-    const pose = (chef.metadata as { group?: ReservationGroupDto | null } | null)?.group ?? null;
-    if (pose?.id) return pose.id;
-    return this.vehicles().find((v) => v.id === chef.vehicleId)?.group?.id ?? '';
+    return this.cartesGroupe().get(g.cle)?.defaut ?? '';
+  }
+
+  /**
+   * Corps de la validation d'une carte, le MÊME pour chacun de ses véhicules : `{}` tant que le
+   * valideur n'a pas changé le choix d'origine (ou est revenu à « Groupes différents ») ; sinon le
+   * groupe choisi, imposé à tous (R10) — « — Aucun — » en `null`, un nom libre avec un id null.
+   */
+  private corpsValidation(g: { cle: string }): { group?: ReservationGroupDto | null } {
+    const carte = this.cartesGroupe().get(g.cle);
+    const choisi = this.groupesValidation()[g.cle];
+    if (choisi === undefined || !carte || choisi === carte.defaut || choisi === GROUPE_PAR_VEHICULE) return {};
+    if (!choisi) return { group: null };
+    const o = carte.options.find((x) => x.id === choisi);
+    if (choisi.startsWith(`${GROUPE_POSE_LIBRE}:`)) return o ? { group: { id: null, name: o.name } } : {};
+    return { group: { id: choisi, name: o?.name ?? '' } };
   }
 
   protected choisirGroupeValidation(cle: string, valeur: string): void {
@@ -953,9 +1368,16 @@ export class ReservationSheetComponent {
     if (!s || !e) { this.reqError.set('Renseignez le créneau.'); return null; }
     const si = new Date(s).toISOString(); const ei = new Date(e).toISOString();
     if (new Date(ei).getTime() <= new Date(si).getTime()) { this.reqError.set('La fin doit être après le début.'); return null; }
-    // Dates passées bloquées, sauf consignation d'une réservation déjà effectuée (le backend revalide).
-    if (!this.retroactive() && new Date(si).getTime() < Date.now()) {
-      this.reqError.set('Impossible de réserver dans le passé. Coche « réservation déjà effectuée » pour enregistrer une sortie déjà réalisée.');
+    // Dates passées bloquées, sauf consignation d'une réservation déjà effectuée (le backend revalide)
+    // — et sauf, en édition, un début INCHANGÉ : une réservation déjà commencée se prolonge, change de
+    // groupe ou de véhicule sans qu'on la « déplace dans le passé » (revue du 29/09, C44). Ce début
+    // n'est alors pas renvoyé, et le serveur ne le contrôle pas non plus.
+    if (!this.retroactive() && !this.debutInchange() && new Date(si).getTime() < Date.now()) {
+      this.reqError.set(
+        this.mode() === 'edit'
+          ? 'Impossible de déplacer le début dans le passé. Remets le début d\'origine, ou coche « réservation déjà effectuée » pour une sortie déjà réalisée.'
+          : 'Impossible de réserver dans le passé. Coche « réservation déjà effectuée » pour enregistrer une sortie déjà réalisée.',
+      );
       return null;
     }
     return { startAt: si, endAt: ei };
@@ -970,7 +1392,7 @@ export class ReservationSheetComponent {
     try {
       const res = await firstValueFrom(this.ai.placementSuggest({
         ...slot,
-        fleetId: this.fleetFilter.selectedFleetId() ?? undefined,
+        fleetId: this.societeBandeau() ?? undefined,
         reason: this.reason() || undefined,
         criteria: this.criteria(),
       }));
@@ -997,14 +1419,15 @@ export class ReservationSheetComponent {
     try {
       const res = await firstValueFrom(this.api.requestReservation({
         vehicleId: this.vehicleId() || undefined,
-        fleetId: this.fleetFilter.selectedFleetId() ?? undefined,
+        fleetId: this.societeBandeau() ?? undefined,
         startAt: slot.startAt,
         endAt: slot.endAt,
         reason: this.reason() || undefined,
         criteria: this.criteria(),
         retroactive: this.retroactive() || undefined,
-        // Un gestionnaire choisit le groupe ; un simple demandeur laisse le serveur poser celui du véhicule.
-        ...(this.canManage() && this.groupTouched() ? { group: this.groupePayload() } : {}),
+        // Un gestionnaire choisit le groupe ; un simple demandeur (ou le défaut laissé tel quel) laisse
+        // le serveur poser celui du véhicule. « — Aucun groupe — » part en null : aucun, explicitement.
+        ...this.champGroupe(),
       }));
       this.created.emit();
       // #5 — le backend place la réservation selon le droit de l'appelant : CONFIRMED (directement
@@ -1033,16 +1456,29 @@ export class ReservationSheetComponent {
     if (!edit) return;
     const slot = this.slot();
     if (!slot) return;
+    // Plus d'« Auto » en édition (T12) : une réservation garde toujours un véhicule, et un PATCH sans
+    // `vehicleId` le laisserait tel quel sous un toast « enregistré ». Garde défensive.
+    if (!this.vehicleId()) { this.reqError.set('Choisis un véhicule : une réservation garde toujours le sien.'); return; }
+    // N'envoyer que les bornes MODIFIÉES (revue du 29/09, C44) : un `startAt` renvoyé tel quel
+    // suffisait au serveur pour tenir le créneau pour « changé » et refuser un début déjà passé.
+    // Comparaison sur les chaînes locales à la minute, comme le sélecteur les écrit.
+    const o = this.creneauOuverture();
+    const finInchangee = !!o && this.endAt() === o.fin;
+    // Motif : envoyé dès qu'il diffère de celui de l'ouverture, VIDE compris (T13) — le serveur
+    // l'efface alors ; inchangé, la clé est omise et le serveur n'y touche pas.
+    const motif = this.reason().trim();
+    const motifChange = motif !== this.motifOuverture().trim();
     this.submitting.set(true);
     try {
       await firstValueFrom(this.api.updateReservation(edit.id, {
-        startAt: slot.startAt,
-        endAt: slot.endAt,
-        reason: this.reason() || undefined,
+        ...(this.debutInchange() ? {} : { startAt: slot.startAt }),
+        ...(finInchangee ? {} : { endAt: slot.endAt }),
+        ...(motifChange ? { reason: motif } : {}),
         criteria: this.criteria(),
         vehicleId: this.vehicleId() || undefined,
         retroactive: this.retroactive() || undefined,
-        group: this.groupePayload(),
+        // Absent tant que le groupe n'a pas été modifié : le serveur n'y touche pas (C7/C34/C48).
+        ...this.champGroupe(),
       }));
       this.toast.success('Réservation modifiée', 'Les changements sont enregistrés.');
       this.created.emit();
@@ -1080,7 +1516,7 @@ export class ReservationSheetComponent {
       // toutes les sociétés — « Demander » le portait déjà, « À valider » l'avait oublié (28/09).
       this.pending.set(
         await firstValueFrom(
-          this.api.listReservations({ status: 'REQUESTED', fleetId: this.fleetFilter.selectedFleetId() ?? undefined }),
+          this.api.listReservations({ status: 'REQUESTED', fleetId: this.societeBandeau() ?? undefined }),
         ),
       );
     } catch (err) {

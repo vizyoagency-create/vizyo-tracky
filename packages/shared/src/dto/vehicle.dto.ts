@@ -62,6 +62,12 @@ export interface VehicleCapacityRowDto {
   installationSource: VehicleInstallationSourceDto | null;
   /** Champs où le planning a une valeur NON vide ≠ de celle du véhicule (proposables à la synchro). */
   divergentFields: VehicleSyncableField[];
+  /** Hors service déclaré (accident, boîtier débranché, immobilisé) — revue du 29/09, vue Parc. */
+  outOfServiceReason?: string | null;
+  /** Dérivés au read-time par le serveur (boîtier muet). */
+  dormant?: boolean;
+  lastSeenAt?: string | null;
+  silenceLabel?: string | null;
 }
 
 /** Corps de la synchro manuelle : champs à recopier du planning vers le véhicule (écrasement assumé). */

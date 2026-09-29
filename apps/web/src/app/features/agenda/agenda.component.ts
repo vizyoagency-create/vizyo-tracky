@@ -8,12 +8,14 @@ import {
   inject,
   OnInit,
   signal,
+  untracked,
 } from '@angular/core';
 import { PlanUpsellComponent } from '../../shared/ui/plan-upsell/plan-upsell.component';
 import { MissionsPanelComponent } from './missions-panel.component';
 import { ScrollLockService } from '../../core/services/scroll-lock.service';
 import { DatePipe, formatDate } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { ActivatedRoute } from '@angular/router';
 import { apiErrorMessage } from '../../core/error/api-error';
 import {
   LucideAngularModule, CalendarDays, ChevronDown, ChevronLeft, ChevronRight, Check,
@@ -39,7 +41,7 @@ import {
   isImmobilizingEvent,
   isVehicleDormant,
 } from '@vizyo/tracky-shared';
-import { firstValueFrom } from 'rxjs';
+import { firstValueFrom, type Observable } from 'rxjs';
 import { AgendaApiService } from '../../core/services/agenda.service';
 import { PermissionsService } from '../../core/services/permissions.service';
 import { FleetFilterService } from '../../core/services/fleet-filter.service';
@@ -59,14 +61,21 @@ import { AuthService } from '../../core/services/auth.service';
 import { AgendaAgentApiService } from '../../core/services/agenda-agent.service';
 import { AiStatusService } from '../../core/services/ai-status.service';
 import { VehicleLinkDirective } from '../../shared/directives/vehicle-link.directive';
+import { AgendaSyncService } from './agenda-sync.service';
 import {
   addMonths,
+  dureeEnJours,
   estUneEcheance,
   eventColor,
   eventStatusLabel,
   eventTypeLabel,
   eventUrgency,
+  fenetreAReorganiser,
+  fenetreImmobilisation,
+  fenetresAjoutees,
   localIso,
+  rangDuJour,
+  repliDefinitif,
   severityLabel,
   startOfDay,
   startOfMonth,
@@ -77,6 +86,34 @@ import {
 interface GroupOption {
   id: string;
   name: string;
+}
+
+/** Les vues de la page (refonte UX du 28/09). */
+type VueAgenda = 'calendrier' | 'missions' | 'parc' | 'ia';
+const VUES: readonly VueAgenda[] = ['calendrier', 'missions', 'parc', 'ia'];
+
+type DecisionResa = 'laisser' | 'annuler' | 'reaffecter';
+
+/**
+ * Ce que « Créer » emporte des réservations de la période, FIGÉ au clic (revue du 29/09, C16).
+ * `appliquerDecisions` ne relit ni le formulaire ni les signaux : un autre formulaire peut s'ouvrir
+ * pendant les réaffectations (plusieurs secondes pour dix réservations), et il ne doit ni leur
+ * prêter sa fenêtre, ni perdre sa propre liste quand elles se terminent.
+ *
+ * `fenetre` est la fenêtre d'immobilisation EFFECTIVE, toujours bornée (contre-revue, S1) : celle
+ * sur laquelle le formulaire a LU les réservations — la journée pour une maintenance sans fin,
+ * 30 jours pour un incident —, jamais la fin vide du formulaire.
+ */
+interface LotDecisions {
+  vehicleId: string;
+  fenetre: { startAt: string; endAt: string };
+  liste: VehicleEventDto[];
+  decisions: [string, Exclude<DecisionResa, 'laisser'>][];
+}
+
+/** Statuts d'une réservation qui occupe encore son véhicule. */
+function reservationVivante(r: VehicleEventDto): boolean {
+  return r.status === 'CONFIRMED' || r.status === 'REQUESTED' || r.status === 'IN_PROGRESS';
 }
 
 /** Id du groupe qui UTILISE le véhicule d'une réservation (`metadata.group.id`), sinon null. */
@@ -108,8 +145,10 @@ function groupeReservationId(ev: VehicleEventDto): string | null {
             <p class="text-sm text-fg-tertiary mt-0.5">
               @if (canSeeAgenda()) {
                 Réservations, entretiens, incidents et missions de votre flotte
-              } @else {
+              } @else if (vueEffective() === 'missions') {
                 Les missions de votre flotte, et leurs tournées
+              } @else {
+                Le parc de votre flotte et l'assistant de réservation
               }
             </p>
           </div>
@@ -196,6 +235,21 @@ function groupeReservationId(ev: VehicleEventDto): string | null {
             </div>
           </div>
         </div>
+        <!-- Revue du 29/09 (C20) : les compteurs suivent le groupe ou le véhicule choisis dans le
+             Calendrier. Hors de cette vue, la barre de filtres n'est plus là pour le dire : sans cette
+             puce, « 0 en retard » parlait d'un seul véhicule au-dessus d'un écran qui montre tout le
+             parc. La croix retire le filtre ; le garder permet de le retrouver en revenant au Calendrier. -->
+        @if (vueEffective() !== 'calendrier' && (selectedVehicleId() || selectedGroupId())) {
+          <div class="ag-perimetre-ligne">
+            <button type="button" class="ag-perimetre" (click)="effacerPerimetre()"
+                    [attr.aria-label]="'Retirer le filtre ' + perimetreLabel() + ' des compteurs'"
+                    title="Les compteurs ci-dessus ne portent que sur ce périmètre — cliquer pour revenir à toute la flotte">
+              <lucide-icon [img]="LayersIcon" [size]="12"></lucide-icon>
+              <span>Compteurs filtrés : <strong>{{ perimetreLabel() }}</strong></span>
+              <lucide-icon [img]="XIcon" [size]="12"></lucide-icon>
+            </button>
+          </div>
+        }
         }
       </header>
 
@@ -246,22 +300,32 @@ function groupeReservationId(ev: VehicleEventDto): string | null {
            Calendrier · Missions · Parc · Assistant IA. « Mission » n'est plus un filtre de type :
            il remplaçait déjà la grille, c'était une vue qui ne disait pas son nom. Parc et
            Assistant IA sont nouvelles : le paramétrage des véhicules et les gestes IA, qui
-           vivaient dans des feuilles et des boutons dispersés, ont chacun leur écran. -->
-      @if (canSeeAgenda()) {
+           vivaient dans des feuilles et des boutons dispersés, ont chacun leur écran.
+           Revue du 29/09 (C18/C49/D5) : chaque onglet sous SA permission, plus toute la barre sous
+           agenda_view — un délégué qui n'a que reservations_view atteignait avant la refonte les
+           propositions de l'agent et l'analyse du parc ; la barre entière derrière agenda_view les
+           lui avait fermées. La vue AFFICHÉE est vueEffective(), jamais vue() brut : une vue dont
+           l'onglet disparaît (permission, IA coupée) n'est plus montrée sans onglet actif. La barre
+           n'apparaît que s'il y a un choix à faire (au moins deux vues permises). -->
+      @if (vuesPermises().length > 1) {
       <nav class="ag-vues" aria-label="Vues de l'agenda">
-        <button type="button" class="ag-vue" [class.ag-vue--on]="vue() === 'calendrier'" (click)="vue.set('calendrier')">
-          <lucide-icon [img]="CalendarDaysIcon" [size]="14"></lucide-icon> Calendrier
-        </button>
-        <button type="button" class="ag-vue" [class.ag-vue--on]="vue() === 'missions'" (click)="vue.set('missions')">
-          <lucide-icon [img]="RouteIcon" [size]="14"></lucide-icon> Missions
-        </button>
+        @if (canSeeAgenda()) {
+          <button type="button" class="ag-vue" [class.ag-vue--on]="vueEffective() === 'calendrier'" (click)="vue.set('calendrier')">
+            <lucide-icon [img]="CalendarDaysIcon" [size]="14"></lucide-icon> Calendrier
+          </button>
+        }
+        @if (vuePermise('missions')) {
+          <button type="button" class="ag-vue" [class.ag-vue--on]="vueEffective() === 'missions'" (click)="vue.set('missions')">
+            <lucide-icon [img]="RouteIcon" [size]="14"></lucide-icon> Missions
+          </button>
+        }
         @if (canSeeInsights()) {
-          <button type="button" class="ag-vue" [class.ag-vue--on]="vue() === 'parc'" (click)="vue.set('parc')">
+          <button type="button" class="ag-vue" [class.ag-vue--on]="vueEffective() === 'parc'" (click)="vue.set('parc')">
             <lucide-icon [img]="TruckIcon" [size]="14"></lucide-icon> Parc
           </button>
         }
         @if (montrerVueIa()) {
-          <button type="button" class="ag-vue" [class.ag-vue--on]="vue() === 'ia'" (click)="vue.set('ia')">
+          <button type="button" class="ag-vue" [class.ag-vue--on]="vueEffective() === 'ia'" (click)="vue.set('ia')">
             <lucide-icon [img]="SparklesIcon" [size]="14"></lucide-icon> <span class="ag-vue-long">Assistant </span>IA
             @if (agentProposalCount() > 0) { <span class="ag-badge ag-badge--violet">{{ agentProposalCount() }}</span> }
           </button>
@@ -271,8 +335,9 @@ function groupeReservationId(ev: VehicleEventDto): string | null {
 
       <!-- Barre de filtres — groupe, véhicule, type et mois ne pilotent QUE la grille du
            calendrier. Sans la permission agenda_view il n'y a pas de grille : le tableau
-           des missions porte ses propres filtres, et cette barre ne ferait rien. -->
-      @if (canSeeAgenda() && vue() === 'calendrier') {
+           des missions porte ses propres filtres, et cette barre ne ferait rien.
+           vueEffective() === 'calendrier' implique agenda_view. -->
+      @if (vueEffective() === 'calendrier') {
       <div class="ag-filters">
         @if (groupOptions().length > 0) {
           <div class="ag-dd-wrapper">
@@ -366,19 +431,20 @@ function groupeReservationId(ev: VehicleEventDto): string | null {
            compteurs, à la place de la grille du mois. Les missions restent visibles
            dans la grille sous « Tous » — c'est l'exigence d'A2 § 3.1 : le gestionnaire
            doit les voir sur le MÊME calendrier que la maintenance et les réservations,
-           sinon il double-réserve. -->
-      @if (vue() === 'missions' || !canSeeAgenda()) {
+           sinon il double-réserve.
+           Revue du 29/09 (C26) : les vues Parc et Assistant IA ne demandent plus de rechargement
+           par une sortie (perdue si la vue est détruite avant la fin d'un « Tout réserver ») ;
+           elles le disent à AgendaSyncService, que la page observe. -->
+      @if (vueEffective() === 'missions') {
         <app-missions-panel />
-      } @else if (vue() === 'parc') {
-        <app-agenda-parc-view [vehicles]="scopedVehicles()" (changed)="rafraichirVehicules()" />
-      } @else if (vue() === 'ia') {
+      } @else if (vueEffective() === 'parc') {
+        <app-agenda-parc-view [vehicles]="scopedVehicles()" />
+      } @else if (vueEffective() === 'ia') {
         <app-agenda-ia-view
           [proposals]="agentProposals()"
           (reserver)="openReserve()"
           (reglages)="openAgentSettings()"
-          (parc)="vue.set('parc')"
-          (changed)="onAgentProposalsChanged()"
-          (capaciteAppliquee)="rafraichirVehicules()" />
+          (parc)="vue.set('parc')" />
       } @else {
 
       <!-- Calendrier -->
@@ -417,8 +483,8 @@ function groupeReservationId(ev: VehicleEventDto): string | null {
 
       <!-- À venir / en retard — dérivé des événements de l'agenda. Sans le droit de les
            lire, « Aucune échéance à venir » n'est pas une information, c'est une
-           affirmation fausse. -->
-      @if (canSeeAgenda() && vue() === 'calendrier') {
+           affirmation fausse. (vueEffective() === 'calendrier' implique agenda_view.) -->
+      @if (vueEffective() === 'calendrier') {
       <section class="flex flex-col gap-2">
         <h2 class="text-sm font-display font-bold text-fg-primary flex items-center gap-2">
           <lucide-icon [img]="ListChecksIcon" [size]="16" class="text-fg-tertiary"></lucide-icon>
@@ -432,7 +498,8 @@ function groupeReservationId(ev: VehicleEventDto): string | null {
           </div>
         } @else {
           <div class="flex flex-col gap-2">
-            @for (ev of upcomingEvents(); track ev.id) {
+            <!-- T20 : 25 lignes, puis « Voir les N autres » — plus de borne muette. -->
+            @for (ev of upcomingEventsVisibles(); track ev.id) {
               <button type="button" (click)="onEventClick(ev)" class="ag-up-row"
                       [style.--u]="urgencyColor(eventUrgency(ev))">
                 <span class="ag-up-bar"></span>
@@ -457,6 +524,11 @@ function groupeReservationId(ev: VehicleEventDto): string | null {
               </button>
             }
           </div>
+          @if (upcomingEvents().length > ECHEANCES_VISIBLES) {
+            <button type="button" class="ag-voir-plus" (click)="echeancesDepliees.set(!echeancesDepliees())">
+              {{ echeancesDepliees() ? 'Replier' : 'Voir les ' + (upcomingEvents().length - ECHEANCES_VISIBLES) + ' autres' }}
+            </button>
+          }
         }
       </section>
       }
@@ -592,7 +664,10 @@ function groupeReservationId(ev: VehicleEventDto): string | null {
                         <lucide-icon [img]="Trash2Icon" [size]="12"></lucide-icon>
                       </button>
                     </div>
-                  } @else if (ev.type === 'RESERVATION' && canManage() && ev.status !== 'DONE' && ev.status !== 'CANCELLED') {
+                  } @else if (ev.type === 'RESERVATION' && canValidate() && ev.status !== 'DONE' && ev.status !== 'CANCELLED') {
+                    <!-- Troisième passe (T18) : une RÉSERVATION s'édite et s'annule sous reservations_manage,
+                         ce qu'exigent PATCH et /cancel (et la grille pour la glisser) — pas sous agenda_manage,
+                         qui montrait les boutons à qui recevait un 403, et « gérée par un gestionnaire » au gestionnaire. -->
                     <div class="ag-day-card-actions">
                       <button type="button" (click)="openEditReservation(ev)" [disabled]="busyId() === ev.id"
                               class="ag-act ag-act--start">
@@ -676,6 +751,9 @@ function groupeReservationId(ev: VehicleEventDto): string | null {
                   <span class="ag-sec-badge ag-sec-badge--fantome">{{ dayProposals().length }}</span>
                 </div>
                 <p class="ag-sec-sub">Déduit des habitudes du véhicule. <strong>Aucun véhicule n'est bloqué</strong> tant que vous n'avez pas validé.</p>
+                @if (canValidate() && dayProposalsEnLot()) {
+                  <p class="ag-sec-sub">Un traitement en lot de l’Assistant IA est en cours : les propositions de ce véhicule se libèrent à la fin.</p>
+                }
                 <ul class="ag-fantome-liste">
                   @for (p of dayProposalsVisibles(); track p.id) {
                     <li class="ag-fantome-ligne" [title]="p.reasoning">
@@ -683,11 +761,16 @@ function groupeReservationId(ev: VehicleEventDto): string | null {
                       <span class="ag-fantome-time">{{ hm(p.startAt) }} → {{ hm(p.endAt) }}</span>
                       @if (p.destinationLabel) { <span class="ag-fantome-dest">{{ p.destinationLabel }}</span> }
                       @if (canValidate()) {
+                        <!-- Troisième passe (T7/T19) : grisés pendant un « Tout réserver / Tout écarter » de CE
+                             véhicule (AgendaSyncService.lotsEnCours), comme dans l'Assistant IA — le lot survit à
+                             sa vue, et la liste n'est relue qu'à sa fin. -->
                         <span class="ag-fantome-actions">
-                          <button type="button" (click)="applyProposal(p)" [disabled]="busyId() === p.id" class="ag-act ag-act--done" title="Réserver ce créneau">
+                          <button type="button" (click)="applyProposal(p)" [disabled]="busyId() === p.id || vehiculesEnLot().has(p.vehicleId)" class="ag-act ag-act--done"
+                                  [attr.title]="vehiculesEnLot().has(p.vehicleId) ? 'Un traitement en lot est en cours sur ce véhicule (Assistant IA)' : 'Réserver ce créneau'">
                             <lucide-icon [img]="CheckIcon" [size]="12"></lucide-icon> Réserver
                           </button>
-                          <button type="button" (click)="dismissProposal(p)" [disabled]="busyId() === p.id" class="ag-act ag-act--del" title="Écarter" aria-label="Écarter">
+                          <button type="button" (click)="dismissProposal(p)" [disabled]="busyId() === p.id || vehiculesEnLot().has(p.vehicleId)" class="ag-act ag-act--del"
+                                  [attr.title]="vehiculesEnLot().has(p.vehicleId) ? 'Un traitement en lot est en cours sur ce véhicule (Assistant IA)' : 'Écarter'" aria-label="Écarter">
                             <lucide-icon [img]="XIcon" [size]="12"></lucide-icon>
                           </button>
                         </span>
@@ -717,11 +800,11 @@ function groupeReservationId(ev: VehicleEventDto): string | null {
 
     <!-- ─── Modal de création d'événement ─── -->
     @if (createOpen()) {
-      <div class="ag-modal-root" (click)="createOpen.set(false)">
+      <div class="ag-modal-root" (click)="fermerFormulaire()">
         <div class="ag-modal" (click)="$event.stopPropagation()" role="dialog" [attr.aria-label]="editingEvent() ? 'Modifier l\\'événement' : 'Nouvel événement'">
           <header class="ag-sheet-head">
             <h3 class="ag-sheet-title">{{ editingEvent() ? 'Modifier l\\'événement' : 'Nouvel événement' }}</h3>
-            <button type="button" (click)="createOpen.set(false)" aria-label="Fermer" class="ag-icon-btn">
+            <button type="button" (click)="fermerFormulaire()" aria-label="Fermer" class="ag-icon-btn">
               <lucide-icon [img]="XIcon" [size]="18"></lucide-icon>
             </button>
           </header>
@@ -873,40 +956,75 @@ function groupeReservationId(ev: VehicleEventDto): string | null {
                 réservations sans le dire, c'est un véhicule promis deux fois. Ici : la liste, et
                 une décision par ligne — laisser, annuler, ou réaffecter (auto : premier véhicule
                 libre et conforme). Appliquées juste après la création, tracées dans l'événement.
+
+                Revue du 29/09 (C17) : cinq états, jamais confondus. « Rien à reprendre » ne se dit
+                qu'après une lecture RÉUSSIE et vide — un échec (réseau, 403) le disait aussi, et le
+                véhicule était immobilisé sur des réservations qu'on venait d'affirmer inexistantes.
+                Sans le droit de LIRE les réservations, on ne les lit pas (le serveur refuserait) et
+                on le dit ; sans le droit de les GÉRER, la liste se lit sans boutons, rien n'est repris.
               -->
               @if (form.blocksVehicle && form.vehicleId && !editingEvent()) {
                 <div class="ag-resas">
                   <div class="ag-resas-head">
                     <span class="ag-resas-t"><lucide-icon [img]="CalendarCheckIcon" [size]="13"></lucide-icon> Réservations pendant cette période</span>
-                    @if (resasPeriodeLoading()) { <span class="ag-resas-n">…</span> } @else { <span class="ag-resas-n">{{ resasPeriode().length }}</span> }
+                    @if (!canOptimize() || resasPeriodeErreur()) {
+                      <span class="ag-resas-n ag-resas-n--alerte">?</span>
+                    } @else if (resasPeriodeLoading()) {
+                      <span class="ag-resas-n">…</span>
+                    } @else {
+                      <span class="ag-resas-n">{{ resasPeriode().length }}</span>
+                    }
                   </div>
-                  @if (resasPeriode().length === 0 && !resasPeriodeLoading()) {
+                  @if (!canOptimize()) {
+                    <p class="ag-field-note ag-resas-alerte">Les réservations de ce véhicule ne sont pas vérifiées : il faut le droit « Voir les réservations ». Vérifiez-les avant d'immobiliser le véhicule.</p>
+                  } @else if (resasPeriodeLoading()) {
+                    <p class="ag-field-note">Lecture des réservations de la période…</p>
+                  } @else if (resasPeriodeErreur()) {
+                    <div class="ag-resas-erreur" role="alert">
+                      <p class="ag-field-note ag-resas-alerte">Impossible de lire les réservations de cette période — vérifiez-les avant d'immobiliser le véhicule.</p>
+                      <p class="ag-field-note">{{ resasPeriodeErreur() }}</p>
+                      <button type="button" class="ag-act" (click)="onPeriodeChange()">Réessayer</button>
+                    </div>
+                  } @else if (resasPeriode().length === 0) {
                     <p class="ag-field-note">Aucune réservation sur ce véhicule pendant la période : rien à reprendre.</p>
                   } @else {
-                    <p class="ag-field-note">Le véhicule sera indisponible : que faire de chacune ?</p>
+                    @if (canValidate()) {
+                      <p class="ag-field-note">Le véhicule sera indisponible : que faire de chacune ?</p>
+                    } @else {
+                      <p class="ag-field-note ag-resas-alerte">Le véhicule sera indisponible pendant ces réservations. Vous ne pouvez pas les reprendre : un gestionnaire des réservations devra les réaffecter ou les annuler.</p>
+                    }
                     @for (r of resasPeriode(); track r.id) {
                       <div class="ag-resa">
                         <div class="ag-resa-main">
                           <span class="ag-resa-title">{{ r.title }}</span>
                           <span class="ag-resa-when">{{ plageHoraire(r) }}@if (dureeEnJours(r) > 1) { · {{ dureeEnJours(r) }} j }@if (r.status === 'REQUESTED') { · demande en attente }@if (groupeReservation(r); as g) { · {{ g }} }</span>
                         </div>
-                        <div class="ag-seg ag-seg--mini">
-                          <button type="button" class="ag-seg-btn" [class.ag-seg-btn--active]="decisionDe(r.id) === 'laisser'" (click)="decider(r.id, 'laisser')" title="Ne rien changer : la réservation reste sur ce véhicule">Laisser</button>
-                          <button type="button" class="ag-seg-btn" [class.ag-seg-btn--active]="decisionDe(r.id) === 'reaffecter'" (click)="decider(r.id, 'reaffecter')" title="Passer sur le premier véhicule libre et conforme">Réaffecter</button>
-                          <button type="button" class="ag-seg-btn ag-seg-btn--danger" [class.ag-seg-btn--active]="decisionDe(r.id) === 'annuler'" (click)="decider(r.id, 'annuler')" title="Annuler la réservation">Annuler</button>
-                        </div>
+                        @if (canValidate()) {
+                          <div class="ag-seg ag-seg--mini">
+                            <button type="button" class="ag-seg-btn" [class.ag-seg-btn--active]="decisionDe(r.id) === 'laisser'" (click)="decider(r.id, 'laisser')" title="Ne rien changer : la réservation reste sur ce véhicule">Laisser</button>
+                            <button type="button" class="ag-seg-btn" [class.ag-seg-btn--active]="decisionDe(r.id) === 'reaffecter'" (click)="decider(r.id, 'reaffecter')" title="Passer sur le premier véhicule libre et conforme. Commencée avant l'immobilisation, elle est coupée : seule la suite change de véhicule.">Réaffecter</button>
+                            <button type="button" class="ag-seg-btn ag-seg-btn--danger" [class.ag-seg-btn--active]="decisionDe(r.id) === 'annuler'" (click)="decider(r.id, 'annuler')" title="Annuler la réservation">Annuler</button>
+                          </div>
+                        }
                       </div>
                     }
                   }
                 </div>
               }
+              <!-- Contre-revue du 29/09 (R17) : en modification, le bloc ci-dessus ne s'affiche pas ; élargir
+                   les dates sans pouvoir lire les réservations doit se dire AVANT d'enregistrer, comme à la création. -->
+              @if (form.blocksVehicle && form.vehicleId && editingEvent() && !canOptimize()) {
+                <p class="ag-field-note ag-resas-alerte">Les réservations de ce véhicule ne sont pas vérifiées : il faut le droit « Voir les réservations ». Si vous élargissez les dates, faites vérifier celles des jours ajoutés.</p>
+              }
             </div>
           </div>
           <footer class="ag-modal-foot">
-            <button type="button" (click)="createOpen.set(false)" class="ag-btn-ghost">Annuler</button>
-            <button type="button" (click)="submitCreate()" [disabled]="!canSubmitCreate() || saving()"
+            <button type="button" (click)="fermerFormulaire()" class="ag-btn-ghost">Annuler</button>
+            <!-- Revue du 29/09 (C16) : grisé tant que la liste de la période se lit — un clic pendant
+                 la lecture reprenait la liste de l'ANCIEN véhicule ou de l'ancienne période. -->
+            <button type="button" (click)="submitCreate()" [disabled]="!canSubmitCreate() || saving() || attenteResas()"
                     class="ag-btn-primary">
-              {{ saving() ? 'Enregistrement…' : (editingEvent() ? 'Enregistrer' : (nbDecisions() > 0 ? 'Créer et reprendre ' + nbDecisions() + ' réservation(s)' : 'Créer l\\'événement')) }}
+              {{ saving() ? 'Enregistrement…' : (editingEvent() ? 'Enregistrer' : (attenteResas() ? 'Lecture des réservations…' : (nbDecisionsEffectives() > 0 ? 'Créer et reprendre ' + nbDecisionsEffectives() + ' réservation(s)' : 'Créer l\\'événement'))) }}
             </button>
           </footer>
         </div>
@@ -1083,6 +1201,17 @@ function groupeReservationId(ev: VehicleEventDto): string | null {
       text-transform: uppercase; letter-spacing: .04em; margin-top: 4px;
       white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
     }
+    /* Revue du 29/09 (C20) : hors Calendrier, la puce dit que les compteurs sont filtrés — et la croix retire le filtre. */
+    .ag-perimetre-ligne { display: flex; justify-content: flex-start; }
+    .ag-perimetre {
+      display: inline-flex; align-items: center; gap: 6px; max-width: 100%;
+      padding: 5px 10px; border-radius: 999px; font-size: 12px; font-weight: 600;
+      background: color-mix(in srgb, var(--texte-info) 12%, transparent); color: var(--texte-info);
+      border: 1px solid color-mix(in srgb, var(--texte-info) 30%, transparent); cursor: pointer;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .ag-perimetre:hover { background: color-mix(in srgb, var(--texte-info) 20%, transparent); }
+    .ag-perimetre strong { font-weight: 800; }
     @media (max-width: 480px) {
       .ag-summary { gap: 6px; }
       .ag-stat { flex-direction: column; align-items: flex-start; gap: 6px; padding: 10px; }
@@ -1358,6 +1487,10 @@ function groupeReservationId(ev: VehicleEventDto): string | null {
     .ag-resa-main { display: flex; flex-direction: column; gap: 2px; }
     .ag-resa-title { font-size: 12.5px; font-weight: 700; color: var(--fg-primary); }
     .ag-resa-when { font-size: 11px; color: var(--fg-tertiary); }
+    /* Revue du 29/09 (C17) : lecture impossible ou non autorisée — ni « 0 », ni « rien à reprendre ». */
+    .ag-resas-n--alerte { background: color-mix(in srgb, var(--warning) 16%, transparent); color: var(--texte-attente); }
+    .ag-resas-alerte { color: var(--texte-attente); font-weight: 600; }
+    .ag-resas-erreur { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
     .ag-modal-foot {
       display: flex; gap: 8px; justify-content: flex-end;
       padding: 12px 16px; padding-bottom: max(12px, env(safe-area-inset-bottom));
@@ -1490,6 +1623,35 @@ export class AgendaComponent implements OnInit {
   private readonly agentApi = inject(AgendaAgentApiService);
   private readonly aiStatus = inject(AiStatusService);
   protected readonly aiJob = inject(AiJobService);
+  private readonly route = inject(ActivatedRoute);
+  private readonly sync = inject(AgendaSyncService);
+
+  /**
+   * ── REVUE DU 29/09 (C26) — LES VUES PARC ET IA DISENT « C'EST CHANGÉ » AU SERVICE, PAS À LA PAGE ──
+   *
+   * Elles sont détruites dès qu'on change de vue, et leurs traitements longs (« Tout réserver » sur
+   * vingt propositions, application des fiches) continuent : une sortie émise après la destruction
+   * n'arrivait plus ici — grille, fantômes et badge restaient périmés, et « Réserver » sur un fantôme
+   * répondait « proposition déjà traitée ». Le service est racine : il survit, la page l'observe.
+   * La valeur présente au premier passage est ignorée (le service a pu compter pendant une visite
+   * précédente de la page) ; seuls les changements rechargent.
+   */
+  private syncPropositionsVu: number | null = null;
+  private syncVehiculesVu: number | null = null;
+  private readonly syncPropositionsEffect = effect(() => {
+    const v = this.sync.propositions();
+    const avant = this.syncPropositionsVu;
+    this.syncPropositionsVu = v;
+    if (avant === null || avant === v) return;
+    queueMicrotask(() => this.onAgentProposalsChanged());
+  });
+  private readonly syncVehiculesEffect = effect(() => {
+    const v = this.sync.vehicules();
+    const avant = this.syncVehiculesVu;
+    this.syncVehiculesVu = v;
+    if (avant === null || avant === v) return;
+    queueMicrotask(() => void this.rafraichirVehicules());
+  });
 
   // Verrou de scroll pour les overlays custom (modal création/incident + panneau
   // du jour) : fige la page derrière tant qu'un des deux est ouvert.
@@ -1505,20 +1667,43 @@ export class AgendaComponent implements OnInit {
   // Les écritures de signaux sont différées hors de l'exécution synchrone de l'effect.
   private readonly fleetFilterEffect = effect(() => {
     this.fleetFilter.selectedFleetId(); // dépendance
-    if (!this.initialised) return; // ne pas re-déclencher pendant le premier chargement
-    queueMicrotask(() => {
-      this.selectedGroupId.set('');
-      this.selectedVehicleId.set('');
-      void this.loadEvents();
-      void this.loadSummary();
-      void this.loadActivity();
-      void this.loadForecast();
-      void this.loadAgentProposals();
-      void this.loadPendingRequests();
-    });
+    // Ne pas re-déclencher pendant le premier chargement : `ngOnInit` rattrape lui-même un
+    // changement de société survenu pendant ce temps (T15).
+    if (!this.initialised) return;
+    queueMicrotask(() => this.rechargerPourSociete());
   });
   /** Passe à true après le premier chargement (évite un double-fetch au démarrage). */
   private initialised = false;
+
+  /** Nouvelle société : filtres groupe/véhicule remis à zéro (ils appartenaient à l'ancienne), tout relu. */
+  private rechargerPourSociete(): void {
+    this.selectedGroupId.set('');
+    this.selectedVehicleId.set('');
+    void this.loadEvents();
+    void this.loadSummary();
+    void this.loadActivity();
+    void this.loadForecast();
+    void this.loadAgentProposals();
+    void this.loadPendingRequests();
+  }
+
+  /**
+   * ── TROISIÈME PASSE (T15) — UNE RÉPONSE PÉRIMÉE NE S'AFFICHE PAS ─────────────────────────────
+   *
+   * `loadEvents`, `loadSummary`, `loadActivity`, `loadForecast` (et le badge des demandes) posaient
+   * leur réponse sans rien vérifier ; seul `loadAgentProposals` avait reçu une garde. Deux clics sur
+   * « Mois suivant » : si la réponse d'octobre revenait après celle de novembre, la grille de
+   * novembre montrait les évènements d'octobre — vide à partir du 9/11, « tous disponibles » dans le
+   * panneau, sans une erreur. Un super-admin passé de A à B puis C voyait sous le bandeau C la
+   * grille, les compteurs et « À clore » d'une autre société (boutons Terminé compris).
+   *
+   * Un numéro de lecture PAR CHARGEUR : chaque appel prend le suivant, et une réponse (succès,
+   * échec, `loading` compris) dont le numéro n'est plus le dernier est ignorée. Un compteur couvre
+   * toutes les causes (mois, société, groupe, véhicule) sans comparer les paramètres un à un. Le
+   * chemin « sans le droit » prend aussi un numéro : une réponse encore en vol ne ré-écrit pas
+   * derrière lui ce qu'il vient de vider.
+   */
+  private readonly lecture = { events: 0, summary: 0, activity: 0, forecast: 0, pending: 0 };
 
   // ─── Icônes ───────────────────────────────────────────────────────────────
   protected readonly CalendarDaysIcon = CalendarDays;
@@ -1695,7 +1880,9 @@ export class AgendaComponent implements OnInit {
   /** Réservations du véhicule prises sur la période du formulaire d'indisponibilité, et la décision par ligne. */
   protected readonly resasPeriode = signal<VehicleEventDto[]>([]);
   protected readonly resasPeriodeLoading = signal(false);
-  protected readonly resasDecisions = signal<Record<string, 'laisser' | 'annuler' | 'reaffecter'>>({});
+  /** Revue du 29/09 (C17) : la lecture a échoué — ce n'est PAS « aucune réservation ». Null sinon. */
+  protected readonly resasPeriodeErreur = signal<string | null>(null);
+  protected readonly resasDecisions = signal<Record<string, DecisionResa>>({});
   protected readonly nbDecisions = computed(() => Object.values(this.resasDecisions()).filter((d) => d !== 'laisser').length);
   /**
    * Propositions de l'agent EN ATTENTE — la liste, plus seulement son compte (lot 3a, 23/09).
@@ -1707,14 +1894,95 @@ export class AgendaComponent implements OnInit {
    */
   protected readonly agentProposals = signal<AgendaAgentProposalDto[]>([]);
   protected readonly agentProposalCount = computed(() => this.agentProposals().length);
-  /** Vue affichée sous l'en-tête (refonte UX du 28/09) — Calendrier par défaut. */
-  protected readonly vue = signal<'calendrier' | 'missions' | 'parc' | 'ia'>('calendrier');
+  /**
+   * Vue DEMANDÉE (refonte UX du 28/09) — Calendrier par défaut. Le gabarit ne la lit jamais
+   * directement : il affiche `vueEffective()`, la vue demandée si elle est permise.
+   */
+  protected readonly vue = signal<VueAgenda>('calendrier');
   /** Menu « ⋯ » de l'en-tête (QR, réorganiser, paramètres). */
   protected readonly plusOpen = signal(false);
   /** La vue Assistant IA n'a de sens qu'avec une fonction IA ouverte, ou des propositions à traiter. */
   protected readonly montrerVueIa = computed(
     () => this.canOptimize() && (this.aiCapacity() || this.aiAgendaAgent() || this.aiStatus.can('placement') || this.agentProposalCount() > 0),
   );
+  /** Le tableau des missions : sa permission, ou celle du calendrier (l'onglet y vivait déjà). */
+  protected readonly canSeeMissions = computed(() => this.perms.can('missions_view'));
+
+  /**
+   * ── REVUE DU 29/09 (C18/C49/D5) — CHAQUE VUE SOUS SA PERMISSION ─────────────────────────────
+   *
+   * Toute la barre de vues vivait sous `agenda_view`, et la page forçait les Missions sans lui :
+   * un délégué à qui l'on a ouvert reservations_view/manage (la route le laisse entrer exprès) ne
+   * pouvait plus ni traiter les propositions de l'agent ni analyser le parc — ce qu'il faisait
+   * avant la refonte depuis les boutons de l'en-tête. Et une vue dont l'onglet disparaissait (IA
+   * coupée, dernière proposition traitée) restait affichée sans onglet actif.
+   *
+   * `vueEffective` est un `computed`, pas un `effect` qui réécrirait `vue` : le statut IA et les
+   * propositions se chargent en asynchrone, et un effet aurait renvoyé pour de bon au Calendrier un
+   * « Voir » (ou un ?vue=ia) arrivé avant la fin du chargement. Dérivée, la vue se rétablit seule
+   * PENDANT un chargement — et seulement pendant : voir `vueDefinitiveEffect` (contre-revue, S2).
+   */
+  protected vuePermise(v: VueAgenda): boolean {
+    switch (v) {
+      case 'calendrier': return this.canSeeAgenda();
+      case 'missions': return this.canSeeMissions() || this.canSeeAgenda();
+      case 'parc': return this.canSeeInsights();
+      case 'ia': return this.montrerVueIa();
+    }
+  }
+  protected readonly vuesPermises = computed(() => VUES.filter((v) => this.vuePermise(v)));
+  protected readonly vueEffective = computed<VueAgenda>(() => {
+    const v = this.vue();
+    if (this.vuePermise(v)) return v;
+    // Repli : la première vue permise ; les Missions en dernier recours, comme avant la revue
+    // (le panneau dit lui-même ce que le compte peut y faire).
+    return this.vuesPermises()[0] ?? 'missions';
+  });
+
+  /**
+   * ── CONTRE-REVUE DU 29/09 (S2/R21) — UN REPLI TRANSITOIRE N'EST PAS UN REPLI DÉFINITIF ────────
+   *
+   * Le repli de `vueEffective` restait « en attente » pour toujours : `vue()` gardait 'ia' pendant que
+   * l'écran montrait le Calendrier, onglet Calendrier allumé. Un super-admin passé de A (IA) à B
+   * (sans IA) travaillait sur le Calendrier, revenait sur A… et la page rebasculait seule sur
+   * l'Assistant IA, sans un clic. Désormais, quand le repli n'est plus une attente, la vue demandée
+   * DEVIENT la vue affichée :
+   *  - Assistant IA : dès que le statut IA ET les propositions affichés sont ceux de la société du
+   *    bandeau (`etatIaAJour`). Avant, c'est un chargement : un ?vue=ia au démarrage, ou un « Voir »
+   *    qui vient de ramener le bandeau sur une autre société, attendent leur statut.
+   *  - Les autres vues ne dépendent que des droits, qui peuvent se relire au démarrage : on ne fige
+   *    que si la vue demandée a été MONTRÉE puis a perdu son onglet (droit retiré en cours de route).
+   */
+  /** Société (bandeau) du statut IA actuellement chargé ; undefined tant qu'aucun ne l'est. */
+  private readonly statutIaSociete = signal<string | null | undefined>(undefined);
+  /** Société (bandeau) des propositions actuellement chargées ; undefined tant qu'aucune lecture n'a abouti. */
+  private readonly propositionsSociete = signal<string | null | undefined>(undefined);
+  /**
+   * Un statut IA qui ARRIVE est celui de la société du bandeau à ce moment : `AiStatusService`
+   * relance sa lecture à chaque changement de société, et le signal ne change qu'à la réponse. Juste
+   * après un changement, il porte encore l'ancienne société — `etatIaAJour` est alors faux.
+   */
+  private readonly statutIaSocieteEffect = effect(() => {
+    if (!this.aiStatus.status()) return;
+    const societe = untracked(() => this.fleetFilter.selectedFleetId());
+    untracked(() => this.statutIaSociete.set(societe));
+  });
+  /** Le statut IA et les propositions affichés sont ceux de la société du bandeau : l'onglet IA dit vrai. */
+  private readonly etatIaAJour = computed(() => {
+    const societe = this.fleetFilter.selectedFleetId();
+    return this.statutIaSociete() === societe && this.propositionsSociete() === societe;
+  });
+  /** Dernière vue demandée qui a été effectivement MONTRÉE (null tant qu'aucune). */
+  private vueMontree: VueAgenda | null = null;
+  private readonly vueDefinitiveEffect = effect(() => {
+    const v = this.vue();
+    const eff = this.vueEffective();
+    if (eff === v) {
+      this.vueMontree = v;
+      return;
+    }
+    if (repliDefinitif(v, eff, this.etatIaAJour(), this.vueMontree)) untracked(() => this.vue.set(eff));
+  });
   /** Résultat de capacité IA pré-chargé (analyse async) à réafficher quand on ouvre l'optimisation via la pastille. */
   /**
    * Nb de demandes de réservation EN ATTENTE, toutes dates confondues.
@@ -1767,6 +2035,11 @@ export class AgendaComponent implements OnInit {
     if (!vid) return 'Tous les véhicules';
     return this.vehicles().find((v) => v.id === vid)?.plate ?? 'Véhicule';
   });
+
+  /** Revue du 29/09 (C20) : le périmètre des compteurs, nommé — le véhicule prime, comme dans `loadSummary`. */
+  protected readonly perimetreLabel = computed(() =>
+    this.selectedVehicleId() ? this.selectedVehicleLabel() : this.selectedGroupLabel(),
+  );
 
   protected readonly monthLabel = computed(() => this.monthFmt.format(this.currentMonth()));
 
@@ -1902,6 +2175,27 @@ export class AgendaComponent implements OnInit {
   protected readonly dayProposalsVisibles = computed(() =>
     this.propositionsDepliees() ? this.dayProposals() : this.dayProposals().slice(0, 3),
   );
+
+  /**
+   * ── TROISIÈME PASSE (T7/T19) — LE PANNEAU DU JOUR VOIT AUSSI LES LOTS EN COURS ──────────────
+   *
+   * R22 a mis les lots « Tout réserver / Tout écarter » dans `AgendaSyncService.lotsEnCours` pour
+   * que leurs boutons restent grisés… dans l'Assistant IA seulement. Lot lancé, passage au
+   * Calendrier, jour ouvert : les fantômes du véhicule (relus à la fin du lot seulement) restaient
+   * cliquables ici — « Réserver » créait la réservation, puis le lot finissait sur « 1 refusée(s) ».
+   *
+   * On ne garde que la partie VÉHICULE de la clé (`cleLot` = société|véhicule) : un id de véhicule
+   * est propre à un véhicule, et un super-admin qui change de société pendant le lot reste couvert
+   * sans recopier ici la règle du `fleetId` de la vue IA.
+   */
+  protected readonly vehiculesEnLot = computed<ReadonlySet<string>>(
+    () => new Set([...this.sync.lotsEnCours()].map((k) => k.slice(k.indexOf('|') + 1))),
+  );
+  /** Une proposition du jour ouvert est tenue par un lot : le panneau le dit (un `title` ne se lit pas sur téléphone). */
+  protected readonly dayProposalsEnLot = computed(() => {
+    const enLot = this.vehiculesEnLot();
+    return enLot.size > 0 && this.dayProposals().some((p) => enLot.has(p.vehicleId));
+  });
 
   protected readonly dayProposals = computed(() => {
     const b = this.selectedDayBounds();
@@ -2088,7 +2382,7 @@ export class AgendaComponent implements OnInit {
       if (!(st < b.end && effEnd > b.start)) continue; // ne chevauche pas le jour
       if (ev.type === 'RESERVATION') {
         if (ev.status === 'CONFIRMED' || ev.status === 'IN_PROGRESS') {
-          reserved.set(ev.vehicleId, ev.endAt ? `${this.hm(ev.startAt)} → ${this.hm(ev.endAt)}` : this.hm(ev.startAt));
+          reserved.set(ev.vehicleId, this.libelleReserveDuJour(ev, st, effEnd, b));
         }
       } else if (isImmobilizingEvent(ev)) {
         immobilized.set(ev.vehicleId, ev.title);
@@ -2112,6 +2406,26 @@ export class AgendaComponent implements OnInit {
     return { total, available, pct: Math.round((available / total) * 100), unavailable };
   });
 
+  /**
+   * Ce qu'une réservation prend du jour OUVERT, dit comme la carte du même panneau (revue du 29/09, C47).
+   *
+   * Le libellé était « 9h → 17h » — les heures du premier et du dernier jour — pour une réservation
+   * du lundi 9 h au mercredi 17 h : ouvert le mardi, il faisait croire le véhicule libre avant 9 h
+   * et après 17 h, alors qu'il est pris toute la journée ; et la carte juste en dessous disait
+   * « 3 jours · jour 2/3 ». Une réservation d'un seul jour garde « 9h → 17h ».
+   */
+  private libelleReserveDuJour(ev: VehicleEventDto, debutMs: number, finMs: number, jour: { start: number; end: number }): string {
+    if (!ev.endAt) return this.hm(ev.startAt);
+    const n = dureeEnJours(ev);
+    if (n <= 1) return `${this.hm(ev.startAt)} → ${this.hm(ev.endAt)}`;
+    // Commence dans la journée ouverte (après son premier instant) : « dès 9h · jusqu'au mer. 7 oct. 17:00 ».
+    if (debutMs > jour.start) return `dès ${this.hm(ev.startAt)} · jusqu'au ${formatDate(new Date(finMs), 'EEE d MMM HH:mm', 'fr')}`;
+    // Se termine dans la journée ouverte : « jusqu'à 17h · depuis le lun. 5 oct. ».
+    if (finMs < jour.end) return `jusqu'à ${this.hm(ev.endAt)} · depuis le ${formatDate(new Date(debutMs), 'EEE d MMM', 'fr')}`;
+    const rang = rangDuJour(ev, new Date(jour.start));
+    return rang >= 1 && rang <= n ? `toute la journée · jour ${rang}/${n}` : `toute la journée · ${n} j`;
+  }
+
   protected readonly dayPanelLabel = computed(() => {
     const day = this.selectedDay();
     if (!day) return '';
@@ -2132,6 +2446,8 @@ export class AgendaComponent implements OnInit {
    * compteur ne comptait pas : « 1 en retard » au-dessus de trois lignes rouges. Depuis le 28/09,
    * seuls les PLANNED sont des échéances : un incident OUVERT n'est pas « en retard », il est porté
    * par le compteur « Incidents ouverts », la pilule et le panneau du jour.
+   *
+   * Troisième passe (T20) : la liste ENTIÈRE ; c'est `upcomingEventsVisibles` qui la borne.
    */
   protected readonly upcomingEvents = computed(() => {
     const type = this.selectedType();
@@ -2145,9 +2461,25 @@ export class AgendaComponent implements OnInit {
         if (type && ev.type !== type) return false;
         return estUneEcheance(ev);
       })
-      .sort((a, b) => new Date(a.startAt).getTime() - new Date(b.startAt).getTime())
-      .slice(0, 25);
+      .sort((a, b) => new Date(a.startAt).getTime() - new Date(b.startAt).getTime());
   });
+
+  /**
+   * ── TROISIÈME PASSE (T20) — UNE BORNE QUI SE DIT ─────────────────────────────────────────────
+   *
+   * La liste finissait par un `.slice(0, 25)` muet. Triée du plus ancien au plus récent, 30 retards
+   * remplissaient les 25 lignes : AUCUNE échéance à venir n'apparaissait, sous un compteur « À venir
+   * (30j) » qui en annonçait — la borne muette du `take: 200` corrigé le 28/09. Désormais 25 lignes,
+   * puis « Voir les N autres », comme les listes du panneau du jour.
+   *
+   * Un état À PART (`echeancesDepliees`), pas `borne()` : `listesDepliees` est vidé à chaque jour
+   * ouvert, et la liste se serait repliée sous les yeux de qui venait de la déplier.
+   */
+  protected readonly ECHEANCES_VISIBLES = 25;
+  protected readonly echeancesDepliees = signal(false);
+  protected readonly upcomingEventsVisibles = computed(() =>
+    this.echeancesDepliees() ? this.upcomingEvents() : this.upcomingEvents().slice(0, this.ECHEANCES_VISIBLES),
+  );
 
   // Méthode (PAS un computed) : `form` est un objet simple muté par ngModel — un computed
   // ne lit aucun signal donc resterait FIGÉ à sa valeur initiale (form vide → false → bouton
@@ -2160,7 +2492,13 @@ export class AgendaComponent implements OnInit {
 
   // ─── Lifecycle ───────────────────────────────────────────────────────────────
   async ngOnInit(): Promise<void> {
+    this.appliquerVueDemandee();
     this.aiStatus.ensureLoaded(); // masque les entrées IA de l'agenda si l'IA est coupée pour la flotte
+    // T15 : la société AU DÉPART du premier chargement. `fleetFilterEffect` se tait tant que
+    // `initialised` est faux, et un effet ne rejoue pas un changement passé : une société changée
+    // pendant ce chargement (que `chargerParc` rallonge, page après page) laissait les compteurs de A
+    // sous la grille de B, pour de bon.
+    const societe = this.fleetFilter.selectedFleetId();
     await Promise.all([this.loadVehicles(), this.loadSummary()]);
     await this.loadEvents();
     void this.loadActivity();
@@ -2168,6 +2506,25 @@ export class AgendaComponent implements OnInit {
     void this.loadAgentProposals();
     void this.loadPendingRequests();
     this.initialised = true; // à partir d'ici, un changement de société recharge tout
+    // Les lectures relancées prennent de nouveaux numéros : celles de l'ancienne société sont ignorées.
+    if (this.fleetFilter.selectedFleetId() !== societe) this.rechargerPourSociete();
+  }
+
+  /**
+   * Revue du 29/09 (C46) — un lien profond ouvre une vue : /agenda?vue=parc|ia|missions|calendrier
+   * (l'onglet Véhicules › Capacités renvoie ainsi vers la vue Parc et vers l'Assistant IA, au lieu
+   * de laisser l'utilisateur chercher dans le Calendrier une « Optimisation » qui n'existe plus).
+   * Lu une seule fois, au chargement. Une vue que le compte ne peut pas voir est ignorée. Pour
+   * l'Assistant IA, seul le DROIT est vérifié ici : le statut IA se charge en asynchrone, et
+   * `vueEffective` n'affiche la vue qu'une fois ce statut connu (repli sur une autre sinon) ; si
+   * l'IA n'est pas ouverte une fois statut et propositions chargés, la demande retombe pour de bon
+   * sur la vue affichée (`vueDefinitiveEffect`, contre-revue S2).
+   */
+  private appliquerVueDemandee(): void {
+    const v = this.route.snapshot.queryParamMap.get('vue');
+    if (!v || !(VUES as readonly string[]).includes(v)) return;
+    const vue = v as VueAgenda;
+    if (vue === 'ia' ? this.canOptimize() : this.vuePermise(vue)) this.vue.set(vue);
   }
 
   /** Société filtrée (SUPER_ADMIN) passée aux endpoints ; undefined = toutes / rôle non-SA. */
@@ -2177,15 +2534,33 @@ export class AgendaComponent implements OnInit {
 
   @HostListener('document:keydown.escape')
   protected onEscape(): void {
-    if (this.createOpen()) { this.createOpen.set(false); return; }
+    if (this.createOpen()) { this.fermerFormulaire(); return; }
     if (this.dayPanelOpen()) { this.dayPanelOpen.set(false); return; }
     if (this.groupDdOpen()) this.groupDdOpen.set(false);
     if (this.vehicleDdOpen()) this.vehicleDdOpen.set(false);
   }
 
+  /**
+   * Le parc ENTIER, page après page (revue du 29/09). GET /vehicles plafonne à 50 lignes par appel ;
+   * un seul appel laissait hors de la page les véhicules les plus anciens dès qu'un super-admin voyait
+   * plusieurs sociétés (51 véhicules le 24/09) : absents des sélecteurs Réserver et Événement, du
+   * panneau du jour et des groupes. Borné à 40 pages (2 000 véhicules) pour ne jamais boucler.
+   */
+  private async chargerParc(): Promise<VehicleDetailDto[]> {
+    const tous: VehicleDetailDto[] = [];
+    let curseur: string | undefined;
+    for (let page = 0; page < 40; page++) {
+      const lot = await firstValueFrom(this.vehiclesApi.list({ limit: '50', ...(curseur ? { cursor: curseur } : {}) }));
+      tous.push(...lot);
+      if (lot.length < 50) break;
+      curseur = lot[lot.length - 1].id;
+    }
+    return tous;
+  }
+
   private async loadVehicles(): Promise<void> {
     try {
-      this.vehicles.set(await firstValueFrom(this.vehiclesApi.list()));
+      this.vehicles.set(await this.chargerParc());
     } catch (err) {
       swallow('agenda:loadVehicles', err);
       this.vehicles.set([]);
@@ -2207,6 +2582,9 @@ export class AgendaComponent implements OnInit {
    * sans borne dès qu'on s'éloigne de la date du jour).
    */
   private async loadSummary(): Promise<void> {
+    // T15 : un seul numéro pour les deux moitiés (compteurs, puis échéances) — une lecture plus
+    // récente les remplace ensemble ; celle-ci ne pose plus ni l'une ni l'autre.
+    const n = ++this.lecture.summary;
     // Même garde que `loadEvents` : `GET /agenda/summary` exige `agenda_view`.
     if (!this.canSeeAgenda()) {
       this.summary.set(null);
@@ -2216,34 +2594,36 @@ export class AgendaComponent implements OnInit {
     try {
       // P2-4 : les compteurs suivent le périmètre filtré (groupe OU véhicule), comme la liste.
       // Le véhicule prime : un véhicule choisi est déjà dans le groupe choisi, ou l'a réinitialisé.
-      this.summary.set(
-        await firstValueFrom(
-          this.api.summary({
-            fleetId: this.currentFleetId(),
-            vehicleId: this.selectedVehicleId() || undefined,
-            groupId: this.selectedVehicleId() ? undefined : this.selectedGroupId() || undefined,
-          }),
-        ),
+      const resume = await firstValueFrom(
+        this.api.summary({
+          fleetId: this.currentFleetId(),
+          vehicleId: this.selectedVehicleId() || undefined,
+          groupId: this.selectedVehicleId() ? undefined : this.selectedGroupId() || undefined,
+        }),
       );
+      if (n !== this.lecture.summary) return;
+      this.summary.set(resume);
     } catch (err) {
       swallow('agenda:loadSummary', err);
+      if (n !== this.lecture.summary) return;
       this.summary.set(null);
     }
     try {
       const now = Date.now();
-      this.echeances.set(
-        await firstValueFrom(
-          this.api.listEvents({
-            // 90 j en arrière : « en retard » n'a pas de borne basse côté serveur, mais une
-            // échéance oubliée depuis plus d'un trimestre ne se règle pas depuis cette liste.
-            from: new Date(now - 90 * 24 * 3600 * 1000).toISOString(),
-            to: new Date(now + 30 * 24 * 3600 * 1000).toISOString(),
-            fleetId: this.currentFleetId(),
-          }),
-        ),
+      const echeances = await firstValueFrom(
+        this.api.listEvents({
+          // 90 j en arrière : « en retard » n'a pas de borne basse côté serveur, mais une
+          // échéance oubliée depuis plus d'un trimestre ne se règle pas depuis cette liste.
+          from: new Date(now - 90 * 24 * 3600 * 1000).toISOString(),
+          to: new Date(now + 30 * 24 * 3600 * 1000).toISOString(),
+          fleetId: this.currentFleetId(),
+        }),
       );
+      if (n !== this.lecture.summary) return;
+      this.echeances.set(echeances);
     } catch (err) {
       swallow('agenda:loadEcheances', err);
+      if (n !== this.lecture.summary) return;
       this.echeances.set([]);
     }
   }
@@ -2270,6 +2650,7 @@ export class AgendaComponent implements OnInit {
     // une panne là où le produit fonctionnait comme prévu.
     //
     // Le même patron protège déjà `loadActivity` et `loadForecast`. Il manquait ici.
+    const n = ++this.lecture.events; // T15 : seule la DERNIÈRE lecture pose la grille (et `loading`)
     if (!this.canSeeAgenda()) {
       this.events.set([]);
       this.loading.set(false);
@@ -2286,13 +2667,16 @@ export class AgendaComponent implements OnInit {
           fleetId: this.currentFleetId(),
         }),
       );
+      if (n !== this.lecture.events) return;
       this.events.set(events);
     } catch (err) {
       swallow('agenda:loadEvents', err);
+      if (n !== this.lecture.events) return;
       this.events.set([]);
       this.toast.error('Erreur de chargement', apiErrorMessage(err, 'Impossible de charger l\'agenda.'));
     } finally {
-      this.loading.set(false);
+      // Une lecture périmée ne fait pas retomber le chargement de la suivante, encore en vol.
+      if (n === this.lecture.events) this.loading.set(false);
     }
   }
 
@@ -2302,6 +2686,7 @@ export class AgendaComponent implements OnInit {
    * Échec silencieux : l'agenda reste fonctionnel sans cette couche.
    */
   private async loadActivity(): Promise<void> {
+    const n = ++this.lecture.activity; // T15
     if (!this.canSeeInsights()) {
       this.activitySlots.set([]);
       return;
@@ -2309,9 +2694,11 @@ export class AgendaComponent implements OnInit {
     try {
       const { from, to } = this.monthWindow();
       const avail = await firstValueFrom(this.api.getAvailability({ from, to, fleetId: this.currentFleetId() }));
+      if (n !== this.lecture.activity) return;
       this.activitySlots.set(avail.slots);
     } catch (err) {
       swallow('agenda:loadActivity', err);
+      if (n !== this.lecture.activity) return;
       this.activitySlots.set([]);
     }
   }
@@ -2322,6 +2709,7 @@ export class AgendaComponent implements OnInit {
    * le détail du panneau jour en sont dérivés.
    */
   private async loadForecast(): Promise<void> {
+    const n = ++this.lecture.forecast; // T15
     if (!this.canSeeInsights()) {
       this.forecastSlots.set([]);
       return;
@@ -2329,9 +2717,11 @@ export class AgendaComponent implements OnInit {
     try {
       const { from, to } = this.monthWindow();
       const res = await firstValueFrom(this.api.getForecast({ from, to, fleetId: this.currentFleetId() }));
+      if (n !== this.lecture.forecast) return;
       this.forecastSlots.set(res.slots);
     } catch (err) {
       swallow('agenda:loadForecast', err);
+      if (n !== this.lecture.forecast) return;
       this.forecastSlots.set([]);
     }
   }
@@ -2354,6 +2744,17 @@ export class AgendaComponent implements OnInit {
     this.selectedVehicleId.set(id);
     this.vehicleDdOpen.set(false);
     void this.loadSummary(); // P2-4, même raison que `selectGroup`
+  }
+
+  /**
+   * Revue du 29/09 (C20) : la croix de la puce « Compteurs filtrés ». Les DEUX filtres d'un coup, et
+   * un seul rechargement : `selectGroup('')` laisse le véhicule en place, et enchaîner
+   * `selectVehicle('')` + `selectGroup('')` lancerait deux lectures qui peuvent revenir dans le désordre.
+   */
+  protected effacerPerimetre(): void {
+    this.selectedVehicleId.set('');
+    this.selectedGroupId.set('');
+    void this.loadSummary();
   }
 
   protected selectType(type: '' | VehicleEventType): void {
@@ -2429,12 +2830,14 @@ export class AgendaComponent implements OnInit {
         startAt: nouveauDebut.toISOString(),
         ...(nouvelleFin ? { endAt: nouvelleFin.toISOString() } : {}),
       };
-      await firstValueFrom(
+      const deplace = await firstValueFrom(
         ev.type === 'RESERVATION'
           ? this.api.updateReservation(id, creneau)
           : this.api.updateEvent(id, creneau),
       );
       this.toast.success('Déplacé', `${libelle} — ${jourLisible}`);
+      // Revue du 29/09 (C45) : glisser une immobilisation peut la poser sur des réservations.
+      if (ev.type !== 'RESERVATION') void this.verifierProlongation(ev, deplace);
       await Promise.all([this.loadEvents(), this.loadSummary()]);
       void this.loadForecast();
     } catch (err) {
@@ -2445,9 +2848,40 @@ export class AgendaComponent implements OnInit {
     }
   }
 
-  protected onEventClick(ev: VehicleEventDto): void {
-    this.selectedDay.set(localIso(new Date(ev.startAt)));
-    this.dayPanelOpen.set(true);
+  /** Numéro du dernier clic sur une ligne « À venir & en retard » : seul le dernier ouvre son jour (T14). */
+  private clicEcheance = 0;
+
+  /**
+   * ── TROISIÈME PASSE (T14) — UNE LIGNE « À VENIR & EN RETARD » OUVRE UN JOUR CHARGÉ ─────────────
+   *
+   * La liste vient de `echeances()` (−90 j → +30 j, quel que soit le mois affiché) ; le panneau du
+   * jour, lui, lit `events()`, `forecastSlots()` et `activitySlots()`, chargés sur la seule grille du
+   * mois. Une maintenance du 20/10 cliquée sous la grille de septembre ouvrait un panneau VIDE
+   * (« Aucun événement enregistré ce jour », sans Modifier ni Terminé) et une disponibilité calculée
+   * sur des données absentes — et TOUTE ligne dès qu'on feuilletait un autre mois.
+   *
+   * Hors de la grille chargée : la grille passe au mois de l'échéance, se recharge, PUIS le jour
+   * s'ouvre (pas d'éclair « Aucun événement » pendant le chargement), par `onDayClick` qui replie
+   * aussi les listes dépliées. Un clic plus récent, un mois feuilleté ou une société changée
+   * pendant le chargement l'emportent : ce clic-là n'ouvre plus rien.
+   */
+  protected async onEventClick(ev: VehicleEventDto): Promise<void> {
+    const debut = new Date(ev.startAt);
+    if (Number.isNaN(debut.getTime())) return;
+    const n = ++this.clicEcheance;
+    const { from, to } = this.monthWindow();
+    if (debut.getTime() < new Date(from).getTime() || debut.getTime() >= new Date(to).getTime()) {
+      const mois = startOfMonth(debut);
+      const societe = this.fleetFilter.selectedFleetId();
+      this.currentMonth.set(mois);
+      await Promise.all([this.loadEvents(), this.loadActivity(), this.loadForecast()]);
+      if (
+        n !== this.clicEcheance ||
+        this.currentMonth().getTime() !== mois.getTime() ||
+        this.fleetFilter.selectedFleetId() !== societe
+      ) return;
+    }
+    this.onDayClick(localIso(debut));
   }
 
   protected closeDayPanel(): void {
@@ -2481,10 +2915,11 @@ export class AgendaComponent implements OnInit {
    * Recharge le parc (sièges à bord, hors service, boîtiers) — après « Paramètres de l'agenda »,
    * où les sièges à bord se règlent : sans ça, la carte du jour disait « 2 bébé du stock » pour un
    * véhicule qu'on venait d'équiper (vu sur la démo le 28/09). Best-effort : la liste d'avant reste.
+   * Depuis la revue du 29/09, déclenché aussi par `AgendaSyncService.vehiculesModifies()` (vues Parc et IA).
    */
   protected async rafraichirVehicules(): Promise<void> {
     try {
-      this.vehicles.set(await firstValueFrom(this.vehiclesApi.list()));
+      this.vehicles.set(await this.chargerParc());
     } catch (e) {
       swallow('agenda:rafraichirVehicules', e);
     }
@@ -2585,10 +3020,19 @@ export class AgendaComponent implements OnInit {
     };
   }
 
-  /** Changement de type : ajuste le défaut d'immobilisation (incident = indisponible). */
+  /**
+   * Changement de type : ajuste le défaut d'immobilisation (incident = indisponible).
+   *
+   * Revue du 29/09 (C15/C42) : la nature change `blocksVehicle` ET la fenêtre (une journée pour une
+   * maintenance, 30 jours pour un incident sans fin) — donc la période se relit. Sans ça, passer à
+   * « Incident » avec un véhicule déjà choisi affichait « rien à reprendre » sans avoir rien lu, et
+   * revenir à « Maintenance » gardait des décisions cachées que la création appliquait quand même.
+   * Un changement par programme ne déclenche pas le `ngModelChange` de la case « Immobilise ».
+   */
   protected setFormType(type: VehicleEventType): void {
     this.form.type = type;
     this.form.blocksVehicle = type === 'INCIDENT';
+    this.onPeriodeChange();
   }
 
   /** L'événement immobilise-t-il ENCORE le véhicule (actif, non clôturé) ? Source partagée avec le back. */
@@ -2608,7 +3052,7 @@ export class AgendaComponent implements OnInit {
     this.editingEvent.set(null);
     this.form = this.blankForm();
     this.odometerHint.set('');
-    this.resasPeriode.set([]); this.resasDecisions.set({});
+    this.invaliderResas(); // une lecture restée en vol depuis un formulaire précédent ne remplira pas celui-ci
     this.createOpen.set(true);
     // Pré-remplit l'odomètre si un véhicule est déjà sélectionné via le filtre.
     if (this.form.vehicleId) void this.prefillOdometer(this.form.vehicleId);
@@ -2641,7 +3085,19 @@ export class AgendaComponent implements OnInit {
     };
     this.editingEvent.set(ev);
     this.odometerHint.set('');
+    this.invaliderResas();
     this.createOpen.set(true);
+  }
+
+  /**
+   * Ferme le dialogue d'évènement — par la croix, « Annuler », le fond ou Échap — et invalide la
+   * lecture des réservations de la période (revue du 29/09, C16) : une réponse arrivée après la
+   * fermeture ne doit pas garnir le prochain formulaire.
+   */
+  protected fermerFormulaire(): void {
+    this.createOpen.set(false);
+    this.editingEvent.set(null);
+    this.invaliderResas();
   }
 
   /** « HH:mm » local, le format qu'attend un `<input type="time">` (hm() rend « 7h30 », pour l'affichage). */
@@ -2649,14 +3105,11 @@ export class AgendaComponent implements OnInit {
     return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
   }
 
-  /** Nombre de jours civils couverts (1 = une journée) — la carte du jour dit « du 5 au 12 » au-delà. */
-  protected dureeEnJours(ev: VehicleEventDto): number {
-    if (!ev.endAt) return 1;
-    const a = startOfDay(new Date(ev.startAt)).getTime();
-    const b = startOfDay(new Date(ev.endAt)).getTime();
-    if (Number.isNaN(a) || Number.isNaN(b) || b < a) return 1;
-    return Math.round((b - a) / 86400000) + 1;
-  }
+  /**
+   * Nombre de jours civils couverts (1 = une journée) — la carte du jour dit « du 5 au 12 » au-delà.
+   * Revue du 29/09 (C19) : la règle vit dans `agenda.utils.ts`, partagée avec la grille du mois.
+   */
+  protected readonly dureeEnJours = dureeEnJours;
 
   /**
    * « jour 2/3 » : où le jour ouvert dans le panneau se situe dans un évènement de plusieurs jours.
@@ -2664,15 +3117,12 @@ export class AgendaComponent implements OnInit {
    * immobilisant qui déborde sa fin prévue : la position n'aurait pas de sens).
    */
   protected positionJour(ev: VehicleEventDto): string | null {
-    const total = this.dureeEnJours(ev);
+    const total = dureeEnJours(ev);
     if (total <= 1) return null;
     const jour = this.selectedDay();
     if (!jour) return null;
-    const debut = startOfDay(new Date(ev.startAt)).getTime();
-    const cible = new Date(`${jour}T00:00:00`).getTime();
-    if (Number.isNaN(debut) || Number.isNaN(cible)) return null;
-    const idx = Math.round((cible - debut) / 86400000) + 1;
-    if (idx < 1 || idx > total) return null;
+    const idx = rangDuJour(ev, new Date(`${jour}T00:00:00`));
+    if (Number.isNaN(idx) || idx < 1 || idx > total) return null;
     return `jour ${idx}/${total}`;
   }
 
@@ -2785,6 +3235,8 @@ export class AgendaComponent implements OnInit {
       this.annulerCloreEdit(ev.id);
       this.toast.success('Fin repoussée', `jusqu'au ${formatDate(endAt, 'EEE d MMM', 'fr')}`);
       void this.loadSummary();
+      // Revue du 29/09 (C45) : « le garage a du retard » — les réservations des jours ajoutés.
+      void this.verifierProlongation(ev, updated);
     } catch (err) {
       swallow('agenda:repousserFin', err);
       this.toast.error('Échec', apiErrorMessage(err, 'Modification impossible.'));
@@ -2818,82 +3270,297 @@ export class AgendaComponent implements OnInit {
     return { startAt, endAt };
   }
 
+  /**
+   * Fenêtre d'immobilisation EFFECTIVE du formulaire (ms), toujours bornée (`fenetreImmobilisation`) :
+   * sans fin, la journée pour une maintenance, 30 jours À PARTIR D'AUJOURD'HUI pour un incident
+   * (T17 : un incident « depuis le » 20/08 lu le 29/09 regardait jusqu'au 19/09 — une fenêtre passée).
+   * Contre-revue du 29/09 (S1) : c'est la MÊME que lit le bloc des réservations et que fige la
+   * création — la fenêtre brute (fin vide) renvoyait Réorganiser sur les 30 prochains jours du véhicule.
+   */
+  private fenetreImmobilisationFormulaire(maintenantMs: number): { from: number; to: number } | null {
+    const fen = this.fenetreFormulaire();
+    if (!fen) return null;
+    const startMs = new Date(fen.startAt).getTime();
+    if (Number.isNaN(startMs)) return null;
+    const endMs = fen.endAt ? new Date(fen.endAt).getTime() : null;
+    return fenetreImmobilisation(this.form.type, startMs, endMs != null && !Number.isNaN(endMs) ? endMs : null, maintenantMs);
+  }
+
   /** Numéro de la dernière lecture partie : une réponse en retard ne doit pas écraser la dernière. */
   private resasLecture = 0;
 
   /**
-   * Relit les réservations du véhicule sur la période dès qu'un champ qui la définit change. Sans
-   * fin explicite, la fenêtre est celle de l'immobilisation EFFECTIVE (la journée pour une
-   * maintenance ; un incident bloque jusqu'à résolution → on regarde 30 jours devant).
+   * ── REVUE DU 29/09 (C16) — UNE SEULE FAÇON D'OUBLIER UNE LECTURE ─────────────────────────────
+   *
+   * Incrémente le numéro de lecture (une réponse encore en vol sera ignorée), vide la liste, les
+   * décisions et l'erreur, et arrête le « chargement ». Appelée au début de chaque lecture, sur le
+   * chemin où il n'y a rien à lire, à l'ouverture (création, modification) et à la fermeture du
+   * dialogue. Avant, le chemin « rien à lire » et l'ouverture vidaient la liste SANS changer de
+   * numéro : une réponse en retard remettait tout en « réaffecter » dans un bloc caché, et la
+   * création d'une maintenance non immobilisante — ou du formulaire suivant — les appliquait.
+   * Le chargement retombe ici aussi : sans ça, la lecture périmée (qui ne touche plus à rien)
+   * laissait le bouton de création grisé pour de bon.
+   */
+  private invaliderResas(): void {
+    ++this.resasLecture;
+    this.resasPeriode.set([]);
+    this.resasDecisions.set({});
+    this.resasPeriodeErreur.set(null);
+    this.resasPeriodeLoading.set(false);
+  }
+
+  /**
+   * Relit les réservations du véhicule sur la période dès qu'un champ qui la définit change (dates,
+   * heures, véhicule, case « Immobilise », nature). Sans fin explicite, la fenêtre est celle de
+   * l'immobilisation EFFECTIVE (la journée pour une maintenance ; un incident bloque jusqu'à
+   * résolution → on regarde 30 jours devant, à partir d'aujourd'hui s'il est antidaté — T17).
    */
   protected onPeriodeChange(): void {
     const f = this.form;
-    if (!f.blocksVehicle || !f.vehicleId || !f.date || this.editingEvent()) {
-      this.resasPeriode.set([]); this.resasDecisions.set({}); return;
-    }
-    const fen = this.fenetreFormulaire();
+    this.invaliderResas();
+    if (!f.blocksVehicle || !f.vehicleId || !f.date || this.editingEvent()) return;
+    // C17 : `GET /reservations` exige reservations_view. Sans lui, on ne demande rien (403 et
+    // bandeau rouge à chaque champ touché) — le gabarit dit que les réservations ne sont pas vérifiées.
+    if (!this.canOptimize()) return;
+    // S1 : la fenêtre EFFECTIVE, la même que `figerDecisions` gardera pour la reprise.
+    const maintenant = Date.now();
+    const fen = this.fenetreImmobilisationFormulaire(maintenant);
     if (!fen) return;
-    const startMs = new Date(fen.startAt).getTime();
-    const effEnd = effectiveBlockingEndMs(f.type, startMs, fen.endAt ? new Date(fen.endAt).getTime() : null);
-    const endMs = Number.isFinite(effEnd) ? effEnd : startMs + 30 * 86400000;
-    const n = ++this.resasLecture;
+    const startMs = fen.from;
+    const endMs = fen.to;
+    // T17 : une fenêtre déjà entièrement passée (maintenance d'une journée antidatée) n'a rien devant
+    // elle — on ne demande pas une plage à l'envers au serveur ; la liste vide dit vrai.
+    if (endMs <= Math.max(startMs, maintenant)) return;
+    const n = this.resasLecture;
     this.resasPeriodeLoading.set(true);
     void firstValueFrom(this.api.listReservations({
       vehicleId: f.vehicleId,
-      from: new Date(Math.max(startMs, Date.now())).toISOString(),
+      from: new Date(Math.max(startMs, maintenant)).toISOString(),
       to: new Date(endMs).toISOString(),
       fleetId: this.currentFleetId(),
     })).then((liste) => {
       if (n !== this.resasLecture) return;
       const now = Date.now();
       const vivantes = liste.filter((r) =>
-        (r.status === 'CONFIRMED' || r.status === 'REQUESTED' || r.status === 'IN_PROGRESS') &&
+        reservationVivante(r) &&
         new Date(r.startAt).getTime() < endMs && (r.endAt ? new Date(r.endAt).getTime() : new Date(r.startAt).getTime()) > Math.max(startMs, now),
       ).sort((a, b) => new Date(a.startAt).getTime() - new Date(b.startAt).getTime());
       this.resasPeriode.set(vivantes);
-      // Défaut : réaffecter — c'est le cas du garage ; « laisser » reste à un clic.
-      this.resasDecisions.set(Object.fromEntries(vivantes.map((r) => [r.id, 'reaffecter' as const])));
+      // Défaut : réaffecter — c'est le cas du garage ; « laisser » reste à un clic. Sans le droit de
+      // gérer les réservations (C17), rien ne peut être repris : tout reste « laisser ».
+      const defaut: DecisionResa = this.canValidate() ? 'reaffecter' : 'laisser';
+      this.resasDecisions.set(Object.fromEntries(vivantes.map((r) => [r.id, defaut])));
     }).catch((err) => {
       swallow('agenda:resasPeriode', err);
-      if (n === this.resasLecture) { this.resasPeriode.set([]); this.resasDecisions.set({}); }
+      // C17 : un échec n'est PAS une liste vide. « Rien à reprendre » ne se dit qu'après une lecture réussie.
+      if (n === this.resasLecture) this.resasPeriodeErreur.set(apiErrorMessage(err, 'Lecture impossible.'));
     }).finally(() => { if (n === this.resasLecture) this.resasPeriodeLoading.set(false); });
   }
 
-  protected decisionDe(id: string): 'laisser' | 'annuler' | 'reaffecter' { return this.resasDecisions()[id] ?? 'laisser'; }
-  protected decider(id: string, d: 'laisser' | 'annuler' | 'reaffecter'): void {
+  /** Le bouton de création attend la fin de la lecture des réservations de la période (C16). */
+  protected attenteResas(): boolean {
+    const f = this.form;
+    return !this.editingEvent() && f.blocksVehicle && !!f.vehicleId && this.resasPeriodeLoading();
+  }
+
+  /**
+   * Nombre de réservations que « Créer » reprendra VRAIMENT : aucune si l'évènement n'immobilise pas
+   * (C15), si l'on modifie, ou sans le droit de gérer les réservations (C17). `form` n'est pas un
+   * signal : une méthode, relue à chaque détection de changement, comme `canSubmitCreate`.
+   */
+  protected nbDecisionsEffectives(): number {
+    if (!this.form.blocksVehicle || this.editingEvent() || !this.canValidate()) return 0;
+    return this.nbDecisions();
+  }
+
+  protected decisionDe(id: string): DecisionResa { return this.resasDecisions()[id] ?? 'laisser'; }
+  protected decider(id: string, d: DecisionResa): void {
     this.resasDecisions.update((m) => ({ ...m, [id]: d }));
+  }
+
+  /**
+   * Fige ce que la création emporte (C16) : les décisions autres que « laisser », limitées aux
+   * réservations AFFICHÉES, la fenêtre d'immobilisation EFFECTIVE (S1 — celle qu'on a lue, jamais la
+   * fin vide du formulaire) et le véhicule. Null s'il n'y a rien à reprendre.
+   */
+  private figerDecisions(): LotDecisions | null {
+    const f = this.form;
+    if (!f.blocksVehicle || !this.canValidate()) return null; // C15 / C17
+    const fen = this.fenetreImmobilisationFormulaire(Date.now());
+    if (!fen) return null;
+    const liste = this.resasPeriode();
+    const affichees = new Set(liste.map((r) => r.id));
+    const decisions = Object.entries(this.resasDecisions())
+      .filter((e): e is [string, Exclude<DecisionResa, 'laisser'>] => e[1] !== 'laisser' && affichees.has(e[0]));
+    if (decisions.length === 0) return null;
+    const fenetre = { startAt: new Date(fen.from).toISOString(), endAt: new Date(fen.to).toISOString() };
+    return { vehicleId: f.vehicleId, fenetre, liste, decisions };
+  }
+
+  /** POST /reservations/:id/reaffecter avec la coupe `aPartirDe` (contre-revue du 29/09) — par le service. */
+  private reaffecterAPartirDe(id: string, aPartirDe: string): Observable<VehicleEventDto> {
+    return this.api.reaffecterReservation(id, undefined, aPartirDe);
   }
 
   /**
    * Applique les décisions prises sur les réservations de la période, APRÈS la création de
    * l'événement : une par une (un refus n'arrête pas les autres), un bilan, et un renvoi vers
    * Réorganiser pour ce qui a été refusé (véhicule et fenêtre déjà réglés).
+   *
+   * Revue du 29/09 : tout vient de l'instantané `lot` (C16) — jamais du formulaire ni des signaux,
+   * qu'un nouveau dialogue a pu remplacer pendant la boucle.
+   *
+   * Contre-revue du 29/09 (R16) : chaque réaffectation part avec `aPartirDe` = début de
+   * l'immobilisation. Le serveur coupe à max(maintenant, aPartirDe) : une réservation déjà en cours à
+   * ce moment est SCINDÉE (la partie d'avant reste sur ce véhicule, la suite part), une réservation
+   * qui commence après part en entier. Plus de tri « hors de portée » côté client — il contredisait
+   * le serveur et poussait à ANNULER la réservation d'un client que Réorganiser pouvait reprendre.
+   * Seuls les VRAIS refus, avec le motif du serveur, sont dits : dans le bilan, et dans la feuille
+   * (`nonReprises`), qui s'ouvre sur la fenêtre d'immobilisation effective (S1) pour viser un
+   * véhicule précis.
+   *
+   * Troisième passe (T3) : la feuille s'ouvre LIMITÉE AUX RÉSERVATIONS REFUSÉES (`ids`, liste
+   * blanche filtrée par le serveur avant plafond, aperçu et `attendu`). Ouverte sur toute la
+   * fenêtre, elle reprenait aussi les réservations marquées « Laisser » — « Réaffecter ces 3
+   * réservations » pour un seul refus, et viser un véhicule précis les y envoyait toutes les trois.
+   * Une liste blanche plutôt qu'une exclusion : une réservation arrivée depuis la création, que
+   * personne n'a tranchée, n'entre pas non plus dans le lot.
    */
-  private async appliquerDecisions(created: VehicleEventDto): Promise<void> {
-    const decisions = Object.entries(this.resasDecisions()).filter(([, d]) => d !== 'laisser');
-    if (decisions.length === 0) return;
+  private async appliquerDecisions(created: VehicleEventDto, lot: LotDecisions): Promise<void> {
+    if (!created.blocksVehicle || !this.canValidate() || lot.decisions.length === 0) return;
     let faits = 0;
-    const refus: string[] = [];
-    for (const [id, d] of decisions) {
-      const r = this.resasPeriode().find((x) => x.id === id);
+    const refus: { r: VehicleEventDto | undefined; id: string; decision: Exclude<DecisionResa, 'laisser'>; motif: string }[] = [];
+    for (const [id, d] of lot.decisions) {
+      const r = lot.liste.find((x) => x.id === id);
       try {
-        await firstValueFrom(d === 'annuler' ? this.api.cancelReservation(id) : this.api.reaffecterReservation(id));
+        await firstValueFrom(d === 'annuler' ? this.api.cancelReservation(id) : this.reaffecterAPartirDe(id, lot.fenetre.startAt));
         faits++;
       } catch (err) {
         swallow('agenda:appliquerDecisions', err);
-        refus.push(`${r ? formatDate(new Date(r.startAt), 'dd/MM HH:mm', 'fr') : id} — ${apiErrorMessage(err, 'refusé')}`);
+        refus.push({ r, id, decision: d, motif: apiErrorMessage(err, 'refusé') });
       }
     }
     if (refus.length === 0) {
       this.toast.success(`${faits} réservation(s) reprise(s)`, 'Réaffectées ou annulées comme décidé.');
     } else {
-      this.toast.error(`${faits} reprise(s), ${refus.length} refusée(s)`, refus.slice(0, 3).join(' · '));
-      // Ce qui reste se reprend dans Réorganiser, déjà réglé sur ce véhicule et cette période.
-      const fen = this.fenetreFormulaire();
-      this.reorgPreset.set({ vehicleId: created.vehicleId, from: fen?.startAt ?? null, to: fen?.endAt ?? null, action: 'reaffecter' });
-      this.reorgSheetOpen.set(true);
+      const quand = (x: (typeof refus)[number]) => (x.r ? formatDate(new Date(x.r.startAt), 'dd/MM HH:mm', 'fr') : x.id);
+      const lignes = refus.slice(0, 3).map((x) => `${quand(x)} — ${x.motif}`);
+      if (refus.length > 3) lignes.push(`et ${refus.length - 3} autre(s)`);
+      // Une fenêtre déjà passée n'a plus rien à reprendre (le serveur refuserait la simulation).
+      const ouvrir = new Date(lot.fenetre.endAt).getTime() > Date.now();
+      if (ouvrir) {
+        const lesRefusees = refus.length === 1 ? 'la réservation refusée' : `les ${refus.length} réservations refusées`;
+        lignes.push(`Réorganiser s’ouvre sur ${lesRefusees}, et sur elles seules : visez un véhicule précis, ou annulez-les.`);
+      }
+      this.toast.error(`${faits} reprise(s), ${refus.length} refusée(s)`, lignes.join(' · '));
+      if (ouvrir) {
+        this.reorgPreset.set({
+          vehicleId: lot.vehicleId,
+          from: lot.fenetre.startAt,
+          to: lot.fenetre.endAt,
+          action: 'reaffecter',
+          // T3 : les refusées SEULEMENT — ni les « Laisser », ni ce qui a été repris, ni une
+          // réservation arrivée depuis que le formulaire a été tranché.
+          ids: refus.map((x) => x.id),
+          nonReprises: refus
+            .filter((x): x is (typeof refus)[number] & { r: VehicleEventDto } => !!x.r)
+            .map((x) => ({
+              plate: x.r.vehiclePlate,
+              startAt: x.r.startAt,
+              endAt: x.r.endAt,
+              motif: `${x.decision === 'annuler' ? 'Annulation' : 'Réaffectation'} refusée : ${x.motif}`,
+            })),
+        });
+        this.reorgSheetOpen.set(true);
+      }
     }
     this.onReservationChanged();
+  }
+
+  /**
+   * ── REVUE DU 29/09 (C45) — PROLONGER UNE IMMOBILISATION, C'EST PEUT-ÊTRE ÉCRASER DES RÉSERVATIONS ──
+   *
+   * Repousser la fin (« À clore »), modifier les dates ou glisser l'évènement : le serveur accepte
+   * sans rien regarder, et les réservations fermes prises sur les jours AJOUTÉS (acceptées quand le
+   * véhicule paraissait libre) restaient sur un véhicule au garage. Après le succès, on lit ces
+   * jours-là seulement (`fenetresAjoutees`) ; s'il y a des réservations, on le dit en les comptant
+   * et on ouvre Réorganiser pré-réglé (véhicule, fenêtre ajoutée, réaffecter) — une simulation
+   * d'abord, rien n'est déplacé sans que l'utilisateur applique.
+   *
+   * Contre-revue du 29/09 :
+   *  - R16 — plus de tri « hors de portée ». En « réaffecter », Réorganiser reprend toute réservation
+   *    qui CHEVAUCHE sa fenêtre et la scinde au début de celle-ci : la partie d'avant reste, la suite
+   *    part. Les annoncer « à annuler depuis le jour » les comptait deux fois dans la feuille, avec
+   *    deux verdicts contraires. Seul le serveur refuse, et la feuille montre ses refus.
+   *  - R17 — sans le droit de lire les réservations, on ne se tait plus : on dit qu'elles ne sont
+   *    pas vérifiées, comme la création.
+   *  - R18 — début avancé ET fin repoussée : Réorganiser s'ouvre sur UNE fenêtre ajoutée (celle qui
+   *    porte le plus de réservations), jamais sur [min, max], qui couvrait l'ancienne période déjà
+   *    tranchée à la création ; les réservations de l'autre sont nommées dans le message.
+   */
+  private async verifierProlongation(avant: VehicleEventDto, apres: VehicleEventDto): Promise<void> {
+    const fenetres = fenetresAjoutees(avant, apres, Date.now());
+    if (fenetres.length === 0) return;
+    const plaque = apres.vehiclePlate || avant.vehiclePlate || 'Le véhicule';
+    const fmt = (ms: number) => formatDate(new Date(ms), 'EEE d MMM HH:mm', 'fr');
+    // R17 : `GET /reservations` exige reservations_view — on ne le demande pas (403), mais on le DIT.
+    if (!this.canOptimize()) {
+      const debutMs = new Date(apres.startAt).getTime();
+      const sansFin = !Number.isFinite(effectiveBlockingEndMs(apres.type, debutMs, apres.endAt ? new Date(apres.endAt).getTime() : null));
+      const depuis = Math.min(...fenetres.map((w) => w.from));
+      const periode = sansFin
+        ? `à partir du ${fmt(depuis)}, sans date de fin`
+        : `du ${fmt(depuis)} au ${fmt(Math.max(...fenetres.map((w) => w.to)))}`;
+      this.toast.warning(
+        'Réservations de la période non vérifiées',
+        `${plaque} est désormais immobilisé ${periode}. Ses réservations sur ces jours n'ont pas été vérifiées : il faut le droit « Voir les réservations » — faites-les vérifier par un gestionnaire.`,
+      );
+      return;
+    }
+    const parFenetre: VehicleEventDto[][] = [];
+    try {
+      for (const w of fenetres) {
+        const liste = await firstValueFrom(this.api.listReservations({
+          vehicleId: apres.vehicleId,
+          from: new Date(w.from).toISOString(),
+          to: new Date(w.to).toISOString(),
+          fleetId: this.currentFleetId(),
+        }));
+        parFenetre.push(liste.filter((r) => {
+          const debut = new Date(r.startAt).getTime();
+          const fin = r.endAt ? new Date(r.endAt).getTime() : debut;
+          return reservationVivante(r) && debut < w.to && fin > w.from;
+        }));
+      }
+    } catch (err) {
+      swallow('agenda:verifierProlongation', err);
+      this.toast.warning('Réservations non vérifiées', `Impossible de lire les réservations de ${plaque} sur la nouvelle période — vérifiez-les avant qu'un conducteur ne se présente.`);
+      return;
+    }
+    const choix = fenetreAReorganiser(fenetres, parFenetre);
+    if (!choix) return;
+    const parDebut = (a: VehicleEventDto, b: VehicleEventDto) => new Date(a.startAt).getTime() - new Date(b.startAt).getTime();
+    const detail = (l: VehicleEventDto[]) => l.slice(0, 3).map((r) => fmt(new Date(r.startAt).getTime())).join(' · ') + (l.length > 3 ? '…' : '');
+    const dedans = [...choix.dedans].sort(parDebut);
+    const ailleurs = [...choix.ailleurs].sort(parDebut);
+    const toutes = [...dedans, ...ailleurs].sort(parDebut);
+    const titre = `${toutes.length} réservation(s) sur la période ajoutée`;
+    if (!this.canValidate()) {
+      this.toast.warning(titre, `${plaque} est immobilisé mais reste réservé (${detail(toutes)}) : un gestionnaire des réservations doit les reprendre.`);
+      return;
+    }
+    const w = choix.fenetre;
+    const autre = ailleurs.length > 0
+      ? ` Aussi ${ailleurs.length} sur l'autre période ajoutée (${detail(ailleurs)}) : à reprendre ensuite, depuis le jour.`
+      : '';
+    this.toast.warning(titre, `${plaque} est immobilisé mais reste réservé (${detail(dedans)}). Réorganiser s'ouvre sur ce véhicule, du ${fmt(w.from)} au ${fmt(w.to)}.${autre}`);
+    this.reorgPreset.set({
+      vehicleId: apres.vehicleId,
+      from: new Date(w.from).toISOString(),
+      to: new Date(w.to).toISOString(),
+      action: 'reaffecter',
+    });
+    this.reorgSheetOpen.set(true);
   }
 
   /** Récupère l'estimation kilométrique et pré-remplit le champ + un hint. */
@@ -2916,7 +3583,8 @@ export class AgendaComponent implements OnInit {
   }
 
   protected async submitCreate(): Promise<void> {
-    if (!this.canSubmitCreate() || this.saving()) return;
+    // C16 : jamais pendant la lecture des réservations — on reprendrait la liste d'avant.
+    if (!this.canSubmitCreate() || this.saving() || this.attenteResas()) return;
     const f = this.form;
     // Compose le startAt : date seule (allDay) ou date + heure locale.
     const startAt = f.allDay
@@ -2953,9 +3621,10 @@ export class AgendaComponent implements OnInit {
         const updated = await firstValueFrom(this.api.updateEvent(editing.id, patch));
         this.remplacerEvenement(updated);
         this.toast.success('Événement modifié', updated.title);
-        this.createOpen.set(false);
-        this.editingEvent.set(null);
+        this.fermerFormulaire();
         void this.loadSummary();
+        // Revue du 29/09 (C45) : dates élargies ou « Immobilise » coché — les réservations des jours ajoutés.
+        void this.verifierProlongation(editing, updated);
       } catch (err) {
         swallow('agenda:submitEdit', err);
         this.toast.error('Échec', apiErrorMessage(err, 'Modification impossible.'));
@@ -2980,29 +3649,35 @@ export class AgendaComponent implements OnInit {
     if (f.type === 'INCIDENT') payload.severity = f.severity;
     if (f.odometerKm != null && !Number.isNaN(f.odometerKm)) payload.odometerKm = Number(f.odometerKm);
     // Les décisions prises sur les réservations de la période sont tracées dans l'événement.
-    const decisions = Object.entries(this.resasDecisions()).filter(([, d]) => d !== 'laisser');
-    if (decisions.length > 0) payload.metadata = { reservations: decisions.map(([id, decision]) => ({ id, decision })) };
+    // Revue du 29/09 (C16) : figées ICI, au clic — véhicule, fenêtre, liste affichée, décisions —
+    // et c'est cet instantané, pas le formulaire, que la reprise appliquera. Aucune décision si
+    // l'évènement n'immobilise pas (C15) ou sans le droit de gérer les réservations (C17).
+    const lot = this.figerDecisions();
+    if (lot) payload.metadata = { reservations: lot.decisions.map(([id, decision]) => ({ id, decision })) };
 
     this.saving.set(true);
+    let created: VehicleEventDto;
     try {
-      const created = await firstValueFrom(this.api.createEvent(payload));
-      // Ajoute à la liste si l'événement tombe dans la fenêtre du mois affiché.
-      const { from, to } = this.monthWindow();
-      const t = new Date(created.startAt).getTime();
-      if (t >= new Date(from).getTime() && t < new Date(to).getTime()) {
-        this.events.update((list) => [...list, created]);
-      }
-      this.toast.success('Événement créé', created.title);
-      this.createOpen.set(false);
-      void this.loadSummary();
-      await this.appliquerDecisions(created);
-      this.resasPeriode.set([]); this.resasDecisions.set({});
+      created = await firstValueFrom(this.api.createEvent(payload));
     } catch (err) {
       swallow('agenda:toISOString', err);
       this.toast.error('Échec création', apiErrorMessage(err, 'Création impossible.'));
-    } finally {
       this.saving.set(false);
+      return;
     }
+    // Ajoute à la liste si l'événement tombe dans la fenêtre du mois affiché.
+    const { from, to } = this.monthWindow();
+    const t = new Date(created.startAt).getTime();
+    if (t >= new Date(from).getTime() && t < new Date(to).getTime()) {
+      this.events.update((list) => [...list, created]);
+    }
+    this.toast.success('Événement créé', created.title);
+    // Fermé et oublié TOUT DE SUITE, avant la reprise : un formulaire rouvert pendant les
+    // réaffectations garde sa propre liste (l'ancien code la vidait à la fin de la boucle).
+    this.fermerFormulaire();
+    this.saving.set(false);
+    void this.loadSummary();
+    if (lot) await this.appliquerDecisions(created, lot);
   }
 
   // ─── Sprint 9 (consolidation) — feuilles Réservation / Optimisation ─────────
@@ -3020,17 +3695,21 @@ export class AgendaComponent implements OnInit {
     this.resSheetOpen.set(true);
   }
 
-  /** #4 — Éditer une réservation depuis le panneau jour (ouvre la feuille en mode édition). */
+  /**
+   * #4 — Éditer une réservation depuis le panneau jour (ouvre la feuille en mode édition).
+   * T18 : sous reservations_manage (`canValidate`), la permission qu'exige `PATCH /reservations/:id`.
+   */
   protected openEditReservation(ev: VehicleEventDto): void {
+    if (!this.canValidate()) return;
     this.closeDayPanel();
     this.resEditReservation.set(ev);
     this.resDefaultDate.set(null);
     this.resSheetOpen.set(true);
   }
 
-  /** #4 — Annuler une réservation depuis le panneau jour (annulable même validée). */
+  /** #4 — Annuler une réservation depuis le panneau jour (annulable même validée). T18 : reservations_manage, comme `/cancel`. */
   protected async cancelDayReservation(ev: VehicleEventDto): Promise<void> {
-    if (!this.canManage()) return;
+    if (!this.canValidate()) return;
     if (!confirm(`Annuler la réservation « ${ev.title} » ?`)) return;
     this.busyId.set(ev.id);
     try {
@@ -3057,10 +3736,34 @@ export class AgendaComponent implements OnInit {
     void this.loadAgentProposals();
   }
 
-  /** Clic « Voir » sur une pastille IA PRÊTE : la vue Assistant IA porte les résultats (elle relit l'analyse conservée). */
-  protected onAiJobView(job: AiJob): void {
+  /**
+   * Clic « Voir » sur une pastille IA PRÊTE : la vue Assistant IA porte les résultats (elle relit
+   * l'analyse conservée).
+   *
+   * Revue du 29/09 (C18/D5) : un passage de l'agent avec l'IA coupée et zéro proposition n'a pas de
+   * vue IA à montrer : la pastille a déjà dit le résultat, on la retire, on recharge, et on le redit
+   * plutôt que de poser une vue invisible.
+   *
+   * Contre-revue du 29/09 (R21) : « Voir » d'un travail lancé sur une AUTRE société ramène d'abord le
+   * bandeau sur elle (la pastille le fait ; on le refait ici au besoin). Juste après, le statut IA et
+   * les propositions sont encore ceux de l'ANCIENNE société : les interroger tout de suite disait
+   * « Rien à traiter » sur un résultat bien réel, et la pastille avait déjà disparu. On bascule donc
+   * sur l'Assistant IA dès que le DROIT est là (`canOptimize`, comme un ?vue=ia) ; si l'IA n'est pas
+   * ouverte une fois le statut de la société chargé, la vue retombe d'elle-même
+   * (`vueDefinitiveEffect`). On ne conclut « rien à traiter » que sur un état déjà à jour.
+   */
+  protected async onAiJobView(job: AiJob): Promise<void> {
     this.aiJob.dismiss(job.id);
-    if (job.kind === 'agent-run') void this.loadAgentProposals();
+    if (job.fleetId && job.fleetId !== this.fleetFilter.selectedFleetId()) this.fleetFilter.set(job.fleetId);
+    if (job.kind === 'agent-run') {
+      this.onReservationChanged(); // un passage peut avoir placé des réservations d'office
+      // Les propositions d'abord : ce sont elles qui ouvrent (ou non) la vue quand l'IA est coupée.
+      await this.loadAgentProposals();
+    }
+    if (!this.canOptimize() || (this.etatIaAJour() && !this.vuePermise('ia'))) {
+      this.toast.info(job.resultText || job.title, 'Rien à traiter dans l’Assistant IA pour l’instant.');
+      return;
+    }
     this.vue.set('ia');
   }
 
@@ -3072,27 +3775,46 @@ export class AgendaComponent implements OnInit {
    * une notification rouge sur un écran qui, lui, fonctionne.
    */
   protected async loadPendingRequests(): Promise<void> {
+    const n = ++this.lecture.pending; // T15 : même course que les autres chargeurs (changement de société)
     if (!this.canValidate()) { this.pendingCount.set(0); return; }
     try {
       const list = await firstValueFrom(
         this.api.listReservations({ status: 'REQUESTED', fleetId: this.currentFleetId() }),
       );
+      if (n !== this.lecture.pending) return;
       this.pendingCount.set(list.length);
     } catch (err) {
       swallow('agenda:loadPendingRequests', err);
+      if (n !== this.lecture.pending) return;
       this.pendingCount.set(0);
     }
   }
 
-  /** Compteur de propositions en attente (pour la société active). Silencieux si non éligible. */
+  /**
+   * Compteur de propositions en attente (pour la société active). Silencieux si non éligible.
+   *
+   * Contre-revue du 29/09 (S2) : la lecture note POUR QUELLE société elle a abouti
+   * (`propositionsSociete`) — c'est ce qui dit à la page que l'onglet IA n'est plus « en
+   * chargement ». Une réponse arrivée après un changement de société est écartée : la lecture de la
+   * nouvelle société est déjà partie (`fleetFilterEffect`), et l'ancienne liste n'y a pas sa place.
+   */
   protected async loadAgentProposals(): Promise<void> {
-    if (!this.canOptimize()) { this.agentProposals.set([]); return; }
+    const societe = this.fleetFilter.selectedFleetId();
+    if (!this.canOptimize()) {
+      this.agentProposals.set([]);
+      this.propositionsSociete.set(societe);
+      return;
+    }
+    let liste: AgendaAgentProposalDto[];
     try {
-      this.agentProposals.set(await firstValueFrom(this.agentApi.listProposals(this.currentFleetId())));
+      liste = await firstValueFrom(this.agentApi.listProposals(societe ?? undefined));
     } catch (err) {
       swallow('agenda:loadAgentProposals', err);
-      this.agentProposals.set([]);
+      liste = [];
     }
+    if (this.fleetFilter.selectedFleetId() !== societe) return;
+    this.agentProposals.set(liste);
+    this.propositionsSociete.set(societe);
   }
 
   /**
@@ -3103,6 +3825,8 @@ export class AgendaComponent implements OnInit {
    * part qu'il faut penser à ouvrir.
    */
   protected async applyProposal(p: AgendaAgentProposalDto): Promise<void> {
+    // T7/T19 : même garde que les boutons — un lot de l'Assistant IA traite ce véhicule.
+    if (this.busyId() === p.id || this.vehiculesEnLot().has(p.vehicleId)) return;
     this.busyId.set(p.id);
     try {
       await firstValueFrom(this.agentApi.applyProposal(p.id));
@@ -3114,6 +3838,9 @@ export class AgendaComponent implements OnInit {
     } catch (err) {
       swallow('agenda:applyProposal', err);
       this.toast.error('Échec', apiErrorMessage(err, 'La proposition n’a pas pu être réservée.'));
+      // T7/T19 : un refus vient souvent d'une proposition déjà traitée ailleurs (un lot, un autre
+      // onglet) — on relit la liste, sinon le fantôme reste cliquable jusqu'au prochain chargement.
+      void this.loadAgentProposals();
     } finally {
       this.busyId.set(null);
     }
@@ -3121,6 +3848,7 @@ export class AgendaComponent implements OnInit {
 
   /** Écarter une proposition : elle disparaît de la grille et ne sera pas re-proposée. */
   protected async dismissProposal(p: AgendaAgentProposalDto): Promise<void> {
+    if (this.busyId() === p.id || this.vehiculesEnLot().has(p.vehicleId)) return; // T7/T19
     this.busyId.set(p.id);
     try {
       await firstValueFrom(this.agentApi.dismissProposal(p.id));
@@ -3128,6 +3856,7 @@ export class AgendaComponent implements OnInit {
     } catch (err) {
       swallow('agenda:dismissProposal', err);
       this.toast.error('Échec', apiErrorMessage(err, 'La proposition n’a pas pu être écartée.'));
+      void this.loadAgentProposals(); // T7/T19 : même raison que `applyProposal`
     } finally {
       this.busyId.set(null);
     }

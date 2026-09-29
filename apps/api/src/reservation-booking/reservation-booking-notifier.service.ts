@@ -10,10 +10,31 @@ import { SmsGatewayService } from '../sms/sms-gateway.service';
 /** Source des erreurs → visible dans le centre d'alerte admin (/admin/alerts). */
 const SOURCE = 'RESERVATION_BOOKING';
 
+/** Ce qu'un événement `reservation.*` porte : la ligne écrite, telle que le service l'a rendue. */
+interface LigneEvenement {
+  fleetId: string;
+  vehiclePlate: string | null;
+  startAt: string;
+  endAt: string | null;
+  /** Statut APRÈS l'écriture (absent chez un ancien émetteur). */
+  status?: string | null;
+  metadata: Record<string, unknown> | null;
+}
+
+/** L'état d'une demande groupée (`bookingRef`), relu en base au moment d'écrire. */
+interface EtatGroupe {
+  attend: boolean;
+  plaquesAVenir: string[];
+  /** Les lignes fermes encore à venir, avec LEUR créneau (contre-revue R3). */
+  lignesAVenir: { plate: string; startAt: Date | null; endAt: Date | null }[];
+}
+
 /**
  * Refonte agenda/IA (2026-07, P4) — Notifications au DEMANDEUR d'un lien public.
  * Découplé du flux réservation : à la SOUMISSION (accusé de réception) et à la VALIDATION
- * (`@OnEvent('reservation.confirmed')`). Canal : e-mail si le contact contient « @ », sinon SMS.
+ * (`@OnEvent('reservation.confirmed')`), au REFUS, à la MODIFICATION d'une réservation déjà
+ * confirmée (`reservation.modified`, revue du 29/09) et à son ANNULATION (`reservation.cancelled`,
+ * troisième relecture du 29/09). Canal : e-mail si le contact contient « @ », sinon SMS.
  * Best-effort : tout échec (envoi ou exception) est journalisé dans le CENTRE D'ALERTE admin via
  * ErrorLogger (source RESERVATION_BOOKING) — jamais d'exception propagée au flux métier.
  */
@@ -54,15 +75,18 @@ export class ReservationBookingNotifier {
     await this.notify(input.contact, input.fleetId, built, 'reservation_requested');
   }
 
-  /** Confirmation à la VALIDATION d'une réservation publique — e-mail AU THÈME. */
+  /**
+   * Confirmation à la VALIDATION d'une réservation publique — e-mail AU THÈME.
+   *
+   * Troisième relecture du 29/09 (T5) — c'est souvent le PREMIER et le seul écrit du demandeur (F13 :
+   * on se tait tant qu'une ligne sœur attend). Elle combinait le créneau de la ligne validée avec
+   * TOUTES les plaques confirmées : une ligne scindée pendant l'attente (A lundi → jeudi, C jeudi →
+   * vendredi) devenait « lundi → vendredi, Véhicule : A, C, B » — trois voitures toute la semaine, dont
+   * une partie peut-être déjà écoulée. Même récapitulatif que la modification ({@link recapGroupe}) :
+   * les lignes fermes À VENIR, une ligne « véhicule — créneau » dès que les créneaux diffèrent.
+   */
   @OnEvent('reservation.confirmed', { async: true })
-  async onConfirmed(payload: {
-    fleetId: string;
-    vehiclePlate: string | null;
-    startAt: string;
-    endAt: string | null;
-    metadata: Record<string, unknown> | null;
-  }): Promise<void> {
+  async onConfirmed(payload: LigneEvenement): Promise<void> {
     const m = payload?.metadata;
     if (!m || m['public'] !== true) return; // uniquement les demandes publiques
     const contact = typeof m['requesterContact'] === 'string' ? (m['requesterContact'] as string) : '';
@@ -71,11 +95,153 @@ export class ReservationBookingNotifier {
     if (groupe.attend) return; // un frère encore en attente : on écrira à la dernière décision
     const built = this.email.buildReservationConfirmedEmail({
       fleetName: await this.fleetNameOf(payload.fleetId),
-      slotLabel: this.fmtSlot(payload.startAt, payload.endAt),
-      destination: typeof m['destination'] === 'string' ? (m['destination'] as string) : null,
-      vehicle: groupe.plaquesConfirmees.length > 1 ? groupe.plaquesConfirmees.join(', ') : payload.vehiclePlate,
+      destination: this.destinationDe(m),
+      ...this.recapGroupe(groupe, payload),
     });
     await this.notify(contact, payload.fleetId, built, 'reservation_confirmed');
+  }
+
+  /**
+   * C5 (revue du 29/09) — une réservation publique DÉJÀ CONFIRMÉE a changé de véhicule ou de créneau
+   * (véhicule au garage → « Réaffecter », décalage en masse, édition). Le demandeur avait reçu une
+   * confirmation nommant l'ancienne plaque et ne recevait plus rien : il se présentait pour une
+   * voiture au garage. On lui renvoie SA confirmation, mise à jour et dite « modifiée ».
+   *
+   * Mêmes gardes que la confirmation (demande publique, un contact, F13 : on se tait tant qu'une ligne
+   * sœur attend encore — la confirmation finale portera les bonnes plaques). Les plaques nommées sont
+   * celles des lignes fermes ENCORE À VENIR : une réservation scindée garde sa partie écoulée sur
+   * l'ancien véhicule, qu'il ne faut plus annoncer.
+   *
+   * Contre-revue du 29/09 :
+   *  - R4 : rien pour une réservation TERMINÉE (fin passée) ni close ou annulée — corriger après coup
+   *    le véhicule d'une sortie d'hier écrivait « votre réservation a été modifiée ». Le service ne
+   *    l'émet plus ; ce garde couvre tout autre émetteur.
+   *  - R3 : quand les lignes à venir d'une demande n'ont PLUS le même créneau (une seule a été décalée,
+   *    ou une scission garde la voiture d'origine jusqu'à jeudi), le courriel ne combine plus le
+   *    créneau d'une ligne avec les plaques de toutes : il écrit une ligne « véhicule — créneau »
+   *    par véhicule.
+   */
+  @OnEvent('reservation.modified', { async: true })
+  async onModified(payload: LigneEvenement): Promise<void> {
+    const m = payload?.metadata;
+    if (!m || m['public'] !== true) return; // uniquement les demandes publiques
+    const contact = typeof m['requesterContact'] === 'string' ? (m['requesterContact'] as string) : '';
+    if (!contact.trim()) return;
+    // R4 — une réservation finie, close ou annulée ne concerne plus le demandeur.
+    if (payload.status === 'DONE' || payload.status === 'CANCELLED') return;
+    if (payload.endAt && new Date(payload.endAt).getTime() <= Date.now()) return;
+    const groupe = await this.etatDuGroupe(m);
+    if (groupe.attend) return;
+    const built = this.email.buildReservationConfirmedEmail({
+      fleetName: await this.fleetNameOf(payload.fleetId),
+      destination: this.destinationDe(m),
+      ...this.recapGroupe(groupe, payload),
+      modifiee: true,
+    });
+    await this.notify(contact, payload.fleetId, built, 'reservation_confirmed');
+  }
+
+  /**
+   * T2 (troisième relecture du 29/09) — une réservation publique DÉJÀ CONFIRMÉE a été ANNULÉE (par la
+   * feuille, le panneau du jour, la décision « Annuler » d'une immobilisation ou « Réorganiser →
+   * Annuler »). Le demandeur avait reçu « confirmée — AA-111-BB » et ne recevait plus rien : il se
+   * présentait pour une réservation annulée. Le service n'émet que pour une ligne CONFIRMÉE, publique,
+   * non rétroactive et pas encore finie, et une seule fois par demande pour un geste de masse.
+   *
+   * L'état du GROUPE tranche (relu en base, comme les autres courriels) :
+   *  - une ligne sœur encore en attente : on se tait, la dernière décision écrira (F13) ;
+   *  - des lignes fermes restent à venir : la demande n'est pas annulée, elle est MODIFIÉE — le
+   *    courriel « modifiée » nomme les lignes RESTANTES, jamais la plaque ni le créneau de la ligne
+   *    annulée (qui sont ceux de l'événement) ;
+   *  - plus rien : « Votre réservation a été annulée ». Pas le texte du refus (« votre demande n'a pas
+   *    pu être retenue ») : il est faux pour une réservation que le demandeur tenait pour ferme.
+   */
+  @OnEvent('reservation.cancelled', { async: true })
+  async onCancelled(payload: LigneEvenement): Promise<void> {
+    const m = payload?.metadata;
+    if (!m || m['public'] !== true) return; // uniquement les demandes publiques
+    const contact = typeof m['requesterContact'] === 'string' ? (m['requesterContact'] as string) : '';
+    if (!contact.trim()) return;
+    // Mêmes bornes que le service, pour tout autre émetteur : ni consignation, ni réservation finie.
+    if (m['retroactive'] === true) return;
+    if (payload.endAt && new Date(payload.endAt).getTime() <= Date.now()) return;
+    const groupe = await this.etatDuGroupe(m);
+    if (groupe.attend) return;
+    if (groupe.lignesAVenir.length > 0) {
+      await this.notify(contact, payload.fleetId, await this.confirmationDesLignesRestantes(groupe, payload, m, true), 'reservation_confirmed');
+      return;
+    }
+    const built = this.email.buildReservationRefusedEmail({
+      fleetName: await this.fleetNameOf(payload.fleetId),
+      slotLabel: this.fmtSlot(payload.startAt, payload.endAt),
+      destination: this.destinationDe(m),
+      annulee: true,
+    });
+    // Même modèle journalisé que le refus : l'issue négative d'une demande publique (le sujet, lui,
+    // distingue « annulée » de « non retenue » dans le journal des envois).
+    await this.notify(contact, payload.fleetId, built, 'reservation_refused');
+  }
+
+  /**
+   * La confirmation qui nomme les lignes fermes RESTANTES d'une demande, construite sur ELLES — la
+   * première à venir sert de référence (créneau, plaque), jamais la ligne de l'événement, qui vient
+   * d'être annulée ou refusée. `modifiee` : la demande avait déjà été confirmée au demandeur.
+   */
+  private async confirmationDesLignesRestantes(
+    groupe: EtatGroupe,
+    payload: LigneEvenement,
+    m: Record<string, unknown>,
+    modifiee: boolean,
+  ): Promise<{ subject: string; text: string; html: string }> {
+    const [premiere] = groupe.lignesAVenir;
+    const reference = {
+      vehiclePlate: premiere.plate,
+      startAt: (premiere.startAt ?? new Date(payload.startAt)).toISOString(),
+      endAt: premiere.endAt ? premiere.endAt.toISOString() : null,
+    };
+    return this.email.buildReservationConfirmedEmail({
+      fleetName: await this.fleetNameOf(payload.fleetId),
+      destination: this.destinationDe(m),
+      ...this.recapGroupe(groupe, reference),
+      ...(modifiee ? { modifiee: true } : {}),
+    });
+  }
+
+  /**
+   * LE récapitulatif d'une demande — confirmation, modification, annulation partielle (T5 : il vivait
+   * dans la seule modification, et la confirmation finale mélangeait encore les lignes).
+   *  - `slotLabel` / plaque unique : ceux de la ligne de référence ;
+   *  - plusieurs véhicules à venir sur le MÊME créneau : leurs plaques, sur ce créneau ;
+   *  - des créneaux qui diffèrent (une ligne décalée seule, une voiture gardée jusqu'à jeudi puis
+   *    relayée) : une ligne « véhicule — créneau » par ligne ferme à venir. Une partie déjà écoulée
+   *    d'une scission n'est plus annoncée (elle n'est pas « à venir »).
+   * Sans `bookingRef` (ou journal illisible), le groupe est vide : la ligne de référence seule.
+   */
+  private recapGroupe(
+    groupe: EtatGroupe,
+    reference: { vehiclePlate: string | null; startAt: string; endAt: string | null },
+  ): { slotLabel: string; vehicle: string | null; lignes?: { vehicle: string; slotLabel: string }[] } {
+    const creneaux = new Set(groupe.lignesAVenir.map((l) => `${l.startAt?.getTime() ?? ''}|${l.endAt?.getTime() ?? ''}`));
+    const lignes =
+      creneaux.size > 1
+        ? groupe.lignesAVenir.map((l) => ({
+            vehicle: l.plate,
+            slotLabel: this.fmtSlot(
+              (l.startAt ?? new Date(reference.startAt)).toISOString(),
+              l.endAt ? l.endAt.toISOString() : null,
+            ),
+          }))
+        : undefined;
+    return {
+      slotLabel: this.fmtSlot(reference.startAt, reference.endAt),
+      vehicle: groupe.plaquesAVenir.length > 1 ? groupe.plaquesAVenir.join(', ') : reference.vehiclePlate,
+      ...(lignes ? { lignes } : {}),
+    };
+  }
+
+  /** La destination saisie par le demandeur, si elle est lisible. */
+  private destinationDe(m: Record<string, unknown>): string | null {
+    return typeof m['destination'] === 'string' ? (m['destination'] as string) : null;
   }
 
   /**
@@ -86,20 +252,37 @@ export class ReservationBookingNotifier {
    * écrit à la dernière décision — la confirmation nomme alors tous les véhicules retenus.
    * Sans `bookingRef` (demande à un seul véhicule, ou ancienne), rien ne change.
    */
-  private async etatDuGroupe(m: Record<string, unknown>): Promise<{ attend: boolean; plaquesConfirmees: string[] }> {
+  private async etatDuGroupe(m: Record<string, unknown>): Promise<EtatGroupe> {
+    const vide: EtatGroupe = { attend: false, plaquesAVenir: [], lignesAVenir: [] };
     const ref = typeof m['bookingRef'] === 'string' ? (m['bookingRef'] as string) : '';
-    if (!ref) return { attend: false, plaquesConfirmees: [] };
+    if (!ref) return vide;
     try {
       const freres = await this.prisma.vehicleEvent.findMany({
         where: { type: 'RESERVATION', metadata: { path: ['bookingRef'], equals: ref } },
-        select: { status: true, vehicle: { select: { plate: true } } },
+        select: { status: true, startAt: true, endAt: true, vehicle: { select: { plate: true } } },
       });
+      const maintenant = Date.now();
+      // Revue du 29/09 (C5) : après une scission, la partie écoulée (fermée à la coupe) garde
+      // l'ancienne plaque — une modification n'annonce que les lignes fermes encore à venir.
+      const aVenir = freres
+        .filter(
+          (f) => (f.status === 'CONFIRMED' || f.status === 'IN_PROGRESS') && (!f.endAt || new Date(f.endAt).getTime() > maintenant),
+        )
+        .sort((a, b) => (a.startAt ? new Date(a.startAt).getTime() : 0) - (b.startAt ? new Date(b.startAt).getTime() : 0));
       return {
         attend: freres.some((f) => f.status === 'REQUESTED'),
-        plaquesConfirmees: freres.filter((f) => f.status === 'CONFIRMED').map((f) => f.vehicle?.plate ?? '').filter(Boolean),
+        plaquesAVenir: [...new Set(aVenir.map((f) => f.vehicle?.plate ?? '').filter(Boolean))],
+        lignesAVenir: aVenir
+          .filter((f) => !!f.vehicle?.plate)
+          .map((f) => ({
+            plate: f.vehicle?.plate ?? '',
+            startAt: f.startAt ? new Date(f.startAt) : null,
+            endAt: f.endAt ? new Date(f.endAt) : null,
+          })),
       };
     } catch {
-      return { attend: false, plaquesConfirmees: [] }; // un journal illisible ne doit pas taire le demandeur
+      // un journal illisible ne doit pas taire le demandeur
+      return vide;
     }
   }
 
@@ -107,24 +290,28 @@ export class ReservationBookingNotifier {
    * F16 (recette du 28/09) — REFUS d'une demande publique. Le demandeur recevait l'accusé de
    * réception puis la confirmation ; un refus ne lui disait rien, et il attendait un véhicule qui
    * ne viendrait pas. Même garde que la confirmation : demande publique, avec un contact.
+   *
+   * Troisième relecture du 29/09 (cas mixte, même famille que T2) — une ligne validée, l'autre
+   * refusée : la validation s'était tue (une sœur attendait encore, F13), et le refus final écrivait
+   * « votre demande n'a pas pu être retenue » — la confirmation de la ligne retenue n'arrivait jamais.
+   * S'il reste des lignes fermes à venir, c'est LEUR confirmation qui part, nommant ce qui reste.
    */
   @OnEvent('reservation.refused', { async: true })
-  async onRefused(payload: {
-    fleetId: string;
-    vehiclePlate: string | null;
-    startAt: string;
-    endAt: string | null;
-    metadata: Record<string, unknown> | null;
-  }): Promise<void> {
+  async onRefused(payload: LigneEvenement): Promise<void> {
     const m = payload?.metadata;
     if (!m || m['public'] !== true) return; // uniquement les demandes publiques
     const contact = typeof m['requesterContact'] === 'string' ? (m['requesterContact'] as string) : '';
     if (!contact.trim()) return;
-    if ((await this.etatDuGroupe(m)).attend) return; // F13 : un seul courriel par demande, à la dernière décision
+    const groupe = await this.etatDuGroupe(m);
+    if (groupe.attend) return; // F13 : un seul courriel par demande, à la dernière décision
+    if (groupe.lignesAVenir.length > 0) {
+      await this.notify(contact, payload.fleetId, await this.confirmationDesLignesRestantes(groupe, payload, m, false), 'reservation_confirmed');
+      return;
+    }
     const built = this.email.buildReservationRefusedEmail({
       fleetName: await this.fleetNameOf(payload.fleetId),
       slotLabel: this.fmtSlot(payload.startAt, payload.endAt),
-      destination: typeof m['destination'] === 'string' ? (m['destination'] as string) : null,
+      destination: this.destinationDe(m),
     });
     await this.notify(contact, payload.fleetId, built, 'reservation_refused');
   }
@@ -328,16 +515,24 @@ export class ReservationBookingNotifier {
     return parts.length > 0 ? parts.join(' · ') : null;
   }
 
-  /** Créneau lisible (Europe/Paris) pour l'e-mail / SMS. */
+  /**
+   * Créneau lisible (Europe/Paris) pour l'e-mail / SMS. Une fin un AUTRE jour porte sa date
+   * (contre-revue du 29/09) : « lundi 09:00 → 00:00 » pour une réservation qui garde sa voiture
+   * jusqu'à jeudi disait l'inverse de la réalité.
+   */
   private fmtSlot(startAtIso: string, endAtIso: string | null): string {
     try {
-      const s = new Intl.DateTimeFormat('fr-FR', {
+      const complet = new Intl.DateTimeFormat('fr-FR', {
         timeZone: 'Europe/Paris', weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit',
-      }).format(new Date(startAtIso));
-      const e = endAtIso
-        ? ' → ' + new Intl.DateTimeFormat('fr-FR', { timeZone: 'Europe/Paris', hour: '2-digit', minute: '2-digit' }).format(new Date(endAtIso))
-        : '';
-      return s + e;
+      });
+      const jour = new Intl.DateTimeFormat('fr-FR', { timeZone: 'Europe/Paris', year: 'numeric', month: '2-digit', day: '2-digit' });
+      const s = complet.format(new Date(startAtIso));
+      if (!endAtIso) return s;
+      const memeJour = jour.format(new Date(startAtIso)) === jour.format(new Date(endAtIso));
+      const e = memeJour
+        ? new Intl.DateTimeFormat('fr-FR', { timeZone: 'Europe/Paris', hour: '2-digit', minute: '2-digit' }).format(new Date(endAtIso))
+        : complet.format(new Date(endAtIso));
+      return `${s} → ${e}`;
     } catch {
       return startAtIso;
     }
