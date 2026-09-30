@@ -1568,6 +1568,80 @@ montrées :
 L'agent ne les recréera pas : il ne propose plus une occurrence qui chevauche une proposition CONNUE du
 même véhicule, quel que soit son statut — écartée comprise (relecture du 29/09).
 
+## 2026-09-30, matin — le dernier tour : voir avant d'appliquer, un vrai bouton à glisser, les modales de l'application, le bon logo
+
+### La commande
+
+> « continue de tester l'agenda sur chrome, c'est bon c'est le dernier tour […] ouvre réorganisations et
+> tests sur la flotte CDEF (il faut pouvoir avoir une vue de la réorganisation sans appliquer, en gros on
+> affiche ce que ça change et le temps gagné, mais uniquement si user valide avec modal de confirmation
+> en mode slide comme pour le coupe moteur), sans envoyer de mails au CDEF, et ensuite dans le QR code le
+> logo de Tracky n'est pas le bon ! Pour la modal de confirmation d'une annulation de réservation doit
+> être comme les autres de l'application ! PS : je pense qu'on peut mieux faire pour le bouton glissé,
+> actuellement une ligne avec un point, je veux un vrai bouton avec une animation montrant qu'il faut
+> glisser le doigt […] »
+
+### Ce qui a changé
+
+| Demande | Fait |
+|---|---|
+| Voir ce que la réorganisation change, sans appliquer | sous le bilan de la simulation, « **Ce que ça change** » : ce qui part et où (réaffecter : « N réservations quittent X : elles partent sur Y / sur le premier véhicule libre et conforme »), annuler (« une demande en attente est refusée »), décaler, les refus, le plafond, **qui est prévenu** (le serveur le compte désormais : `courriels` dans la simulation, un par demande du lien public, courriel OU SMS) |
+| Le temps gagné | une ESTIMATION qui dit sa base : 2 min par réservation reprise à la main (l'ouvrir, trouver un véhicule libre, l'enregistrer), 1 min par décalage, 30 s par annulation, 10 s par proposition écartée une à une |
+| N'appliquer qu'après une confirmation « slide » | les boutons de la feuille n'écrivent plus : ils ouvrent la confirmation à GLISSER (celle de la coupe moteur), qui redit le lot, les messages et le temps gagné. Seule la lecture MONTRÉE part : remplacée ou relancée pendant que la modale est ouverte, rien n'est écrit, et on le dit |
+| Un vrai bouton à glisser | piste arrondie, pastille à chevrons qui se remplit derrière elle, libellé à reflet ; au repos, un DOIGT se pose sur la pastille et glisse le long de la piste. Le range natif reste dessous, invisible : doigt, souris, clavier et garde T50 |
+| La confirmation d'annulation comme les autres | annuler une réservation / refuser une demande / supprimer un évènement : la modale de l'application (danger, irréversible, créneau et plaque rappelés, « Le demandeur est prévenu (courriel ou SMS) » ou « Personne n'est prévenu »), plus la boîte native du navigateur |
+| Le logo du QR | le logo officiel (`vizyo-tracky-icon-green`, avec la goutte dans le creux du V) dans l'en-tête et au centre de la carte, embarqué pour s'afficher aussi dans la fenêtre d'impression. L'écran de chargement animé garde l'ancien tracé (il faut une version vectorielle du bon logo pour son animation) |
+
+### Relecture contradictoire — 1 bloquant, 2 importants, des mineurs, tous traités
+
+| Relevé | Traité |
+|---|---|
+| **Bloquant** — annuler une demande EN ATTENTE, c'est la refuser, et le refus part toujours (`annoncerRefus` n'a ni borne de date ni de consignation) : la modale disait « aucun courriel » pour une vieille demande publique. Et le notifier envoie un **SMS facturé** quand le contact est un numéro | règle corrigée (en attente + publique + contact = prévenu, toujours) et testée ; « courriel ou SMS » partout ; la modale dit « Refuser cette demande ? » (« Retirer votre demande ? » pour la sienne) |
+| **Important** — l'invitation décalait la pastille de 46 px hors du pouce natif : un doigt posé dessus tombait sur la piste, le curseur sautait, la garde T50 refusait le geste sans un mot | c'est le doigt qui glisse ; la pastille ne fait qu'un à-coup de 8 px ; tout s'arrête sous la souris ou le focus ; départ admis porté à 25 % (pouce de 60 px, téléphone étroit) ; un geste refusé le dit (« Partez du bouton rond… ») |
+| **Important** — au clavier, le navigateur émet `change` à chaque pas : pris pour un relâché, il remettait le curseur à zéro — ni la coupe moteur (depuis le 13/09) ni Réorganiser ne se confirmaient au clavier | `change` n'est un relâché qu'après un appui du pointeur ; au clavier, la flèche maintenue confirme en arrivant au bout (test au plus près du navigateur : `input` + `change` à chaque pas) |
+| Échap fermait la modale ET la feuille ; le focus restait dans la feuille ; un double-clic refermait la modale | Échap capturé par la modale seule ; focus sur « Annuler »/« Revenir » à l'ouverture ; clic sur le voile ignoré 400 ms |
+| « X est libéré » faux s'il reste des réservations (refus, filtre d'origine, limite aux refusées) ; plafond non dit ; « sur N véhicules » surestimé quand plafonné | « N réservations quittent X » ; le plafond est dit ; le nombre de véhicules n'est plus dit quand le lot est plafonné |
+| Une erreur à l'écriture laissait la lecture applicable : un second glissement pouvait rejouer le lot (en décalage, double décalage) | après toute erreur, la lecture n'est plus applicable et l'état est relu |
+| Une confirmation restée ouverte réapparaissait, périmée, à la réouverture | vidée à la fermeture de la feuille |
+| libellé du bouton rogné des deux côtés sur un téléphone | libellé court, coupé proprement, centré « safe » |
+
+**Laissé, dit :** si un collègue valide une demande pendant que la confirmation est ouverte, le compte de
+messages annoncé peut être dépassé (le lot est vérifié par identifiants, pas par statut). Aucun cas
+possible chez cdef31 aujourd'hui (aucune réservation publique).
+
+**Vérifié.** `pnpm verify` vert trois fois dans la matinée ; le dernier, après la relecture : API
+**4 785/4 785**, web **986/986**, shared 423, 153 migrations rejouées, smoke 5/5 ; `ng build` sans erreur ;
+`verif:confirmations` et `verif:couleurs-kit` sans nouvelle entrée (le seul `#fff` ajouté est devenu un jeton).
+Trois commits sur `origin/main` : `67b59383` (le dernier tour), `6f805a14` (la relecture), `f77754d0` (le défaut trouvé en recette, ci-dessous).
+
+### Recette sur la démo (08:15 – 09:00, Transports Méridien, Chrome)
+
+| | Résultat |
+|---|---|
+| QR de réservation | logo officiel dans l'en-tête et au centre |
+| Réorganiser, propositions (VE-678-QY) | « Ce que ça change » + temps gagné ; la confirmation redit tout ; **glissé à la souris** : 2 écartées, une ligne de journal |
+| Réorganiser, réservations (GR-903-GS, réaffecter) | « 1 réservation quitte GR-903-GS… », « Personne n'est prévenu » (compte du serveur) ; confirmation ouverte puis « Revenir » |
+| **Au clavier** (FQ-639-GV) | Maj+Tab jusqu'au curseur, flèche droite maintenue : confirmé, 4 écartées — impossible avant la relecture |
+| Défaut trouvé : la confirmation ROUVERTE montrait la pastille au bout | la flèche maintenue répétait après la confirmation (curseur à 100, gardé jusqu'à la réouverture) → la modale n'écoute plus le curseur une fois confirmée et repart de zéro à chaque ouverture (`f77754d0`, test) |
+| Supprimer un évènement | la modale de l'application (« Supprimer cet évènement ? », créneau sur plusieurs jours rappelé, Irréversible) ; les deux maintenances de test d'hier supprimées par elle ; Échap ne ferme que la modale |
+| Annuler une réservation | la demande publique « → Albi » (confirmée, finie) : « Personne n'est prévenu », « Garder » ; une réservation interne passée annulée jusqu'au bout (« Réservation annulée ») |
+| Coupe moteur (démo, rien n'atteint un véhicule) | le nouveau bouton, rouge, « Glissez pour couper le moteur » ; focus sur Annuler ; Échap referme |
+
+**🚀 Déployé le 30/09 à 09:05 (Paris) — `f77754d0`, SANS `--force`** (sur l'ordre du propriétaire ; fenêtre du
+matin passée ; passage de 08:45 fini à 08:49). Un administrateur de cdef31 avait un onglet ouvert, en
+arrière-plan, sans un clic depuis 08:55 : redémarrage de 15 s sans effet pour lui. API saine en 15 s,
+0 redémarrage ; démo à jour. Artefacts vérifiés DANS les conteneurs (`main-B53JJQY7.js`, verrou de
+confirmation, compte des messages). Aucune erreur API depuis.
+
+### Recette sur CDEF (09:10 – 09:20) — en lecture seule, rien d'appliqué
+
+| | Résultat |
+|---|---|
+| QR de réservation | logo officiel (société « cdef31 », domaine app-tracky) |
+| Réorganiser, propositions | 213 dans les 30 jours, 25 véhicules : « Ce que ça change », « Personne n'est prévenu », « Temps gagné : ≈ 36 min » ; confirmation ouverte (curseur à 0, focus sur « Revenir », doigt animé), puis **Revenir** |
+| Réorganiser, réservations | une réservation EN COURS sur GR-294-VW (posée par le client ce matin) : Annuler/Décaler l'expliquent ; Réaffecter en simulation : « 1 réservation quitte GR-294-VW… », « Personne n'est prévenu » ; feuille fermée |
+| Base après | depuis 09:00 chez cdef31 : **0 geste écrit, 0 ligne de journal, 0 proposition modifiée ; 0 message envoyé** (tous clients confondus) |
+
 ---
 
 ## Ce qu'il ne faut pas défaire
@@ -1616,3 +1690,13 @@ même véhicule, quel que soit son statut — écartée comprise (relecture du 2
 - **Le nettoyage des chevauchements garde d'office les créneaux déjà pris** (réservations fermes,
   immobilisations, fin effective). Sans eux, il garde une proposition non réservable et écarte sa
   jumelle libre. Et il n'écrit que le lot montré (`ids`), comme Réorganiser.
+- **Un geste de masse se confirme par un GLISSEMENT, et la confirmation dit ce qui part** (Réorganiser
+  comme la coupe moteur) : ce que ça change, qui est prévenu (courriel OU SMS : le notifier envoie un SMS
+  facturé quand le contact est un numéro), le temps gagné (une estimation qui dit sa base). Seule la
+  lecture MONTRÉE part : remplacée ou relancée pendant que la modale est ouverte, rien n'est écrit.
+- **Le curseur à glisser** : `change` n'est un relâché qu'après un appui du pointeur (le navigateur en
+  émet un à CHAQUE pas clavier — sinon le clavier ne confirme jamais) ; la pastille reste sous le pouce
+  natif (l'invitation ne la pousse que de 8 px, c'est le doigt qui glisse) ; la modale n'écoute plus le
+  curseur une fois confirmée et repart de zéro à chaque ouverture.
+- **Plus de `confirm()` natif dans l'agenda** : la modale de l'application, qui dit si le demandeur est
+  prévenu. Un refus de demande publique prévient TOUJOURS (`annoncerRefus` n'a aucune borne).
