@@ -505,7 +505,7 @@ export function lancerPassageAgent(
 
           @if (proposals().length === 0) {
             <p class="ia-muted">Aucune proposition en attente.
-              @if (dernierPassage(); as r) { Dernier passage le {{ r.startedAt | date:'dd/MM à HH:mm' }} : @if (r.status === 'error') { échec. } @else if (r.patterns === 0) { aucune habitude assez nette. } @else { {{ r.patterns }} habitude(s), {{ r.proposed }} proposée(s). } }
+              @if (dernierPassage(); as r) { Dernier passage le {{ r.startedAt | date:'dd/MM à HH:mm' }} : @if (r.status === 'error') { échec. } @else if (r.patterns === 0) { aucune habitude assez nette. } @else { {{ r.patterns }} habitude(s), {{ r.proposed }} proposée(s) pour la société. } }
             </p>
           } @else {
             <div class="ia-groupes">
@@ -522,7 +522,9 @@ export function lancerPassageAgent(
                          du lot restaient cliquables (deux gestes contraires sur la même proposition).
                          Contre-revue (R22) : l'état du lot est lu dans AgendaSyncService, qui survit à
                          cette vue — en revenant sur l'onglet pendant un « Tout réserver », tout reste grisé. -->
-                    @if (canManage() && g.items.length > 1) {
+                    <!-- 30/09 (point 2) : par VÉHICULE — un gestionnaire limité à un groupe ne voit plus de
+                         boutons qui répondraient 403 sur les véhicules qu'il ne gère pas. -->
+                    @if (gere(g.vehicleId) && g.items.length > 1) {
                       <div class="ia-g-bulk">
                         <button type="button" class="ia-mini ia-mini--ok" [disabled]="lotEnCours() || groupeOccupe(g)" [title]="titreLot(g)" (click)="toutReserver(g)"><lucide-icon [img]="CheckIcon" [size]="12"></lucide-icon> Tout réserver</button>
                         <button type="button" class="ia-mini" [disabled]="lotEnCours() || groupeOccupe(g)" [title]="titreLot(g)" (click)="toutEcarter(g)"><lucide-icon [img]="XIcon" [size]="12"></lucide-icon> Tout écarter</button>
@@ -536,7 +538,7 @@ export function lancerPassageAgent(
                           <span class="ia-row-when">{{ p.startAt | date:'EEE d MMM' }} <strong>{{ p.startAt | date:'HH:mm' }} → {{ p.endAt | date:'HH:mm' }}</strong></span>
                           @if (p.destinationLabel) { <span class="ia-row-dest"><lucide-icon [img]="MapPinIcon" [size]="11"></lucide-icon> {{ p.destinationLabel }}</span> }
                           <span class="ia-row-conf" [class.ia-chip--hi]="p.confidence >= 0.7" [title]="p.reasoning">{{ p.confidence * 100 | number:'1.0-0' }}%</span>
-                          @if (canManage()) {
+                          @if (gere(g.vehicleId)) {
                             <span class="ia-row-act">
                               <button type="button" class="ia-mini ia-mini--ok" [disabled]="busy().has(p.id) || lotsVehicules().has(g.vehicleId)" (click)="reserverProposition(p)" title="Réserver ce créneau"><lucide-icon [img]="CheckIcon" [size]="12"></lucide-icon> Réserver</button>
                               <button type="button" class="ia-mini" [disabled]="busy().has(p.id) || lotsVehicules().has(g.vehicleId)" (click)="ecarter(p)" title="Écarter cette proposition" aria-label="Écarter"><lucide-icon [img]="XIcon" [size]="12"></lucide-icon></button>
@@ -802,7 +804,6 @@ export class AgendaIaViewComponent {
   /** « Suggérer avec l'IA » dans Réserver : même droit (la feuille le cache sinon). */
   protected readonly canSuggest = computed(() => this.perms.can('ai_optimize'));
   protected readonly canApply = computed(() => this.perms.can('vehicles_edit'));
-  protected readonly canManage = computed(() => this.perms.can('reservations_manage'));
   protected readonly canReserve = computed(() => this.perms.can('reservations_request'));
   protected readonly canConfigureAgent = computed(() => {
     const r = this.auth.user()?.role;
@@ -1427,6 +1428,15 @@ export class AgendaIaViewComponent {
     return g.items.some((p) => b.has(p.id));
   }
 
+  /**
+   * 30/09 (point 2 du propriétaire) — réserver ou écarter une proposition, c'est GÉRER les réservations
+   * de SON véhicule : la règle du serveur (`exigerGestionDuVehicule`, le scope le plus spécifique gagne).
+   * Avant, un droit global suffisait à montrer les boutons de tout le parc.
+   */
+  protected gere(vehicleId: string): boolean {
+    return this.perms.can('reservations_manage', vehicleId);
+  }
+
   /** Pourquoi un bouton de lot est grisé — dit, plutôt qu'un clic ignoré sans un mot. */
   protected titreLot(g: GroupeProposals): string {
     if (this.lotsVehicules().has(g.vehicleId)) return 'Lot en cours sur ce véhicule…';
@@ -1442,7 +1452,7 @@ export class AgendaIaViewComponent {
    */
 
   protected async reserverProposition(p: AgendaAgentProposalDto): Promise<void> {
-    if (this.busy().has(p.id) || this.lotsVehicules().has(p.vehicleId)) return;
+    if (this.busy().has(p.id) || this.lotsVehicules().has(p.vehicleId) || !this.gere(p.vehicleId)) return;
     this.marquer(p.id, true);
     try {
       await firstValueFrom(this.agentApi.applyProposal(p.id));
@@ -1457,7 +1467,7 @@ export class AgendaIaViewComponent {
   }
 
   protected async ecarter(p: AgendaAgentProposalDto): Promise<void> {
-    if (this.busy().has(p.id) || this.lotsVehicules().has(p.vehicleId)) return;
+    if (this.busy().has(p.id) || this.lotsVehicules().has(p.vehicleId) || !this.gere(p.vehicleId)) return;
     this.marquer(p.id, true);
     try {
       await firstValueFrom(this.agentApi.dismissProposal(p.id));
@@ -1489,7 +1499,7 @@ export class AgendaIaViewComponent {
    * et une vue recréée pendant qu'il tourne le voit — ses boutons restent grisés jusqu'au bilan.
    */
   private async enLot(g: GroupeProposals, geste: 'reserver' | 'ecarter'): Promise<void> {
-    if (this.lotEnCours()) return;
+    if (this.lotEnCours() || !this.gere(g.vehicleId)) return;
     const lot = g.items.filter((p) => !this.busy().has(p.id));
     if (lot.length === 0) return;
     const cle = cleLot(this.selectedFleetId(), g.vehicleId);

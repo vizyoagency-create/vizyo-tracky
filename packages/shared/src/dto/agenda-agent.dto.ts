@@ -247,12 +247,61 @@ export interface EcartPropositionsResultDto {
    */
   parVehicule: { vehicleId: string; plate: string | null; n: number }[];
   /**
-   * Propositions de la fenêtre, dans le périmètre demandé (le véhicule choisi, sinon tout le parc),
-   * sur des véhicules dont l'appelant ne gère pas les réservations — jamais prises.
+   * Propositions de la fenêtre, dans le périmètre demandé (le véhicule choisi, sinon tous les
+   * véhicules que l'appelant VOIT), sur des véhicules dont il ne gère pas les réservations — jamais
+   * prises. Un véhicule hors de son périmètre n'y est jamais compté (30/09).
    */
   horsGestion: number;
   /** Plus de propositions que le plafond : seules les premières sont prises, et on le dit. */
   plafonne: boolean;
   /** Les identifiants exacts du lot — à renvoyer en `ids` pour appliquer. */
+  lotIds: string[];
+}
+
+/**
+ * ── NETTOYER LES PROPOSITIONS QUI SE CHEVAUCHENT (30/09, sur demande du propriétaire) ──────────
+ *
+ * Avant la relecture du 29/09, l'agent créait des propositions qui se chevauchaient pour un même
+ * véhicule (l'heure d'un motif dérive d'une nuit à l'autre ; deux motifs le même jour) — chez cdef31,
+ * 181 des 307 propositions en attente étaient prises dans un chevauchement. `runForFleet` n'en crée
+ * plus ; ce geste range celles qui existent : dans chaque groupe, la plus sûre reste, les autres sont
+ * écartées. Super-admin seulement. Simulation par défaut ; à l'écriture, `ids` = le lot montré.
+ */
+export interface NettoyerChevauchementsDto {
+  /** Société visée (super-admin : celle du bandeau, obligatoire). */
+  fleetId?: string;
+  /** `true` (défaut) = on calcule et on montre, sans rien écrire. */
+  simulation?: boolean;
+  /** À l'écriture (obligatoire) : les `lotIds` de la simulation montrée. */
+  ids?: string[];
+}
+
+export interface NettoyageChevauchementsResultDto {
+  simulation: boolean;
+  /** Propositions en attente (à venir) de la société, avant le nettoyage. */
+  enAttente: number;
+  /** Celles qui en chevauchent une plus sûre du même véhicule, ou un créneau déjà pris : le lot. */
+  concernees: number;
+  /**
+   * Dans le lot : celles qui chevauchent une réservation ferme ou une immobilisation du véhicule — elles
+   * ne se réservent pas (« Le créneau est déjà occupé »). Les autres chevauchent une proposition plus sûre.
+   */
+  sousUnBloquant: number;
+  /** Écartées pour de bon (0 en simulation). */
+  ecartees: number;
+  /** Montrées mais traitées ailleurs entre-temps (réservées, écartées, expirées). */
+  dejaTraitees: number;
+  /**
+   * Montrées et toujours en attente sans avoir été écartées : commencées entre-temps, ou qui ne sont
+   * plus en double (leur jumelle a été traitée ailleurs), ou envoyées sans être du lot.
+   */
+  restees: number;
+  /** Le lot par véhicule, trié par plaque. */
+  parVehicule: { vehicleId: string; plate: string | null; n: number }[];
+  /** Les 8 premières du lot. */
+  apercu: PropositionLotApercuDto[];
+  /** Plus de propositions que le plafond : seules les premières sont prises, et on le dit. */
+  plafonne: boolean;
+  /** Les identifiants exacts du lot — à renvoyer en `ids` pour écrire. */
   lotIds: string[];
 }

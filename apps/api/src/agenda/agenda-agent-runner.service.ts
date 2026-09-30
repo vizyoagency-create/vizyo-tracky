@@ -18,7 +18,10 @@ import type {
   EcarterPropositionsDto,
   EcartPropositionsResultDto,
   FleetMetier,
+  NettoyageChevauchementsResultDto,
+  NettoyerChevauchementsDto,
 } from '@vizyo/tracky-shared';
+import { effectiveBlockingEndMs, IMMOBILIZING_STATUSES } from '@vizyo/tracky-shared';
 import type { AuthUser } from '../auth/types/auth-user';
 import { AutomationDisabledException } from '../common/automation-disabled.exception';
 import { AiUsageService } from '../ai-usage/ai-usage.service';
@@ -70,6 +73,74 @@ export const PROPOSITIONS_LISTE_MAX = 1_000;
 export const MAX_LOT_PROPOSITIONS = 500;
 /** Un identifiant (véhicule, société, proposition) tel que les colonnes UUID l'attendent. */
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+/** Plafond d'un nettoyage des chevauchements (30/09) : au-delà, tronqué et dit (`plafonne`). */
+export const MAX_NETTOYAGE_CHEVAUCHEMENTS = 2_000;
+
+/** Une proposition telle que le nettoyage des chevauchements la lit. */
+export interface PropositionAClasser {
+  id: string;
+  vehicleId: string;
+  startAt: Date;
+  endAt: Date;
+  confidence: number;
+  createdAt: Date;
+  aiKeep: boolean | null;
+}
+
+/**
+ * Un créneau déjà PRIS sur un véhicule : réservation ferme ou immobilisation, fin EFFECTIVE en ms
+ * (un incident sans fin bloque jusqu'à sa résolution). Relecture du 30/09 : le nettoyage ne voyait que
+ * les propositions en attente — il pouvait garder une proposition sous une réservation (« Réserver »
+ * → 409 « Le créneau est déjà occupé ») et écarter sa jumelle, la seule réservable.
+ */
+export interface CreneauPris {
+  vehicleId: string;
+  debutMs: number;
+  finMs: number;
+}
+
+/**
+ * 30/09 — les propositions à ÉCARTER pour qu'aucune ne chevauche une autre du même véhicule, ni un
+ * créneau déjà PRIS (`pris` : réservation ferme, immobilisation), en gardant la plus sûre de chaque
+ * groupe : validée par l'IA d'abord (`aiKeep`), puis la plus confiante, puis la plus ANCIENNE (vue le
+ * plus longtemps), puis la plus tôt. Les créneaux pris sont gardés d'office : une proposition qui en
+ * chevauche un ne se réserve pas (`isVehicleFree`), elle ne l'emporte jamais sur une jumelle libre.
+ * L'agent, lui, garde la proposition déjà CONNUE (premier arrivé, relecture du 29/09) ; le nettoyage,
+ * qui voit tout le groupe d'un coup, garde la plus sûre.
+ * Une chaîne A–B–C (A chevauche B, B chevauche C, pas A et C) garde A et C si A est la plus sûre.
+ */
+export function propositionsEnChevauchement(
+  lignes: readonly PropositionAClasser[],
+  pris: readonly CreneauPris[] = [],
+): string[] {
+  const rang = (p: PropositionAClasser): number => (p.aiKeep === true ? 0 : p.aiKeep === null ? 1 : 2);
+  const tri = [...lignes].sort(
+    (a, b) =>
+      rang(a) - rang(b) ||
+      b.confidence - a.confidence ||
+      a.createdAt.getTime() - b.createdAt.getTime() ||
+      a.startAt.getTime() - b.startAt.getTime() ||
+      (a.id < b.id ? -1 : a.id > b.id ? 1 : 0),
+  );
+  const gardes = new Map<string, { debutMs: number; finMs: number }[]>();
+  const garder = (vehicleId: string, debutMs: number, finMs: number): void => {
+    const l = gardes.get(vehicleId) ?? [];
+    l.push({ debutMs, finMs });
+    gardes.set(vehicleId, l);
+  };
+  for (const c of pris) garder(c.vehicleId, c.debutMs, c.finMs);
+  const aEcarter: string[] = [];
+  for (const p of tri) {
+    const debut = p.startAt.getTime();
+    const fin = p.endAt.getTime();
+    if ((gardes.get(p.vehicleId) ?? []).some((o) => o.debutMs < fin && o.finMs > debut)) {
+      aEcarter.push(p.id);
+      continue;
+    }
+    garder(p.vehicleId, debut, fin);
+  }
+  return aEcarter;
+}
 /** Anti-storm : au plus une (re)analyse ÉVÉNEMENTIELLE par flotte toutes les 5 min. */
 const EVENT_THROTTLE_MS = 5 * 60 * 1000;
 /** Type du travail de la file du poste qui porte le jugement de l'IA (design/C3 point 7). */
@@ -573,9 +644,14 @@ export class AgendaAgentRunnerService {
     // simple compteur de propositions ; il faut choisir une société pour voir/agir).
     if (user.role === UserRole.SUPER_ADMIN && !fleetId && !user.fleetId) return [];
     const id = this.resolveFleetId(user, fleetId);
+    // 30/09 (point 2 du propriétaire) — le périmètre VÉHICULE, comme les réservations et les évènements
+    // (`scopedWhere`) : un gestionnaire limité à un groupe voyait les propositions de TOUT le parc.
+    const acces = await this.events.vehiculesAccessibles(user);
+    if (acces !== 'ALL' && acces.length === 0) return [];
     const rows = (await this.prisma.agendaAgentProposal.findMany({
       where: {
         fleetId: id,
+        ...(acces !== 'ALL' ? { vehicleId: { in: acces } } : {}),
         ...(status ? { status } : {}),
         // Une suggestion dont le départ est passé n'est plus réservable : elle sort de la liste
         // sans attendre que le cron horaire l'acte `expired` (design/C3 point 7 — le 05/09, les
@@ -593,10 +669,15 @@ export class AgendaAgentRunnerService {
     }
     const vids = [...new Set(rows.map((r) => r.vehicleId))];
     const vehicles = vids.length
-      ? await this.prisma.vehicle.findMany({ where: { id: { in: vids } }, select: { id: true, plate: true } })
+      ? await this.prisma.vehicle.findMany({ where: { id: { in: vids } }, select: { id: true, plate: true, fleetId: true } })
       : [];
-    const plate = new Map(vehicles.map((v) => [v.id, v.plate]));
-    return rows.map((r) => this.toDto(r, plate.get(r.vehicleId) ?? null));
+    const vehicule = new Map(vehicles.map((v) => [v.id, v]));
+    // Relecture du 30/09 — un véhicule SUPPRIMÉ (les propositions n'ont pas de clé étrangère) ou passé
+    // dans une autre société : sa proposition ne se réserve plus, et ne s'écarte plus depuis que
+    // `dismiss` vérifie le véhicule. Elle sort de la liste (grille, badge, Assistant IA) et expire seule.
+    return rows
+      .filter((r) => vehicule.get(r.vehicleId)?.fleetId === r.fleetId)
+      .map((r) => this.toDto(r, vehicule.get(r.vehicleId)?.plate ?? null));
   }
 
   /**
@@ -624,7 +705,14 @@ export class AgendaAgentRunnerService {
     const p = (await this.prisma.agendaAgentProposal.findUnique({ where: { id } })) as ProposalRow | null;
     if (!p) throw new NotFoundException('Proposition introuvable');
     this.assertScope(user, p.fleetId);
-    await this.events.assertVehicleAccess(user, p.vehicleId); // 403/404 périmètre véhicule
+    const societeDuVehicule = await this.events.assertVehicleAccess(user, p.vehicleId); // 403/404 périmètre véhicule
+    // Relecture du 30/09 — un véhicule passé dans une autre société : `systemConfirm` aurait posé une
+    // réservation de l'ANCIENNE société sur un véhicule de la nouvelle (un super-admin passe
+    // `assertVehicleAccess` sans comparaison de société).
+    if (societeDuVehicule !== p.fleetId) {
+      throw new BadRequestException('Ce véhicule n’est plus dans la société de la proposition : elle ne peut plus être réservée.');
+    }
+    await this.exigerGestionDuVehicule(user, p.vehicleId, 'réserver');
     if (p.status !== 'pending') throw new BadRequestException('Proposition déjà traitée.');
 
     const prise = await this.prisma.agendaAgentProposal.updateMany({
@@ -702,6 +790,10 @@ export class AgendaAgentRunnerService {
     const p = (await this.prisma.agendaAgentProposal.findUnique({ where: { id } })) as ProposalRow | null;
     if (!p) throw new NotFoundException('Proposition introuvable');
     this.assertScope(user, p.fleetId);
+    // 30/09 (point 2) — même périmètre et même droit que « Réserver » : avant, `dismiss` ne regardait
+    // que la société, et un gestionnaire limité écartait une à une ce que Réorganiser lui refusait.
+    await this.events.assertVehicleAccess(user, p.vehicleId);
+    await this.exigerGestionDuVehicule(user, p.vehicleId, 'écarter');
     const dejaReservee = 'Une réservation déjà créée s\'annule depuis l\'agenda.';
     const reservee = (s: string): boolean => s === 'auto_applied' || s === 'applied';
     if (reservee(p.status)) throw new BadRequestException(dejaReservee);
@@ -830,17 +922,23 @@ export class AgendaAgentRunnerService {
       }
     }
 
-    // Garde 2 : encore à venir (réservable) ET qui chevauche la fenêtre.
-    const lignes = await this.prisma.agendaAgentProposal.findMany({
-      where: {
-        fleetId,
-        status: 'pending',
-        startAt: { gte: new Date(maintenant), lt: to },
-        endAt: { gt: debut },
-      },
-      orderBy: [{ startAt: 'asc' }, { id: 'asc' }],
-      select: { id: true, vehicleId: true, startAt: true, endAt: true, destinationLabel: true },
-    });
+    // Garde 2 : encore à venir (réservable) ET qui chevauche la fenêtre. Dans le périmètre VÉHICULE de
+    // l'appelant (30/09, point 2) : `horsGestion` ne compte plus des véhicules qu'il ne voit même pas.
+    const acces = await this.events.vehiculesAccessibles(user);
+    const lignes =
+      acces !== 'ALL' && acces.length === 0
+        ? []
+        : await this.prisma.agendaAgentProposal.findMany({
+            where: {
+              fleetId,
+              ...(acces !== 'ALL' ? { vehicleId: { in: acces } } : {}),
+              status: 'pending',
+              startAt: { gte: new Date(maintenant), lt: to },
+              endAt: { gt: debut },
+            },
+            orderBy: [{ startAt: 'asc' }, { id: 'asc' }],
+            select: { id: true, vehicleId: true, startAt: true, endAt: true, destinationLabel: true },
+          });
 
     // Garde 5 : seuls les véhicules dont l'appelant gère les réservations — la règle par véhicule, en
     // une requête pour tout le lot (relecture du 29/09 : une par véhicule, à chaque simulation).
@@ -904,10 +1002,13 @@ export class AgendaAgentRunnerService {
 
     if (ecartees > 0) {
       const plaquesDuLot = [...new Set(lot.map((l) => plaqueDe(l.vehicleId)).filter((p): p is string => !!p))];
-      // « tous les véhicules » ne se dit que s'ils l'étaient tous : sinon ceux que l'auteur gère.
+      // « tous les véhicules » ne se dit que si l'auteur VOYAIT tout le parc et le gérait en entier.
+      // Relecture du 30/09 : `horsGestion` ne compte plus que les véhicules visibles — pour un
+      // gestionnaire limité à un groupe il valait 0, et le fil de la société annonçait « tous ».
+      const toutLeParc = acces === 'ALL' && horsGestion === 0;
       const qui = vehicleId
         ? (plaqueDe(vehicleId) ?? 'un véhicule')
-        : horsGestion > 0 ? "les véhicules dont l'auteur gère les réservations" : 'tous les véhicules';
+        : toutLeParc ? 'tous les véhicules' : "les véhicules dont l'auteur gère les réservations";
       const s = ecartees > 1 ? 's' : '';
       const d = dejaTraitees > 1 ? 's' : '';
       const r = restees > 1 ? 's' : '';
@@ -962,6 +1063,7 @@ export class AgendaAgentRunnerService {
     montrees: string[],
     fleetId: string,
     ecartees: number,
+    geste: 'ecarterEnLot' | 'nettoyerChevauchements' = 'ecarterEnLot',
   ): Promise<{ dejaTraitees: number; restees: number }> {
     if (montrees.length === 0) return { dejaTraitees: 0, restees: 0 };
     try {
@@ -979,9 +1081,141 @@ export class AgendaAgentRunnerService {
       }
       return { dejaTraitees: Math.max(0, ecarteesEnTout - ecartees) + autres, restees };
     } catch (e) {
-      this.logger.warn(`ecarterEnLot : statuts non relus (${(e as Error)?.message ?? e}) — compte approché.`);
+      this.logger.warn(`${geste} : statuts non relus (${(e as Error)?.message ?? e}) — compte approché.`);
       return { dejaTraitees: Math.max(0, montrees.length - ecartees), restees: 0 };
     }
+  }
+
+  /**
+   * ── NETTOYER LES PROPOSITIONS QUI SE CHEVAUCHENT (30/09, sur demande du propriétaire) ──────────
+   *
+   * Avant la relecture du 29/09, l'agent créait des propositions qui se chevauchaient pour un même
+   * véhicule : l'heure d'un motif est une moyenne qui dérive d'une nuit à l'autre, et deux motifs du
+   * même véhicule tombaient le même jour. Chez cdef31, 181 des 307 propositions en attente étaient
+   * prises dans un chevauchement — un véhicule ne fait qu'un trajet à la fois. `runForFleet` n'en crée
+   * plus ; ce geste range celles qui existent : dans chaque groupe, la plus sûre RESTE
+   * (`propositionsEnChevauchement`), les autres sont ÉCARTÉES.
+   *
+   * Les garde-fous de Réorganiser : simulation par défaut ; à l'écriture, `ids` OBLIGATOIRE (le lot
+   * montré), recalculé puis restreint à `ids`, écrit sous condition `pending` ; bilan relu
+   * (`bilanDesMontrees`) ; UNE ligne de journal pour la société. Super-admin seulement : c'est un geste
+   * de maintenance, pas un geste d'exploitation.
+   */
+  async nettoyerChevauchements(user: AuthUser, dto: NettoyerChevauchementsDto): Promise<NettoyageChevauchementsResultDto> {
+    if (user.role !== UserRole.SUPER_ADMIN) {
+      throw new ForbiddenException('Réservé aux super-administrateurs.');
+    }
+    const simulation = dto?.simulation !== false;
+    const fleetIdDemande = typeof dto?.fleetId === 'string' ? dto.fleetId.trim() : undefined;
+    if (fleetIdDemande && !UUID_RE.test(fleetIdDemande)) throw new BadRequestException('Société invalide.');
+    const fleetId = this.resolveFleetId(user, fleetIdDemande || undefined);
+    let listeBlanche: Set<string> | null = null;
+    if (dto?.ids !== undefined && dto?.ids !== null) {
+      const ids: unknown = dto.ids;
+      if (
+        !Array.isArray(ids) ||
+        ids.length > MAX_NETTOYAGE_CHEVAUCHEMENTS ||
+        ids.some((x) => typeof x !== 'string' || !UUID_RE.test(x.trim()))
+      ) {
+        throw new BadRequestException('« ids » invalide : une liste d’identifiants de propositions est attendue.');
+      }
+      listeBlanche = new Set((ids as string[]).map((x) => x.trim()));
+    }
+    if (!simulation && (!listeBlanche || listeBlanche.size === 0)) {
+      throw new BadRequestException('« ids » est obligatoire pour écarter : renvoyez le lot de la simulation.');
+    }
+
+    // Toutes les propositions EN ATTENTE encore à venir : un chevauchement se juge sur tout ce qui reste.
+    const maintenant = Date.now();
+    const lignes = await this.prisma.agendaAgentProposal.findMany({
+      where: { fleetId, status: 'pending', startAt: { gte: new Date(maintenant) } },
+      orderBy: [{ startAt: 'asc' }, { id: 'asc' }],
+      select: {
+        id: true, vehicleId: true, startAt: true, endAt: true, confidence: true, createdAt: true, aiKeep: true,
+        destinationLabel: true,
+      },
+    });
+    // Et les créneaux déjà PRIS sur leurs véhicules (relecture du 30/09) — voir `creneauxPris`.
+    const pris = await this.creneauxPris(lignes, maintenant);
+    const aEcarter = new Set(propositionsEnChevauchement(lignes, pris));
+    const candidates = lignes.filter((l) => aEcarter.has(l.id) && (!listeBlanche || listeBlanche.has(l.id)));
+    const plafonne = candidates.length > MAX_NETTOYAGE_CHEVAUCHEMENTS;
+    const lot = candidates.slice(0, MAX_NETTOYAGE_CHEVAUCHEMENTS);
+    const lotIds = lot.map((l) => l.id);
+
+    const vehicules = [...new Set(lot.map((l) => l.vehicleId))];
+    const plaques = new Map(
+      vehicules.length
+        ? (await this.prisma.vehicle.findMany({ where: { id: { in: vehicules } }, select: { id: true, plate: true } })).map(
+            (v) => [v.id, v.plate] as const,
+          )
+        : [],
+    );
+    const compte = new Map<string, number>();
+    for (const l of lot) compte.set(l.vehicleId, (compte.get(l.vehicleId) ?? 0) + 1);
+    const parVehicule = [...compte]
+      .map(([id, n]) => ({ vehicleId: id, plate: plaques.get(id) ?? null, n }))
+      .sort((a, b) => (a.plate ?? '').localeCompare(b.plate ?? '', 'fr', { numeric: true }));
+    const apercu = lot.slice(0, 8).map((l) => ({
+      id: l.id,
+      vehicleId: l.vehicleId,
+      plate: plaques.get(l.vehicleId) ?? null,
+      startAt: l.startAt.toISOString(),
+      endAt: l.endAt.toISOString(),
+      destinationLabel: l.destinationLabel,
+    }));
+    // Dans le lot, celles qui chevauchent un créneau déjà pris (non réservables) ; les autres chevauchent
+    // une proposition plus sûre du même véhicule.
+    const sousUnBloquant = lot.filter((l) =>
+      pris.some((c) => c.vehicleId === l.vehicleId && c.debutMs < l.endAt.getTime() && c.finMs > l.startAt.getTime()),
+    ).length;
+    const commun = { enAttente: lignes.length, concernees: lot.length, sousUnBloquant, parVehicule, apercu, plafonne, lotIds };
+    if (simulation) return { simulation: true, ecartees: 0, dejaTraitees: 0, restees: 0, ...commun };
+
+    const ecartees =
+      lot.length > 0
+        ? (
+            await this.prisma.agendaAgentProposal.updateMany({
+              where: { id: { in: lotIds }, fleetId, status: 'pending' },
+              data: { status: 'dismissed' },
+            })
+          ).count
+        : 0;
+    const { dejaTraitees, restees } = await this.bilanDesMontrees(
+      [...(listeBlanche ?? [])], fleetId, ecartees, 'nettoyerChevauchements',
+    );
+    if (ecartees > 0) {
+      const s = ecartees > 1 ? 's' : '';
+      const nbVehicules = new Set(lot.map((l) => l.vehicleId)).size;
+      const restantes = Math.max(0, lignes.length - ecartees);
+      const suite = `(${nbVehicules} véhicule${nbVehicules > 1 ? 's' : ''} ; ${restantes} ${restantes > 1 ? 'restent' : 'reste'} en attente).`;
+      const chevauchai = (n: number): string => (n > 1 ? 'chevauchaient' : 'chevauchait');
+      const doublons = lot.length - sousUnBloquant;
+      // Le motif décrit le LOT : il n'est détaillé que si le lot est parti en entier — sinon une partie a
+      // été traitée ailleurs entre-temps, et l'on ne sait pas laquelle.
+      const pourquoi =
+        ecartees !== lot.length
+          ? `sur ${lot.length} montrée${lot.length > 1 ? 's' : ''}, les autres traitées ailleurs entre-temps `
+          : sousUnBloquant === 0
+            ? `elle${s} ${chevauchai(ecartees)} une proposition plus sûre du même véhicule `
+            : doublons === 0
+              ? `elle${s} ${chevauchai(ecartees)} une réservation ferme ou une immobilisation du véhicule `
+              : `${doublons} ${chevauchai(doublons)} une proposition plus sûre du même véhicule, ` +
+                `${sousUnBloquant} une réservation ferme ou une immobilisation `;
+      this.journaliser(() => ({
+        category: 'AGENDA',
+        action: 'propositions_ecartees',
+        target: nbVehicules === 1 ? (plaques.get(lot[0].vehicleId) ?? null) : null,
+        detail: `${ecartees} proposition${s} de l'agent écartée${s} au nettoyage des doublons — ${pourquoi}${suite}`,
+        fleetId,
+        triggeredByUserId: user.id,
+        meta: {
+          lot: randomUUID(), nettoyage: 'chevauchements', enAttente: lignes.length, concernees: lot.length,
+          sousUnBloquant, ecartees, dejaTraitees, restees, ids: lotIds,
+        },
+      }));
+    }
+    return { simulation: false, ecartees, dejaTraitees, restees, ...commun };
   }
 
   /**
@@ -1097,6 +1331,51 @@ export class AgendaAgentRunnerService {
       return resa;
     }
     return null;
+  }
+
+  /**
+   * Relecture du 30/09 — les créneaux déjà PRIS des véhicules de ces propositions, sur leur horizon : la
+   * règle de `isVehicleFree` / `findImmobilized` — réservation CONFIRMED / IN_PROGRESS, évènement
+   * bloquant PLANNED / OPEN / IN_PROGRESS avec sa fin effective (`effectiveBlockingEndMs`). Pas le
+   * statut des propositions : une réservation posée par l'agent a pu être annulée depuis. Les trajets
+   * réels ne comptent pas : une proposition commence au plus tôt dans l'heure (`LEAD_MS`).
+   */
+  private async creneauxPris(lignes: readonly { vehicleId: string; endAt: Date }[], maintenant: number): Promise<CreneauPris[]> {
+    if (lignes.length === 0) return [];
+    const vehicules = [...new Set(lignes.map((l) => l.vehicleId))];
+    const finMax = new Date(lignes.reduce((m, l) => Math.max(m, l.endAt.getTime()), 0));
+    const evenements = await this.prisma.vehicleEvent.findMany({
+      where: {
+        vehicleId: { in: vehicules },
+        startAt: { lt: finMax },
+        OR: [
+          { type: VehicleEventType.RESERVATION, status: { in: [VehicleEventStatus.CONFIRMED, VehicleEventStatus.IN_PROGRESS] } },
+          { type: { not: VehicleEventType.RESERVATION }, blocksVehicle: true, status: { in: IMMOBILIZING_STATUSES } },
+        ],
+      },
+      select: { vehicleId: true, type: true, startAt: true, endAt: true },
+    });
+    return evenements
+      .map((e) => ({
+        vehicleId: e.vehicleId,
+        debutMs: e.startAt.getTime(),
+        finMs: effectiveBlockingEndMs(e.type, e.startAt.getTime(), e.endAt ? e.endAt.getTime() : null),
+      }))
+      .filter((c) => c.finMs > maintenant);
+  }
+
+  /**
+   * 30/09 (point 2 du propriétaire) — réserver ou écarter une proposition, c'est GÉRER les réservations
+   * de SON véhicule : la règle des réservations (`gereLesReservationsDe`, le plus spécifique gagne).
+   * Avant, `apply` ne vérifiait que l'accès au véhicule et `dismiss` que la société : un gestionnaire
+   * qui ne peut que DEMANDER sur un groupe réservait (ferme) ou écartait les propositions de ce groupe.
+   */
+  private async exigerGestionDuVehicule(user: AuthUser, vehicleId: string, verbe: 'réserver' | 'écarter'): Promise<void> {
+    if (await this.reservations.gereLesReservationsDe(user, vehicleId)) return;
+    const plaque = await this.plaque(vehicleId);
+    throw new ForbiddenException(
+      `Vous ne gérez pas les réservations de ${plaque ?? 'ce véhicule'} : vous ne pouvez pas ${verbe} ses propositions.`,
+    );
   }
 
   /** Plaque d'un véhicule pour le journal ; `null` si la lecture échoue (le geste passe quand même). */
