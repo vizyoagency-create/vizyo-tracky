@@ -30,6 +30,7 @@ import { AuthService } from '../../../core/services/auth.service';
 import { FleetFilterService } from '../../../core/services/fleet-filter.service';
 import { ToastService } from '../../../shared/ui/toast/toast.service';
 import { BottomSheetComponent } from '../../../shared/ui/bottom-sheet/bottom-sheet.component';
+import { ConfirmModalComponent } from '../../../shared/ui/confirm-modal/confirm-modal.component';
 import { AgendaSyncService } from '../agenda-sync.service';
 import {
   compteAgentMemorise,
@@ -45,6 +46,10 @@ import {
   quoiALOuverture,
   raisonsVideRefusees,
   rienAReorganiser,
+  changementsPropositions,
+  changementsReservations,
+  ligneTempsGagne,
+  tempsGagne,
 } from '../agenda.utils';
 
 /** Fenêtres proposées — celles qu'on veut réellement reprendre, pas un sélecteur de dates. */
@@ -151,6 +156,25 @@ interface LecturePropositions {
   r: EcartPropositionsResultDto;
 }
 
+/**
+ * 30/09 — la confirmation à GLISSER : le texte montré, et la lecture EXACTE qu'elle confirme (comparée
+ * à la lecture courante au moment du glissement : un lot remplacé entre-temps ne part pas).
+ */
+interface ConfirmationReorganisation {
+  quoi: 'reservations' | 'propositions';
+  lecture: Lecture | LecturePropositions;
+  titre: string;
+  etat: string;
+  lignes: string[];
+  temps: string;
+  consequences: string;
+  irreversible: boolean;
+  danger: boolean;
+  glisser: string;
+}
+
+const majuscule = (s: string): string => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
+
 /** Une lecture COURANTE : le corps envoyé, la fenêtre qu'il couvre, et la réponse du serveur. */
 interface Lecture {
   corps: CorpsReorganisation;
@@ -225,7 +249,7 @@ interface Lecture {
   selector: 'app-reorganisation-sheet',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [DatePipe, LucideAngularModule, BottomSheetComponent],
+  imports: [DatePipe, LucideAngularModule, BottomSheetComponent, ConfirmModalComponent],
   template: `
     <app-bottom-sheet [open]="open()" [ariaLabel]="titre()" (closed)="closed.emit()">
       <div class="ro">
@@ -506,6 +530,17 @@ interface Lecture {
                     </span>
                   </div>
 
+                  @if (l.r.simulation && l.r.concernees > 0) {
+                    <!-- 30/09 : ce que le geste change, et le temps qu'il épargne — avant la confirmation à glisser. -->
+                    <div class="ro-change">
+                      <span class="ro-change-t">Ce que ça change</span>
+                      <ul>
+                        @for (c of changementsP(l); track $index) { <li>{{ c }}</li> }
+                        <li class="ro-change-temps">{{ tempsP(l) }}</li>
+                      </ul>
+                    </div>
+                  }
+
                   @if (l.r.plafonne) {
                     <p class="ro-avert ro-avert--bloc">
                       <lucide-icon [img]="AlertIcon" [size]="12"></lucide-icon>
@@ -540,10 +575,6 @@ interface Lecture {
                         Un lot « Tout réserver / Tout écarter » tourne dans l'Assistant IA : attendez son bilan avant d'écarter.
                       </p>
                     }
-                    <span class="ro-detail">
-                      Une proposition écartée ne revient pas : l'agent ne repropose pas un trajet qui chevauche une
-                      proposition déjà traitée du même véhicule. Elle n'immobilisait aucun véhicule, et personne n'est prévenu.
-                    </span>
                     <button type="button" class="ro-lien" (click)="ouvrirIa.emit()">Les revoir une par une dans l'Assistant IA</button>
                   }
                 }
@@ -654,6 +685,18 @@ interface Lecture {
                   </span>
                 </div>
 
+                @if (l.r.simulation && prevues(l.r) > 0) {
+                  <!-- 30/09 : ce que le geste change (véhicule libéré, destination, refus, courriels) et le temps
+                       qu'il épargne — avant la confirmation à glisser. -->
+                  <div class="ro-change">
+                    <span class="ro-change-t">Ce que ça change</span>
+                    <ul>
+                      @for (c of changementsResa(l); track $index) { <li>{{ c }}</li> }
+                      <li class="ro-change-temps">{{ tempsResa(l) }}</li>
+                    </ul>
+                  </div>
+                }
+
                 @if (l.r.plafonne) {
                   <p class="ro-avert ro-avert--bloc">
                     <lucide-icon [img]="AlertIcon" [size]="12"></lucide-icon>
@@ -722,7 +765,7 @@ interface Lecture {
                 @if (l.r.simulation && l.applicable && l.r.concernees > 0) {
                   <!-- Nomme ce qu'il fait et combien — le lot de la simulation LUE, renvoyé par ses identifiants. -->
                   <button type="button" class="ro-btn ro-btn--go" [disabled]="envoiP() || chargementP() || lotIaEnCours()"
-                          [attr.title]="lotIaEnCours() ? 'Un lot tourne dans l’Assistant IA : attendez son bilan.' : null" (click)="ecarterPropositions()">
+                          [attr.title]="lotIaEnCours() ? 'Un lot tourne dans l’Assistant IA : attendez son bilan.' : null" (click)="demanderConfirmationP()">
                     @if (envoiP() || chargementP()) { <lucide-icon [img]="LoaderIcon" [size]="15" class="ro-spin"></lucide-icon> }
                     @if (chargementP()) {
                       Simulation en cours…
@@ -746,7 +789,7 @@ interface Lecture {
                      qu'il renverra à l'identique. Éteint tant qu'une nouvelle simulation court. Il compte
                      ce qui PARTIRA (T4) ; « attendu », lui, reste le lot entier que le serveur recalcule. -->
                 <button type="button" class="ro-btn" [class.ro-btn--go]="l.corps.action === 'annuler'" [class.ro-btn--ok2]="l.corps.action !== 'annuler'"
-                        [disabled]="envoi() || chargement()" (click)="appliquer()">
+                        [disabled]="envoi() || chargement()" (click)="demanderConfirmation()">
                   @if (envoi() || chargement()) { <lucide-icon [img]="LoaderIcon" [size]="15" class="ro-spin"></lucide-icon> }
                   @if (chargement()) {
                     Simulation en cours…
@@ -764,6 +807,28 @@ interface Lecture {
         </div>
       </div>
     </app-bottom-sheet>
+    <!-- 30/09 (dernier tour du propriétaire) : rien ne s'écrit sans un GLISSEMENT, comme la coupe moteur.
+         La modale redit le lot de la simulation lue : ce que ça change, les courriels, le temps gagné. -->
+    <app-confirm-modal
+      [open]="open() && confirmation() !== null"
+      [title]="confirmation()?.titre ?? ''"
+      [etat]="confirmation()?.etat"
+      [consequences]="confirmation()?.consequences"
+      [irreversible]="confirmation()?.irreversible ?? false"
+      [danger]="confirmation()?.danger ?? false"
+      [slideToConfirm]="true"
+      [slideLabel]="confirmation()?.glisser ?? 'Glissez pour confirmer'"
+      cancelLabel="Revenir à la simulation"
+      [loading]="envoi() || envoiP()"
+      (confirmed)="confirmationGlissee()"
+      (cancelled)="confirmation.set(null)">
+      @if (confirmation(); as c) {
+        <ul class="ro-conf">
+          @for (ligne of c.lignes; track $index) { <li>{{ ligne }}</li> }
+          <li class="ro-conf-temps">{{ c.temps }}</li>
+        </ul>
+      }
+    </app-confirm-modal>
   `,
   styles: [`
     .ro { display: flex; flex-direction: column; padding: 2px 2px 0; }
@@ -849,6 +914,15 @@ interface Lecture {
     .ro-btn--ok2 { background: var(--tracky); color: var(--accent-ink); }
     .ro-btn--ok { background: var(--bg-tertiary); color: var(--fg-primary); border-color: var(--border-subtle); }
     .ro-btn:disabled { opacity: .55; }
+    /* 30/09 : « Ce que ça change » — sous le bilan de la simulation, et redit dans la confirmation. */
+    .ro-change { display: flex; flex-direction: column; gap: 6px; padding: 11px 12px; border-radius: 12px;
+                 background: color-mix(in srgb, var(--tracky-light) 6%, var(--bg-tertiary));
+                 border: 1px solid color-mix(in srgb, var(--tracky-light) 25%, var(--border-subtle)); }
+    .ro-change-t { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--fg-tertiary); }
+    .ro-change ul, .ro-conf { margin: 0; padding: 0 0 0 17px; display: flex; flex-direction: column; gap: 4px;
+                              font-size: 12.5px; color: var(--fg-secondary); line-height: 1.45; }
+    .ro-conf { margin-top: 14px; font-size: 13px; }
+    .ro-change-temps, .ro-conf-temps { color: var(--texte-succes); font-weight: 700; }
     .ro-spin { animation: ro-spin 1s linear infinite; }
     @keyframes ro-spin { to { transform: rotate(360deg); } }
     :host-context([data-theme='dark']) .ro-in { border-color: rgba(255,255,255,.15); }
@@ -1668,6 +1742,7 @@ export class ReorganisationSheetComponent {
       .subscribe({
         next: (r) => {
           this.envoi.set(false);
+          this.confirmation.set(null);
           // L'écriture a eu lieu : la page recharge et le toast le dit, même si la feuille a été
           // refermée (et peut-être rouverte ailleurs) entre-temps — seul l'écran n'est pas réécrit.
           if (n === this.lecture) {
@@ -1683,6 +1758,7 @@ export class ReorganisationSheetComponent {
         error: (err) => {
           swallow('reorganisation:appliquer', err);
           this.envoi.set(false);
+          this.confirmation.set(null);
           if (err instanceof HttpErrorResponse && err.status === 409) {
             // Le lot a changé depuis la simulation (une réservation arrivée, partie, commencée) :
             // RIEN n'est écrit. Un « Échec » laisserait l'ancienne liste affichée et le même bouton
@@ -1701,6 +1777,120 @@ export class ReorganisationSheetComponent {
           this.toast.error('Échec', apiErrorMessage(err, 'La réorganisation n’a pas abouti.'));
         },
       });
+  }
+
+  // ─── 30/09 — la confirmation à GLISSER (dernier tour du propriétaire) ───────────────────────
+
+  /**
+   * Rien ne s'écrit sans un glissement, comme la coupe moteur : les boutons de la feuille ouvrent cette
+   * confirmation, qui redit le lot de la simulation LUE — ce que ça change, les courriels, le temps
+   * gagné. La lecture est gardée telle qu'elle a été montrée : si une nouvelle simulation la remplace
+   * pendant que la modale est ouverte, rien ne part (on ne confirme pas un lot qu'on n'a pas vu).
+   */
+  protected readonly confirmation = signal<ConfirmationReorganisation | null>(null);
+
+  protected changementsResa(l: Lecture): string[] {
+    const a = l.corps.action;
+    const vers = a === 'reaffecter' && l.corps.versVehicleId && l.corps.versVehicleId !== 'auto' ? this.plaqueDe(l.corps.versVehicleId) : null;
+    return changementsReservations({
+      action: a,
+      prevues: this.prevues(l.r),
+      refusees: l.r.simulation ? l.r.refusees.length : 0,
+      plaque: l.corps.vehicleId ? this.plaqueDe(l.corps.vehicleId) : null,
+      vers,
+      decalageMinutes: a === 'decaler' ? (l.corps.decalageMinutes ?? null) : null,
+      // Une API d'avant le 30/09 ne le dit pas : on n'affirme alors ni « aucun » ni un nombre.
+      courriels: typeof l.r.courriels === 'number' ? l.r.courriels : null,
+    });
+  }
+
+  protected tempsResa(l: Lecture): string {
+    return ligneTempsGagne(tempsGagne(l.corps.action, this.prevues(l.r)));
+  }
+
+  protected changementsP(l: LecturePropositions): string[] {
+    const plaque = l.corps.vehicleId ? this.plaqueDe(l.corps.vehicleId) : null;
+    return changementsPropositions({ n: l.r.concernees, vehicules: plaque ? 1 : l.r.parVehicule.length, plaque });
+  }
+
+  protected tempsP(l: LecturePropositions): string {
+    return ligneTempsGagne(tempsGagne('ecarter', l.r.concernees));
+  }
+
+  /** « Réaffecter ces 12 réservations » → la confirmation (mêmes conditions que l'application). */
+  protected demanderConfirmation(): void {
+    const l = this.lue();
+    if (this.envoi() || this.chargement() || !l || !l.applicable || !l.r.simulation || this.prevues(l.r) === 0) return;
+    const a = l.corps.action;
+    const n = this.prevues(l.r);
+    const d = l.corps.decalageMinutes ?? 0;
+    const de = a === 'decaler' ? ` de ${d > 0 ? '+' : '−'}${Math.abs(d)} min` : '';
+    const plaque = l.corps.vehicleId ? this.plaqueDe(l.corps.vehicleId) : null;
+    this.confirmation.set({
+      quoi: 'reservations',
+      lecture: l,
+      titre: `${this.libelleAction(a)} ${n > 1 ? 'ces ' + n + ' réservations' : 'cette réservation'}${de} ?`,
+      etat: majuscule(l.fenetre) + (plaque ? ` · ${plaque}` : ''),
+      lignes: this.changementsResa(l),
+      temps: this.tempsResa(l),
+      consequences:
+        a === 'annuler'
+          ? 'Une réservation annulée ne se rétablit pas.'
+          : 'Chaque réservation reste modifiable ensuite, une par une, depuis l’agenda.',
+      irreversible: a === 'annuler',
+      danger: a === 'annuler',
+      glisser: `Glissez pour ${this.infinitif(a)} ${n > 1 ? 'les ' + n + ' réservations' : 'la réservation'}`,
+    });
+  }
+
+  /** « Écarter ces 106 propositions » → la confirmation. */
+  protected demanderConfirmationP(): void {
+    const l = this.lueP();
+    if (this.envoiP() || this.chargementP() || this.lotIaEnCours() || !l || !l.applicable || !l.r.simulation || l.r.concernees === 0) return;
+    const n = l.r.concernees;
+    this.confirmation.set({
+      quoi: 'propositions',
+      lecture: l,
+      titre: `Écarter ${n > 1 ? 'ces ' + n + ' propositions' : 'cette proposition'} de l'agent ?`,
+      etat: majuscule(l.fenetre) + (l.corps.vehicleId ? ` · ${this.plaqueDe(l.corps.vehicleId)}` : ' · tous les véhicules'),
+      lignes: this.changementsP(l),
+      temps: this.tempsP(l),
+      consequences: 'Définitif : une proposition écartée ne revient pas.',
+      irreversible: false,
+      danger: false,
+      glisser: `Glissez pour écarter ${n > 1 ? 'les ' + n + ' propositions' : 'la proposition'}`,
+    });
+  }
+
+  /**
+   * Le glissement est allé au bout : on applique la lecture MONTRÉE, et seulement elle. Une simulation
+   * remplacée — ou relancée, encore en vol — pendant que la modale était ouverte : rien ne part, et on le
+   * dit (le lot à l'écran n'est peut-être plus celui qu'on a lu). Une garde qui refuse (un lot de
+   * l'Assistant IA démarré entre-temps) : rien ne part non plus, et on dit pourquoi — jamais une modale
+   * qui se referme en silence.
+   */
+  protected confirmationGlissee(): void {
+    const c = this.confirmation();
+    if (!c) return;
+    const reservations = c.quoi === 'reservations';
+    const courante = reservations ? this.lue() : this.lueP();
+    const enVol = reservations ? this.chargement() : this.chargementP();
+    if (courante !== c.lecture || enVol) {
+      this.confirmation.set(null);
+      this.toast.warning('La simulation a changé', 'Rien n’a été appliqué : relisez la liste avant de confirmer.');
+      return;
+    }
+    if (reservations) this.appliquer();
+    else this.ecarterPropositions();
+    if (!(reservations ? this.envoi() : this.envoiP())) {
+      this.confirmation.set(null);
+      this.toast.warning(
+        'Rien n’a été appliqué',
+        !reservations && this.lotIaEnCours()
+          ? 'Un lot tourne dans l’Assistant IA : attendez son bilan, puis confirmez de nouveau.'
+          : 'La liste n’est plus applicable : relisez-la avant de confirmer.',
+      );
+    }
   }
 
   // ─── 29/09 (piste 3) — simuler / écarter un lot de propositions ─────────────────────────────
@@ -1766,6 +1956,7 @@ export class ReorganisationSheetComponent {
       .subscribe({
         next: (r) => {
           this.envoiP.set(false);
+          this.confirmation.set(null);
           // L'écriture a eu lieu : la page relit et le toast le dit, même si la feuille a été
           // refermée entre-temps — seul l'écran n'est pas réécrit.
           if (n === this.lectureP) {
@@ -1787,6 +1978,7 @@ export class ReorganisationSheetComponent {
         error: (err) => {
           swallow('reorganisation:ecarterPropositions', err);
           this.envoiP.set(false);
+          this.confirmation.set(null);
           this.toast.error('Échec', apiErrorMessage(err, 'Les propositions n’ont pas été écartées.'));
         },
       });

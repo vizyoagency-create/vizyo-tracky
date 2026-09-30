@@ -1108,3 +1108,124 @@ export function libellePeriode(
   }
   return `du ${jour(debut)} au ${jour(fin)}`;
 }
+
+// ─── 30/09 — Réorganiser : ce que ça change, et le temps gagné (dernier tour du propriétaire) ──────
+
+/**
+ * Le TEMPS que Réorganiser épargne, dit avant d'appliquer : la saisie qu'il faudrait pour faire le
+ * même geste LIGNE PAR LIGNE dans l'agenda. C'est une ESTIMATION, et elle le dit avec sa base — un
+ * chiffre sans hypothèse ne se discute pas. Secondes par ligne, au geste unitaire :
+ *  - réaffecter une réservation : l'ouvrir, trouver un véhicule libre et conforme, l'enregistrer ;
+ *  - la décaler : l'ouvrir, changer deux heures, l'enregistrer ;
+ *  - l'annuler : l'ouvrir, annuler, confirmer ;
+ *  - écarter une proposition de l'agent : la retrouver dans l'Assistant IA, cliquer.
+ */
+export const SECONDES_PAR_LIGNE = { reaffecter: 120, decaler: 60, annuler: 30, ecarter: 10 } as const;
+export type GesteReorganisation = keyof typeof SECONDES_PAR_LIGNE;
+
+const BASE_DU_TEMPS: Record<GesteReorganisation, string> = {
+  reaffecter: '≈ 2 min par réservation reprise à la main (l’ouvrir, trouver un véhicule libre, l’enregistrer)',
+  decaler: '≈ 1 min par réservation décalée à la main',
+  annuler: '≈ 30 s par réservation annulée à la main',
+  ecarter: '≈ 10 s par proposition écartée une à une dans l’Assistant IA',
+};
+
+/** « 40 s », « 12 min », « 1 h », « 3 h 32 » — arrondi à la minute au-delà d'une minute. */
+export function dureeLisible(secondes: number): string {
+  const s = Math.max(0, Math.round(secondes));
+  if (s === 0) return '0 min';
+  if (s < 60) return `${s} s`;
+  const min = Math.round(s / 60);
+  if (min < 60) return `${min} min`;
+  const h = Math.floor(min / 60);
+  const m = min % 60;
+  return m === 0 ? `${h} h` : `${h} h ${String(m).padStart(2, '0')}`;
+}
+
+export interface TempsGagne {
+  secondes: number;
+  /** « ≈ 3 h 32 » */
+  texte: string;
+  /** L'hypothèse, en toutes lettres. */
+  base: string;
+}
+
+export function tempsGagne(geste: GesteReorganisation, lignes: number): TempsGagne {
+  const n = Math.max(0, Math.floor(lignes));
+  const secondes = n * SECONDES_PAR_LIGNE[geste];
+  return { secondes, texte: `≈ ${dureeLisible(secondes)}`, base: BASE_DU_TEMPS[geste] };
+}
+
+/** La ligne « Temps gagné » de la feuille et de la confirmation. */
+export function ligneTempsGagne(t: TempsGagne): string {
+  return `Temps gagné : ${t.texte} de saisie (estimation : ${t.base}).`;
+}
+
+/** « Aucun courriel ne part. » / « Au plus 3 courriels : les demandeurs du lien public sont prévenus. » */
+export function ligneCourriels(n: number): string {
+  if (n <= 0) return 'Aucun courriel ne part.';
+  return n > 1
+    ? `Au plus ${n} courriels : les demandeurs du lien public sont prévenus.`
+    : 'Au plus 1 courriel : le demandeur du lien public est prévenu.';
+}
+
+/**
+ * Ce qu'un lot de RÉSERVATIONS change, en phrases — la feuille (sous le bilan) et la confirmation à
+ * glisser disent les mêmes. `prevues` : ce qui partira (le lot moins les refus certains) ; `courriels` :
+ * ce que la simulation annonce (`null` = inconnu, API d'avant le 30/09 : on n'en dit rien plutôt que
+ * d'affirmer « aucun »).
+ */
+export function changementsReservations(p: {
+  action: 'reaffecter' | 'annuler' | 'decaler';
+  prevues: number;
+  refusees: number;
+  plaque: string | null;
+  vers: string | null;
+  decalageMinutes: number | null;
+  courriels: number | null;
+}): string[] {
+  const n = Math.max(0, p.prevues);
+  const s = n > 1 ? 's' : '';
+  const lignes: string[] = [];
+  if (p.action === 'reaffecter') {
+    const ou = p.vers ? `sur ${p.vers}` : n > 1 ? 'chacune sur le premier véhicule libre et conforme à ses critères' : 'sur le premier véhicule libre et conforme à ses critères';
+    lignes.push(`${p.plaque ?? 'Le véhicule'} est libéré : ${n} réservation${s} ${n > 1 ? 'partent' : 'part'} ${ou}.`);
+  } else if (p.action === 'annuler') {
+    lignes.push(`${n} réservation${s} annulée${s} : ${n > 1 ? 'leurs véhicules sont libérés' : 'son véhicule est libéré'} sur ${n > 1 ? 'ces créneaux' : 'ce créneau'}.`);
+  } else {
+    const d = p.decalageMinutes ?? 0;
+    lignes.push(`${n} réservation${s} décalée${s} de ${d > 0 ? '+' : '−'}${Math.abs(d)} min, sur ${n > 1 ? 'les mêmes véhicules' : 'le même véhicule'}.`);
+  }
+  if (p.refusees > 0) {
+    lignes.push(`${p.refusees} ne ${p.refusees > 1 ? 'bougent' : 'bouge'} pas : ${p.refusees > 1 ? 'leurs motifs sont' : 'son motif est'} dans la liste.`);
+  }
+  if (p.courriels !== null) lignes.push(ligneCourriels(p.courriels));
+  return lignes;
+}
+
+/** Ce qu'un lot de PROPOSITIONS de l'agent change. Une proposition n'a jamais envoyé de courriel. */
+export function changementsPropositions(p: { n: number; vehicules: number; plaque: string | null }): string[] {
+  const s = p.n > 1 ? 's' : '';
+  const ou = p.plaque ? `sur ${p.plaque}` : `sur ${p.vehicules} véhicule${p.vehicules > 1 ? 's' : ''}`;
+  return [
+    `${p.n} proposition${s} de l'agent écartée${s} ${ou}.`,
+    'Aucun véhicule n’est bloqué ni libéré : une proposition ne réserve rien.',
+    'L’agent ne les reproposera pas, ni un créneau qui les chevauche.',
+    ligneCourriels(0),
+  ];
+}
+
+/**
+ * Le serveur préviendra-t-il le demandeur si l'on ANNULE cette réservation ? La règle de `cancel()`
+ * et du notifier : une demande du LIEN PUBLIC avec un contact, ni consignée après coup (rétroactive),
+ * ni finie ; confirmée (« annulée ») ou en attente (« non retenue »). Sert à la confirmation, qui dit
+ * ce qui part avant qu'on appuie.
+ */
+export function demandeurPrevenuDeLAnnulation(ev: Pick<VehicleEventDto, 'metadata' | 'status' | 'endAt'>, maintenantMs: number = Date.now()): boolean {
+  const m = ev.metadata ?? null;
+  if (m?.['public'] !== true || m['retroactive'] === true) return false;
+  const contact = m['requesterContact'];
+  if (typeof contact !== 'string' || !contact.trim()) return false;
+  if (ev.status !== 'CONFIRMED' && ev.status !== 'REQUESTED') return false;
+  return !ev.endAt || new Date(ev.endAt).getTime() > maintenantMs;
+}

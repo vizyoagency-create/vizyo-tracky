@@ -1,6 +1,6 @@
 import { Component, computed, HostListener, input, output, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { LucideAngularModule, AlertTriangle, Info } from 'lucide-angular';
+import { LucideAngularModule, AlertTriangle, ChevronsRight, Info, Pointer } from 'lucide-angular';
 
 /**
  * Confirmation — 14 pages. Le composant le plus vu du kit après les toasts.
@@ -95,10 +95,30 @@ import { LucideAngularModule, AlertTriangle, Info } from 'lucide-angular';
           }
 
           @if (slideToConfirm()) {
-            <label class="cm-slide" [class.cm-slide--danger]="danger() || critique()">
-              <span class="cm-slide-l">{{ slideLabel() }}</span>
+            <!-- 30/09 : un VRAI bouton à glisser (retour du propriétaire : « une ligne avec un point »).
+                 Le range natif reste là, invisible et posé sur toute la piste, à la taille de la pastille :
+                 c'est lui qui porte le doigt, la souris, le clavier et la garde T50. La piste, la pastille,
+                 le remplissage et le doigt animé ne sont que son dessin, piloté par la valeur du glissement. -->
+            <div class="cm-glisse"
+                 [class.cm-glisse--danger]="danger() || critique()"
+                 [class.cm-glisse--actif]="glissement() > 0"
+                 [class.cm-glisse--envoi]="loading()"
+                 [style.--p]="loading() ? 100 : glissement()">
+              <div class="cm-glisse-piste" aria-hidden="true">
+                <span class="cm-glisse-rempli"></span>
+                <span class="cm-glisse-texte">{{ loading() ? 'Envoi…' : slideLabel() }}</span>
+                <span class="cm-glisse-bout"><lucide-icon [img]="ChevronsRight" [size]="18"></lucide-icon></span>
+                <span class="cm-glisse-bouton">
+                  @if (loading()) {
+                    <span class="cm-rond"></span>
+                  } @else {
+                    <lucide-icon [img]="ChevronsRight" [size]="24"></lucide-icon>
+                  }
+                </span>
+                <span class="cm-glisse-doigt"><lucide-icon [img]="Pointer" [size]="26"></lucide-icon></span>
+              </div>
               <input
-                class="cm-slide-i"
+                class="cm-glisse-i"
                 type="range"
                 min="0"
                 max="100"
@@ -110,8 +130,8 @@ import { LucideAngularModule, AlertTriangle, Info } from 'lucide-angular';
                 (keydown)="onSlideKeydown($event)"
                 [attr.aria-label]="slideLabel()"
                 [attr.aria-description]="'Faites glisser jusqu’au bout, ou maintenez la flèche droite ; les touches Fin et Page suivante sont sans effet.'" />
-              <span class="cm-slide-hint" aria-hidden="true">{{ loading() ? 'Envoi…' : 'Faites glisser jusqu’au bout →' }}</span>
-            </label>
+            </div>
+            <p class="cm-glisse-aide" aria-hidden="true">{{ loading() ? 'Envoi en cours…' : 'Posez le doigt sur le bouton et faites-le glisser jusqu’au bout.' }}</p>
           }
 
           <div class="cm-actions" [class.cm-actions--slide]="slideToConfirm()">
@@ -189,24 +209,107 @@ import { LucideAngularModule, AlertTriangle, Info } from 'lucide-angular';
     }
     .cm-saisie-i:focus-visible { outline: 2px solid var(--texte-alerte); outline-offset: 1px; }
 
-    /* Confirmation gestuelle : le range natif conserve le drag tactile, la souris et le clavier.
-       Le geste doit atteindre 98 %, puis revient à zéro s'il est relâché avant la fin. */
-    .cm-slide {
-      display: block; margin-top: 18px; padding: 12px;
-      border: 1px solid color-mix(in srgb, var(--color-tracky-light) 38%, var(--border-subtle));
-      border-radius: 14px; background: color-mix(in srgb, var(--color-tracky-light) 8%, var(--bg-tertiary));
+    /* ── Confirmation gestuelle : un VRAI bouton à glisser (30/09) ────────────────────────────
+       Le range natif (.cm-glisse-i) couvre toute la piste, OPACITÉ 0, avec un pouce de la taille de
+       la pastille : le geste réel (tactile, souris, clavier, garde T50) reste le sien. La pastille
+       suit sa valeur (--p, 0 → 100) ; au relâché avant le bout, elle revient avec un petit rebond.
+       Au repos, une invitation en boucle : un doigt se pose sur la pastille, la pousse, se lève —
+       et le libellé porte un reflet qui court vers la droite. Rien ne bouge sous « mouvement réduit ». */
+    .cm-glisse { --p: 0; --b: 52px; --pad: 4px; position: relative; margin-top: 18px; }
+    .cm-glisse-piste {
+      position: relative; height: calc(var(--b) + 2 * var(--pad)); border-radius: 9999px; overflow: hidden;
+      background: color-mix(in srgb, var(--color-tracky-light) 13%, var(--bg-tertiary));
+      border: 1px solid color-mix(in srgb, var(--color-tracky-light) 45%, var(--border-subtle));
+      box-shadow: inset 0 2px 5px rgba(0,0,0,.16);
     }
-    .cm-slide--danger {
-      border-color: color-mix(in srgb, var(--danger) 45%, var(--border-subtle));
-      background: color-mix(in srgb, var(--danger) 8%, var(--bg-tertiary));
+    .cm-glisse--danger .cm-glisse-piste {
+      background: color-mix(in srgb, var(--danger) 11%, var(--bg-tertiary));
+      border-color: color-mix(in srgb, var(--danger) 50%, var(--border-subtle));
     }
-    .cm-slide-l { display: block; font-size: .84rem; font-weight: 750; color: var(--fg-primary); text-align: center; }
-    .cm-slide-i { width: 100%; min-height: 44px; margin: 6px 0 0; cursor: grab; accent-color: var(--color-tracky-light); touch-action: pan-x; }
-    .cm-slide-i:active { cursor: grabbing; }
-    .cm-slide--danger .cm-slide-i { accent-color: var(--danger); }
-    .cm-slide-i:focus-visible { outline: 2px solid var(--color-tracky-light); outline-offset: 2px; border-radius: 10px; }
-    .cm-slide--danger .cm-slide-i:focus-visible { outline-color: var(--danger); }
-    .cm-slide-hint { display: block; margin-top: -5px; font-size: .72rem; color: var(--fg-secondary); text-align: center; }
+    .cm-glisse-rempli {
+      position: absolute; top: var(--pad); bottom: var(--pad); left: var(--pad);
+      width: calc(var(--b) + (100% - var(--b) - 2 * var(--pad)) * var(--p) / 100);
+      border-radius: 9999px;
+      background: color-mix(in srgb, var(--color-tracky-light) 32%, transparent);
+    }
+    .cm-glisse--danger .cm-glisse-rempli { background: color-mix(in srgb, var(--danger) 30%, transparent); }
+    .cm-glisse-texte {
+      position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+      padding: 0 calc(var(--b) + 14px);
+      font-size: .9rem; font-weight: 750; letter-spacing: .01em;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+      color: var(--fg-primary);
+      background: linear-gradient(90deg, var(--fg-secondary) 0%, var(--fg-secondary) 38%, var(--fg-primary) 50%, var(--fg-secondary) 62%, var(--fg-secondary) 100%);
+      background-size: 250% 100%;
+      -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+      animation: cm-reflet 2.6s linear infinite;
+      opacity: calc(1 - var(--p) / 70);
+    }
+    .cm-glisse-bout {
+      position: absolute; top: 50%; right: 18px; transform: translateY(-50%); display: flex;
+      color: var(--color-tracky-light); opacity: calc(.7 - var(--p) / 140);
+    }
+    .cm-glisse--danger .cm-glisse-bout { color: var(--danger); }
+    .cm-glisse-bouton {
+      position: absolute; top: var(--pad);
+      left: calc(var(--pad) + (100% - var(--b) - 2 * var(--pad)) * var(--p) / 100);
+      width: var(--b); height: var(--b); border-radius: 9999px;
+      display: flex; align-items: center; justify-content: center;
+      background: var(--color-tracky-light); color: var(--accent-ink);
+      box-shadow: 0 6px 14px -4px rgba(0,0,0,.45), inset 0 1px 0 rgba(255,255,255,.28);
+      transition: left .32s cubic-bezier(.3, 1.45, .5, 1);
+    }
+    .cm-glisse--danger .cm-glisse-bouton { background: var(--danger); }
+    .cm-glisse--actif .cm-glisse-bouton { transition: none; }
+    .cm-glisse-doigt {
+      position: absolute; pointer-events: none; opacity: 0;
+      /* La pointe de l'index (≈ 9 × 2 px de l'icône) posée au centre de la pastille. */
+      left: calc(var(--pad) + var(--b) / 2 - 9px); top: calc(var(--pad) + var(--b) / 2 - 2px);
+      /* Encre du thème, cernée de son fond : lisible sur la pastille comme sur la piste, clair ou sombre. */
+      color: var(--fg-primary);
+      filter: drop-shadow(0 0 1.5px var(--bg-primary)) drop-shadow(0 1px 2px color-mix(in srgb, var(--bg-primary) 70%, transparent));
+    }
+    /* L'invitation ne joue qu'au repos : ni pendant le geste, ni pendant l'envoi. */
+    .cm-glisse:not(.cm-glisse--actif):not(.cm-glisse--envoi) .cm-glisse-bouton { animation: cm-invite 2.8s ease-in-out infinite; }
+    .cm-glisse:not(.cm-glisse--actif):not(.cm-glisse--envoi) .cm-glisse-doigt { animation: cm-doigt 2.8s ease-in-out infinite; }
+    @keyframes cm-invite {
+      0%, 22%, 66%, 100% { transform: translateX(0); }
+      44% { transform: translateX(46px); }
+      54% { transform: translateX(40px); }
+    }
+    @keyframes cm-doigt {
+      0%, 8% { opacity: 0; transform: translate(0, 6px) scale(1.12); }
+      20% { opacity: 1; transform: translate(0, 0) scale(1); }
+      22% { opacity: 1; transform: translate(0, 0) scale(.94); }
+      44% { opacity: 1; transform: translate(46px, 0) scale(.94); }
+      54% { opacity: .9; transform: translate(40px, 0) scale(.94); }
+      66%, 100% { opacity: 0; transform: translate(40px, 8px) scale(1.08); }
+    }
+    @keyframes cm-reflet { from { background-position: 100% 0; } to { background-position: -150% 0; } }
+    .cm-glisse--envoi .cm-glisse-texte { animation: none; }
+
+    .cm-glisse-i {
+      position: absolute; inset: 0; width: 100%; height: 100%; margin: 0;
+      opacity: 0; cursor: grab; touch-action: pan-x;
+      -webkit-appearance: none; appearance: none; background: transparent;
+    }
+    .cm-glisse-i:active { cursor: grabbing; }
+    .cm-glisse-i:disabled { cursor: progress; }
+    .cm-glisse-i::-webkit-slider-runnable-track { height: 100%; background: transparent; }
+    .cm-glisse-i::-webkit-slider-thumb {
+      -webkit-appearance: none; appearance: none;
+      width: calc(var(--b) + 2 * var(--pad)); height: calc(var(--b) + 2 * var(--pad)); border: 0;
+    }
+    .cm-glisse-i::-moz-range-track { height: 100%; background: transparent; border: 0; }
+    .cm-glisse-i::-moz-range-thumb { width: calc(var(--b) + 2 * var(--pad)); height: calc(var(--b) + 2 * var(--pad)); border: 0; background: transparent; }
+    /* Le focus clavier se voit sur la piste, puisque le range est transparent. */
+    .cm-glisse:has(.cm-glisse-i:focus-visible) .cm-glisse-piste { outline: 2px solid var(--color-tracky-light); outline-offset: 3px; }
+    .cm-glisse--danger:has(.cm-glisse-i:focus-visible) .cm-glisse-piste { outline-color: var(--danger); }
+    .cm-glisse-aide { margin: 8px 0 0; font-size: .74rem; color: var(--fg-secondary); text-align: center; }
+    @media (prefers-reduced-motion: reduce) {
+      .cm-glisse .cm-glisse-bouton, .cm-glisse .cm-glisse-doigt, .cm-glisse .cm-glisse-texte { animation: none !important; }
+      .cm-glisse-bouton { transition: none; }
+    }
 
     .cm-actions { display: flex; align-items: center; justify-content: flex-end; gap: 12px; margin-top: 24px; }
     .cm-actions--slide { margin-top: 12px; }
@@ -302,6 +405,8 @@ export class ConfirmModalComponent {
 
   protected readonly AlertTriangle = AlertTriangle;
   protected readonly Info = Info;
+  protected readonly ChevronsRight = ChevronsRight;
+  protected readonly Pointer = Pointer;
   /** Identifiant unique pour relier title/desc via aria-labelledby/describedby */
   protected readonly uid = Math.random().toString(36).slice(2, 9);
 

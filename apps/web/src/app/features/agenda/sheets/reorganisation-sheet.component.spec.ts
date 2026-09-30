@@ -117,6 +117,23 @@ describe('Réorganiser — onglet « Propositions de l’agent » (29/09, piste 
   } => fixture.componentInstance as unknown as never;
   const boutonEcarter = (): HTMLButtonElement | null =>
     [...el().querySelectorAll<HTMLButtonElement>('.ro-foot button')].find((b) => /Écarter/.test(b.textContent ?? '')) ?? null;
+  const boutonPied = (re: RegExp): HTMLButtonElement | null =>
+    [...el().querySelectorAll<HTMLButtonElement>('.ro-foot button')].find((b) => re.test(b.textContent ?? '')) ?? null;
+  /** La confirmation à glisser (30/09) : ouverte ou non, et son texte. */
+  const modale = (): HTMLElement | null => el().querySelector<HTMLElement>('app-confirm-modal [role="dialog"]');
+  /** Un VRAI geste sur la glissière de la confirmation : partie du début, par paliers, jusqu'au bout. */
+  const glisserPourConfirmer = (): void => {
+    const slider = el().querySelector<HTMLInputElement>('app-confirm-modal input[type="range"]');
+    if (!slider) throw new Error('pas de glissière de confirmation');
+    for (let v = 2; v <= 100; v += 7) {
+      slider.value = String(v);
+      slider.dispatchEvent(new Event('input'));
+    }
+    slider.value = '100';
+    slider.dispatchEvent(new Event('input'));
+    slider.dispatchEvent(new Event('change'));
+    rendre();
+  };
 
   it('aucune réservation, des propositions : s’ouvre sur l’onglet Propositions, les simule, et propose d’écarter CE lot', () => {
     ouvrir({ total: 0, nbPropositions: 5 });
@@ -142,6 +159,10 @@ describe('Réorganiser — onglet « Propositions de l’agent » (29/09, piste 
     const avant = sync.propositions();
 
     boutonEcarter()?.click();
+    rendre();
+    // 30/09 : rien ne part sur un clic — la confirmation à glisser s'ouvre.
+    expect(http.match((r) => r.url === URL_PROPOSITIONS).length).toBe(0);
+    glisserPourConfirmer();
     const app = http.expectOne((r) => r.url === URL_PROPOSITIONS);
     expect(app.request.body).toEqual({ ...simu?.request.body, simulation: false, ids: ['p1', 'p2'] });
     app.flush(resultatP({ simulation: false, ecartees: 2, parVehicule: [] }));
@@ -261,6 +282,8 @@ describe('Réorganiser — onglet « Propositions de l’agent » (29/09, piste 
     rendre();
 
     boutonEcarter()?.click();
+    rendre();
+    glisserPourConfirmer();
     http.expectOne((r) => r.url === URL_PROPOSITIONS).flush(resultatP({ simulation: false, ecartees: 0, dejaTraitees: 2 }));
     rendre();
 
@@ -280,5 +303,100 @@ describe('Réorganiser — onglet « Propositions de l’agent » (29/09, piste 
     expect(vide).toContain('Vous ne gérez pas les réservations de BB-2');
     expect(vide).toContain('ses 3 propositions');
     expect(boutonEcarter()).toBeNull();
+  });
+
+  // ─── 30/09 (dernier tour du propriétaire) — voir ce que ça change, confirmer en glissant ─────────
+
+  it('la simulation dit CE QUE ÇA CHANGE et le temps gagné ; « Écarter » ouvre la confirmation à glisser, « Revenir » n’écrit rien', () => {
+    ouvrir({ total: 0 });
+    repondreP(resultatP());
+    repondreR();
+    rendre();
+
+    const change = textes('.ro-change li');
+    expect(change).toContain("2 propositions de l'agent écartées sur 1 véhicule.");
+    expect(change).toContain('Aucun courriel ne part.');
+    expect(change.join(' ')).toContain('Temps gagné : ≈ 20 s de saisie');
+    expect(modale()).toBeNull();
+
+    boutonEcarter()?.click();
+    rendre();
+    expect(modale()).not.toBeNull();
+    expect(textes('app-confirm-modal .cm-titre')[0]).toBe("Écarter ces 2 propositions de l'agent ?");
+    expect(textes('app-confirm-modal .ro-conf li')).toContain('Aucun courriel ne part.');
+    expect(textes('app-confirm-modal .cm-glisse-texte')[0]).toBe('Glissez pour écarter les 2 propositions');
+
+    const revenir = [...el().querySelectorAll<HTMLButtonElement>('app-confirm-modal button')].find((b) => /Revenir/.test(b.textContent ?? ''));
+    revenir?.click();
+    rendre();
+    expect(modale()).toBeNull();
+    expect(http.match((r) => r.url === URL_PROPOSITIONS).length).toBe(0);
+  });
+
+  it('réservations : la confirmation dit le lot, les courriels annoncés par la simulation, et n’écrit qu’au glissement', () => {
+    ouvrir({ total: 3 });
+    repondreP(resultatP());
+    const simu = repondreR(resultatR({
+      concernees: 3, lotIds: ['r1', 'r2', 'r3'], courriels: 1,
+      apercu: [{ plate: 'AA-1', startAt: '2026-10-01T06:00:00.000Z', endAt: '2026-10-01T10:00:00.000Z', source: 'MANUAL', origine: 'public', status: 'CONFIRMED' }],
+      parVehicule: [{ vehicleId: 'v1', plate: 'AA-1', n: 3 }],
+    }));
+    rendre();
+
+    expect(textes('.ro-change li')).toContain('Au plus 1 courriel : le demandeur du lien public est prévenu.');
+    boutonPied(/réservations/)?.click();
+    rendre();
+    expect(textes('app-confirm-modal .cm-titre')[0]).toBe('Annuler ces 3 réservations ?');
+    expect(textes('app-confirm-modal .cm-conseq')[0]).toContain('Une réservation annulée ne se rétablit pas.');
+    expect(http.match((r) => r.url === URL_RESERVATIONS).length).toBe(0);
+
+    glisserPourConfirmer();
+    const app = http.expectOne((r) => r.url === URL_RESERVATIONS);
+    expect(app.request.body).toEqual(jasmine.objectContaining({ ...simu?.request.body, simulation: false, attendu: 3, ids: ['r1', 'r2', 'r3'] }));
+    app.flush(resultatR({ simulation: false, concernees: 3, appliquees: 3 }));
+    rendre();
+    expect(modale()).toBeNull();
+    expect(toast.success).toHaveBeenCalledWith('3 réservation(s) reprise(s)', '');
+  });
+
+  it('une nouvelle simulation remplace celle que la confirmation montrait : le glissement n’écrit RIEN', () => {
+    ouvrir({ total: 0 });
+    repondreP(resultatP());
+    repondreR();
+    rendre();
+    boutonEcarter()?.click();
+    rendre();
+
+    composant().choisirDuree(7); // la liste lue change pendant que la modale est ouverte
+    rendre(); // les simulations repartent (effets)
+    repondreP(resultatP({ concernees: 1, lotIds: ['p1'] }));
+    repondreR();
+    rendre();
+    glisserPourConfirmer();
+
+    expect(http.match((r) => r.url === URL_PROPOSITIONS).length).toBe(0);
+    expect(toast.warning).toHaveBeenCalledWith('La simulation a changé', jasmine.stringContaining('Rien n’a été appliqué'));
+    expect(modale()).toBeNull();
+  });
+
+  it('une simulation relancée et ENCORE en vol au moment du glissement : rien ne part, et on le dit', () => {
+    ouvrir({ total: 0 });
+    repondreP(resultatP());
+    repondreR();
+    rendre();
+    boutonEcarter()?.click();
+    rendre();
+
+    composant().choisirDuree(7);
+    rendre(); // la nouvelle simulation part… et ne répond pas encore
+    glisserPourConfirmer();
+
+    expect(toast.warning).toHaveBeenCalledWith('La simulation a changé', jasmine.stringContaining('Rien n’a été appliqué'));
+    expect(modale()).toBeNull();
+    // Seules les simulations relancées sont en attente — aucune écriture.
+    const enAttente = http.match((r) => r.url === URL_PROPOSITIONS);
+    expect(enAttente.every((r) => r.request.body.simulation === true)).toBeTrue();
+    for (const r of enAttente) r.flush(resultatP());
+    repondreR();
   });
 });

@@ -2,7 +2,13 @@ import { registerLocaleData } from '@angular/common';
 import localeFr from '@angular/common/locales/fr';
 import type { VehicleEventType } from '@vizyo/tracky-shared';
 import {
+  changementsPropositions,
+  changementsReservations,
   compteAgentMemorise,
+  demandeurPrevenuDeLAnnulation,
+  dureeLisible,
+  ligneCourriels,
+  tempsGagne,
   compteDeLaListe,
   dansFenetreReorganisation,
   demandeNonReaffectable,
@@ -1203,5 +1209,78 @@ describe('Après une immobilisation : la période proposée à Réorganiser (rel
     expect(finDuPreset(b, [a, b], true)).toBeNull();
     expect(finDuPreset(a, [a, b], true)).toBe(new Date(a.to).toISOString());
     expect(finDuPreset(b, [a, b], false)).toBe(new Date(b.to).toISOString());
+  });
+});
+
+describe('Réorganiser — ce que ça change et le temps gagné (30/09, dernier tour)', () => {
+  it('dureeLisible : secondes, minutes, heures — arrondi à la minute au-delà d’une minute', () => {
+    expect(dureeLisible(0)).toBe('0 min');
+    expect(dureeLisible(40)).toBe('40 s');
+    expect(dureeLisible(89)).toBe('1 min');
+    expect(dureeLisible(12 * 60)).toBe('12 min');
+    expect(dureeLisible(60 * 60)).toBe('1 h');
+    expect(dureeLisible(212 * 60)).toBe('3 h 32');
+    expect(dureeLisible(65 * 60)).toBe('1 h 05');
+  });
+
+  it('tempsGagne : une ESTIMATION par ligne, qui dit son hypothèse', () => {
+    const r = tempsGagne('reaffecter', 12);
+    expect(r.secondes).toBe(12 * 120);
+    expect(r.texte).toBe('≈ 24 min');
+    expect(r.base).toContain('2 min par réservation');
+    expect(tempsGagne('ecarter', 106)).toEqual(jasmine.objectContaining({ secondes: 1060, texte: '≈ 18 min' }));
+    expect(tempsGagne('annuler', 0).texte).toBe('≈ 0 min');
+  });
+
+  it('ligneCourriels : aucun, un, plusieurs', () => {
+    expect(ligneCourriels(0)).toBe('Aucun courriel ne part.');
+    expect(ligneCourriels(1)).toContain('le demandeur du lien public est prévenu');
+    expect(ligneCourriels(3)).toBe('Au plus 3 courriels : les demandeurs du lien public sont prévenus.');
+  });
+
+  it('réaffecter : le véhicule libéré, la destination, les refus et les courriels', () => {
+    expect(changementsReservations({ action: 'reaffecter', prevues: 12, refusees: 2, plaque: 'AB-123-CD', vers: null, decalageMinutes: null, courriels: 0 })).toEqual([
+      'AB-123-CD est libéré : 12 réservations partent chacune sur le premier véhicule libre et conforme à ses critères.',
+      '2 ne bougent pas : leurs motifs sont dans la liste.',
+      'Aucun courriel ne part.',
+    ]);
+    expect(changementsReservations({ action: 'reaffecter', prevues: 1, refusees: 0, plaque: 'AB-123-CD', vers: 'EF-456-GH', decalageMinutes: null, courriels: 1 })).toEqual([
+      'AB-123-CD est libéré : 1 réservation part sur EF-456-GH.',
+      'Au plus 1 courriel : le demandeur du lien public est prévenu.',
+    ]);
+  });
+
+  it('annuler / décaler ; courriels inconnus (API d’avant) : on n’en dit rien', () => {
+    expect(changementsReservations({ action: 'annuler', prevues: 3, refusees: 0, plaque: null, vers: null, decalageMinutes: null, courriels: null })).toEqual([
+      '3 réservations annulées : leurs véhicules sont libérés sur ces créneaux.',
+    ]);
+    expect(changementsReservations({ action: 'decaler', prevues: 1, refusees: 1, plaque: null, vers: null, decalageMinutes: -30, courriels: 0 })).toEqual([
+      '1 réservation décalée de −30 min, sur le même véhicule.',
+      '1 ne bouge pas : son motif est dans la liste.',
+      'Aucun courriel ne part.',
+    ]);
+  });
+
+  it('propositions : écartées, rien de bloqué, pas reproposées, aucun courriel', () => {
+    expect(changementsPropositions({ n: 106, vehicules: 19, plaque: null })).toEqual([
+      "106 propositions de l'agent écartées sur 19 véhicules.",
+      'Aucun véhicule n’est bloqué ni libéré : une proposition ne réserve rien.',
+      'L’agent ne les reproposera pas, ni un créneau qui les chevauche.',
+      'Aucun courriel ne part.',
+    ]);
+    expect(changementsPropositions({ n: 1, vehicules: 1, plaque: 'HD-686-QX' })[0]).toBe("1 proposition de l'agent écartée sur HD-686-QX.");
+  });
+
+  it('annuler une réservation : le demandeur n’est prévenu que pour une demande publique avec contact, vivante', () => {
+    const maintenant = Date.parse('2026-09-30T08:00:00Z');
+    const pub = { public: true, requesterContact: 'ecole@test.fr' };
+    const fin = '2026-10-01T10:00:00Z';
+    expect(demandeurPrevenuDeLAnnulation({ metadata: pub, status: 'CONFIRMED', endAt: fin }, maintenant)).toBeTrue();
+    expect(demandeurPrevenuDeLAnnulation({ metadata: pub, status: 'REQUESTED', endAt: fin }, maintenant)).toBeTrue();
+    expect(demandeurPrevenuDeLAnnulation({ metadata: { public: true }, status: 'CONFIRMED', endAt: fin }, maintenant)).toBeFalse();
+    expect(demandeurPrevenuDeLAnnulation({ metadata: { ...pub, retroactive: true }, status: 'CONFIRMED', endAt: fin }, maintenant)).toBeFalse();
+    expect(demandeurPrevenuDeLAnnulation({ metadata: null, status: 'CONFIRMED', endAt: fin }, maintenant)).toBeFalse();
+    expect(demandeurPrevenuDeLAnnulation({ metadata: pub, status: 'CONFIRMED', endAt: '2026-09-29T10:00:00Z' }, maintenant)).toBeFalse();
+    expect(demandeurPrevenuDeLAnnulation({ metadata: pub, status: 'IN_PROGRESS', endAt: fin }, maintenant)).toBeFalse();
   });
 });

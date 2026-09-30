@@ -1421,6 +1421,27 @@ export class ReservationsService {
   }
 
   /**
+   * 30/09 — cette ligne recevrait-elle un courriel si le lot de Réorganiser était appliqué ? Les règles
+   * de l'application (`reorganiser`, {@link annulationAAnnoncer}, {@link annoncerModification}) et du
+   * notifier (une demande PUBLIQUE avec un contact) :
+   *  - annuler : refus d'une demande en attente (sauf sa propre demande retirée), ou annulation d'une
+   *    réservation confirmée, non rétroactive, pas finie ;
+   *  - réaffecter / décaler : modification d'une réservation DÉJÀ confirmée, non rétroactive, pas finie.
+   */
+  private courrielAAnnoncer(action: 'annuler' | 'decaler' | 'reaffecter', e: VehicleEventDto, user: AuthUser): boolean {
+    const meta = (e.metadata ?? null) as Record<string, unknown> | null;
+    if (meta?.['public'] !== true) return false;
+    const contact = meta['requesterContact'];
+    if (typeof contact !== 'string' || !contact.trim()) return false;
+    if (action === 'annuler') {
+      if (e.status === VehicleEventStatus.REQUESTED) return !estRetraitDeSaDemande(e.status, e.metadata, user.id);
+      return this.annulationAAnnoncer(e.status, e);
+    }
+    if (e.status !== VehicleEventStatus.CONFIRMED || meta['retroactive'] === true) return false;
+    return !e.endAt || new Date(e.endAt).getTime() > Date.now();
+  }
+
+  /**
    * `reservation.cancelled` — un événement DÉDIÉ, pas `reservation.refused` : « votre demande n'a pas
    * pu être retenue » est faux pour une réservation que le demandeur tenait pour ferme. Le notifier
    * tranche sur l'état du groupe : s'il reste des lignes fermes à venir, la demande est MODIFIÉE (et
@@ -2623,15 +2644,24 @@ export class ReservationsService {
     };
 
     if (simulation) {
+      // 30/09 (dernier tour du propriétaire) — ce que le geste ENVERRAIT, dit avant la confirmation à
+      // glisser : au plus un courriel par demande (la clé de l'application : `bookingRef`, sinon la
+      // ligne), selon les mêmes règles (`courrielAAnnoncer`), jamais pour un refus certain.
+      const demandesPrevenues = new Set<string>();
       for (const e of lot) {
         const motif = refusCertain(e);
-        if (motif) refusees.push({ plate: e.vehiclePlate, startAt: e.startAt, motif });
+        if (motif) {
+          refusees.push({ plate: e.vehiclePlate, startAt: e.startAt, motif });
+          continue;
+        }
+        if (this.courrielAAnnoncer(action, e, user)) demandesPrevenues.add(this.bookingRefOf(e.metadata) ?? e.id);
       }
       return {
         simulation: true, concernees: lot.length, appliquees: 0, refusees, apercu, plafonne, totaux,
         ...(totauxVehicule ? { totauxVehicule } : {}),
         parVehicule,
         lotIds,
+        courriels: demandesPrevenues.size,
       };
     }
 

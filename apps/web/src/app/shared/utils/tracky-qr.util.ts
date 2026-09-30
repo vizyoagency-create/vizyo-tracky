@@ -1,4 +1,5 @@
 import qrcode from 'qrcode-generator';
+import { LOGO_TRACKY_PNG } from './tracky-logo.data';
 
 export interface TrackyQrOptions {
   /** Modules de zone de silence autour du QR (défaut 4). */
@@ -59,7 +60,8 @@ const esc = (s: string): string =>
  * pixels serait le seul element a ne pas suivre.
  */
 const LOGO = (size: string): string =>
-  `<svg style="width:${size};height:auto" viewBox="0 0 283 290" fill="none"><path d="M180 11.6296C182 10.6295 193 -1.37044 224 0.129555C248.8 1.32956 267.333 22.2962 273.5 32.6296C289 59.6295 278 88.1296 277.5 90.1296C277.5 92 192 245.13 185 260.13C175.5 277.129 163.404 283.129 156 284.5C154 284.87 145.5 286.5 135 284.5C119.5 280.5 109 271 101.5 251L2 33.1296H37C55.8 33.9296 67.8333 48.1296 71.5 55.1296L137 192.63C146.6 215.429 161 220.13 166.5 220.13H166.672C171.787 220.131 182.708 220.135 189 214.63C197 207.63 202 201 203.5 188C205 175 190 148.63 185 141.63C163 105.13 158 97.6293 154.5 82.6296C151 67.6299 152.5 59.1296 153 53.6296C153.5 48.1296 156.5 40.6295 159.5 34.6296C162.5 28.6296 170.5 19.1295 180 11.6296ZM217 32.1296C198.775 32.1296 184 46.9042 184 65.1296C184 83.3548 198.775 98.1296 217 98.1296C235.225 98.1296 250 83.3548 250 65.1296C250 46.9042 235.225 32.1296 217 32.1296Z" fill="url(#lg)"/><defs><linearGradient id="lg" x1="28" y1="280" x2="230" y2="79" gradientUnits="userSpaceOnUse"><stop stop-color="#10E0A0"/><stop offset="1" stop-color="#047857"/></linearGradient></defs></svg>`;
+  // 30/09 — le logo OFFICIEL (celui d'`app-logo`), plus l'ancien tracé vectoriel : voir `tracky-logo.data.ts`.
+  `<img src="${LOGO_TRACKY_PNG}" alt="" style="width:${size};height:auto;display:block" />`;
 
 export interface QrCardData {
   plate: string;

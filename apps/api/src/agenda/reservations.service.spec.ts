@@ -2408,6 +2408,25 @@ describe('ReservationsService — revue du 29/09', () => {
       expect(modifie(emitter)).toHaveLength(0);
     });
 
+    it('30/09 — la SIMULATION dit combien de courriels partiraient : un par demande, selon les règles de l’application, sans prévenir personne', async () => {
+      const { svc, emitter } = monterLot([
+        ligne('a', 'v1'), // demande g1, confirmée
+        ligne('b', 'v2'), // g1 aussi : la même demande, un seul courriel
+        ligne('c', 'v3', { metadata: { public: true, bookingRef: 'g2', requesterContact: 'autre@test.fr' } }),
+        ligne('d', 'v4', { status: 'REQUESTED', metadata: { public: true, bookingRef: 'g3', requesterContact: 'x@test.fr' } }),
+        ligne('e', 'v5', { metadata: { public: true, bookingRef: 'g4' } }), // sans contact
+        ligne('f', 'v6', { metadata: { bookingRef: 'interne' } }), // demande interne
+      ]);
+
+      const decalage = await svc.reorganiser(makeUser(), { ...decaler, simulation: true });
+      // g1 et g2 : une demande EN ATTENTE décalée n'est pas annoncée (elle se valide ou se refuse).
+      expect(decalage.courriels).toBe(2);
+      const annulation = await svc.reorganiser(makeUser(), { ...decaler, action: 'annuler', simulation: true });
+      // g1 et g2 annulées, g3 refusée — toujours rien sans contact ni pour une demande interne.
+      expect(annulation.courriels).toBe(3);
+      expect(emitter.emit).not.toHaveBeenCalled();
+    });
+
     it('une édition unitaire (hors lot) prévient toujours, une fois', async () => {
       const { svc, emitter } = monterLot([ligne('a', 'v1')]);
       await svc.update(makeUser(), 'a', {

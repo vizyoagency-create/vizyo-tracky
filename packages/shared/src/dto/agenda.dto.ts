@@ -244,6 +244,13 @@ export interface ReorganisationResultDto {
    * réservation arrivée entre la simulation et l'application n'est jamais touchée sans avoir été vue.
    */
   lotIds?: string[];
+  /**
+   * 30/09 — en SIMULATION : au plus combien de courriels l'application enverrait — un par demande du
+   * lien public prévenue (modification, annulation ou refus), jamais sans contact, jamais pour un refus
+   * certain. « Au plus » : le notifier se tait tant que la demande attend une décision sur une autre de
+   * ses lignes. La confirmation à glisser le dit avant qu'on écrive. Absent à l'application.
+   */
+  courriels?: number;
 }
 
 /**
