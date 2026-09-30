@@ -26,6 +26,9 @@ const trackerWithVehicle = {
   model: 'COBAN_GPS403D',
   status: 'ONLINE',
   vehicleId: 'v-1',
+  // 2026-09-30 — chaque commande Coban porte le mot de passe DU boîtier (il était en dur dans
+  // le catalogue, à la valeur d'usine). Sans ce champ, le gabarit produirait « speedundefined ».
+  devicePassword: '123456',
   // TRK-021 (correctif #2) — la porte précoce lit le numéro sur la ligne déjà chargée
   // par findUnique ; sans ce champ, tout gabarit SMS-only serait refusé avant le create.
   simPhoneNumber: '+33600000000',

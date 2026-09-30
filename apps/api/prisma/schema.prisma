@@ -1110,6 +1110,34 @@ model Tracker {
   // SMS quand la socket TCP est indisponible. Renseigne au moment du provisionnement
   // SMS via /admin/sms/provision.
   simPhoneNumber         String?
+  /// ══ MOT DE PASSE DU BOITIER (Coban 403C) — 2026-09-30 ═══════════════════════════════════
+  ///
+  /// TOUTE commande SMS envoyee a un boitier Coban porte son mot de passe, colle a la
+  /// commande : `stop<mdp>`, `resume<mdp>`, `sensitivity<mdp> 3`, `begin<mdp>`, `fix...<mdp>`.
+  /// Jusqu'ici ce mot de passe etait ecrit EN DUR dans cinq modules, avec la valeur d'usine
+  /// `123456` — celle que tout le monde trouve en trois clics.
+  ///
+  /// Le 24/09/2026 une veilleuse de CDEF31, faute de numero d'assistance de nuit, a cherche
+  /// sur internet comment debloquer un vehicule par SMS. Elle a trouve `resume123456`, et l'a
+  /// diffuse par courriel a sa hierarchie. Qui connait le numero de SIM d'un boitier peut donc
+  /// rallumer ou immobiliser le vehicule correspondant — sans passer par Tracky, sans trace,
+  /// sans verification de droit.
+  ///
+  /// Le mot de passe vit desormais ICI, par boitier. Deux consequences :
+  ///   — une fuite ne donne QU'UN vehicule, pas la flotte ;
+  ///   — Tracky peut le changer, et savoir lesquels sont encore en usine.
+  ///
+  /// ⚠️ EN CLAIR, ET C'EST INEVITABLE : il doit etre ecrit dans le texte de chaque SMS. Le
+  /// hacher le rendrait inutilisable. Il n'est servi qu'au SUPER_ADMIN, masque par defaut a
+  /// l'ecran, et jamais journalise — les commandes sont tracees, leur mot de passe non.
+  ///
+  /// Defaut `123456` : c'est l'etat REEL des 46 boitiers au moment de la migration. Mentir ici
+  /// (par exemple en laissant NULL) casserait le repli SMS du coupe-circuit des la migration.
+  devicePassword         String                     @default("123456")
+  /// Quand le mot de passe a-t-il ete change ? `null` = jamais = encore celui d'usine. C'est
+  /// CE champ qui pilote l'ecran d'administration, pas une comparaison avec « 123456 » : un
+  /// boitier qu'on changerait un jour pour cette valeur resterait a risque et doit le dire.
+  devicePasswordSetAt    DateTime?
   /// V1.7 — Indique si le fil ACC du boitier (jaune) est physiquement connecte
   /// au +12V apres contact. Si false, le serveur infere `ignition` depuis la
   /// vitesse GPS (>3 km/h => ON). Reglable par SUPER_ADMIN uniquement depuis

@@ -102,6 +102,12 @@ export interface ProvisioningParams {
   accOn?: boolean; // ajoute l'etape acc<pwd> on
   fixIntervalS?: number; // defaut 20 (plancher firmware Coban)
   ackTimeoutS?: number; // defaut 15
+  /**
+   * Mot de passe ACTUEL du boitier. Defaut : la valeur d'usine — un boitier neuf n'en a pas
+   * d'autre, et `begin<mdp>` ne passe qu'avec le bon. A renseigner pour reprovisionner un
+   * boitier dont le mot de passe a deja ete change (2026-09-30).
+   */
+  devicePassword?: string;
 }
 
 const COBAN_PASSWORD = '123456'; // password par defaut Coban (override via env si prod)
@@ -158,7 +164,13 @@ export class TrackerProvisioningService {
    * ajoutees que si le champ correspondant est fourni.
    */
   buildSteps(params: ProvisioningParams): StepDef[] {
-    const pwd = COBAN_PASSWORD;
+    // Le provisionnement s'adresse à un boîtier NEUF, sorti du carton : il est forcément
+    // encore au mot de passe d'usine. C'est le seul endroit du dépôt où cette valeur reste
+    // légitime — la séquence commence par `begin<mdp>`, qui ne peut passer qu'avec elle.
+    //
+    // `params.devicePassword` permet de reprovisionner un boîtier DÉJÀ changé (réinstallation,
+    // passage d'un véhicule à un autre) sans avoir à le remettre en usine physiquement.
+    const pwd = params.devicePassword?.trim() || COBAN_PASSWORD;
     const fixS = Math.min(
       MAX_FIX_INTERVAL_S,
       Math.max(MIN_FIX_INTERVAL_S, Math.floor(params.fixIntervalS ?? DEFAULT_FIX_INTERVAL_S)),

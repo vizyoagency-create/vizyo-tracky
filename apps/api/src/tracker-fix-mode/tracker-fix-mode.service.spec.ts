@@ -67,7 +67,10 @@ describe('TrackerFixModeService.buildDiagnosticHint', () => {
       now: NOW,
     });
     expect(hint).toMatch(/3 commandes/);
-    expect(hint).toMatch(/RESET123456/);
+    // Le conseil ne dicte plus la valeur d'usine (2026-09-30) : chaque boîtier a SON mot de
+    // passe, et envoyer l'opérateur sur « RESET123456 » le ferait échouer sans comprendre.
+    expect(hint).toMatch(/reset/i);
+    expect(hint).not.toMatch(/123456/);
   });
 
   it('warns about GPS occlusion when socket is healthy but no valid frame > 30min', () => {
@@ -177,6 +180,8 @@ describe('TrackerFixModeService — envoi réel (repli SMS + override)', () => {
     id: TRACKER_ID,
     imei: '123456789012345',
     simPhoneNumber: '+33656691615',
+    // 2026-09-30 — la forme SMS porte le mot de passe DU boîtier : sans lui, « fix099s***nundefined ».
+    devicePassword: '123456',
     lastSeenAt: overrides.lastSeenAt === undefined ? new Date(Date.now() - 30 * 60_000) : overrides.lastSeenAt,
     lastValidFrameAt: null,
     desiredFixIntervalS: 30,
@@ -1367,6 +1372,8 @@ describe('TrackerFixModeService — écoute de l’accusé de réception (TRK-01
     ({
       id: 't1',
       imei: IMEI,
+      // 2026-09-30 — la forme SMS du gabarit porte le mot de passe DU boîtier.
+      devicePassword: '123456',
       desiredFixIntervalS: 20,
       currentFixIntervalS: 20,
       fixCommandFailing: false,
