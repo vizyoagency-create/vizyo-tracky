@@ -37,6 +37,7 @@ export * from './dto/activity-report.dto';
 export * from './dto/report-schedule.dto';
 export * from './dto/speed-alert.dto';
 export * from './dto/libelles-alerte';
+export * from './utils/contact-urgence';
 export * from './utils/co2';
 export * from './utils/carburant';
 export * from './utils/analyse-ancienne';

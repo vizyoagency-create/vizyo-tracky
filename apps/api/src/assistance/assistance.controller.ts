@@ -94,12 +94,22 @@ export class AssistanceController {
   // ─── Espace admin — archive, relecture, reprise ────────────────────────────
 
   /**
-   * Périmètre : un super-admin voit toutes les sociétés, un admin de société la sienne. Le
-   * filtrage est fait en base (`resolveTenantScope`), pas à l'affichage — un tri côté écran
-   * n'aurait jamais empêché la donnée de sortir du serveur.
+   * ⚠️ RÉSERVÉ AU SUPER-ADMIN DEPUIS LE 30/09/2026 (décision du propriétaire).
+   *
+   * Ces quatre routes acceptaient aussi `FLEET_ADMIN`. C'est désormais Vizyo, et Vizyo seul, qui
+   * répond aux demandes d'assistance : l'écran a quitté la navbar de l'application pour le
+   * panneau `/admin`, qui est super-admin.
+   *
+   * Le rôle est retiré ICI et pas seulement sur la route Angular. Une garde d'écran ne ferme
+   * rien — elle cache un lien ; l'appel HTTP, lui, reste possible pour qui connaît l'URL. Ce
+   * dépôt s'est déjà fait prendre plusieurs fois par des garde-fous qui ne gardaient rien.
+   *
+   * Le périmètre par société (`resolveTenantScope`) est CONSERVÉ tel quel : il n'est plus
+   * exercé par aucun rôle admis, mais le retirer transformerait une défense en profondeur en
+   * dette silencieuse le jour où un autre rôle sera rouvert.
    */
   @Get('admin/conversations')
-  @Roles(UserRole.SUPER_ADMIN, UserRole.FLEET_ADMIN)
+  @Roles(UserRole.SUPER_ADMIN)
   adminListe(
     @Req() req: AuthenticatedRequest,
     @Query('limit') limit?: string,
@@ -109,7 +119,7 @@ export class AssistanceController {
   }
 
   @Get('admin/conversations/:id')
-  @Roles(UserRole.SUPER_ADMIN, UserRole.FLEET_ADMIN)
+  @Roles(UserRole.SUPER_ADMIN)
   adminDetail(
     @Req() req: AuthenticatedRequest,
     @Param('id', ParseUUIDPipe) id: string,
@@ -119,7 +129,7 @@ export class AssistanceController {
 
   /** Marquer relue + consigner la correction à retenir. C'est la raison d'être de l'archive. */
   @Post('admin/conversations/:id/review')
-  @Roles(UserRole.SUPER_ADMIN, UserRole.FLEET_ADMIN)
+  @Roles(UserRole.SUPER_ADMIN)
   relire(
     @Req() req: AuthenticatedRequest,
     @Param('id', ParseUUIDPipe) id: string,
@@ -130,7 +140,7 @@ export class AssistanceController {
 
   /** Réponse d'un conseiller humain, insérée dans le fil que l'utilisateur voit. */
   @Post('admin/conversations/:id/reply')
-  @Roles(UserRole.SUPER_ADMIN, UserRole.FLEET_ADMIN)
+  @Roles(UserRole.SUPER_ADMIN)
   repondre(
     @Req() req: AuthenticatedRequest,
     @Param('id', ParseUUIDPipe) id: string,

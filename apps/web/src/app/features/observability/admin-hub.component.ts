@@ -145,6 +145,24 @@ import type { AlertesAvecAgentsDuPoste } from './admin-alerts.component';
             <lucide-icon [img]="ChevronRight" [size]="16" class="chevron"></lucide-icon>
           </div>
         </a>
+        <!-- ── DEMANDES D'ASSISTANCE ──
+             30/09/2026 : cet ecran vivait dans la navbar de l'application, section « Aide »,
+             a cote de l'assistance destinee aux UTILISATEURS. Deux choses opposees au meme
+             endroit : l'une est une aide qu'on recoit, l'autre un outil d'exploitation avec
+             lequel on repond. Il rejoint donc le panneau d'administration, et seul Vizyo y
+             accede — les admins de flotte n'ont plus a traiter les demandes de leurs propres
+             utilisateurs (decision du proprietaire). -->
+        <a routerLink="/admin/assistance" class="card" style="--i:2">
+          <span class="accent accent-blue"></span>
+          <div class="body">
+            <div class="row-top">
+              <div class="ico ico-blue"><lucide-icon [img]="MessageSquare" [size]="20"></lucide-icon></div>
+              <lucide-icon [img]="ChevronRight" [size]="16" class="chevron"></lucide-icon>
+            </div>
+            <h3>Demandes d'assistance</h3>
+            <p class="desc">Les questions posées par les utilisateurs, la réponse de l'assistant, et la vôtre. Relire, corriger ce que l'assistant a mal dit, reprendre la main sur un fil. Les urgences véhicule, elles, arrivent par la ligne WhatsApp, pas ici.</p>
+          </div>
+        </a>
         <!-- ── CE QUE NOS SERVICES ONT RECUPERE ──
              Ajoute apres avoir decouvert que 98,8 % du cache des limites de vitesse etait
              faux pendant des semaines, sans que rien ne le montre. Une couche

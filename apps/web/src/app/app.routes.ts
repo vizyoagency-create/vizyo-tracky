@@ -349,9 +349,16 @@ export const routes: Routes = [
       },
       {
         // L'archive des demandes : relire, corriger, reprendre la main. Le PERIMETRE est applique
-        // cote serveur (super-admin : toutes les societes ; admin de flotte : la sienne).
+        // cote serveur.
+        //
+        // 30/09/2026 — RESSERRE AU SUPER-ADMIN (decision du proprietaire). C'est Vizyo qui traite
+        // les demandes d'assistance, pas les admins de flotte : l'ecran quitte la navbar de
+        // l'application et devient une carte du panneau /admin, qui est super-admin. Laisser le
+        // role FLEET_ADMIN ici aurait garde une porte ouverte sur un ecran sans lien — et le
+        // controleur, lui, a ete resserre en meme temps : une garde d'ecran seule n'est qu'un
+        // decor, le perimetre reel se tient cote serveur.
         path: 'admin/assistance',
-        canActivate: [roleGuard('FLEET_ADMIN', 'SUPER_ADMIN')],
+        canActivate: [superAdminGuard],
         loadComponent: () =>
           import('./features/assistance/admin-assistance.component').then((m) => m.AdminAssistanceComponent),
         data: { title: 'Assistance — demandes' },

@@ -31,6 +31,7 @@ import { InstallReviewBadgeComponent } from '../../shared/ui/install-review-badg
 import { TrackClickDirective } from '../../shared/directives/track-click.directive';
 import { BottomSheetComponent } from '../../shared/ui/bottom-sheet/bottom-sheet.component';
 import { ZoneComponent, type EtatZone } from '../../shared/ui/zone/zone.component';
+import { UrgenceVehiculeComponent } from '../../shared/ui/urgence-vehicule.component';
 import { genrePastille, pastilleLiveAutorisee } from './pastille-live';
 import {
   formatSilenceLabel,
@@ -50,7 +51,7 @@ type FiltreStatut = 'tous' | 'roulage' | 'arret' | 'hors-ligne' | 'sans-boitier'
   selector: 'app-vehicles-list',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [RouterLink, FormsModule, LucideAngularModule, VehicleDialogComponent, VehicleGroupsTabComponent, VehicleCapacityTableComponent, ConfirmModalComponent, SaFleetBadgeComponent, GroupBadgeComponent, ConnectivityBadgeComponent, BrandLogoComponent, InstallReviewBadgeComponent, TrackClickDirective, EngineControlButtonComponent, VehicleLinkDirective, PrivacyModeTabComponent, VehicleQrDialogComponent, BottomSheetComponent, ZoneComponent],
+  imports: [RouterLink, FormsModule, LucideAngularModule, VehicleDialogComponent, VehicleGroupsTabComponent, VehicleCapacityTableComponent, ConfirmModalComponent, SaFleetBadgeComponent, GroupBadgeComponent, ConnectivityBadgeComponent, BrandLogoComponent, InstallReviewBadgeComponent, TrackClickDirective, EngineControlButtonComponent, VehicleLinkDirective, PrivacyModeTabComponent, VehicleQrDialogComponent, BottomSheetComponent, ZoneComponent, UrgenceVehiculeComponent],
   template: `
     @if (auth.isWatchman()) {
       <!-- ───────────────────────────────────────────────────────────────────
@@ -66,6 +67,18 @@ type FiltreStatut = 'tous' | 'roulage' | 'arret' | 'hors-ligne' | 'sans-boitier'
           <p class="wn-sub">
             {{ search().trim() ? filteredVehicles().length + ' résultat(s)' : vehicles().length + ' véhicule(s)' }}
           </p>
+        </div>
+
+        <!--
+          LE NUMÉRO D'URGENCE EST ICI PARCE QUE LE VEILLEUR NE PEUT ALLER NULLE PART AILLEURS.
+          Son confinement (« watchmanChildGuard », allowlist default-deny) l'enferme sur cette
+          seule page : l'écran Assistance lui est fermé. Or c'est exactement lui qui se retrouve
+          à 2 h du matin devant un véhicule qui ne redémarre pas — la nuit du 24/09, faute de
+          numéro, la veilleuse de CDEF31 a cherché sur internet comment forcer le boîtier par SMS.
+          Un numéro rangé dans une page qu'elle ne peut pas ouvrir n'aurait rien changé.
+        -->
+        <div class="wn-urgence">
+          <app-urgence-vehicule variante="bandeau" />
         </div>
 
         @if (loading()) {
@@ -692,7 +705,10 @@ type FiltreStatut = 'tous' | 'roulage' | 'arret' | 'hors-ligne' | 'sans-boitier'
   styles: [`
     /* ─── Sprint 3 — Vue veilleur « zéro donnée » : liste épurée plaque + bouton ─── */
     .wn-page { position: relative; max-width: 720px; margin: 0 auto }
-    .wn-header { margin-bottom: 18px }
+    .wn-header { margin-bottom: 14px }
+    /* Sous l'en-tête, AVANT la liste : visible sans défiler, sur un téléphone comme sur un
+       écran large. Le veilleur n'a aucune autre page où le chercher. */
+    .wn-urgence { margin-bottom: 16px }
     .wn-title { font-size: 24px; font-weight: 800; color: var(--fg-primary); letter-spacing: -.02em }
     .wn-sub { font-size: 13px; color: var(--fg-tertiary); margin-top: 2px }
     .wn-loading { display: flex; justify-content: center; padding: 60px 0 }

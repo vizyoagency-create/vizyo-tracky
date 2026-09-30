@@ -1416,12 +1416,14 @@ export class DashboardLayoutComponent {
      * ecran de l'application dont l'utilisateur a besoin PRECISEMENT parce qu'il est perdu.
      *
      * Aucune permission n'est exigee : c'est une aide, pas une fonction d'administration.
-     * L'archive, elle, n'apparait que pour les profils qui ont le droit de la lire.
+     *
+     * 30/09/2026 — « Demandes d'assistance » (REPONDRE aux utilisateurs) a quitte cette section.
+     * Ce n'est pas de l'aide, c'est un outil d'exploitation de Vizyo : il vit desormais dans le
+     * panneau /admin, avec les autres. La regle ci-dessus reste entiere — l'ecran n'est pas
+     * devenu invisible, il a change de porte : voir la carte « Demandes d'assistance » du hub.
      */
     const aide: NavItem[] = [
       { label: 'Assistance', route: '/assistance', icon: LifeBuoy },
-      ...(this.auth.user()?.role === 'FLEET_ADMIN' || this.auth.user()?.role === 'SUPER_ADMIN'
-        ? [{ label: 'Demandes d’assistance', route: '/admin/assistance', icon: MessageSquare }] : []),
     ];
     return ([
       { section: 'Supervision', items: supervision },
