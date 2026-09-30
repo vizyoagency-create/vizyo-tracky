@@ -43,14 +43,42 @@ describe('UrgenceVehiculeComponent — la ligne d’astreinte véhicule', () => 
     expect(liens().length).withContext('le bandeau doit être cliquable, pas décoratif').toBe(1);
   });
 
-  it('WhatsApp et téléphone pointent tous deux sur le numéro international', () => {
+  it('le lien WhatsApp porte le numéro international', () => {
     creer('complet');
     const href = liens().map((a) => a.getAttribute('href') ?? '');
     const sansPlus = CONTACT_TEL_E164.replace('+', '');
     expect(href.some((h) => h.startsWith(`https://wa.me/${sansPlus}`)))
       .withContext(`wa.me manquant ou mal formé dans ${href.join(' | ')}`)
       .toBeTrue();
-    expect(href).toContain(`tel:${CONTACT_TEL_E164}`);
+  });
+
+  /**
+   * 🔴 UN SEUL CANAL D'URGENCE, ET C'EST WHATSAPP.
+   *
+   * Un bouton « Appeler » a existé ici quelques heures. Il a été retiré le 30/09/2026 quand la
+   * fiche remise au client a été arrêtée sur « WhatsApp uniquement ». Ce test existe pour que
+   * personne ne le remette sans rouvrir la fiche : deux promesses différentes pour le même
+   * numéro, c'est la garantie qu'une des deux sera fausse — et celle qu'on vérifie le moins est
+   * toujours celle qui est à l'écran.
+   */
+  it('🔴 aucun lien tel: — la fiche remise au client dit « WhatsApp uniquement »', () => {
+    creer('complet');
+    const href = liens().map((a) => a.getAttribute('href') ?? '');
+    expect(href.filter((h) => h.startsWith('tel:')))
+      .withContext('si le téléphone revient, la fiche PDF doit être refaite en même temps')
+      .toEqual([]);
+  });
+
+  it('la fiche imprimable est atteignable depuis le bloc', () => {
+    creer('complet');
+    const href = liens().map((a) => a.getAttribute('href') ?? '');
+    expect(href).toContain('/fiche-urgence-nuit.html');
+  });
+
+  it('pour une question, l’écran donne une sortie écrite (courriel)', () => {
+    creer('complet');
+    const href = liens().map((a) => a.getAttribute('href') ?? '');
+    expect(href.some((h) => h.startsWith('mailto:'))).toBeTrue();
   });
 
   it('le message WhatsApp demande la PLAQUE — sans elle, l’astreinte perd un aller-retour', () => {
@@ -71,7 +99,7 @@ describe('UrgenceVehiculeComponent — la ligne d’astreinte véhicule', () => 
     expect(t).toContain('véhicules immobilisés');
     expect(t)
       .withContext('la frontière doit être justifiée, pas seulement décrétée')
-      .toContain('laisse la ligne libre');
+      .toContain('laissez la ligne libre');
   });
 
   it('les liens externes s’ouvrent sans exposer la page appelante', () => {
