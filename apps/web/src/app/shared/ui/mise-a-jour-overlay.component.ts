@@ -1,4 +1,5 @@
 import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
+import { URGENCE_TEL_AFFICHE, urgenceWhatsappLien } from '../../core/config/assistance-urgence';
 import { MiseAJourEnCoursService } from '../../core/services/mise-a-jour-en-cours.service';
 
 /**
@@ -46,9 +47,15 @@ import { MiseAJourEnCoursService } from '../../core/services/mise-a-jour-en-cour
             </p>
           }
 
-          <p class="maj-secours">
-            Urgence véhicule pendant ce temps : <strong>WhatsApp 06 56 69 16 15</strong>
-          </p>
+          <!--
+            Le numéro vient de « assistance-urgence.ts », jamais écrit ici. Le 27/09 cet écran
+            est parti en production avec un numéro INVENTÉ, proche du vrai : un numéro codé en
+            dur se relit comme du décor, personne ne le vérifie.
+          -->
+          <a class="maj-secours" [href]="lienWhatsapp" target="_blank" rel="noopener">
+            Véhicule bloqué pendant ce temps&nbsp;?
+            <strong>WhatsApp {{ telAffiche }}</strong> — 24&nbsp;h/24
+          </a>
         </div>
       </div>
     }
@@ -90,14 +97,22 @@ import { MiseAJourEnCoursService } from '../../core/services/mise-a-jour-en-cour
       margin: 0; font-size: 12.5px; line-height: 1.5; text-wrap: pretty;
       color: var(--fg-tertiary, #7b8794);
     }
+    /* C'est un LIEN, et sur un téléphone il doit se toucher : 44 px de haut, pas une ligne de
+       texte de 12 px. C'est le seul geste utile de cet écran. */
     .maj-secours {
-      margin: 6px 0 0; padding-top: 12px; font-size: 12.5px; line-height: 1.5;
+      display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 4px;
+      margin: 6px 0 0; padding: 12px 8px 4px; min-height: 44px;
+      font-size: 12.5px; line-height: 1.5; text-align: center; text-decoration: none;
       border-top: 1px solid var(--border-subtle, #2a3340); width: 100%;
       color: var(--fg-secondary, #9aa7b4);
     }
+    .maj-secours strong { color: var(--fg-primary, #e6edf3); }
+    .maj-secours:hover strong { text-decoration: underline; }
     `,
   ],
 })
 export class MiseAJourOverlayComponent {
   protected readonly service = inject(MiseAJourEnCoursService);
+  protected readonly telAffiche = URGENCE_TEL_AFFICHE;
+  protected readonly lienWhatsapp = urgenceWhatsappLien();
 }

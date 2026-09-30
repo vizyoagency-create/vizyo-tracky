@@ -2,7 +2,7 @@ import { Injectable, Logger, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { EmailStatus } from '@prisma/client';
 import { Resend } from 'resend';
-import { partLibelle } from '@vizyo/tracky-shared';
+import { CONTACT_EMAIL, CONTACT_TEL_AFFICHE, partLibelle } from '@vizyo/tracky-shared';
 import type { Env } from '../config/env.validation';
 import { formatFleetDateTime, formatFleetDateTimeLong } from '../common/utils/datetime';
 import { ErrorLogger } from '../observability/error-logger.service';
@@ -2173,13 +2173,19 @@ Montant estimé : ~${opts.monthlyLabel}/mois
       </td></tr>`;
   }
 
+  /**
+   * Le numéro vient de `@vizyo/tracky-shared`, pas d'ici. C'est le MÊME que celui affiché par
+   * l'application (écran Assistance, liste des véhicules, écran de mise à jour) : deux copies,
+   * c'était deux vérités le jour d'un changement — et le 27/09/2026 une copie fausse est
+   * effectivement partie en production côté web.
+   */
   private commercialSignatureText(): string {
     return `Bien à vous,
 
 Y. Haddou
 Vizyo Tracky · votre interlocuteur dédié
-WhatsApp / Tél : 06 52 07 70 38
-E-mail : contact@vizyoagency.com`;
+WhatsApp / Tél : ${CONTACT_TEL_AFFICHE}
+E-mail : ${CONTACT_EMAIL}`;
   }
 
   /** Carte « récap devis » (le texte du simulateur, sauts de ligne préservés). */
@@ -2460,7 +2466,7 @@ ${this.commercialSignatureText()}`;
           clientName: 'Marc Legrand',
           reason: 'Équipe déjà mobilisée sur un autre chantier ce jour-là.',
           bookingUrl: `${appBase}/book/apercu`,
-          telephoneAtelier: '06 52 07 70 38',
+          telephoneAtelier: CONTACT_TEL_AFFICHE,
         });
       case 'installation_slot_cancelled':
         return this.buildInstallationSlotCancelledEmail({
@@ -2469,7 +2475,7 @@ ${this.commercialSignatureText()}`;
           clientName: 'Marc Legrand',
           reason: 'Véhicule indisponible ce jour-là.',
           bookingUrl: `${appBase}/book/apercu`,
-          telephoneAtelier: '06 52 07 70 38',
+          telephoneAtelier: CONTACT_TEL_AFFICHE,
         });
       case 'installation_slot_available':
         return this.buildInstallationSlotAvailableEmail({
