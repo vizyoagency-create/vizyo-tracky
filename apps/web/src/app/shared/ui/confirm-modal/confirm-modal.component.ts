@@ -470,6 +470,13 @@ export class ConfirmModalComponent {
    * atteint le bout, aux mêmes conditions T50.
    */
   private viaPointeur = false;
+  /**
+   * Recette démo du 30/09 : au clavier, la flèche MAINTENUE continue de répéter après la confirmation
+   * (le temps que la page passe en envoi) — le curseur repartait à 100, et la modale ROUVERTE ensuite
+   * montrait la pastille au bout de la piste. Une fois confirmée, la modale n'écoute plus le curseur
+   * jusqu'à sa prochaine ouverture, qui repart de zéro.
+   */
+  private confirmee = false;
   private ouvertA = 0;
   private readonly boutonAnnuler = viewChild<ElementRef<HTMLButtonElement>>('annuler');
 
@@ -489,7 +496,18 @@ export class ConfirmModalComponent {
       if (!this.open()) return;
       this.ouvertA = Date.now();
       this.indice.set(null);
+      // Chaque ouverture repart de zéro : curseur, échantillons, mode de saisie, saisie retapée.
+      this.confirmee = false;
+      this.viaPointeur = false;
+      this.slideSamples = [];
+      this.glissement.set(0);
+      this.saisie.set('');
       setTimeout(() => this.boutonAnnuler()?.nativeElement.focus({ preventScroll: true }), 0);
+    });
+    // Un envoi fini, modale laissée OUVERTE (la page affiche un échec et laisse réessayer) : le geste
+    // redevient possible. Tant que l'envoi court, ou si la page referme la modale, rien ne change.
+    effect(() => {
+      if (this.open() && !this.loading()) this.confirmee = false;
     });
   }
 
@@ -503,12 +521,18 @@ export class ConfirmModalComponent {
   }
 
   onConfirm() {
-    if (!this.confirmationOk() || this.loading()) return;
+    if (!this.confirmationOk() || this.loading() || this.confirmee) return;
+    this.confirmee = true;
     this.glissement.set(0);
     this.confirmed.emit();
   }
 
   onSlide(value: number | string) {
+    // Déjà confirmée : les répétitions de la flèche (ou un dernier mouvement) ne comptent plus.
+    if (this.confirmee) {
+      this.glissement.set(0);
+      return;
+    }
     const next = Math.max(0, Math.min(100, Number(value) || 0));
     // T50 — on ne retient que les progressions : un retour en arrière n'efface rien (le pouce
     // tremble), mais ne compte pas non plus. Un premier échantillon déjà loin du départ (clic en
