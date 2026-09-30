@@ -920,7 +920,9 @@ interface Lecture {
                  border: 1px solid color-mix(in srgb, var(--tracky-light) 25%, var(--border-subtle)); }
     .ro-change-t { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--fg-tertiary); }
     .ro-change ul, .ro-conf { margin: 0; padding: 0 0 0 17px; display: flex; flex-direction: column; gap: 4px;
-                              font-size: 12.5px; color: var(--fg-secondary); line-height: 1.45; }
+                              list-style: disc; font-size: 12.5px; color: var(--fg-secondary); line-height: 1.45; }
+    .ro-change li, .ro-conf li { display: list-item; }
+    .ro-change li::marker, .ro-conf li::marker { color: var(--texte-succes); }
     .ro-conf { margin-top: 14px; font-size: 13px; }
     .ro-change-temps, .ro-conf-temps { color: var(--texte-succes); font-weight: 700; }
     .ro-spin { animation: ro-spin 1s linear infinite; }
@@ -1386,6 +1388,9 @@ export class ReorganisationSheetComponent {
           this.etaitOuverte = false;
           // Une réponse partie avant la fermeture n'écrira pas dans la prochaine ouverture.
           untracked(() => this.oublierLectures());
+          // Relecture du 30/09 : ni une confirmation restée ouverte (Échap pendant l'envoi, feuille
+          // fermée par un lien) — elle réapparaissait, périmée, à la réouverture.
+          untracked(() => this.confirmation.set(null));
         }
         return;
       }
@@ -1775,6 +1780,14 @@ export class ReorganisationSheetComponent {
             return;
           }
           this.toast.error('Échec', apiErrorMessage(err, 'La réorganisation n’a pas abouti.'));
+          // Relecture du 30/09 : une erreur (coupure réseau, délai) peut avoir été APPLIQUÉE côté serveur.
+          // La lecture n'est plus applicable et l'on relit l'état : un second glissement ne rejoue jamais
+          // le lot (en décalage, mêmes identifiants et même compte : `attendu` l'aurait laissé passer).
+          if (n === this.lecture) {
+            this.lue.set({ ...l, applicable: false });
+            const { corps: neuf, fenetre } = this.preparer(l.corps.action);
+            this.simuler(neuf, fenetre, true);
+          }
         },
       });
   }
@@ -1801,6 +1814,7 @@ export class ReorganisationSheetComponent {
       decalageMinutes: a === 'decaler' ? (l.corps.decalageMinutes ?? null) : null,
       // Une API d'avant le 30/09 ne le dit pas : on n'affirme alors ni « aucun » ni un nombre.
       courriels: typeof l.r.courriels === 'number' ? l.r.courriels : null,
+      plafonne: l.r.plafonne,
     });
   }
 
@@ -1810,7 +1824,7 @@ export class ReorganisationSheetComponent {
 
   protected changementsP(l: LecturePropositions): string[] {
     const plaque = l.corps.vehicleId ? this.plaqueDe(l.corps.vehicleId) : null;
-    return changementsPropositions({ n: l.r.concernees, vehicules: plaque ? 1 : l.r.parVehicule.length, plaque });
+    return changementsPropositions({ n: l.r.concernees, vehicules: plaque ? 1 : l.r.parVehicule.length, plaque, plafonne: l.r.plafonne });
   }
 
   protected tempsP(l: LecturePropositions): string {
@@ -1839,7 +1853,8 @@ export class ReorganisationSheetComponent {
           : 'Chaque réservation reste modifiable ensuite, une par une, depuis l’agenda.',
       irreversible: a === 'annuler',
       danger: a === 'annuler',
-      glisser: `Glissez pour ${this.infinitif(a)} ${n > 1 ? 'les ' + n + ' réservations' : 'la réservation'}`,
+      // Court : sur un téléphone, la piste n'a la place que d'une trentaine de caractères (le nombre est dans le titre).
+      glisser: `Glissez pour ${this.infinitif(a)}`,
     });
   }
 
@@ -1855,10 +1870,10 @@ export class ReorganisationSheetComponent {
       etat: majuscule(l.fenetre) + (l.corps.vehicleId ? ` · ${this.plaqueDe(l.corps.vehicleId)}` : ' · tous les véhicules'),
       lignes: this.changementsP(l),
       temps: this.tempsP(l),
-      consequences: 'Définitif : une proposition écartée ne revient pas.',
-      irreversible: false,
+      consequences: 'Une proposition écartée ne revient pas.',
+      irreversible: true,
       danger: false,
-      glisser: `Glissez pour écarter ${n > 1 ? 'les ' + n + ' propositions' : 'la proposition'}`,
+      glisser: 'Glissez pour écarter',
     });
   }
 
@@ -1980,6 +1995,12 @@ export class ReorganisationSheetComponent {
           this.envoiP.set(false);
           this.confirmation.set(null);
           this.toast.error('Échec', apiErrorMessage(err, 'Les propositions n’ont pas été écartées.'));
+          // Même règle que pour les réservations : on relit, on ne rejoue pas.
+          if (n === this.lectureP) {
+            this.lueP.set({ ...l, applicable: false });
+            const { corps: neuf, fenetre } = this.preparerP();
+            this.simulerP(neuf, fenetre);
+          }
         },
       });
   }

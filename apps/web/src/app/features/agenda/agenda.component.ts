@@ -4153,13 +4153,18 @@ export class AgendaComponent implements OnInit {
   /** #4 — Annuler une réservation depuis le panneau jour (annulable même validée). T18 : reservations_manage, comme `/cancel`. */
   protected cancelDayReservation(ev: VehicleEventDto): void {
     if (!this.canValidate()) return;
+    // Annuler une demande EN ATTENTE, c'est la refuser (journal « Demande refusée », message « non
+    // retenue ») — sauf sa propre demande, qu'on retire (relecture du 30/09).
+    const demande = ev.status === 'REQUESTED';
+    const sienne = demande && ev.metadata?.['requesterId'] === this.auth.user()?.sub;
+    const prevenu = demandeurPrevenuDeLAnnulation(ev)
+      ? 'Le demandeur (lien public) est prévenu (courriel ou SMS).'
+      : 'Personne n’est prévenu : ni courriel, ni SMS.';
     this.confirmation.set({
-      titre: 'Annuler cette réservation ?',
+      titre: sienne ? 'Retirer votre demande ?' : demande ? 'Refuser cette demande ?' : 'Annuler cette réservation ?',
       etat: this.resumeConfirmation(ev),
-      consequences:
-        'Le véhicule est libéré sur ce créneau. ' +
-        (demandeurPrevenuDeLAnnulation(ev) ? 'Le demandeur (lien public) est prévenu par courriel.' : "Aucun courriel n'est envoyé."),
-      libelle: 'Annuler la réservation',
+      consequences: (demande ? 'Le créneau reste libre. ' : 'Le véhicule est libéré sur ce créneau. ') + prevenu,
+      libelle: sienne ? 'Retirer la demande' : demande ? 'Refuser la demande' : 'Annuler la réservation',
       action: () => this.annulerReservation(ev),
     });
   }
@@ -4168,7 +4173,7 @@ export class AgendaComponent implements OnInit {
     this.busyId.set(ev.id);
     try {
       await firstValueFrom(this.api.cancelReservation(ev.id));
-      this.toast.success('Réservation annulée');
+      this.toast.success(ev.status === 'REQUESTED' ? 'Demande refusée' : 'Réservation annulée');
       this.onReservationChanged();
       this.closeDayPanel();
     } catch (err) {

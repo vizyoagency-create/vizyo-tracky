@@ -1124,10 +1124,10 @@ export const SECONDES_PAR_LIGNE = { reaffecter: 120, decaler: 60, annuler: 30, e
 export type GesteReorganisation = keyof typeof SECONDES_PAR_LIGNE;
 
 const BASE_DU_TEMPS: Record<GesteReorganisation, string> = {
-  reaffecter: '≈ 2 min par réservation reprise à la main (l’ouvrir, trouver un véhicule libre, l’enregistrer)',
-  decaler: '≈ 1 min par réservation décalée à la main',
-  annuler: '≈ 30 s par réservation annulée à la main',
-  ecarter: '≈ 10 s par proposition écartée une à une dans l’Assistant IA',
+  reaffecter: '2 min par réservation reprise à la main, le temps de l’ouvrir, de trouver un véhicule libre et de l’enregistrer',
+  decaler: '1 min par réservation décalée à la main',
+  annuler: '30 s par réservation annulée à la main',
+  ecarter: '10 s par proposition écartée une à une dans l’Assistant IA',
 };
 
 /** « 40 s », « 12 min », « 1 h », « 3 h 32 » — arrondi à la minute au-delà d'une minute. */
@@ -1161,12 +1161,16 @@ export function ligneTempsGagne(t: TempsGagne): string {
   return `Temps gagné : ${t.texte} de saisie (estimation : ${t.base}).`;
 }
 
-/** « Aucun courriel ne part. » / « Au plus 3 courriels : les demandeurs du lien public sont prévenus. » */
+/**
+ * Qui est prévenu. Relecture du 30/09 : le notifier envoie un COURRIEL si le contact est une adresse,
+ * sinon un SMS (facturé) — « courriel » seul était faux pour un demandeur qui a laissé son numéro.
+ * « Personne n'est prévenu : ni courriel, ni SMS. » / « 3 demandeurs du lien public sont prévenus (courriel ou SMS). »
+ */
 export function ligneCourriels(n: number): string {
-  if (n <= 0) return 'Aucun courriel ne part.';
+  if (n <= 0) return 'Personne n’est prévenu : ni courriel, ni SMS.';
   return n > 1
-    ? `Au plus ${n} courriels : les demandeurs du lien public sont prévenus.`
-    : 'Au plus 1 courriel : le demandeur du lien public est prévenu.';
+    ? `${n} demandeurs du lien public sont prévenus (courriel ou SMS).`
+    : '1 demandeur du lien public est prévenu (courriel ou SMS).';
 }
 
 /**
@@ -1183,15 +1187,20 @@ export function changementsReservations(p: {
   vers: string | null;
   decalageMinutes: number | null;
   courriels: number | null;
+  /** Le lot dépassait le plafond : seules les premières sont prises (dit, pas tu). */
+  plafonne?: boolean;
 }): string[] {
   const n = Math.max(0, p.prevues);
   const s = n > 1 ? 's' : '';
   const lignes: string[] = [];
   if (p.action === 'reaffecter') {
+    // Relecture du 30/09 : pas « X est libéré » — des refus, un filtre d'origine ou la limite aux
+    // refusées peuvent y laisser d'autres réservations. On dit ce qui PART.
     const ou = p.vers ? `sur ${p.vers}` : n > 1 ? 'chacune sur le premier véhicule libre et conforme à ses critères' : 'sur le premier véhicule libre et conforme à ses critères';
-    lignes.push(`${p.plaque ?? 'Le véhicule'} est libéré : ${n} réservation${s} ${n > 1 ? 'partent' : 'part'} ${ou}.`);
+    lignes.push(`${n} réservation${s} ${n > 1 ? 'quittent' : 'quitte'} ${p.plaque ?? 'leur véhicule'} : ${n > 1 ? 'elles partent' : 'elle part'} ${ou}.`);
   } else if (p.action === 'annuler') {
-    lignes.push(`${n} réservation${s} annulée${s} : ${n > 1 ? 'leurs véhicules sont libérés' : 'son véhicule est libéré'} sur ${n > 1 ? 'ces créneaux' : 'ce créneau'}.`);
+    // Annuler une demande EN ATTENTE, c'est la refuser (journal « Demande refusée », message « non retenue »).
+    lignes.push(`${n} réservation${s} annulée${s} — une demande en attente est refusée : ${n > 1 ? 'leurs créneaux sont libérés' : 'son créneau est libéré'}.`);
   } else {
     const d = p.decalageMinutes ?? 0;
     lignes.push(`${n} réservation${s} décalée${s} de ${d > 0 ? '+' : '−'}${Math.abs(d)} min, sur ${n > 1 ? 'les mêmes véhicules' : 'le même véhicule'}.`);
@@ -1199,33 +1208,41 @@ export function changementsReservations(p: {
   if (p.refusees > 0) {
     lignes.push(`${p.refusees} ne ${p.refusees > 1 ? 'bougent' : 'bouge'} pas : ${p.refusees > 1 ? 'leurs motifs sont' : 'son motif est'} dans la liste.`);
   }
+  if (p.plafonne) lignes.push('Seules les 500 premières sont prises : relancez ensuite pour les suivantes.');
   if (p.courriels !== null) lignes.push(ligneCourriels(p.courriels));
   return lignes;
 }
 
 /** Ce qu'un lot de PROPOSITIONS de l'agent change. Une proposition n'a jamais envoyé de courriel. */
-export function changementsPropositions(p: { n: number; vehicules: number; plaque: string | null }): string[] {
+export function changementsPropositions(p: { n: number; vehicules: number; plaque: string | null; plafonne?: boolean }): string[] {
   const s = p.n > 1 ? 's' : '';
-  const ou = p.plaque ? `sur ${p.plaque}` : `sur ${p.vehicules} véhicule${p.vehicules > 1 ? 's' : ''}`;
+  // Plafonné, le compte de véhicules (tous ceux de la fenêtre) surestimerait le lot : on ne le dit pas.
+  const ou = p.plaque ? ` sur ${p.plaque}` : p.plafonne ? '' : ` sur ${p.vehicules} véhicule${p.vehicules > 1 ? 's' : ''}`;
   return [
-    `${p.n} proposition${s} de l'agent écartée${s} ${ou}.`,
+    `${p.n} proposition${s} de l'agent écartée${s}${ou}.`,
+    ...(p.plafonne ? ['Seules les 500 premières sont prises : relancez ensuite pour les suivantes.'] : []),
     'Aucun véhicule n’est bloqué ni libéré : une proposition ne réserve rien.',
-    'L’agent ne les reproposera pas, ni un créneau qui les chevauche.',
+    'L’agent ne les reproposera pas, ni un créneau qui les chevauche sur le même véhicule.',
     ligneCourriels(0),
   ];
 }
 
 /**
  * Le serveur préviendra-t-il le demandeur si l'on ANNULE cette réservation ? La règle de `cancel()`
- * et du notifier : une demande du LIEN PUBLIC avec un contact, ni consignée après coup (rétroactive),
- * ni finie ; confirmée (« annulée ») ou en attente (« non retenue »). Sert à la confirmation, qui dit
- * ce qui part avant qu'on appuie.
+ * et du notifier, pour une demande du LIEN PUBLIC avec un contact (courriel, ou SMS s'il a laissé un
+ * numéro) :
+ *  - EN ATTENTE → refus (« non retenue ») : TOUJOURS, sans condition de date ni de consignation —
+ *    `annoncerRefus` n'en pose aucune (relecture du 30/09 : la modale disait « personne » pour une
+ *    vieille demande de recette qu'on refuse, et le demandeur recevait le refus) ;
+ *  - CONFIRMÉE → annulation : ni consignée après coup (rétroactive), ni finie (`annulationAAnnoncer`).
+ * Sert à la confirmation, qui dit ce qui part avant qu'on appuie.
  */
 export function demandeurPrevenuDeLAnnulation(ev: Pick<VehicleEventDto, 'metadata' | 'status' | 'endAt'>, maintenantMs: number = Date.now()): boolean {
   const m = ev.metadata ?? null;
-  if (m?.['public'] !== true || m['retroactive'] === true) return false;
+  if (m?.['public'] !== true) return false;
   const contact = m['requesterContact'];
   if (typeof contact !== 'string' || !contact.trim()) return false;
-  if (ev.status !== 'CONFIRMED' && ev.status !== 'REQUESTED') return false;
+  if (ev.status === 'REQUESTED') return true;
+  if (ev.status !== 'CONFIRMED' || m['retroactive'] === true) return false;
   return !ev.endAt || new Date(ev.endAt).getTime() > maintenantMs;
 }

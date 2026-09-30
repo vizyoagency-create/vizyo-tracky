@@ -1,4 +1,4 @@
-import { Component, computed, HostListener, input, output, signal } from '@angular/core';
+import { Component, computed, DestroyRef, effect, ElementRef, inject, input, output, signal, viewChild } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { LucideAngularModule, AlertTriangle, ChevronsRight, Info, Pointer } from 'lucide-angular';
 
@@ -43,7 +43,7 @@ import { LucideAngularModule, AlertTriangle, ChevronsRight, Info, Pointer } from
            aria-modal="true"
            [attr.aria-labelledby]="'confirm-modal-title-' + uid"
            [attr.aria-describedby]="description() ? 'confirm-modal-desc-' + uid : null">
-        <div class="cm-voile" (click)="onCancel()" aria-hidden="true"></div>
+        <div class="cm-voile" (click)="clicVoile()" aria-hidden="true"></div>
 
         <div class="cm-boite" [class.cm-boite--critique]="critique()">
           <span class="cm-poignee" aria-hidden="true"></span>
@@ -106,7 +106,7 @@ import { LucideAngularModule, AlertTriangle, ChevronsRight, Info, Pointer } from
                  [style.--p]="loading() ? 100 : glissement()">
               <div class="cm-glisse-piste" aria-hidden="true">
                 <span class="cm-glisse-rempli"></span>
-                <span class="cm-glisse-texte">{{ loading() ? 'Envoi…' : slideLabel() }}</span>
+                <span class="cm-glisse-texte"><span class="cm-glisse-texte-i">{{ loading() ? 'Envoi…' : slideLabel() }}</span></span>
                 <span class="cm-glisse-bout"><lucide-icon [img]="ChevronsRight" [size]="18"></lucide-icon></span>
                 <span class="cm-glisse-bouton">
                   @if (loading()) {
@@ -126,16 +126,17 @@ import { LucideAngularModule, AlertTriangle, ChevronsRight, Info, Pointer } from
                 [disabled]="loading()"
                 [value]="glissement()"
                 (input)="onSlideEvent($event)"
-                (change)="onSlideRelease($event)"
+                (pointerdown)="onSlidePointerDown()"
+                (change)="onSlideChange($event)"
                 (keydown)="onSlideKeydown($event)"
                 [attr.aria-label]="slideLabel()"
                 [attr.aria-description]="'Faites glisser jusqu’au bout, ou maintenez la flèche droite ; les touches Fin et Page suivante sont sans effet.'" />
             </div>
-            <p class="cm-glisse-aide" aria-hidden="true">{{ loading() ? 'Envoi en cours…' : 'Posez le doigt sur le bouton et faites-le glisser jusqu’au bout.' }}</p>
+            <p class="cm-glisse-aide" [class.cm-glisse-aide--indice]="!!indice() && !loading()" aria-live="polite">{{ loading() ? 'Envoi en cours…' : (indice() ?? 'Posez le doigt sur le bouton rond et faites-le glisser jusqu’au bout.') }}</p>
           }
 
           <div class="cm-actions" [class.cm-actions--slide]="slideToConfirm()">
-            <button type="button" class="cm-btn cm-btn--sec" (click)="onCancel()" [disabled]="loading()">
+            <button #annuler type="button" class="cm-btn cm-btn--sec" (click)="onCancel()" [disabled]="loading()">
               {{ cancelLabel() }}
             </button>
             @if (!slideToConfirm()) {
@@ -233,17 +234,22 @@ import { LucideAngularModule, AlertTriangle, ChevronsRight, Info, Pointer } from
       background: color-mix(in srgb, var(--color-tracky-light) 32%, transparent);
     }
     .cm-glisse--danger .cm-glisse-rempli { background: color-mix(in srgb, var(--danger) 30%, transparent); }
+    /* Le libellé : un conteneur centré (« safe » : un texte trop long part de la gauche au lieu de
+       déborder des deux côtés) et un texte coupé proprement — « Glissez pour couper le moteur » sur un
+       téléphone de 360 px perdait son début sous la pastille (relecture du 30/09). */
     .cm-glisse-texte {
-      position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
-      padding: 0 calc(var(--b) + 14px);
-      font-size: .9rem; font-weight: 750; letter-spacing: .01em;
-      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+      position: absolute; inset: 0; display: flex; align-items: center; justify-content: safe center;
+      padding: 0 40px 0 calc(var(--b) + var(--pad) + 10px);
+      opacity: calc(1 - var(--p) / 70);
+    }
+    .cm-glisse-texte-i {
+      min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+      font-size: .88rem; font-weight: 750; letter-spacing: .01em;
       color: var(--fg-primary);
       background: linear-gradient(90deg, var(--fg-secondary) 0%, var(--fg-secondary) 38%, var(--fg-primary) 50%, var(--fg-secondary) 62%, var(--fg-secondary) 100%);
       background-size: 250% 100%;
       -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
       animation: cm-reflet 2.6s linear infinite;
-      opacity: calc(1 - var(--p) / 70);
     }
     .cm-glisse-bout {
       position: absolute; top: 50%; right: 18px; transform: translateY(-50%); display: flex;
@@ -269,24 +275,26 @@ import { LucideAngularModule, AlertTriangle, ChevronsRight, Info, Pointer } from
       color: var(--fg-primary);
       filter: drop-shadow(0 0 1.5px var(--bg-primary)) drop-shadow(0 1px 2px color-mix(in srgb, var(--bg-primary) 70%, transparent));
     }
-    /* L'invitation ne joue qu'au repos : ni pendant le geste, ni pendant l'envoi. */
-    .cm-glisse:not(.cm-glisse--actif):not(.cm-glisse--envoi) .cm-glisse-bouton { animation: cm-invite 2.8s ease-in-out infinite; }
-    .cm-glisse:not(.cm-glisse--actif):not(.cm-glisse--envoi) .cm-glisse-doigt { animation: cm-doigt 2.8s ease-in-out infinite; }
+    /* L'invitation ne joue qu'au repos : ni pendant le geste, ni pendant l'envoi, ni sous la souris ou
+       le focus (on va saisir la pastille). Relecture du 30/09 : c'est le DOIGT qui montre le geste en
+       glissant le long de la piste ; la pastille ne fait qu'un à-coup de 8 px, pour rester sous le pouce
+       du range natif — décalée de 46 px, un doigt posé sur elle tombait sur la piste, le curseur sautait
+       et la garde T50 refusait le geste, sans un mot. */
+    .cm-glisse:not(.cm-glisse--actif):not(.cm-glisse--envoi):not(:hover):not(:focus-within) .cm-glisse-bouton { animation: cm-invite 2.8s ease-in-out infinite; }
+    .cm-glisse:not(.cm-glisse--actif):not(.cm-glisse--envoi):not(:hover):not(:focus-within) .cm-glisse-doigt { animation: cm-doigt 2.8s ease-in-out infinite; }
     @keyframes cm-invite {
-      0%, 22%, 66%, 100% { transform: translateX(0); }
-      44% { transform: translateX(46px); }
-      54% { transform: translateX(40px); }
+      0%, 18%, 34%, 100% { transform: translateX(0); }
+      24% { transform: translateX(8px); }
     }
     @keyframes cm-doigt {
       0%, 8% { opacity: 0; transform: translate(0, 6px) scale(1.12); }
-      20% { opacity: 1; transform: translate(0, 0) scale(1); }
+      18% { opacity: 1; transform: translate(0, 0) scale(1); }
       22% { opacity: 1; transform: translate(0, 0) scale(.94); }
-      44% { opacity: 1; transform: translate(46px, 0) scale(.94); }
-      54% { opacity: .9; transform: translate(40px, 0) scale(.94); }
-      66%, 100% { opacity: 0; transform: translate(40px, 8px) scale(1.08); }
+      56% { opacity: 1; transform: translate(96px, 0) scale(.94); }
+      70%, 100% { opacity: 0; transform: translate(96px, 8px) scale(1.08); }
     }
     @keyframes cm-reflet { from { background-position: 100% 0; } to { background-position: -150% 0; } }
-    .cm-glisse--envoi .cm-glisse-texte { animation: none; }
+    .cm-glisse--envoi .cm-glisse-texte-i { animation: none; }
 
     .cm-glisse-i {
       position: absolute; inset: 0; width: 100%; height: 100%; margin: 0;
@@ -306,8 +314,10 @@ import { LucideAngularModule, AlertTriangle, ChevronsRight, Info, Pointer } from
     .cm-glisse:has(.cm-glisse-i:focus-visible) .cm-glisse-piste { outline: 2px solid var(--color-tracky-light); outline-offset: 3px; }
     .cm-glisse--danger:has(.cm-glisse-i:focus-visible) .cm-glisse-piste { outline-color: var(--danger); }
     .cm-glisse-aide { margin: 8px 0 0; font-size: .74rem; color: var(--fg-secondary); text-align: center; }
+    /* Un geste allé au bout mais refusé (parti de la piste, pas du bouton) : on dit comment faire. */
+    .cm-glisse-aide--indice { color: var(--texte-attente); font-weight: 700; }
     @media (prefers-reduced-motion: reduce) {
-      .cm-glisse .cm-glisse-bouton, .cm-glisse .cm-glisse-doigt, .cm-glisse .cm-glisse-texte { animation: none !important; }
+      .cm-glisse .cm-glisse-bouton, .cm-glisse .cm-glisse-doigt, .cm-glisse .cm-glisse-texte-i { animation: none !important; }
       .cm-glisse-bouton { transition: none; }
     }
 
@@ -424,9 +434,14 @@ export class ConfirmModalComponent {
    * glisse en produit des dizaines ; une flèche droite maintenue aussi (chaque répétition est un
    * événement `input`) — le clavier reste donc possible. Un clic, un `Fin`, un `Page suivante`
    * n'en produisent qu'un : rien ne part, le curseur revient au départ.
+   *
+   * 30/09 — le départ admis passe de 10 à 25 % : la pastille dessinée fait 52 px et le pouce natif
+   * 60 px ; sur un téléphone de 360 px (piste ~ 320 px), un doigt posé sur le bord droit de la pastille
+   * donne 10 à 14 % au premier mouvement — un geste légitime était refusé. Un clic en bout de piste
+   * (une valeur) et un départ du milieu (55 %) restent refusés.
    */
   private static readonly SLIDE_MIN_SAMPLES = 8;
-  private static readonly SLIDE_START_MAX = 10;
+  private static readonly SLIDE_START_MAX = 25;
   private static readonly SLIDE_END_MIN = 98;
   private slideSamples: number[] = [];
 
@@ -445,9 +460,46 @@ export class ConfirmModalComponent {
     this.confirmationOk() ? null : `Tapez ${this.confirmationAttendue()} pour débloquer ce bouton`,
   );
 
-  @HostListener('document:keydown.escape')
-  onEscape() {
-    if (this.open() && !this.loading()) this.onCancel();
+  /** Un geste allé au bout mais refusé : ce qu'il faut faire, dit sous le bouton (30/09). */
+  protected readonly indice = signal<string | null>(null);
+  /**
+   * 30/09 (relecture) — le navigateur émet `change` à CHAQUE pas clavier (Chromium, Firefox, WebKit) :
+   * pris pour un relâché, il remettait le curseur à zéro après chaque flèche — le clavier ne pouvait
+   * jamais confirmer (la coupe moteur depuis le 13/09, Réorganiser depuis qu'il glisse). `change` n'est
+   * un relâché qu'après un appui du POINTEUR ; au clavier, la confirmation part quand le geste progressif
+   * atteint le bout, aux mêmes conditions T50.
+   */
+  private viaPointeur = false;
+  private ouvertA = 0;
+  private readonly boutonAnnuler = viewChild<ElementRef<HTMLButtonElement>>('annuler');
+
+  constructor() {
+    // Échap ferme la MODALE, et elle seule : une feuille ou un panneau dessous écoutent aussi le
+    // document (Échap y fermait toute la feuille Réorganiser). Capture, puis arrêt de l'évènement.
+    const surEchap = (e: KeyboardEvent): void => {
+      if (e.key !== 'Escape' || !this.open()) return;
+      e.stopPropagation();
+      if (!this.loading()) this.onCancel();
+    };
+    document.addEventListener('keydown', surEchap, true);
+    inject(DestroyRef).onDestroy(() => document.removeEventListener('keydown', surEchap, true));
+    // À l'ouverture : le focus entre dans la modale, sur le choix sans risque (Tab, lecteur d'écran,
+    // Échap partent de là) ; et l'on note l'heure, pour le double-clic ci-dessous.
+    effect(() => {
+      if (!this.open()) return;
+      this.ouvertA = Date.now();
+      this.indice.set(null);
+      setTimeout(() => this.boutonAnnuler()?.nativeElement.focus({ preventScroll: true }), 0);
+    });
+  }
+
+  /**
+   * Un double-clic sur « Annuler » ou « Supprimer » ouvrait la modale au premier clic… et la refermait
+   * au second, tombé sur le voile. Un clic sur le voile dans les 400 ms qui suivent l'ouverture est ignoré.
+   */
+  protected clicVoile(): void {
+    if (Date.now() - this.ouvertA < 400) return;
+    this.onCancel();
   }
 
   onConfirm() {
@@ -464,6 +516,24 @@ export class ConfirmModalComponent {
     const last = this.slideSamples[this.slideSamples.length - 1];
     if (last === undefined || next > last) this.slideSamples.push(next);
     this.glissement.set(next);
+    // Au CLAVIER (pas d'appui du pointeur) : la flèche maintenue arrive au bout → on confirme ici.
+    if (!this.viaPointeur && next >= ConfirmModalComponent.SLIDE_END_MIN && this.gesteVolontaire() && !this.loading()) {
+      this.slideSamples = [];
+      this.onConfirm();
+    }
+  }
+
+  /** Un appui du pointeur (souris, doigt, stylet) commence un geste : son `change` sera le relâché. */
+  onSlidePointerDown() {
+    this.viaPointeur = true;
+    this.indice.set(null);
+  }
+
+  /** `change` : un relâché seulement après un appui du pointeur (jamais un pas clavier). */
+  onSlideChange(event: Event) {
+    if (!this.viaPointeur) return;
+    this.viaPointeur = false;
+    this.onSlideRelease(event);
   }
 
   onSlideEvent(event: Event) {
@@ -484,7 +554,10 @@ export class ConfirmModalComponent {
 
   onSlideRelease(event?: Event) {
     const volontaire = this.gesteVolontaire();
+    const auBout = (this.slideSamples[this.slideSamples.length - 1] ?? 0) >= ConfirmModalComponent.SLIDE_END_MIN;
     this.slideSamples = [];
+    // Allé au bout sans être un geste valable (parti de la piste, pas du bouton) : on dit comment faire.
+    this.indice.set(auBout && !volontaire ? 'Partez du bouton rond, puis glissez sans lâcher jusqu’au bout.' : null);
     if (volontaire && this.glissement() >= ConfirmModalComponent.SLIDE_END_MIN && !this.loading()) {
       // La commande part au RELÂCHEMENT au bout, jamais au simple passage du pouce près de la fin.
       this.onConfirm();
@@ -500,6 +573,8 @@ export class ConfirmModalComponent {
   /** T50 — Fin, Début, Page suivante/précédente sauteraient au bout d'un seul coup : sans effet. */
   onSlideKeydown(event: KeyboardEvent) {
     if (['End', 'Home', 'PageUp', 'PageDown'].includes(event.key)) event.preventDefault();
+    // Une flèche : le geste en cours est au CLAVIER (ses `change` ne sont pas des relâchés).
+    else if (event.key.startsWith('Arrow')) this.viaPointeur = false;
   }
 
   onCancel() {
@@ -507,6 +582,8 @@ export class ConfirmModalComponent {
     this.saisie.set('');
     this.glissement.set(0);
     this.slideSamples = [];
+    this.viaPointeur = false;
+    this.indice.set(null);
     this.cancelled.emit();
   }
 }
