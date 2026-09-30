@@ -99,8 +99,14 @@ Plusieurs sessions y travaillent en même temps — mesuré le 2026-09-07 : **7 
   (`ps -o pid,ppid,etimes,cmd -p …`, puis `kill <parent>` puis `kill <client>`), jamais
   `systemctl restart docker`.
 - ⚠️ Il n'existe **aucun réglage global** (`DOCKER_CLIENT_TIMEOUT` n'existe pas dans le CLI Go) : la
-  protection est **par convention, à chaque appel**. `deploy.sh`, `collecte.sh` et les scripts
-  d'audit la portent ; une commande tapée à la main ne la porte que si vous l'écrivez.
+  protection est **par convention, à chaque appel**. `deploy.sh`, `backup-db.sh`, `demo-refresh.sh`
+  (tous bornés depuis le 01/10, tests « NON BORNÉ » dans `pnpm verif:deploiement`), `collecte.sh`
+  et les scripts d'audit la portent ; une commande tapée à la main ne la porte que si vous l'écrivez.
+- 🛑 **Jamais `docker buildx history`** (`ls`, `inspect`, `logs`…) sur ce VPS : le 30/09 à 18:23 UTC,
+  `timeout 20 docker buildx history ls` a fait **paniquer dockerd** (BuildKit v0.26.2,
+  `filterHistoryEvents`) — le `timeout` n'y peut rien, c'est le démon qui meurt. systemd l'a relancé
+  en 3 s et `live-restore` a gardé les conteneurs. Pour le cache : `timeout 20 docker buildx du
+  --verbose`. Récit : `docs/fiabilite-coupe-circuit-2026-09/39-…` § 7.
 - Avant tout diagnostic : `pgrep -a -x docker` — s'il rend quelque chose de plus vieux que 60 s,
   c'est déjà une occurrence, et c'est la première chose à traiter.
 - Depuis le 20/09 un **garde-fou** tourne sur le VPS (`docker-orphelins.timer`, toutes les 5 min : tue
