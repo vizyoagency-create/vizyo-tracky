@@ -128,6 +128,9 @@ export const AGENDA_ACTIVITY_ACTION_LABELS: Record<string, string> = {
   capacites_modifiees: "Capacités d'un véhicule modifiées",
   plan_entretien_modifie: "Plan d'entretien modifié",
   reglages_agent_modifies: "Réglages de l'agent modifiés",
+  /** 30/09 — le mode recette d'une société : ses avis de réservation et de mission sont retenus. */
+  envois_suspendus: 'Avis retenus (mode recette)',
+  envois_retablis: 'Avis rétablis',
 };
 
 /** Mot de statut d'une ligne d'agenda quand le geste n'a PAS pleinement abouti. */

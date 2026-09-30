@@ -152,7 +152,9 @@ export class EmailAdminService {
     const since = new Date(Date.now() - rangeDays * DAY_MS);
     const since24h = new Date(Date.now() - DAY_MS);
     const logs = await this.prisma.emailLog.findMany({
-      where: { createdAt: { gte: since } },
+      // 30/09 — un courriel RETENU par le garde-fou d'envoi n'est pas parti : hors des KPI (il reste
+      // visible dans le journal, filtre « Retenus »).
+      where: { createdAt: { gte: since }, status: { not: EmailStatus.BLOCKED } },
       select: { status: true, template: true, toAddress: true, createdAt: true },
     });
 
@@ -262,7 +264,7 @@ export class EmailAdminService {
   async templates() {
     const since = new Date(Date.now() - 30 * DAY_MS);
     const logs = await this.prisma.emailLog.findMany({
-      where: { createdAt: { gte: since } },
+      where: { createdAt: { gte: since }, status: { not: EmailStatus.BLOCKED } },
       select: { template: true, status: true, createdAt: true },
     });
     const agg = new Map<string, { count: number; delivered: number; opened: number; last: Date | null }>();

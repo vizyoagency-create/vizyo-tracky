@@ -298,6 +298,12 @@ model Fleet {
   // = NON IA, jamais coupés). Togglable par le FLEET_ADMIN depuis ses réglages (et par un super-admin).
   // OPT-IN (2026-07-14) : défaut OFF — aucune flotte n'a l'IA tant qu'un admin ne l'active pas.
   aiEnabled               Boolean     @default(false)
+  /// 30/09 — MODE RECETTE : jusqu'à cette heure, les avis de réservation, de demande publique et de
+  /// mission de la société ne partent pas (courriel ni SMS) — retenus et tracés (`EmailStatus.BLOCKED`).
+  /// Posé par un super-admin avant de tester chez un vrai client ; expire SEUL (jamais un oubli
+  /// qui couperait les avis pour de bon). Nul = rien de retenu. Les courriels de compte (mot de passe,
+  /// appareil, invitation), les alertes et le rapport hebdomadaire partent toujours.
+  envoisSuspendusJusqua   DateTime?
   // Lot V5 (2026-09-03) — ALERTES DE VITESSE NÉES DE L'ANALYSE DE TRAJET.
   //
   // Jusqu'ici, la seule alerte d'excès venait d'un bit d'alarme du boîtier, réglé sur un seuil
@@ -3287,6 +3293,9 @@ enum EmailStatus {
   BOUNCED // bounced (soft/hard)
   COMPLAINED // marqué spam
   FAILED // delivery_failed / erreur d'envoi
+  /// 30/09 — RETENU par le garde-fou d'envoi : destinataire hors liste blanche (démo, poste de dev)
+  /// ou société en mode recette. RIEN n'est parti ; la ligne prouve ce qui serait parti.
+  BLOCKED
 }
 
 model EmailLog {

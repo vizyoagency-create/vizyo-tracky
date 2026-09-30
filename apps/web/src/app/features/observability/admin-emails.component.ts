@@ -42,6 +42,8 @@ const STATUS_FILTERS: { id: string; label: string }[] = [
   { id: 'OPENED', label: 'Ouverts' },
   { id: 'BOUNCED', label: 'Rejetés' },
   { id: 'FAILED', label: 'Échecs' },
+  // 30/09 — le garde-fou d'envoi : ce qui serait parti, et n'est pas parti.
+  { id: 'BLOCKED', label: 'Retenus' },
 ];
 
 /** Palette de barre de répartition (accent unique émeraude + statuts). */
@@ -608,6 +610,9 @@ export class AdminEmailsComponent implements OnInit {
         return { label: 'Échec', cls: 'bg-rose-500/10 text-rose-400 border-rose-500/25', dot: 'bg-rose-400' };
       case 'QUEUED':
         return { label: 'En file', cls: 'bg-fg-tertiary/10 text-fg-tertiary border-border-subtle', dot: 'bg-fg-tertiary' };
+      // 30/09 — retenu par le garde-fou d'envoi : RIEN n'est parti (sinon il tombait dans « Envoyé »).
+      case 'BLOCKED':
+        return { label: 'Retenu', cls: 'bg-violet-500/10 text-violet-400 border-violet-500/25', dot: 'bg-violet-400' };
       default:
         return { label: 'Envoyé', cls: 'bg-fg-tertiary/10 text-fg-secondary border-border-subtle', dot: 'bg-fg-tertiary' };
     }

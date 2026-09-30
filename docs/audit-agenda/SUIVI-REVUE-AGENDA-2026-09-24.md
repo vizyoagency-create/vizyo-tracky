@@ -1644,6 +1644,42 @@ confirmation, compte des messages). Aucune erreur API depuis.
 
 ---
 
+## 2026-09-30, midi — le garde-fou d'envoi, et la démo prête à filmer
+
+### La commande
+
+> « fais le garde-fou d'envoi de courriels, dis-moi si je peux commencer à faire un tuto de l'agenda
+> pour le CDEF mais aussi pour mon site de vente (LP) […] dis-moi simplement oui ou non, ce qui
+> manque, et ensuite oui ! »
+
+### Le trou
+
+Le 24/09, une demande de RECETTE déposée par le lien public du vrai client a envoyé l'avis « demande
+à valider » à cinq personnes de cdef31 : rien, dans le code, ne distinguait un essai d'une vraie
+demande. Depuis, toute recette se faisait sur « Client test » ou sur la démo — et filmer un tutoriel
+chez un vrai client restait impossible sans le prévenir de chaque geste.
+
+### Ce qui a été fait
+
+| | |
+|---|---|
+| **Mode recette d'une société** (`Fleet.envoisSuspendusJusqua`) | un super-admin le pose depuis l'agenda (menu ⋯ → « Mode recette (2 h) ») : jusqu'à l'heure dite, les avis de réservation, de demande publique, de mission et de dépôt de CETTE société sont **retenus** — courriel, SMS au demandeur (facturé) et push « demande à valider » aux téléphones de l'équipe. Il **expire seul** (1 à 24 h) : un oubli ne coupe jamais les avis pour de bon. « Rétablir les avis » le lève tout de suite |
+| Ce qui n'est JAMAIS retenu | courriels de compte (invitation, mot de passe, appareil, 2FA), alertes, rapport du lundi — liste fermée, testée (`MODELES_RETENUS_EN_RECETTE`) |
+| Le bandeau | tous les utilisateurs de la société le voient dans l'agenda : « Mode recette jusqu'à 14:40 (tests en cours) — les avis de réservation et de mission ne partent pas : ni courriel, ni SMS, ni notification ». Le client sait pourquoi rien n'arrive |
+| La trace | un courriel retenu s'écrit au centre des e-mails avec le statut **« Retenu »** (`EmailStatus.BLOCKED`, filtre « Retenus ») et au journal système (`email_retenu`, `sms_retenu` numéro masqué, `push_retenu`) ; poser/lever le mode écrit UNE ligne au journal de la société (« Avis retenus (mode recette) » / « Avis rétablis », auteur, heure de fin). Les volumes et taux d'envoi ne comptent pas les retenus |
+| Liste blanche (`EMAIL_LISTE_BLANCHE`) | pour un poste de dev muni d'une vraie clé Resend : seuls ces destinataires reçoivent un courriel. **Vide en prod ET sur la démo** — la démo invite des prospects à leurs vraies adresses, une liste blanche retiendrait leurs invitations |
+| Panne de lecture | le garde-fou ne lève jamais : base illisible → l'avis PART (il ne devient pas, lui, une coupure des avis) |
+
+### La démo prête à filmer
+
+Les 8 évènements de test laissés sur la démo par les recettes (« Vidange + filtres (recette — hier) »,
+« Pare-brise fissuré (recette) », « Recette refonte — 8 jours », « Demande publique →
+CarcassonneCarcassonne » ×2…) ont été retirés, après sauvegarde JSON des lignes. Restent 7 évènements
+réalistes (« Ramassage secteur nord », « Demande publique → Albi », « Trajet récurrent »…). Le journal
+de la démo garde la trace des gestes de recette (on n'efface pas un journal).
+
+---
+
 ## Ce qu'il ne faut pas défaire
 
 - **L'agent ne réserve plus fermement.** Le réglage `autonomy` est passé à `suggest` en base le
@@ -1700,3 +1736,8 @@ confirmation, compte des messages). Aucune erreur API depuis.
   curseur une fois confirmée et repart de zéro à chaque ouverture.
 - **Plus de `confirm()` natif dans l'agenda** : la modale de l'application, qui dit si le demandeur est
   prévenu. Un refus de demande publique prévient TOUJOURS (`annoncerRefus` n'a aucune borne).
+- **Un avis de réservation ou de mission passe par le garde-fou d'envoi** (`GardeFouEnvoisService`) :
+  le courriel par `EmailService.send` (un seul chemin d'envoi), le SMS au demandeur et le push
+  « demande à valider » par le notifier. Un nouveau canal d'avis qui ne lui pose pas la question
+  sonne chez le client pendant une séance de tests. Et le mode recette EXPIRE seul : jamais de
+  coupure sans échéance.

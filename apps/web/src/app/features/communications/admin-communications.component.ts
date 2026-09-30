@@ -305,7 +305,7 @@ export class AdminCommunicationsComponent implements OnInit {
 
   protected outcomeLabel(o: CommLogDto['outcome']): string {
     return o === 'DELIVERED' ? 'Délivré' : o === 'SENT' ? 'Envoyé' : o === 'FAILED' ? 'Échec'
-      : o === 'EXPIRED' ? 'Expiré' : 'Reçu';
+      : o === 'EXPIRED' ? 'Expiré' : o === 'BLOCKED' ? 'Retenu' : 'Reçu';
   }
 
   protected outcomeClass(o: CommLogDto['outcome']): string {
@@ -313,6 +313,8 @@ export class AdminCommunicationsComponent implements OnInit {
     if (o === 'EXPIRED') return 'bg-amber-400/10 text-amber-400';
     if (o === 'DELIVERED') return 'bg-tracky-light/10 text-tracky-light';
     if (o === 'RECEIVED') return 'bg-sky-400/10 text-sky-400';
+    // 30/09 — retenu par le garde-fou d'envoi : rien n'est parti.
+    if (o === 'BLOCKED') return 'bg-violet-400/10 text-violet-400';
     return 'bg-fg-tertiary/10 text-fg-tertiary';
   }
 

@@ -1396,6 +1396,8 @@ export class AdminActivityComponent implements OnInit, OnDestroy {
         return 'bg-rose-500/15 text-rose-400';
       case 'reservation_demandee':
       case 'public_booking_submitted':
+      // 30/09 : le mode recette retient les avis de la société — ambre comme sur le fil client (tonAction).
+      case 'envois_suspendus':
         return 'bg-amber-500/15 text-amber-400';
       case 'agenda_agent_run':
         return 'bg-fuchsia-500/15 text-fuchsia-400';

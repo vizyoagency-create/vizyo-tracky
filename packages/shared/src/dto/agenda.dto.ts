@@ -326,3 +326,17 @@ export function effectiveBlockingEndMs(
   if (type === 'INCIDENT') return Number.POSITIVE_INFINITY;
   return startAtMs + 24 * 60 * 60 * 1000;
 }
+
+/**
+ * 30/09 — le MODE RECETTE d'une société (`GET/PUT /api/fleets/:id/envois`) : jusqu'à cette heure, ses
+ * avis de réservation, de demande publique et de mission ne partent pas (courriel ni SMS) — retenus et
+ * tracés. Posé par un super-admin avant de tester chez un vrai client ; expire seul. `null` = rien de retenu.
+ */
+export interface EnvoisSocieteDto {
+  suspendusJusqua: string | null;
+}
+
+/** Super-admin : `heures` de 1 à 24 pour retenir les avis, `null` pour les rétablir. */
+export interface ReglerEnvoisSocieteDto {
+  heures: number | null;
+}

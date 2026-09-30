@@ -736,3 +736,79 @@ describe('ReservationBookingNotifier — réservation confirmée puis ANNULÉE (
     expect(r.html).not.toContain('annulée');
   });
 });
+
+/**
+ * 30/09 — LE GARDE-FOU D'ENVOI côté notifier. Le courriel est jugé par `EmailService.send` ; le
+ * notifier, lui, juge ce qui ne passe PAS par là : le SMS au demandeur (facturé) et le push
+ * « demande à valider » aux téléphones de l'équipe.
+ */
+describe('ReservationBookingNotifier — mode recette d’une société', () => {
+  const garde = (motif: string | null) =>
+    ({
+      motifDeRetenue: jest.fn().mockResolvedValue(motif),
+      noterSmsRetenu: jest.fn(),
+      noterPushRetenu: jest.fn(),
+    }) as unknown as { motifDeRetenue: jest.Mock; noterSmsRetenu: jest.Mock; noterPushRetenu: jest.Mock };
+
+  it('SMS au demandeur RETENU : rien ne part, une ligne au journal', async () => {
+    const email = makeEmail(); const sms = makeSms(); const g = garde("société en mode recette jusqu'au 30/09 12:40");
+    const n = new ReservationBookingNotifier(email, sms, makeErrors(), makePrisma(), makeDestinataires(), undefined, g as never);
+    await n.onConfirmed(payload({ public: true, requesterContact: '+33612345678' }));
+    expect((sms as unknown as { send: jest.Mock }).send).not.toHaveBeenCalled();
+    expect(g.motifDeRetenue).toHaveBeenCalledWith({ canal: 'sms', destinataire: '+33612345678', fleetId: 'f1', modele: 'reservation_confirmed' });
+    expect(g.noterSmsRetenu).toHaveBeenCalledWith(expect.objectContaining({ numero: '+33612345678', fleetId: 'f1', modele: 'reservation_confirmed' }));
+  });
+
+  it('SMS non retenu : il part, comme avant', async () => {
+    const sms = makeSms(); const g = garde(null);
+    const n = new ReservationBookingNotifier(makeEmail(), sms, makeErrors(), makePrisma(), makeDestinataires(), undefined, g as never);
+    await n.onConfirmed(payload({ public: true, requesterContact: '+33612345678' }));
+    expect((sms as unknown as { send: jest.Mock }).send).toHaveBeenCalledTimes(1);
+    expect(g.noterSmsRetenu).not.toHaveBeenCalled();
+  });
+
+  it('contact e-mail : le notifier ne juge pas lui-même (EmailService.send le fait, avec la société)', async () => {
+    const email = makeEmail(); const g = garde('peu importe');
+    const n = new ReservationBookingNotifier(email, makeSms(), makeErrors(), makePrisma(), makeDestinataires(), undefined, g as never);
+    await n.onConfirmed(payload({ public: true, requesterContact: 'ecole@test.fr' }));
+    expect(g.motifDeRetenue).not.toHaveBeenCalled();
+    expect((email as unknown as { send: jest.Mock }).send).toHaveBeenCalledWith(expect.objectContaining({ fleetId: 'f1', template: 'reservation_confirmed' }));
+  });
+
+  function avisEquipe(motifPush: string | null) {
+    const email = {
+      send: jest.fn().mockResolvedValue({ ok: true }),
+      buildReservationRequestPendingEmail: jest.fn().mockReturnValue(built),
+    };
+    const destinataires = {
+      possibles: jest.fn().mockResolvedValue([{ id: 'v1', email: 'v1@cdef31.fr', notifie: true }, { id: 'v2', email: 'v2@cdef31.fr', notifie: true }]),
+      notifies: jest.fn(),
+    };
+    const dispatch = { notifyUsers: jest.fn().mockResolvedValue(2) };
+    const g = garde(motifPush);
+    const n = new ReservationBookingNotifier(email as never, makeSms(), makeErrors(), makePrisma(), destinataires as never, dispatch as never, g as never);
+    const demande = {
+      fleetId: 'f1', requester: 'École', contact: 'ecole@test.fr', destination: null,
+      startAt: new Date(Date.now() + 86_400_000).toISOString(), endAt: new Date(Date.now() + 90_000_000).toISOString(),
+      seats: null, vehicleCount: 1,
+    };
+    return { n, email, dispatch, g, demande };
+  }
+
+  it('push « demande à valider » RETENU en mode recette : les téléphones de l’équipe ne sonnent pas', async () => {
+    const { n, email, dispatch, g, demande } = avisEquipe("société en mode recette jusqu'au 30/09 12:40");
+    await n.notifyFleetOfPendingRequest(demande);
+    expect(dispatch.notifyUsers).not.toHaveBeenCalled();
+    expect(g.motifDeRetenue).toHaveBeenCalledWith(expect.objectContaining({ canal: 'push', fleetId: 'f1', modele: 'reservation_request_pending' }));
+    expect(g.noterPushRetenu).toHaveBeenCalledWith(expect.objectContaining({ destinataires: 2, fleetId: 'f1' }));
+    // Les courriels passent quand même par EmailService.send — c'est LUI qui les retient.
+    expect(email.send).toHaveBeenCalledTimes(2);
+  });
+
+  it('push non retenu : il part, comme avant', async () => {
+    const { n, dispatch, g, demande } = avisEquipe(null);
+    await n.notifyFleetOfPendingRequest(demande);
+    expect(dispatch.notifyUsers).toHaveBeenCalledWith(expect.objectContaining({ userIds: ['v1', 'v2'], kind: 'reservation-request' }));
+    expect(g.noterPushRetenu).not.toHaveBeenCalled();
+  });
+});
