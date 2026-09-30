@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { EmailStatus } from '@prisma/client';
 import { Resend } from 'resend';
@@ -8,6 +8,7 @@ import { formatFleetDateTime, formatFleetDateTimeLong } from '../common/utils/da
 import { ErrorLogger } from '../observability/error-logger.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { SystemActivityService } from '../system-activity/system-activity.service';
+import { GardeFouEnvoisService } from './garde-fou-envois.service';
 
 /** Identifiant de modèle e-mail (journalisé dans EmailLog.template). */
 export type EmailTemplateId =
@@ -218,6 +219,8 @@ export class EmailService {
     private readonly systemActivity: SystemActivityService,
     private readonly prisma: PrismaService,
     private readonly errorLogger: ErrorLogger,
+    /** 30/09 — le garde-fou d'envoi. Optionnel : les specs d'avant le construisent sans lui. */
+    @Optional() private readonly garde?: GardeFouEnvoisService,
   ) {
     const apiKey = this.config.get('RESEND_API_KEY', { infer: true });
     this.fromAddress = this.config.get('RESEND_FROM', { infer: true });
@@ -276,7 +279,23 @@ export class EmailService {
     }
   }
 
-  async send(params: SendEmailParams): Promise<{ ok: boolean; id?: string; error?: string }> {
+  async send(params: SendEmailParams): Promise<{ ok: boolean; id?: string; error?: string; retenu?: string }> {
+    // 30/09 — LE GARDE-FOU D'ENVOI, avant tout le reste (voir `GardeFouEnvoisService`) : un
+    // destinataire hors liste blanche (démo, poste de dev) ou un avis d'une société en mode recette
+    // n'est PAS envoyé. Ce n'est pas une erreur (rien à rejouer) : `ok` reste vrai, et la ligne
+    // `BLOCKED` du centre des e-mails prouve ce qui serait parti.
+    const retenu = await this.garde?.motifDeRetenue({
+      canal: 'email',
+      destinataire: params.to,
+      fleetId: this.societeDe(params),
+      modele: params.template ?? null,
+    });
+    if (retenu) {
+      this.logger.log(`Courriel RETENU (${retenu}) : ${params.template ?? 'modèle inconnu'} → ${params.to}`);
+      this.recordRetenu(params, retenu);
+      await this.persistLog(params, { status: EmailStatus.BLOCKED, errorMessage: `Retenu : ${retenu}` });
+      return { ok: true, retenu };
+    }
     if (!this.enabled || !this.client) {
       this.logger.debug(
         { to: params.to, subject: params.subject, ctx: params.context },
@@ -315,6 +334,30 @@ export class EmailService {
       this.recordActivity(params, false, message);
       await this.persistLog(params, { status: EmailStatus.FAILED, errorMessage: message });
       return { ok: false, error: message };
+    }
+  }
+
+  /** La société d'un envoi : `fleetId`, sinon `context.fleetId`. */
+  private societeDe(params: SendEmailParams): string | null {
+    if (params.fleetId) return params.fleetId;
+    return typeof params.context?.['fleetId'] === 'string' ? (params.context['fleetId'] as string) : null;
+  }
+
+  /** 30/09 — un courriel RETENU par le garde-fou : une ligne au journal système, jamais une erreur. */
+  private recordRetenu(params: SendEmailParams, motif: string): void {
+    try {
+      this.systemActivity.record({
+        category: 'EMAIL',
+        action: 'email_retenu',
+        status: 'SKIPPED',
+        actor: 'system',
+        target: params.to,
+        detail: `${params.subject} — retenu : ${motif}`,
+        fleetId: this.societeDe(params),
+        meta: { template: params.template ?? null, motif },
+      });
+    } catch (e) {
+      this.logger.warn(`journal du courriel retenu non écrit : ${String(e)}`);
     }
   }
 

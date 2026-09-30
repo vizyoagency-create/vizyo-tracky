@@ -3,6 +3,7 @@ import {
   ChangeDetectionStrategy,
   Component,
   computed,
+  DestroyRef,
   effect,
   HostListener,
   inject,
@@ -22,7 +23,7 @@ import {
   LucideAngularModule, CalendarDays, ChevronDown, ChevronLeft, ChevronRight, Check,
   Layers, Truck, Plus, AlertTriangle, CalendarClock, Wrench, X, Trash2, Play, ListChecks,
   CalendarCheck, Inbox, Sparkles, Activity, ShieldCheck, Ban, Info, Pencil, Settings, QrCode, Shuffle, Route,
-  WifiOff, MoreHorizontal, Repeat,
+  WifiOff, MoreHorizontal, Repeat, BellOff,
 } from 'lucide-angular';
 import type {
   AgendaAgentProposalDto,
@@ -61,6 +62,7 @@ import { ConfirmModalComponent } from '../../shared/ui/confirm-modal/confirm-mod
 import { AiJobPillComponent } from './ai-job-pill.component';
 import { AiJobService, type AiJob } from '../../core/services/ai-job.service';
 import { AuthService } from '../../core/services/auth.service';
+import { FleetsApiService } from '../../core/services/fleets.service';
 import { AgendaAgentApiService } from '../../core/services/agenda-agent.service';
 import { AiStatusService } from '../../core/services/ai-status.service';
 import { VehicleLinkDirective } from '../../shared/directives/vehicle-link.directive';
@@ -232,12 +234,40 @@ function groupeReservationId(ev: VehicleEventDto): string | null {
                         <span class="ag-dd-item-row"><lucide-icon [img]="SettingsIcon" [size]="14"></lucide-icon><span>Paramètres de l'agenda</span></span>
                       </button>
                     }
+                    @if (estSuperAdmin()) {
+                      <!-- 30/09 — le garde-fou d'envoi : avant de tester chez un vrai client, retenir SES avis
+                           (courriel et SMS) pour 2 h. Il expire seul ; « Rétablir » le lève tout de suite. -->
+                      <div class="ag-dd-divider"></div>
+                      <button type="button" class="ag-dd-item" [disabled]="!societeEnvois() || reglageRecetteEnCours()"
+                              [attr.aria-disabled]="!societeEnvois() || reglageRecetteEnCours()"
+                              (click)="reglerRecette(recetteJusqua() ? null : 2)">
+                        <span class="ag-dd-item-content">
+                          <span class="ag-dd-item-row"><lucide-icon [img]="BellOffIcon" [size]="14"></lucide-icon><span>{{ recetteJusqua() ? 'Rétablir les avis' : 'Mode recette (2 h)' }}</span></span>
+                          <span class="ag-dd-item-meta ag-dd-item-raison">{{ ligneMenuRecette() }}</span>
+                        </span>
+                      </button>
+                    }
                   </div>
                 }
               </div>
             }
           </div>
         </div>
+
+        <!-- 30/09 — LE MODE RECETTE (garde-fou d'envoi). Un super-admin qui teste chez un vrai client
+             retient, quelques heures, les avis de réservation et de mission de la société : le bandeau
+             le dit à TOUS ses utilisateurs, pour que personne n'attende un courriel qui ne partira pas. -->
+        @if (recetteJusqua(); as fin) {
+          <div class="ag-recette" role="status">
+            <lucide-icon [img]="BellOffIcon" [size]="15"></lucide-icon>
+            <span class="ag-recette-texte"><strong>Mode recette jusqu'à {{ heureRecette(fin) }}</strong> (tests en cours) — les
+              avis de réservation et de mission ne partent pas : ni courriel, ni SMS, ni notification.</span>
+            @if (estSuperAdmin()) {
+              <button type="button" class="ag-btn-soft ag-recette-btn" [disabled]="reglageRecetteEnCours()"
+                      (click)="reglerRecette(null)">Rétablir les avis</button>
+            }
+          </div>
+        }
 
         <!-- Suivi des opérations IA lancées en arrière-plan (analyse, optimisation…).
              29/09 : IA coupée par le client, la pastille se tait — « IA en cours… », et « Voir » qui
@@ -1296,6 +1326,18 @@ function groupeReservationId(ev: VehicleEventDto): string | null {
     }
     .ag-perimetre:hover { background: color-mix(in srgb, var(--texte-info) 20%, transparent); }
     .ag-perimetre strong { font-weight: 800; }
+    /* 30/09 — le mode recette (garde-fou d'envoi) : violet, comme « Retenu » au centre des courriels. */
+    .ag-recette {
+      display: flex; align-items: center; gap: 8px 10px; flex-wrap: wrap;
+      padding: 8px 12px; border-radius: 12px; font-size: 12.5px; line-height: 1.4; color: var(--fg-primary);
+      background: color-mix(in srgb, var(--violet) 10%, transparent);
+      border: 1px solid color-mix(in srgb, var(--violet) 32%, transparent);
+    }
+    .ag-recette > lucide-icon { color: var(--violet); flex: none; }
+    .ag-recette-texte { flex: 1 1 220px; min-width: 0; }
+    .ag-recette-texte strong { font-weight: 800; }
+    .ag-recette-btn { padding: 5px 10px; font-size: 12px; }
+    .ag-recette-btn:disabled { opacity: .55; cursor: default; }
     @media (max-width: 480px) {
       .ag-summary { gap: 6px; }
       .ag-stat { flex-direction: column; align-items: flex-start; gap: 6px; padding: 10px; }
@@ -1846,6 +1888,7 @@ export class AgendaComponent implements OnInit {
   protected readonly PlayIcon = Play;
   protected readonly ListChecksIcon = ListChecks;
   protected readonly MoreIcon = MoreHorizontal;
+  protected readonly BellOffIcon = BellOff;
   protected readonly CalendarCheckIcon = CalendarCheck;
   protected readonly InboxIcon = Inbox;
   protected readonly SparklesIcon = Sparkles;
@@ -2044,6 +2087,117 @@ export class AgendaComponent implements OnInit {
   protected readonly nbPropositionsReorganisables = computed(() =>
     this.iaActive() ? (this.propositionsReorganisables() ?? this.agentProposalCount()) : 0,
   );
+
+  /**
+   * ── 30/09 — LE MODE RECETTE DE LA SOCIÉTÉ (garde-fou d'envoi) ─────────────────────────────────
+   *
+   * Le 24/09, une demande de recette déposée par le lien public du vrai client a prévenu cinq
+   * personnes de cdef31. Un super-admin qui va tester chez un client pose d'abord le mode recette :
+   * jusqu'à l'heure dite, les avis de réservation, de demande publique et de mission de la société
+   * sont RETENUS (courriel et SMS) et tracés (`EmailStatus.BLOCKED`, journal). Il expire seul.
+   *
+   * La société : celle du bandeau pour un super-admin (« toutes » = aucune, rien à dire), la sienne
+   * pour les autres. Le bandeau est lu par tous — le client voit que ses avis sont retenus.
+   */
+  private readonly fleetsApi = inject(FleetsApiService);
+  protected readonly estSuperAdmin = computed(() => this.auth.user()?.role === 'SUPER_ADMIN');
+  protected readonly societeEnvois = computed<string | null>(() => {
+    const u = this.auth.user();
+    if (!u) return null;
+    return u.role === 'SUPER_ADMIN' ? this.fleetFilter.selectedFleetId() : u.fleetId;
+  });
+  /** L'état lu, étiqueté de SA société : une réponse arrivée après un changement de bandeau ne s'affiche pas. */
+  private readonly envois = signal<{ societe: string; jusqua: number | null } | null>(null);
+  private lectureEnvois = 0;
+  private finRecette: ReturnType<typeof setTimeout> | undefined;
+  protected readonly reglageRecetteEnCours = signal(false);
+  private readonly envoisEffect = effect(() => {
+    const societe = this.societeEnvois();
+    const role = this.auth.user()?.role;
+    untracked(() => {
+      clearTimeout(this.finRecette);
+      // Le dépôt (rôle latéral, sans société) n'a pas de mode recette à lire.
+      if (!societe || role === 'DEPOT') {
+        this.lectureEnvois++;
+        this.envois.set(null);
+        return;
+      }
+      this.lireEnvois(societe);
+    });
+  });
+  private readonly nettoyageRecette = inject(DestroyRef).onDestroy(() => clearTimeout(this.finRecette));
+
+  private lireEnvois(societe: string): void {
+    const n = ++this.lectureEnvois;
+    firstValueFrom(this.fleetsApi.envois(societe)).then(
+      (r) => {
+        if (n === this.lectureEnvois) this.poserEnvois(societe, r.suspendusJusqua);
+      },
+      (err: unknown) => {
+        swallow('agenda:envois', err);
+        if (n === this.lectureEnvois) this.envois.set(null);
+      },
+    );
+  }
+
+  private poserEnvois(societe: string, iso: string | null): void {
+    const t = iso ? Date.parse(iso) : NaN;
+    const jusqua = Number.isFinite(t) && t > Date.now() ? t : null;
+    this.envois.set({ societe, jusqua });
+    clearTimeout(this.finRecette);
+    // Le serveur le lève seul à l'heure dite : le bandeau aussi — une relecture le confirme.
+    if (jusqua !== null) {
+      const delai = Math.min(jusqua - Date.now() + 1_000, 2_000_000_000);
+      this.finRecette = setTimeout(() => {
+        if (this.societeEnvois() === societe) this.lireEnvois(societe);
+      }, delai);
+    }
+  }
+
+  /** La fin du mode recette de la société affichée (ms) ; `null` = les avis partent. */
+  protected readonly recetteJusqua = computed<number | null>(() => {
+    const e = this.envois();
+    return e && e.societe === this.societeEnvois() ? e.jusqua : null;
+  });
+
+  /** « 11:40 », ou « mer. 1 oct. 11:40 » si ce n'est pas aujourd'hui. */
+  protected heureRecette(ms: number): string {
+    const d = new Date(ms);
+    const memeJour = d.toDateString() === new Date().toDateString();
+    return formatDate(d, memeJour ? 'HH:mm' : 'EEE d MMM HH:mm', 'fr');
+  }
+
+  /** La ligne sous l'entrée du menu : ce qu'elle fera, ou pourquoi elle est grisée. */
+  protected readonly ligneMenuRecette = computed(() => {
+    if (!this.societeEnvois()) return "Choisissez d'abord une société dans le bandeau.";
+    const fin = this.recetteJusqua();
+    if (fin !== null) return `Avis retenus jusqu'à ${this.heureRecette(fin)} — les laisser repartir maintenant.`;
+    return 'Réservations, demandes et missions : ni courriel, ni SMS, ni notification pendant 2 h.';
+  });
+
+  /** Super-admin : retenir les avis de la société du bandeau `heures` (1 à 24), ou les rétablir (`null`). */
+  protected async reglerRecette(heures: number | null): Promise<void> {
+    const societe = this.societeEnvois();
+    if (!societe || !this.estSuperAdmin() || this.reglageRecetteEnCours()) return;
+    this.plusOpen.set(false);
+    this.reglageRecetteEnCours.set(true);
+    const n = ++this.lectureEnvois;
+    try {
+      const r = await firstValueFrom(this.fleetsApi.reglerEnvois(societe, heures));
+      if (n === this.lectureEnvois) this.poserEnvois(societe, r.suspendusJusqua);
+      const fin = r.suspendusJusqua ? Date.parse(r.suspendusJusqua) : NaN;
+      if (Number.isFinite(fin)) {
+        this.toast.success('Mode recette', `Jusqu'à ${this.heureRecette(fin)}, les avis de réservation et de mission ne partent pas.`);
+      } else {
+        this.toast.success('Avis rétablis', 'Les avis de réservation et de mission partent de nouveau.');
+      }
+    } catch (err) {
+      this.toast.error('Mode recette', apiErrorMessage(err, "Le mode recette n'a pas pu être réglé."));
+      if (this.societeEnvois() === societe) this.lireEnvois(societe);
+    } finally {
+      this.reglageRecetteEnCours.set(false);
+    }
+  }
 
   /** Ouvre / ferme le menu « ⋯ » — à l'ouverture, le compte de Réorganiser est relu (il suit l'agenda). */
   protected basculerPlus(): void {

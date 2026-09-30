@@ -2,6 +2,7 @@ import { Injectable, Optional } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
 import { DestinatairesAvisService } from '../agenda/destinataires-avis.service';
 import { EmailService, type EmailTemplateId } from '../email/email.service';
+import { GardeFouEnvoisService } from '../email/garde-fou-envois.service';
 import { NotificationDispatchService } from '../notifications/notification-dispatch.service';
 import { ErrorLogger } from '../observability/error-logger.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -62,6 +63,8 @@ export class ReservationBookingNotifier {
      * la main, et qu'un avis non poussé ne doit jamais empêcher un e-mail de partir.
      */
     @Optional() private readonly dispatch?: NotificationDispatchService,
+    /** 30/09 — le garde-fou d'envoi (mode recette d'une société) : aussi pour le SMS, facturé. */
+    @Optional() private readonly garde?: GardeFouEnvoisService,
   ) {}
 
   /** Accusé de réception (à la soumission publique) — e-mail AU THÈME (charte 2026). Best-effort. */
@@ -527,7 +530,25 @@ export class ReservationBookingNotifier {
       // Socle générique : mêmes préférences, même anti-spam, même journal que toute notification.
       // `subjectKey` cloisonne le refroidissement par créneau — deux demandes pour le même créneau
       // se groupent, deux créneaux différents passent tous les deux.
-      if (this.dispatch) {
+      // 30/09 — une société en MODE RECETTE ne reçoit pas non plus le push : pendant une séance de
+      // tests, les téléphones de l'équipe ne sonnent pas (les courriels ci-dessus sont retenus par
+      // `EmailService.send`).
+      const pushRetenu = this.dispatch
+        ? await this.garde?.motifDeRetenue({
+            canal: 'push',
+            destinataire: '',
+            fleetId: input.fleetId,
+            modele: 'reservation_request_pending',
+          })
+        : null;
+      if (pushRetenu) {
+        this.garde?.noterPushRetenu({
+          destinataires: validators.length,
+          fleetId: input.fleetId,
+          modele: 'reservation_request_pending',
+          motif: pushRetenu,
+        });
+      } else if (this.dispatch) {
         await this.dispatch
           .notifyUsers({
             userIds: validators.map((v) => v.id),
@@ -590,6 +611,15 @@ export class ReservationBookingNotifier {
     const c = (contact || '').trim();
     if (!c) return;
     const isEmail = c.includes('@');
+    // 30/09 — le garde-fou d'envoi vaut aussi pour le SMS du demandeur : une société en mode recette ne
+    // prévient personne. Le courriel, lui, est jugé par `EmailService.send`.
+    if (!isEmail) {
+      const retenu = await this.garde?.motifDeRetenue({ canal: 'sms', destinataire: c, fleetId, modele: template });
+      if (retenu) {
+        this.garde?.noterSmsRetenu({ numero: c, fleetId, modele: template, motif: retenu });
+        return;
+      }
+    }
     try {
       const res = isEmail
         ? await this.email.send({ to: c, subject: built.subject, html: built.html, text: built.text, template, fleetId, context: { kind: 'public_reservation' } })

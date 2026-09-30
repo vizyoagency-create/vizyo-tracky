@@ -43,7 +43,11 @@ export const ALLOWLIST: Readonly<Record<string, RegleModele>> = {
     ],
     transformes: ['id', 'name'],
     // Lot D (RDV v2) : la démo n'est reliée à aucun client Manager, jamais archivée, sans téléphone de contact.
-    imposes: ['clientId', 'weeklyReportEmail', 'aiEnabled', 'speedAlertUpdatedById', 'stripeCustomerId', 'managedByManagerAt', 'archivedAt', 'archivedBy', 'contactPhone'],
+    // 30/09 : le mode recette de la société SOURCE (ses avis retenus) ne passe jamais sur la démo — elle a le sien.
+    imposes: [
+      'clientId', 'weeklyReportEmail', 'aiEnabled', 'speedAlertUpdatedById', 'stripeCustomerId', 'managedByManagerAt',
+      'archivedAt', 'archivedBy', 'contactPhone', 'envoisSuspendusJusqua',
+    ],
   },
   FleetSubscription: {
     pourquoi: 'abonnement SIGNATURE offert : toutes les options visibles, rien de facturé — pas une copie',

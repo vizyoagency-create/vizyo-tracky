@@ -12,7 +12,7 @@ import {
 const DAY_MS = 86_400_000;
 
 /** Issue normalisée, comparable d'un canal à l'autre. */
-export type CommOutcome = 'DELIVERED' | 'SENT' | 'FAILED' | 'EXPIRED' | 'RECEIVED';
+export type CommOutcome = 'DELIVERED' | 'SENT' | 'FAILED' | 'EXPIRED' | 'RECEIVED' | 'BLOCKED';
 
 export interface CommLogDto {
   id: string;
@@ -36,6 +36,8 @@ const SMS_FAILED = ['failed', 'undelivered', 'rejected', 'error', 'cancelled', '
 function emailOutcome(s: EmailStatus): CommOutcome {
   if (EMAIL_DELIVERED.includes(s)) return 'DELIVERED';
   if (EMAIL_FAILED.includes(s)) return 'FAILED';
+  // 30/09 — retenu par le garde-fou d'envoi : ni « envoyé » ni « échec ».
+  if (s === EmailStatus.BLOCKED) return 'BLOCKED';
   return 'SENT';
 }
 function smsOutcome(direction: string, status: string | null): CommOutcome {
@@ -76,7 +78,8 @@ export class CommunicationsService {
 
     const [emails, sms, pushes] = await Promise.all([
       this.prisma.emailLog.findMany({
-        where: { createdAt: { gte: since } },
+        // 30/09 — un courriel RETENU par le garde-fou d'envoi n'est pas parti : hors des volumes.
+        where: { createdAt: { gte: since }, status: { not: EmailStatus.BLOCKED } },
         select: { status: true, template: true, createdAt: true },
       }),
       this.prisma.smsLog.findMany({
@@ -285,7 +288,10 @@ export class CommunicationsService {
   async templates() {
     const since = new Date(Date.now() - 30 * DAY_MS);
     const [emails, sms, pushes] = await Promise.all([
-      this.prisma.emailLog.findMany({ where: { createdAt: { gte: since } }, select: { template: true, status: true, createdAt: true } }),
+      this.prisma.emailLog.findMany({
+        where: { createdAt: { gte: since }, status: { not: EmailStatus.BLOCKED } },
+        select: { template: true, status: true, createdAt: true },
+      }),
       this.prisma.smsLog.findMany({ where: { createdAt: { gte: since }, direction: 'OUT' }, select: { template: true, status: true, createdAt: true } }),
       this.prisma.pushLog.findMany({ where: { createdAt: { gte: since } }, select: { template: true, status: true, createdAt: true } }),
     ]);

@@ -233,6 +233,8 @@ export function transformerFlotte(src: Fleet, ctx: Contexte): Prisma.FleetUnchec
     archivedAt: null,
     archivedBy: null,
     contactPhone: null,
+    // 30/09 : le mode recette de la société source (ses avis retenus) ne suit pas dans la démo.
+    envoisSuspendusJusqua: null,
     createdAt: src.createdAt,
     updatedAt: src.updatedAt,
   };

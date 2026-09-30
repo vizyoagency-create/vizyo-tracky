@@ -113,6 +113,15 @@ const envSchema = z.object({
   // ne pas repondre ; cet en-tete rattrape ceux qui repondent quand meme.
   EMAIL_REPLY_TO: z.string().default('contact@vizyoagency.com'),
 
+  // 30/09 — GARDE-FOU D'ENVOI. Vide (la prod) : aucune restriction globale. Remplie (un poste de
+  // dev muni d'une vraie clé Resend) : SEULS ces destinataires reçoivent un courriel, les autres
+  // sont RETENUS et journalisés (`BLOCKED`), rien ne part. Adresses exactes ou domaines précédés
+  // de « @ », séparés par des virgules : « @vizyoagency.com,admin@exemple.fr ».
+  // ⚠️ La démo la laisse VIDE : elle invite des prospects à leurs vraies adresses. Pour tester sans
+  // prévenir personne — démo ou vrai client —, c'est le MODE RECETTE de la société qui sert
+  // (`Fleet.envoisSuspendusJusqua`, voir `GardeFouEnvoisService`).
+  EMAIL_LISTE_BLANCHE: z.string().default(''),
+
   // URL absolue du logo PNG des e-mails. Gmail/Outlook/Yahoo suppriment le SVG
   // inline → le logo doit etre une image hebergee.
   //

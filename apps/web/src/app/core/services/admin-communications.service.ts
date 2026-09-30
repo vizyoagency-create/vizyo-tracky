@@ -2,7 +2,7 @@ import { HttpClient } from '@angular/common/http';
 import { inject, Injectable } from '@angular/core';
 
 export type CommChannel = 'EMAIL' | 'SMS' | 'PUSH';
-export type CommOutcome = 'DELIVERED' | 'SENT' | 'FAILED' | 'EXPIRED' | 'RECEIVED';
+export type CommOutcome = 'DELIVERED' | 'SENT' | 'FAILED' | 'EXPIRED' | 'RECEIVED' | 'BLOCKED';
 
 export interface CommChannelKpi {
   channel: CommChannel;

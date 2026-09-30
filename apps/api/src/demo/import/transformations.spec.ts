@@ -120,6 +120,8 @@ describe("transformations de l'import de démonstration", () => {
       weeklyReportEmail: null,
       aiEnabled: true,
       fuelPriceEurL: 1.5,
+      // 30/09 : le mode recette de la société source ne suit jamais dans la démo.
+      envoisSuspendusJusqua: null,
     });
   });
 

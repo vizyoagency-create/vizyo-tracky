@@ -42,6 +42,9 @@ const STATUS_PRIORITY: Record<EmailStatus, number> = {
   BOUNCED: 5,
   FAILED: 5,
   COMPLAINED: 6,
+  // 30/09 — retenu par le garde-fou d'envoi : jamais parti, donc sans `providerId` ni webhook.
+  // Le plus haut quand même : rien ne doit le faire passer pour un envoi.
+  BLOCKED: 7,
 };
 
 const EVENT_MAP: Record<string, { status: EmailStatus; stamp?: 'openedAt' | 'clickedAt' | 'bouncedAt' }> = {

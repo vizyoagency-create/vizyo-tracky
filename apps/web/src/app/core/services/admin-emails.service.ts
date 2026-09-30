@@ -10,7 +10,9 @@ export type EmailStatus =
   | 'CLICKED'
   | 'BOUNCED'
   | 'COMPLAINED'
-  | 'FAILED';
+  | 'FAILED'
+  /** 30/09 — retenu par le garde-fou d'envoi (liste blanche, mode recette) : rien n'est parti. */
+  | 'BLOCKED';
 
 export interface EmailStats {
   sent: number;

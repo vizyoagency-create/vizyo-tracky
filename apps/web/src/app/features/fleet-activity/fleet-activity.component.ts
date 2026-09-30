@@ -1430,6 +1430,8 @@ export class FleetActivityComponent implements OnInit, OnDestroy {
         return 'alerte';
       case 'reservation_demandee':
       case 'public_booking_submitted':
+      // 30/09 : le mode recette retient les avis de la société — à voir, comme une demande en attente.
+      case 'envois_suspendus':
         return 'attente';
       case 'agenda_agent_run':
         return 'agent';
