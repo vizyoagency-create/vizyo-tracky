@@ -178,6 +178,15 @@ export class VehicleEventsService {
     return vehicle.fleetId;
   }
 
+  /**
+   * Les véhicules que l'utilisateur voit (`'ALL'` = tout le parc de sa société, liste vide = aucun) —
+   * le périmètre de `scopedWhere`, exposé pour les listes qui ne passent pas par ce service (30/09 :
+   * les propositions de l'agent, que tout gestionnaire voyait sur tout le parc).
+   */
+  async vehiculesAccessibles(user: AuthUser): Promise<string[] | 'ALL'> {
+    return resolveReportVehicleScope(await this.vehicleAccess.getAccessibleVehicleIds(user), undefined);
+  }
+
   /** WHERE scopé (flotte + périmètre véhicules) pour les listes/compteurs. */
   private async scopedWhere(
     user: AuthUser,

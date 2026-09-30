@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { ConflictException, ForbiddenException } from '@nestjs/common';
 import { AutomationDisabledException } from '../common/automation-disabled.exception';
-import { AgendaAgentRunnerService } from './agenda-agent-runner.service';
+import { AgendaAgentRunnerService, propositionsEnChevauchement } from './agenda-agent-runner.service';
 import { AGENDA_AGENT_SCHEMA } from './agenda-agent.prompt';
 import { fleetTzFormatter, localParts, localWallToUtc } from './fleet-tz.util';
 import type { RecurringPattern } from './recurrence-detector.service';
@@ -124,10 +124,17 @@ function makeReservations(over: Record<string, unknown> = {}) {
   return {
     systemConfirm: jest.fn().mockResolvedValue({ id: 'ev1', vehiclePlate: 'AA-1' }),
     isVehicleFree: jest.fn().mockResolvedValue(true),
+    // Droit de GÉRER les réservations du véhicule (30/09, point 2) : accordé par défaut.
+    gereLesReservationsDe: jest.fn().mockResolvedValue(true),
+    vehiculesGeres: jest.fn(async (_u: unknown, ids: string[]) => new Set(ids)),
     ...over,
   };
 }
-const makeEvents = () => ({ assertVehicleAccess: jest.fn().mockResolvedValue('f1') });
+/** Périmètre véhicule : `'ALL'` par défaut (administrateur) ; un test restreint le remplace. */
+const makeEvents = () => ({
+  assertVehicleAccess: jest.fn().mockResolvedValue('f1'),
+  vehiculesAccessibles: jest.fn().mockResolvedValue('ALL' as string[] | 'ALL'),
+});
 const makeActivity = () => ({ record: jest.fn() });
 const makeErrors = () => ({ record: jest.fn().mockResolvedValue('log-1') });
 /** Porte IA de la société : `null` = service absent (specs historiques), sinon sa réponse. */
@@ -692,6 +699,7 @@ describe('AgendaAgentRunnerService (P3.3 — agent nocturne)', () => {
         { ...base, id: 'p2', aiVerdictAt: new Date('2026-09-05T05:00:00Z'), aiKeep: true },
       ]);
 
+      prisma.vehicle.findMany.mockResolvedValue([{ id: 'v1', plate: 'AA-1', fleetId: 'f1' }]);
       const rows = await svc.list({ id: 'u1', role: 'FLEET_ADMIN', fleetId: 'f1' } as never);
 
       expect(rows[0]).toEqual(expect.objectContaining({ aiVerdictAt: null, aiKeep: null }));
@@ -1046,9 +1054,13 @@ describe('AgendaAgentRunnerService — journal métier et rattrapage D0 (29/09)'
     dayOfWeek: 1, destinationLabel: 'Carcassonne', confidence: 0.9, basis: 'b', reasoning: 'r', status: 'pending', origin: 'scheduled',
     createdEventId: null, createdAt: new Date('2026-09-28T00:00:00Z'), aiVerdictAt: null, aiKeep: null,
   };
+  // Le véhicule d'une proposition du client est dans la société du client : `apply` compare les deux
+  // depuis la relecture du 30/09 (un véhicule passé dans une autre société n'est plus réservable).
+  const monterClient = (opts: Parameters<typeof monter>[0] = {}) =>
+    monter({ events: { ...makeEvents(), assertVehicleAccess: jest.fn().mockResolvedValue('fCLIENT') }, ...opts });
 
   it('apply → RESERVATION / proposition_reservee, société de la PROPOSITION, auteur réel, heure de Paris', async () => {
-    const { svc, activity } = monter({ existing: proposition });
+    const { svc, activity } = monterClient({ existing: proposition });
 
     await svc.apply(superAdmin, 'p1');
 
@@ -1070,14 +1082,14 @@ describe('AgendaAgentRunnerService — journal métier et rattrapage D0 (29/09)'
 
   it('apply qui échoue (créneau occupé) : AUCUNE ligne « réservée »', async () => {
     const reservations = makeReservations({ systemConfirm: jest.fn().mockResolvedValue(null) });
-    const { svc, activity } = monter({ existing: proposition, reservations });
+    const { svc, activity } = monterClient({ existing: proposition, reservations });
 
     await expect(svc.apply(gestionnaire, 'p1')).rejects.toThrow('Le créneau est déjà occupé.');
     expect(activity.record).not.toHaveBeenCalled();
   });
 
   it('dismiss → AGENDA / proposition_ecartee, société de la proposition, plaque relue, auteur réel', async () => {
-    const { svc, activity, prisma } = monter({ existing: proposition });
+    const { svc, activity, prisma } = monterClient({ existing: proposition });
 
     await svc.dismiss(superAdmin, 'p1');
 
@@ -1096,7 +1108,7 @@ describe('AgendaAgentRunnerService — journal métier et rattrapage D0 (29/09)'
   });
 
   it('dismiss perdu (déjà réservée) : aucune ligne', async () => {
-    const { svc, activity, prisma } = monter({ existing: proposition });
+    const { svc, activity, prisma } = monterClient({ existing: proposition });
     proposalsOf(prisma).updateMany.mockResolvedValueOnce({ count: 0 });
     proposalsOf(prisma).findUnique.mockResolvedValueOnce(proposition).mockResolvedValueOnce({ status: 'applied' });
 
@@ -1111,7 +1123,7 @@ describe('AgendaAgentRunnerService — journal métier et rattrapage D0 (29/09)'
    */
   it('dismiss d’une proposition DÉJÀ écartée (ou expirée) : 200, aucune seconde ligne', async () => {
     for (const status of ['dismissed', 'expired']) {
-      const { svc, activity, prisma } = monter({ existing: { ...proposition, status } });
+      const { svc, activity, prisma } = monterClient({ existing: { ...proposition, status } });
 
       await expect(svc.dismiss(gestionnaire, 'p1')).resolves.toEqual(expect.objectContaining({ status }));
       expect(proposalsOf(prisma).updateMany).not.toHaveBeenCalled();
@@ -1120,7 +1132,7 @@ describe('AgendaAgentRunnerService — journal métier et rattrapage D0 (29/09)'
   });
 
   it('dismiss écartée en parallèle (count 0, relue dismissed) : 200, aucune ligne', async () => {
-    const { svc, activity, prisma } = monter({ existing: proposition });
+    const { svc, activity, prisma } = monterClient({ existing: proposition });
     proposalsOf(prisma).updateMany.mockResolvedValueOnce({ count: 0 });
     proposalsOf(prisma).findUnique.mockResolvedValueOnce(proposition).mockResolvedValueOnce({ status: 'dismissed' });
 
@@ -1129,7 +1141,7 @@ describe('AgendaAgentRunnerService — journal métier et rattrapage D0 (29/09)'
   });
 
   it('plaque illisible : la ligne part quand même, sans plaque — le geste passe', async () => {
-    const { svc, activity, prisma } = monter({ existing: proposition });
+    const { svc, activity, prisma } = monterClient({ existing: proposition });
     prisma.vehicle.findUnique.mockRejectedValue(new Error('base indisponible'));
 
     await expect(svc.dismiss(gestionnaire, 'p1')).resolves.toEqual(expect.objectContaining({ status: 'dismissed' }));
@@ -1137,27 +1149,27 @@ describe('AgendaAgentRunnerService — journal métier et rattrapage D0 (29/09)'
   });
 
   it('journal ABSENT : apply et dismiss passent, sans erreur', async () => {
-    const a = monter({ existing: proposition, activity: null });
+    const a = monterClient({ existing: proposition, activity: null });
     await expect(a.svc.apply(gestionnaire, 'p1')).resolves.toEqual(expect.objectContaining({ status: 'applied', createdEventId: 'ev1' }));
-    const d = monter({ existing: proposition, activity: null });
+    const d = monterClient({ existing: proposition, activity: null });
     await expect(d.svc.dismiss(gestionnaire, 'p1')).resolves.toEqual(expect.objectContaining({ status: 'dismissed' }));
   });
 
   it('journal EN PANNE (record lève) : apply et dismiss passent quand même', async () => {
     const enPanne = { record: jest.fn(() => { throw new Error('journal HS'); }) };
-    const a = monter({ existing: proposition, activity: enPanne });
+    const a = monterClient({ existing: proposition, activity: enPanne });
     await expect(a.svc.apply(gestionnaire, 'p1')).resolves.toEqual(expect.objectContaining({ status: 'applied' }));
-    const d = monter({ existing: proposition, activity: enPanne });
+    const d = monterClient({ existing: proposition, activity: enPanne });
     await expect(d.svc.dismiss(gestionnaire, 'p1')).resolves.toEqual(expect.objectContaining({ status: 'dismissed' }));
   });
 
   it('passage MANUEL : la ligne « Passage de l’agent » porte l’utilisateur réel ; un passage de nuit, personne', async () => {
-    const manuel = monter({ settings: makeSettings({ autonomy: 'suggest' }) });
+    const manuel = monterClient({ settings: makeSettings({ autonomy: 'suggest' }) });
     await manuel.svc.runOnDemand({ id: 'u-sa', role: 'SUPER_ADMIN', fleetId: null } as never, 'fCLIENT');
     const ligneManuelle = manuel.activity.record.mock.calls[0][0];
     expect(ligneManuelle).toEqual(expect.objectContaining({ action: 'agenda_agent_run', fleetId: 'fCLIENT', triggeredByUserId: 'u-sa', actor: 'utilisateur' }));
 
-    const nuit = monter({ settings: makeSettings({ autonomy: 'suggest' }) });
+    const nuit = monterClient({ settings: makeSettings({ autonomy: 'suggest' }) });
     await nuit.svc.runForFleet('fCLIENT', 'scheduled');
     expect(nuit.activity.record.mock.calls[0][0]).toEqual(expect.objectContaining({ triggeredByUserId: null, actor: 'system' }));
   });
@@ -1170,7 +1182,7 @@ describe('AgendaAgentRunnerService — journal métier et rattrapage D0 (29/09)'
     };
 
     it('ne vise que les « applied » SANS réservation dont la prise a plus de 10 minutes', async () => {
-      const { svc, prisma } = monter();
+      const { svc, prisma } = monterClient();
 
       await svc.rattraperPropositionsPrises(now);
 
@@ -1180,7 +1192,7 @@ describe('AgendaAgentRunnerService — journal métier et rattrapage D0 (29/09)'
     });
 
     it('la réservation posée PAR cette proposition → RATTACHÉE, et la ligne « réservée » est écrite au nom de qui avait cliqué', async () => {
-      const { svc, prisma, activity } = monter();
+      const { svc, prisma, activity } = monterClient();
       proposalsOf(prisma).findMany.mockResolvedValueOnce([orpheline]);
       prisma.vehicleEvent.findMany.mockResolvedValue([
         { id: 'ev-orph', status: 'CONFIRMED', metadata: { agent: true, appliedBy: 'u-sa' }, vehicle: { plate: 'AA-1' } },
@@ -1221,7 +1233,7 @@ describe('AgendaAgentRunnerService — journal métier et rattrapage D0 (29/09)'
     });
 
     it('relecture 29/09 — une réservation MANUELLE (sans metadata.agent) qui couvre le créneau n’est jamais reprise : proposition rendue, aucune ligne', async () => {
-      const { svc, prisma, activity } = monter();
+      const { svc, prisma, activity } = monterClient();
       proposalsOf(prisma).findMany.mockResolvedValueOnce([orpheline]);
       // Même si la base la rendait (filtre JSON contourné), le contrôle en mémoire l'écarte.
       prisma.vehicleEvent.findMany.mockResolvedValue([
@@ -1234,7 +1246,7 @@ describe('AgendaAgentRunnerService — journal métier et rattrapage D0 (29/09)'
     });
 
     it('relecture 29/09 — la réservation d’une AUTRE proposition (marqueur différent, ou déjà liée) n’est jamais reprise', async () => {
-      const { svc, prisma, activity } = monter();
+      const { svc, prisma, activity } = monterClient();
       proposalsOf(prisma).findMany.mockResolvedValueOnce([orpheline]);
       prisma.vehicleEvent.findMany.mockResolvedValue([
         { id: 'ev-autre', status: 'CONFIRMED', metadata: { agent: true, propositionId: 'p-autre', appliedBy: 'u2' }, vehicle: { plate: 'AA-1' } },
@@ -1249,7 +1261,7 @@ describe('AgendaAgentRunnerService — journal métier et rattrapage D0 (29/09)'
     });
 
     it('relecture 29/09 — sa réservation ANNULÉE avant le passage : la proposition garde son lien (applied), jamais re-proposée', async () => {
-      const { svc, prisma, activity } = monter();
+      const { svc, prisma, activity } = monterClient();
       proposalsOf(prisma).findMany.mockResolvedValueOnce([orpheline]);
       prisma.vehicleEvent.findMany.mockResolvedValue([
         { id: 'ev-ann', status: 'CANCELLED', metadata: { agent: true, propositionId: 'p9', appliedBy: 'u-sa' }, vehicle: { plate: 'AA-1' } },
@@ -1267,7 +1279,7 @@ describe('AgendaAgentRunnerService — journal métier et rattrapage D0 (29/09)'
     });
 
     it('apply marque la réservation avec l’identité de la proposition (metadata.propositionId)', async () => {
-      const { svc, reservations } = monter({ existing: proposition });
+      const { svc, reservations } = monterClient({ existing: proposition });
 
       await svc.apply(gestionnaire, 'p1');
 
@@ -1277,7 +1289,7 @@ describe('AgendaAgentRunnerService — journal métier et rattrapage D0 (29/09)'
     });
 
     it('aucune réservation → la proposition est RENDUE à pending (réservable à nouveau), sans ligne au journal', async () => {
-      const { svc, prisma, activity } = monter();
+      const { svc, prisma, activity } = monterClient();
       proposalsOf(prisma).findMany.mockResolvedValueOnce([orpheline]);
 
       const res = await svc.rattraperPropositionsPrises(now);
@@ -1291,7 +1303,7 @@ describe('AgendaAgentRunnerService — journal métier et rattrapage D0 (29/09)'
     });
 
     it('course perdue (l’application a abouti entre-temps) : rien compté, rien journalisé', async () => {
-      const { svc, prisma, activity } = monter();
+      const { svc, prisma, activity } = monterClient();
       proposalsOf(prisma).findMany.mockResolvedValueOnce([orpheline]);
       prisma.vehicleEvent.findMany.mockResolvedValue([
         { id: 'ev-orph', status: 'CONFIRMED', metadata: { agent: true }, vehicle: { plate: 'AA-1' } },
@@ -1303,7 +1315,7 @@ describe('AgendaAgentRunnerService — journal métier et rattrapage D0 (29/09)'
     });
 
     it('le cron horaire rattrape AVANT d’expirer — une proposition rendue dont le créneau est passé expire au même passage', async () => {
-      const { svc, prisma } = monter();
+      const { svc, prisma } = monterClient();
 
       await svc.runScheduled();
 
@@ -1314,7 +1326,7 @@ describe('AgendaAgentRunnerService — journal métier et rattrapage D0 (29/09)'
     });
 
     it('un rattrapage qui plante est archivé (AGENDA_AGENT) et n’empêche ni l’expiration ni les flottes', async () => {
-      const { svc, prisma, errors } = monter();
+      const { svc, prisma, errors } = monterClient();
       proposalsOf(prisma).findMany.mockRejectedValueOnce(new Error('verrou'));
 
       await svc.runScheduled();
@@ -1356,7 +1368,10 @@ describe('AgendaAgentRunnerService.ecarterEnLot — Réorganiser écarte les pro
       gereLesReservationsDe: jest.fn(async (_u: unknown, vid: string) => gere(vid)),
       vehiculesGeres: jest.fn(async (_u: unknown, ids: string[]) => new Set(ids.filter(gere))),
     });
-    const events = { assertVehicleAccess: jest.fn().mockResolvedValue(opts.societeVehicule ?? 'f1') };
+    const events = {
+      assertVehicleAccess: jest.fn().mockResolvedValue(opts.societeVehicule ?? 'f1'),
+      vehiculesAccessibles: jest.fn().mockResolvedValue('ALL' as string[] | 'ALL'),
+    };
     const m = monter({ reservations, events });
     // 1er appel : le lot ; 2e (à l'application seulement) : les statuts relus.
     proposalsOf(m.prisma).findMany.mockResolvedValueOnce(opts.lignes ?? []).mockResolvedValueOnce(opts.statuts ?? []);
@@ -1594,6 +1609,38 @@ describe('AgendaAgentRunnerService.ecarterEnLot — Réorganiser écarte les pro
     expect(activity.record.mock.calls[0][0].meta).toMatchObject({ horsGestion: 2 });
   });
 
+  it('tout le parc visible et géré : le journal dit « tous les véhicules »', async () => {
+    const { svc, prisma, activity } = monterLot({ lignes: LIGNES, statuts: [ecartee, ecartee, ecartee] });
+    proposalsOf(prisma).updateMany.mockResolvedValueOnce({ count: 3 });
+
+    await svc.ecarterEnLot(admin, { ...fenetre(0, 7 * 24), simulation: false, ids: [P(1), P(2), P(3)] });
+
+    expect(activity.record.mock.calls[0][0].detail).toContain('— tous les véhicules,');
+  });
+
+  it('un gestionnaire limité à un groupe qui gère tout ce qu’il voit : le journal ne dit PAS « tous les véhicules » (relecture du 30/09)', async () => {
+    const gestionnaire = { id: 'u2', role: 'FLEET_MANAGER', fleetId: 'f1' } as never;
+    const { svc, prisma, activity, events } = monterLot({ lignes: [prop(P(2), V1, 5)], statuts: [ecartee] });
+    events.vehiculesAccessibles.mockResolvedValue([V1]);
+    proposalsOf(prisma).updateMany.mockResolvedValueOnce({ count: 1 });
+
+    const r = await svc.ecarterEnLot(gestionnaire, { ...fenetre(0, 7 * 24), simulation: false, ids: [P(2)] });
+
+    expect(r).toMatchObject({ ecartees: 1, horsGestion: 0 });
+    expect(activity.record.mock.calls[0][0].detail).toContain("— les véhicules dont l'auteur gère les réservations,");
+  });
+
+  it('aucun véhicule visible : lot vide, sans lecture des propositions', async () => {
+    const gestionnaire = { id: 'u2', role: 'FLEET_MANAGER', fleetId: 'f1' } as never;
+    const { svc, prisma, events } = monterLot({ lignes: LIGNES });
+    events.vehiculesAccessibles.mockResolvedValue([]);
+
+    const r = await svc.ecarterEnLot(gestionnaire, fenetre(0, 7 * 24));
+
+    expect(r).toMatchObject({ simulation: true, concernees: 0, horsGestion: 0, lotIds: [] });
+    expect(proposalsOf(prisma).findMany).not.toHaveBeenCalled();
+  });
+
   it('la relecture des statuts échoue : l’écriture a eu lieu, le compte approché est rendu', async () => {
     const { svc, prisma } = monterLot({ lignes: LIGNES });
     proposalsOf(prisma).findMany.mockReset();
@@ -1755,5 +1802,308 @@ describe('AgendaAgentRunnerService — un gestionnaire agit sur SA société, qu
     await expect(svc.listRuns(sansSociete)).rejects.toBeInstanceOf(ForbiddenException);
     expect(proposalsOf(prisma).findMany).not.toHaveBeenCalled();
     expect(runsOf(prisma).findMany).not.toHaveBeenCalled();
+  });
+});
+
+
+/**
+ * ── 30/09 (POINT 2 DU PROPRIÉTAIRE) — RÉSERVER / ÉCARTER UNE PROPOSITION, C'EST GÉRER SON VÉHICULE ──
+ *
+ * La relecture de la piste 3 l'avait relevé : le lot de Réorganiser exigeait le droit de gérer les
+ * réservations de chaque véhicule, mais pas le geste à l'unité — `apply` ne vérifiait que l'accès au
+ * véhicule, `dismiss` que la société, et `list` montrait les propositions de tout le parc à un
+ * gestionnaire limité à un groupe. Même règle partout désormais.
+ */
+describe('AgendaAgentRunnerService — réserver / écarter une proposition exige de GÉRER son véhicule (30/09)', () => {
+  const gestionnaire = { id: 'u1', role: 'FLEET_MANAGER', fleetId: 'f1' } as never;
+  const pending = { id: 'p1', fleetId: 'f1', vehicleId: 'v1', startAt: new Date(Date.now() + 3_600_000 * 30), endAt: new Date(Date.now() + 3_600_000 * 33), status: 'pending', destinationLabel: null, confidence: 0.9, basis: 'x', reasoning: 'x', dayOfWeek: 1, origin: 'scheduled', createdEventId: null, createdAt: new Date(), aiVerdictAt: null, aiKeep: null };
+
+  it('« Réserver » sur un véhicule qu’on ne gère pas : 403 qui le nomme, et la proposition n’est PAS prise', async () => {
+    const reservations = makeReservations({ gereLesReservationsDe: jest.fn().mockResolvedValue(false) });
+    const { svc, prisma } = monter({ existing: pending, reservations });
+
+    await expect(svc.apply(gestionnaire, 'p1')).rejects.toThrow('Vous ne gérez pas les réservations de AA-1 : vous ne pouvez pas réserver ses propositions.');
+    expect(proposalsOf(prisma).updateMany).not.toHaveBeenCalled();
+    expect(reservations.systemConfirm).not.toHaveBeenCalled();
+  });
+
+  it('« Écarter » : le périmètre véhicule (403/404 de `assertVehicleAccess`) puis le droit de gérer — rien n’est écrit', async () => {
+    const nonGere = makeReservations({ gereLesReservationsDe: jest.fn().mockResolvedValue(false) });
+    const m = monter({ existing: pending, reservations: nonGere });
+    await expect(m.svc.dismiss(gestionnaire, 'p1')).rejects.toThrow('vous ne pouvez pas écarter ses propositions');
+    expect(m.events.assertVehicleAccess).toHaveBeenCalledWith(gestionnaire, 'v1');
+    expect(proposalsOf(m.prisma).updateMany).not.toHaveBeenCalled();
+
+    const horsPerimetre = monter({ existing: pending });
+    horsPerimetre.events.assertVehicleAccess.mockRejectedValueOnce(new ForbiddenException('Véhicule hors de votre périmètre'));
+    await expect(horsPerimetre.svc.dismiss(gestionnaire, 'p1')).rejects.toBeInstanceOf(ForbiddenException);
+    expect(proposalsOf(horsPerimetre.prisma).updateMany).not.toHaveBeenCalled();
+  });
+
+  it('géré : « Écarter » passe comme avant', async () => {
+    const { svc, prisma } = monter({ existing: pending });
+    await expect(svc.dismiss(gestionnaire, 'p1')).resolves.toMatchObject({ status: 'dismissed' });
+    expect(proposalsOf(prisma).updateMany).toHaveBeenCalledWith({ where: { id: 'p1', status: 'pending' }, data: { status: 'dismissed' } });
+  });
+
+  it('la liste se borne aux véhicules ACCESSIBLES ; aucun véhicule accessible : rien, sans lecture', async () => {
+    const limite = monter();
+    limite.events.vehiculesAccessibles.mockResolvedValue(['v1', 'v2']);
+    await limite.svc.list(gestionnaire);
+    expect(proposalsOf(limite.prisma).findMany.mock.calls[0][0].where).toEqual(
+      expect.objectContaining({ fleetId: 'f1', vehicleId: { in: ['v1', 'v2'] } }),
+    );
+
+    const aucun = monter();
+    aucun.events.vehiculesAccessibles.mockResolvedValue([]);
+    await expect(aucun.svc.list(gestionnaire)).resolves.toEqual([]);
+    expect(proposalsOf(aucun.prisma).findMany).not.toHaveBeenCalled();
+
+    const tout = monter();
+    await tout.svc.list(gestionnaire);
+    expect(proposalsOf(tout.prisma).findMany.mock.calls[0][0].where.vehicleId).toBeUndefined();
+  });
+
+  it('le lot de Réorganiser lit aussi dans le périmètre véhicule (`horsGestion` ne compte plus des véhicules invisibles)', async () => {
+    const { svc, prisma, events } = monter();
+    events.vehiculesAccessibles.mockResolvedValue(['v1']);
+    await svc.ecarterEnLot(gestionnaire, {
+      from: new Date(Date.now() + 3_600_000).toISOString(),
+      to: new Date(Date.now() + 3_600_000 * 48).toISOString(),
+    });
+    expect(proposalsOf(prisma).findMany.mock.calls[0][0].where).toEqual(expect.objectContaining({ vehicleId: { in: ['v1'] } }));
+  });
+
+  it('la liste laisse de côté la proposition d’un véhicule SUPPRIMÉ ou passé dans une autre société (relecture du 30/09)', async () => {
+    const { svc, prisma } = monter();
+    proposalsOf(prisma).findMany.mockResolvedValue([
+      { ...pending, id: 'p1', vehicleId: 'v1' },
+      { ...pending, id: 'p2', vehicleId: 'v-supprime' },
+      { ...pending, id: 'p3', vehicleId: 'v-parti' },
+    ]);
+    prisma.vehicle.findMany.mockResolvedValue([
+      { id: 'v1', plate: 'AA-1', fleetId: 'f1' },
+      { id: 'v-parti', plate: 'ZZ-9', fleetId: 'f-autre' },
+    ]);
+
+    const rows = await svc.list(gestionnaire);
+
+    expect(rows.map((r) => r.id)).toEqual(['p1']);
+    expect(rows[0].vehiclePlate).toBe('AA-1');
+  });
+
+  it('« Réserver » la proposition d’un véhicule passé dans une autre société : 400, rien n’est pris — même pour un super-admin', async () => {
+    const superAdmin = { id: 'u-sa', role: 'SUPER_ADMIN', fleetId: null } as never;
+    const { svc, prisma, events, reservations } = monter({ existing: pending });
+    events.assertVehicleAccess.mockResolvedValue('f-autre');
+
+    await expect(svc.apply(superAdmin, 'p1')).rejects.toThrow('n’est plus dans la société de la proposition');
+    expect(proposalsOf(prisma).updateMany).not.toHaveBeenCalled();
+    expect(reservations.systemConfirm).not.toHaveBeenCalled();
+  });
+});
+
+describe('propositionsEnChevauchement — garder la plus sûre de chaque groupe (30/09)', () => {
+  const H = 3_600_000;
+  const T0 = Date.UTC(2026, 9, 5, 6, 0);
+  const p = (id: string, vehicleId: string, hDebut: number, hFin: number, over: Partial<{ confidence: number; creeeH: number; aiKeep: boolean | null }> = {}) => ({
+    id,
+    vehicleId,
+    startAt: new Date(T0 + hDebut * H),
+    endAt: new Date(T0 + hFin * H),
+    confidence: over.confidence ?? 0.8,
+    createdAt: new Date(T0 - (over.creeeH ?? 24) * H),
+    aiKeep: over.aiKeep === undefined ? null : over.aiKeep,
+  });
+
+  it('aucun chevauchement : rien à écarter ; deux véhicules au même créneau ne se gênent pas', () => {
+    expect(propositionsEnChevauchement([p('a', 'v1', 0, 3), p('b', 'v1', 3, 5), p('c', 'v2', 0, 3)])).toEqual([]);
+  });
+
+  it('garde la validée par l’IA, puis la plus confiante, puis la plus ancienne', () => {
+    expect(propositionsEnChevauchement([p('a', 'v1', 0, 4, { confidence: 0.9 }), p('b', 'v1', 1, 3, { aiKeep: true, confidence: 0.5 })])).toEqual(['a']);
+    expect(propositionsEnChevauchement([p('a', 'v1', 0, 4, { confidence: 0.6 }), p('b', 'v1', 1, 3, { confidence: 0.9 })])).toEqual(['a']);
+    // Dérive d'une nuit à l'autre : même motif, même confiance — la plus ancienne reste.
+    expect(propositionsEnChevauchement([p('neuve', 'v1', 0.03, 3, { creeeH: 2 }), p('vieille', 'v1', 0, 3, { creeeH: 26 })])).toEqual(['neuve']);
+  });
+
+  it('une chaîne A–B–C (A chevauche B, B chevauche C) garde A et C quand A est la plus sûre', () => {
+    const lot = propositionsEnChevauchement([
+      p('A', 'v1', 0, 3, { confidence: 0.9 }),
+      p('B', 'v1', 2, 6, { confidence: 0.7 }),
+      p('C', 'v1', 5, 8, { confidence: 0.6 }),
+    ]);
+    expect(lot).toEqual(['B']);
+  });
+
+  it('cinq propositions empilées sur un véhicule le même jour (HD-686-QX le 30/09) : une seule reste', () => {
+    const lot = propositionsEnChevauchement([0, 0.2, 0.4, 0.6, 0.8].map((h, i) => p(`p${i}`, 'v1', h, h + 8, { confidence: 0.5 + i / 10 })));
+    expect(lot).toHaveLength(4);
+    expect(lot).not.toContain('p4'); // la plus confiante
+  });
+
+  it('un créneau déjà PRIS (réservation ferme, immobilisation) : la proposition qui le chevauche part, sa jumelle libre reste (relecture du 30/09)', () => {
+    // A (0,9) chevauche la réservation ; B (0,6) chevauche A mais pas la réservation.
+    const reservation = [{ vehicleId: 'v1', debutMs: T0 - H, finMs: T0 + 2 * H }];
+    expect(propositionsEnChevauchement([p('A', 'v1', 0, 3, { confidence: 0.9 }), p('B', 'v1', 2.5, 5, { confidence: 0.6 })], reservation)).toEqual(['A']);
+    // Le jumeau déjà réservé : sa réservation garde le créneau, le doublon resté en attente part.
+    const priseParLeJumeau = [{ vehicleId: 'v1', debutMs: T0, finMs: T0 + 3 * H }];
+    expect(propositionsEnChevauchement([p('B', 'v1', 0.5, 3.5)], priseParLeJumeau)).toEqual(['B']);
+    // Un créneau pris sur un AUTRE véhicule, ou bout à bout : rien.
+    expect(propositionsEnChevauchement([p('C', 'v2', 0, 3)], priseParLeJumeau)).toEqual([]);
+    expect(propositionsEnChevauchement([p('D', 'v1', 3, 5)], priseParLeJumeau)).toEqual([]);
+  });
+});
+
+describe('AgendaAgentRunnerService.nettoyerChevauchements — ranger les doublons de l’agent (30/09)', () => {
+  const H = 3_600_000;
+  const superAdmin = { id: 'u-sa', role: 'SUPER_ADMIN', fleetId: null } as never;
+  const administrateur = { id: 'u1', role: 'FLEET_ADMIN', fleetId: 'f1' } as never;
+  const SOCIETE = 'c0000000-0000-4000-8000-000000000001';
+  const P = (n: number) => `a0000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
+  const ligne = (n: number, vehicleId: string, hDebut: number, hFin: number, confidence: number) => ({
+    id: P(n), vehicleId, startAt: new Date(Date.now() + hDebut * H), endAt: new Date(Date.now() + hFin * H), confidence,
+    createdAt: new Date(Date.now() - 24 * H), aiKeep: null, destinationLabel: null,
+  });
+  // v1 : P1 (0.9) chevauche P2 (0.6) ; v2 : P3 seule. → le lot : P2.
+  const LIGNES = [ligne(1, 'v1', 30, 34, 0.9), ligne(2, 'v1', 31, 33, 0.6), ligne(3, 'v2', 30, 34, 0.5)];
+
+  function monterNettoyage(lignes: unknown[], statuts: { status: string }[] = []) {
+    const m = monter();
+    proposalsOf(m.prisma).findMany.mockResolvedValueOnce(lignes).mockResolvedValueOnce(statuts);
+    m.prisma.vehicle.findMany.mockResolvedValue([{ id: 'v1', plate: 'AA-1' }, { id: 'v2', plate: 'BB-2' }]);
+    return m;
+  }
+
+  it('réservé aux super-administrateurs ; une société est exigée', async () => {
+    const { svc } = monterNettoyage(LIGNES);
+    await expect(svc.nettoyerChevauchements(administrateur, { fleetId: SOCIETE })).rejects.toThrow('Réservé aux super-administrateurs');
+    await expect(svc.nettoyerChevauchements(superAdmin, {})).rejects.toThrow('Préciser la flotte');
+    await expect(svc.nettoyerChevauchements(superAdmin, { fleetId: 'f-client' })).rejects.toThrow('Société invalide');
+  });
+
+  it('simulation (défaut) : le lot = celles qui en chevauchent une plus sûre ; RIEN n’est écrit ni journalisé', async () => {
+    const { svc, prisma, activity } = monterNettoyage(LIGNES);
+
+    const r = await svc.nettoyerChevauchements(superAdmin, { fleetId: SOCIETE });
+
+    expect(proposalsOf(prisma).findMany.mock.calls[0][0].where).toEqual(
+      expect.objectContaining({ fleetId: SOCIETE, status: 'pending', startAt: { gte: expect.any(Date) } }),
+    );
+    expect(r).toMatchObject({ simulation: true, enAttente: 3, concernees: 1, ecartees: 0, lotIds: [P(2)] });
+    expect(r.parVehicule).toEqual([{ vehicleId: 'v1', plate: 'AA-1', n: 1 }]);
+    expect(proposalsOf(prisma).updateMany).not.toHaveBeenCalled();
+    expect(activity.record).not.toHaveBeenCalled();
+  });
+
+  it('écriture sans le lot montré : 400', async () => {
+    const { svc, prisma } = monterNettoyage(LIGNES);
+    await expect(svc.nettoyerChevauchements(superAdmin, { fleetId: SOCIETE, simulation: false })).rejects.toThrow('« ids » est obligatoire');
+    expect(proposalsOf(prisma).updateMany).not.toHaveBeenCalled();
+  });
+
+  it('écriture : seules les montrées ENCORE en double, sous condition « en attente », et UNE ligne de journal', async () => {
+    // Relecture des montrées : P2 écartée par ce geste, P3 toujours en attente.
+    const { svc, prisma, activity } = monterNettoyage(LIGNES, [{ status: 'dismissed' }, { status: 'pending' }]);
+    proposalsOf(prisma).updateMany.mockResolvedValueOnce({ count: 1 });
+
+    // P3 glissée dans `ids` (appel forgé) : elle n'est pas en double, elle n'est pas écrite.
+    const r = await svc.nettoyerChevauchements(superAdmin, { fleetId: SOCIETE, simulation: false, ids: [P(2), P(3)] });
+
+    expect(proposalsOf(prisma).updateMany).toHaveBeenCalledWith({
+      where: { id: { in: [P(2)] }, fleetId: SOCIETE, status: 'pending' },
+      data: { status: 'dismissed' },
+    });
+    expect(r).toMatchObject({ simulation: false, ecartees: 1, dejaTraitees: 0, restees: 1, lotIds: [P(2)] });
+    expect(activity.record).toHaveBeenCalledTimes(1);
+    const l = activity.record.mock.calls[0][0];
+    expect(l).toMatchObject({ category: 'AGENDA', action: 'propositions_ecartees', fleetId: SOCIETE, triggeredByUserId: 'u-sa', target: 'AA-1' });
+    expect(l.detail).toBe(
+      "1 proposition de l'agent écartée au nettoyage des doublons — elle chevauchait une proposition plus sûre du même véhicule (1 véhicule ; 2 restent en attente).",
+    );
+    expect(l.meta).toMatchObject({ nettoyage: 'chevauchements', ids: [P(2)] });
+  });
+
+  it('seul le lot MONTRÉ est écrit : une autre proposition en double, absente de `ids`, ne l’est pas', async () => {
+    // P4 chevauche P1 (plus sûre) : elle est du lot recalculé, mais pas de celui qu'on a montré.
+    const { svc, prisma } = monterNettoyage([...LIGNES, ligne(4, 'v1', 32, 35, 0.4)], [{ status: 'dismissed' }]);
+    proposalsOf(prisma).updateMany.mockResolvedValueOnce({ count: 1 });
+
+    const r = await svc.nettoyerChevauchements(superAdmin, { fleetId: SOCIETE, simulation: false, ids: [P(2)] });
+
+    expect(proposalsOf(prisma).updateMany.mock.calls[0][0].where.id).toEqual({ in: [P(2)] });
+    expect(r).toMatchObject({ concernees: 1, ecartees: 1, lotIds: [P(2)] });
+  });
+
+  it('les réservations fermes et immobilisations comptent : la proposition sous un créneau pris part, sa jumelle libre reste', async () => {
+    const { svc, prisma } = monterNettoyage(LIGNES);
+    prisma.vehicleEvent.findMany.mockResolvedValue([
+      // Réservation ferme sur v1 qui chevauche P1 (la plus confiante) mais pas P2.
+      { vehicleId: 'v1', type: 'RESERVATION', startAt: new Date(Date.now() + 29 * H), endAt: new Date(Date.now() + 30.5 * H) },
+      // Incident SANS fin sur v2 : il bloque jusqu'à sa résolution.
+      { vehicleId: 'v2', type: 'INCIDENT', startAt: new Date(Date.now() + 20 * H), endAt: null },
+      // Maintenance terminée : ne compte plus.
+      { vehicleId: 'v1', type: 'MAINTENANCE', startAt: new Date(Date.now() - 48 * H), endAt: new Date(Date.now() - 24 * H) },
+    ]);
+
+    const r = await svc.nettoyerChevauchements(superAdmin, { fleetId: SOCIETE });
+
+    const where = prisma.vehicleEvent.findMany.mock.calls[0][0].where;
+    expect(where.vehicleId).toEqual({ in: ['v1', 'v2'] });
+    expect(where.OR).toEqual([
+      { type: 'RESERVATION', status: { in: ['CONFIRMED', 'IN_PROGRESS'] } },
+      { type: { not: 'RESERVATION' }, blocksVehicle: true, status: { in: ['PLANNED', 'OPEN', 'IN_PROGRESS'] } },
+    ]);
+    expect(r).toMatchObject({ concernees: 2, sousUnBloquant: 2, lotIds: [P(1), P(3)] });
+  });
+
+  it('le journal dit pourquoi, au pluriel : doublons et créneaux pris', async () => {
+    // P4 (v1, 0,4) chevauche P1 ; une réservation ferme couvre P3 (v2).
+    const { svc, prisma, activity } = monterNettoyage(
+      [...LIGNES, ligne(4, 'v1', 32, 35, 0.4)],
+      [{ status: 'dismissed' }, { status: 'dismissed' }, { status: 'dismissed' }],
+    );
+    prisma.vehicleEvent.findMany.mockResolvedValue([
+      { vehicleId: 'v2', type: 'RESERVATION', startAt: new Date(Date.now() + 29 * H), endAt: new Date(Date.now() + 31 * H) },
+    ]);
+    proposalsOf(prisma).updateMany.mockResolvedValueOnce({ count: 3 });
+
+    const r = await svc.nettoyerChevauchements(superAdmin, { fleetId: SOCIETE, simulation: false, ids: [P(2), P(3), P(4)] });
+
+    expect(r).toMatchObject({ concernees: 3, sousUnBloquant: 1, ecartees: 3, dejaTraitees: 0, restees: 0 });
+    const l = activity.record.mock.calls[0][0];
+    expect(l.detail).toBe(
+      "3 propositions de l'agent écartées au nettoyage des doublons — 2 chevauchaient une proposition plus sûre du même véhicule, " +
+        '1 une réservation ferme ou une immobilisation (2 véhicules ; 1 reste en attente).',
+    );
+    expect(l.target).toBeNull();
+    expect(l.meta).toMatchObject({ sousUnBloquant: 1, ecartees: 3 });
+  });
+
+  it('un lot parti en partie (traité ailleurs entre-temps) : le journal n’en détaille pas le motif', async () => {
+    const { svc, prisma, activity } = monterNettoyage(
+      [...LIGNES, ligne(4, 'v1', 32, 35, 0.4)],
+      [{ status: 'dismissed' }, { status: 'applied' }],
+    );
+    proposalsOf(prisma).updateMany.mockResolvedValueOnce({ count: 1 });
+
+    const r = await svc.nettoyerChevauchements(superAdmin, { fleetId: SOCIETE, simulation: false, ids: [P(2), P(4)] });
+
+    expect(r).toMatchObject({ concernees: 2, ecartees: 1, dejaTraitees: 1, restees: 0 });
+    expect(activity.record.mock.calls[0][0].detail).toBe(
+      "1 proposition de l'agent écartée au nettoyage des doublons — sur 2 montrées, les autres traitées ailleurs entre-temps " +
+        '(1 véhicule ; 3 restent en attente).',
+    );
+  });
+
+  it('plus de 2 000 doublons : les 2 000 premiers, et la réponse le DIT', async () => {
+    const beaucoup = Array.from({ length: 2_002 }, (_, i) => ligne(10 + i, 'v1', 30, 34, 0.9 - i / 10_000));
+    const { svc } = monterNettoyage(beaucoup);
+
+    const r = await svc.nettoyerChevauchements(superAdmin, { fleetId: SOCIETE });
+
+    expect(r).toMatchObject({ enAttente: 2_002, concernees: 2_000, plafonne: true });
+    expect(r.lotIds).toHaveLength(2_000);
+    expect(r.lotIds).not.toContain(P(10)); // la plus confiante reste
   });
 });

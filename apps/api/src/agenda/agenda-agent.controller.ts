@@ -1,6 +1,6 @@
 import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
-import type { EcarterPropositionsDto } from '@vizyo/tracky-shared';
+import type { EcarterPropositionsDto, NettoyerChevauchementsDto } from '@vizyo/tracky-shared';
 import { RequirePermissions } from '../auth/decorators/permissions.decorator';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { AuthenticatedRequest, JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -97,5 +97,18 @@ export class AgendaAgentController {
   @RequirePermissions('reservations_manage')
   ecarterEnLot(@Req() req: AuthenticatedRequest, @Body() dto: EcarterPropositionsDto) {
     return this.runner.ecarterEnLot(req.user, dto);
+  }
+
+  /**
+   * Nettoyage des propositions qui se chevauchent pour un même véhicule (30/09) : dans chaque groupe,
+   * la plus sûre reste, les autres sont écartées. Super-admin seulement (geste de maintenance) ;
+   * simulation par défaut, `ids` = le lot montré à l'écriture.
+   */
+  @Post('proposals/nettoyer-chevauchements')
+  @HttpCode(200)
+  @Roles(UserRole.SUPER_ADMIN)
+  @RequirePermissions('reservations_manage')
+  nettoyerChevauchements(@Req() req: AuthenticatedRequest, @Body() dto: NettoyerChevauchementsDto) {
+    return this.runner.nettoyerChevauchements(req.user, dto);
   }
 }

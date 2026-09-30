@@ -808,7 +808,8 @@ function groupeReservationId(ev: VehicleEventDto): string | null {
                       <span class="ag-fantome-plate" [vehicleLink]="p.vehicleId" [attr.title]="'Voir ' + (p.vehiclePlate || '')">{{ p.vehiclePlate || '—' }}</span>
                       <span class="ag-fantome-time">{{ hm(p.startAt) }} → {{ hm(p.endAt) }}</span>
                       @if (p.destinationLabel) { <span class="ag-fantome-dest">{{ p.destinationLabel }}</span> }
-                      @if (canValidate()) {
+                      <!-- 30/09 (point 2) : le droit de gérer les réservations de CE véhicule, comme le serveur. -->
+                      @if (gereLesPropositionsDe(p.vehicleId)) {
                         <!-- Troisième passe (T7/T19) : grisés pendant un « Tout réserver / Tout écarter » de CE
                              véhicule (AgendaSyncService.lotsEnCours), comme dans l'Assistant IA — le lot survit à
                              sa vue, et la liste n'est relue qu'à sa fin. -->
@@ -4295,6 +4296,15 @@ export class AgendaComponent implements OnInit {
   }
 
   /**
+   * 30/09 (point 2 du propriétaire) — réserver ou écarter une proposition exige de GÉRER les
+   * réservations de son véhicule, comme côté serveur (`exigerGestionDuVehicule`). `canValidate()` est
+   * global : un gestionnaire qui gère un groupe voyait ✓ ✗ sur tout le parc, et un 403 au clic.
+   */
+  protected gereLesPropositionsDe(vehicleId: string): boolean {
+    return this.perms.can('reservations_manage', vehicleId);
+  }
+
+  /**
    * Valider une proposition DEPUIS LE PANNEAU JOUR — elle devient une vraie réservation.
    *
    * Le même geste existe dans la feuille « Propositions de l'agent ». L'avoir ici aussi est le
@@ -4303,7 +4313,7 @@ export class AgendaComponent implements OnInit {
    */
   protected async applyProposal(p: AgendaAgentProposalDto): Promise<void> {
     // T7/T19 : même garde que les boutons — un lot de l'Assistant IA traite ce véhicule.
-    if (this.busyId() === p.id || this.vehiculesEnLot().has(p.vehicleId)) return;
+    if (this.busyId() === p.id || this.vehiculesEnLot().has(p.vehicleId) || !this.gereLesPropositionsDe(p.vehicleId)) return;
     this.busyId.set(p.id);
     try {
       await firstValueFrom(this.agentApi.applyProposal(p.id));
@@ -4325,7 +4335,7 @@ export class AgendaComponent implements OnInit {
 
   /** Écarter une proposition : elle disparaît de la grille et ne sera pas re-proposée. */
   protected async dismissProposal(p: AgendaAgentProposalDto): Promise<void> {
-    if (this.busyId() === p.id || this.vehiculesEnLot().has(p.vehicleId)) return; // T7/T19
+    if (this.busyId() === p.id || this.vehiculesEnLot().has(p.vehicleId) || !this.gereLesPropositionsDe(p.vehicleId)) return; // T7/T19
     this.busyId.set(p.id);
     try {
       await firstValueFrom(this.agentApi.dismissProposal(p.id));
