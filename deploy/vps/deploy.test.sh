@@ -182,6 +182,8 @@ reinitialiser() {
   JOURNAL="$(mktemp)"; RACINE="$(mktemp -d)"; mkdir -p "$RACINE/deploy/vps"
   # la démo existe sur la machine de test (compose + .env) — un cas les retire pour lire « absente »
   : > "$RACINE/deploy/vps/docker-compose.demo.yml"; : > "$RACINE/deploy/vps/.env.demo"
+  # le contexte de construction est protégé (30/09) — des cas retirent ou amputent le .dockerignore
+  printf '.git\n**/node_modules\n' > "$RACINE/.dockerignore"
 }
 # Les repères attendus : posés sur l'IMAGE EN SERVICE (V32 b), pas sur latest.
 REPERE_API="tag $IMG_API tracky-api:avant-20260913-1130-a8f9575e"
@@ -413,6 +415,41 @@ attend "⚠️ TRK-077 : passage parti PENDANT la construction → la seconde le
 absent "…et l'API n'a PAS été recréée" "|up" "$(trace)"
 contient "…mais l'image est construite : la relance sera courte" "build" "$(trace)"
 if [ -s "$JOURNAL" ]; then ko "…rien au journal : rien n'a été déployé"; else ok "…rien au journal : rien n'a été déployé"; fi
+
+# ── 2026-09-30 : LE CONTEXTE DE CONSTRUCTION ────────────────────────────────────────────────
+# Sans .dockerignore, le `git pull` de ce script changeait `.git` — donc `COPY . .` — et la
+# construction qui suivait une pré-construction rejouait toute l'étape builder (181 s) ; le
+# node_modules de l'hôte (13/05) recouvrait celui de l'image (Angular 20.3.18 servi, 20.3.27 au
+# lockfile). Le contrôle INFORME, il ne refuse jamais : un déploiement reste possible sans lui.
+echo "deploy.sh — le contexte de construction ne porte ni .git ni node_modules (30/09)"
+
+reinitialiser
+sortie="$( (main) 2>&1 )"; code=$?
+attend "avec .git et **/node_modules exclus : déploiement ordinaire (0)" 0 "$code"
+absent "…et aucun avertissement de contexte" "NON PROTÉGÉ" "$sortie"
+
+reinitialiser; rm -f "$RACINE/.dockerignore"
+sortie="$( (main) 2>&1 )"; code=$?
+attend "sans .dockerignore : le déploiement va quand même au bout (le contrôle ne refuse pas)" 0 "$code"
+contient "…mais il le dit" "NON PROTÉGÉ (.dockerignore absent)" "$sortie"
+if [[ "$sortie" == *"NON PROTÉGÉ"*"docker compose build (prod)"* ]]; then ok "…AVANT de construire"; else ko "…AVANT de construire" "$sortie"; fi
+contient "…la construction a bien lieu" "build" "$(trace)"
+
+reinitialiser; printf '**/node_modules\n' > "$RACINE/.dockerignore"
+sortie="$( (main) 2>&1 )"
+contient "un .dockerignore sans .git : l'entrée manquante est nommée" "NON PROTÉGÉ (.git)" "$sortie"
+
+reinitialiser; printf '.git\nnode_modules\n' > "$RACINE/.dockerignore"
+sortie="$( (main) 2>&1 )"
+contient "« node_modules » sans **/ ne vise que la racine (apps/*/node_modules passeraient) : signalé" "NON PROTÉGÉ (**/node_modules)" "$sortie"
+
+reinitialiser; rm -f "$RACINE/.dockerignore"
+sortie="$( (main --marketing-seul) 2>&1 )"
+absent "--marketing-seul : pas d'avertissement (le site public ne copie que lp/public)" "NON PROTÉGÉ" "$sortie"
+
+reinitialiser; RACINE="$(cd ../.. && pwd)"
+contexte_de_construction_sain >/dev/null 2>&1; code=$?
+attend "le .dockerignore DU DÉPÔT passe le contrôle" 0 "$code"
 
 echo "deploy.sh — la migration AVANT la recréation (incident du 17/09)"
 

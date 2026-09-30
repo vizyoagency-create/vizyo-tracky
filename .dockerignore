@@ -1,0 +1,48 @@
+# ═══════════════════════════════════════════════════════════════════════════════════════════
+# LE CONTEXTE DE CONSTRUCTION DES IMAGES — deploy/vps (`context: ../..` = la racine du dépôt)
+# ═══════════════════════════════════════════════════════════════════════════════════════════
+#
+# Règle : le contexte = les fichiers SUIVIS par git, rien d'autre. Chaque ligne ci-dessous
+# correspond à une catégorie du .gitignore. ⚠️ La syntaxe diffère : ici, un motif SANS `**/` ne
+# vise que la racine (`node_modules` seul raterait apps/*/node_modules).
+#
+# Sans ce fichier (mesuré sur le VPS le 30/09/2026, docs/fiabilite-coupe-circuit-2026-09/39-…),
+# `COPY . .` (étape builder de Dockerfile.api et Dockerfile.web) emportait tout l'arbre de travail :
+#
+#  1. `.git` — deploy.sh fait `git checkout` + `git pull` juste avant de construire. Même sans
+#     nouveau commit (« Already up to date »), ils réécrivent `.git/logs/HEAD` et `.git/ORIG_HEAD` :
+#     `COPY . .` change, et toute l'étape builder est rejouée (181 s mesurées) juste après une
+#     pré-construction complète. C'est ce qui a poussé le déploiement de 13:38 dans la fenêtre
+#     HH:42–46 (refusé à 13:42:22).
+#  2. `node_modules` de l'hôte — 960 Mo installés le 13/05 d'un lockfile périmé, copiés PAR-DESSUS
+#     le `pnpm install --frozen-lockfile` de l'étape deps : le bundle web servi en production était
+#     compilé avec Angular 20.3.18 alors que pnpm-lock.yaml dit 20.3.27. Et chaque `COPY . .` pesait
+#     1,37 Go dans un cache BuildKit plafonné à 10 Go : le ramasse-miettes évinçait ce qu'on venait
+#     de construire, et la construction suivante ratait encore (119 s sans aucun changement).
+#  3. Les secrets (`.env.prod`, `.env.demo`, `.env`) et `backups/` finissaient dans une couche
+#     intermédiaire du cache de construction.
+
+# ── 1. l'historique git : rien de ce qu'on construit ne le lit ─────────────────────────────
+.git
+
+# ── 2. les dépendances et les sorties de l'HÔTE — l'image fait les siennes ─────────────────
+**/node_modules
+.pnpm-store
+**/dist
+**/.turbo
+**/.angular
+**/coverage
+apps/api/prisma/generated
+
+# ── 3. secrets, données, sorties locales — jamais dans une couche, même intermédiaire ──────
+**/.env
+**/.env.*
+backups
+docs/review_loop
+**/_scratch-*
+**/*.log
+apps/web/e2e-captures
+apps/web/test-results
+apps/web/playwright-report
+outils/.osm
+.claude

@@ -72,6 +72,7 @@ Les traitements CUT et RESTORE sont volontairement asymétriques :
 34. [Fiche de fusion — les 28 + 5 commits, dans l'ordre, et comment les relire](./34-FICHE-DE-FUSION-2026-09-14.md)
 35. [Correctif T62 — une SIM injoignable par SMS met le véhicule en « TCP seul » ; pourquoi deux boîtiers sur dix restent sourds](./35-CORRECTIF-SIM-INJOIGNABLE-TCP-SEUL-2026-09-14.md)
 36. [Incident du 19–20/09 — deux `docker logs` oubliés, l'hébergeur retire 90 % du CPU : reprises par SMS payant, sauvegarde de 64 min ; le garde-fou `docker-orphelins.timer`, `deploy.sh` corrigé (V32 b, V36 b)](./36-INCIDENT-VPS-BRIDE-2026-09-20-DEUX-DOCKER-LOGS-ET-90-POURCENT-DE-CPU-RETIRES.md)
+39. [Constat du 30/09 — la construction de `deploy.sh` rate le cache : `.git` et le `node_modules` de l'hôte (13/05) dans le contexte ; la production servait Angular 20.3.18 ; `.dockerignore` validé, non déployé ; `docker buildx history` fait tomber dockerd](./39-CONSTAT-2026-09-30-LA-CONSTRUCTION-DE-DEPLOY-SH-RATE-LE-CACHE-GIT-ET-NODE-MODULES-DANS-LE-CONTEXTE.md)
 
 Incident hors numérotation, du même chantier :
 [Incident du 17/09 — une migration ratée a tenu l'API à terre 56 min : 28 véhicules coupés au réveil](./31-INCIDENT-DEPLOIEMENT-2026-09-17-API-A-TERRE-56-MIN.md)

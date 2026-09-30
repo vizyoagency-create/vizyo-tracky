@@ -491,6 +491,33 @@ etiqueter_repli() {
   dire "   Revenir en arrière : bash deploy/vps/deploy.sh --repli $etiquette"
 }
 
+# ── 2026-09-30 : LE CONTEXTE DE CONSTRUCTION NE PORTE NI `.git` NI LE `node_modules` DE L'HÔTE ──
+#
+# Les Dockerfile construisent depuis la racine du dépôt (`context: ../..`). Sans `.dockerignore`,
+# `COPY . .` emportait tout l'arbre de travail du VPS — mesuré ce jour, sans rien recréer :
+#   · `.git` : le `git checkout` + `git pull` de ce script réécrivent `.git/logs/HEAD` et
+#     `.git/ORIG_HEAD` même sans nouveau commit. `COPY . .` change, l'étape builder est rejouée
+#     (181 s) juste après une pré-construction complète — le déploiement de 13:38 a construit
+#     4 min, est tombé dans HH:42 et a été refusé.
+#   · le `node_modules` de l'hôte (960 Mo, installé le 13/05) recouvrait le `pnpm install` de
+#     l'image : le bundle web servi était compilé avec Angular 20.3.18, le lockfile dit 20.3.27.
+# Le `.dockerignore` de la racine règle les deux (docs/fiabilite-coupe-circuit-2026-09/39-…).
+# Ce contrôle ne REFUSE rien : il dit, avant la construction, que le fichier manque ou ne couvre
+# plus ces deux entrées — c'est l'information qui a manqué pendant quatre mois et demi.
+contexte_de_construction_sain() {
+  local f="$RACINE/.dockerignore" manque=""
+  if [ ! -f "$f" ]; then
+    manque=".dockerignore absent"
+  else
+    grep -qxE '[[:space:]]*/?\.git/?[[:space:]]*' "$f" || manque=".git"
+    grep -qxE '[[:space:]]*\*\*/node_modules/?[[:space:]]*' "$f" || manque="${manque:+$manque, }**/node_modules"
+  fi
+  [ -z "$manque" ] && return 0
+  dire "⚠️  Contexte de construction NON PROTÉGÉ ($manque) : la construction repartira de zéro après le git pull,"
+  dire "   et le node_modules de l'hôte recouvrira celui de l'image (constat du 30/09, doc 39 de fiabilite-coupe-circuit-2026-09)."
+  return 1
+}
+
 # `--repli` : les images étiquetées redeviennent `latest`, puis on recrée — même garde.
 reprendre_repli() {
   local image
@@ -699,8 +726,14 @@ main() {
     git pull --ff-only origin "$BRANCHE"
     dire "HEAD : $(git log --oneline -1)"
     sha="$(git rev-parse --short HEAD)"
+    # ── 2 bis. le contexte de construction (30/09) — le fichier arrive avec le pull, d'où ici ──
+    if [ "$MARKETING_SEUL" -eq 0 ]; then contexte_de_construction_sain || true; fi
 
     # ── 3. CONSTRUIRE — long, et sans effet sur ce qui tourne ──
+    #
+    # Juste après une pré-construction du même commit, elle doit être ENTIÈREMENT en cache
+    # (quelques secondes). Si elle rejoue l'étape builder, le contexte a changé : voir
+    # `contexte_de_construction_sain`.
     #
     # ⚠️ `--env-file .env.prod` est OBLIGATOIRE : compose lit `.env` par défaut pour
     # l'interpolation, et `env_file:` dans le service ne s'applique qu'au runtime du conteneur.

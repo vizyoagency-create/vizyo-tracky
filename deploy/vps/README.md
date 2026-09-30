@@ -53,7 +53,12 @@ Voir `docs/DEPLOYMENT-VPS.md` pour la procédure complète.
    chemin, garde comprise.
 3. **Le code** — `git checkout` + `git pull --ff-only`.
 4. **La construction** — les images de la production applicative et du site marketing sont
-   construites sans effet sur ce qui tourne.
+   construites sans effet sur ce qui tourne. Le contexte est la racine du dépôt, **filtrée par
+   `.dockerignore`** : les fichiers suivis par git, sans `.git` ni le `node_modules` de l'hôte.
+   Juste après une pré-construction du même commit, elle est donc **entièrement en cache**
+   (quelques secondes). Si elle rejoue `COPY . .` et les `pnpm … build`, le contexte a changé —
+   le script le dit (« Contexte de construction NON PROTÉGÉ ») quand le `.dockerignore` manque.
+   Constat du 30/09 : `docs/fiabilite-coupe-circuit-2026-09/39-…`.
 5. **La garde, À NOUVEAU** — c'est maintenant que ça tue (TRK-077, ci-dessous).
 6. **La recréation** — les piles applicative et marketing sont recréées, puis leur santé est
    attendue. Un échec remet automatiquement les trois images précédentes.
