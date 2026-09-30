@@ -1724,6 +1724,22 @@ if [ -s "$JDEP" ]; then
                 printf '%s' "$l" | grep -q '"perimetre":"marketing"' || echo "     🔴 ligne SANS champ demo APRES le 20/09 : deploy.sh en place n est pas celui du depot (V36 b absente) — la demo n a PAS suivi (VPS-046)"
               fi ;;
     esac
+    # ⚠️ AJOUTE LE 2026-09-30 (VPS-M130, angle mort n° 5 du 29/09) : `force=true` etait imprime
+    # sans etre croise avec les deux gardes qu il franchit. Le 28/09 06:22 UTC = 08:22 Paris est
+    # passe dans la fenetre 05:30-09:00 (garde du 17/09) sans que ce bloc le dise ; et le centre
+    # d alerte du 30/09 a relie 3 `force=true` a 3 passages d automatisation TUES (TRK-077). On
+    # lit l heure de FIN (`at`) : la recreation a lieu dans les ~60 s qui la precedent.
+    if [ "$(printf '%s' "$l" | sed -n 's/.*"force":\([a-z]*\).*/\1/p')" = "true" ]; then
+      _hm=$(TZ=Europe/Paris date -d "$at" '+%H%M' 2>/dev/null); _mn=$(date -u -d "$at" '+%M' 2>/dev/null)
+      if [ -z "$_hm" ]; then
+        echo "     ⚠️ force=true, heure illisible : croisement avec les gardes NON FAIT (VPS-M02)"
+      elif [ "$_hm" -ge 530 ] 2>/dev/null && [ "$_hm" -lt 900 ]; then
+        echo "     🟠 force=true a ${_hm%??}:${_hm#??} Paris, DANS la fenetre 05:30-09:00 (reprises du coupe-circuit) — a relier aux reprises du centre d alerte (VPS-M130)"
+      else
+        echo "     ℹ️ force=true a ${_hm%??}:${_hm#??} Paris : la garde des passages (TRK-077) est franchie aussi — un passage HH:45 en cours a-t-il ete tue ? (centre d alerte, VPS-M130)"
+      fi
+      case "$_mn" in 4[2-9]|5[0-9]) echo "     🟠 recreation a HH:$_mn UTC : pendant la fenetre d un passage d automatisation (HH:45, jusqu a 54 min)" ;; esac
+    fi
   done < "$JDEP"
   [ "$NDEP" -eq 0 ] && echo "  (aucune ligne depuis $SEUIL_48H — aucun deploiement journalise sur 48 h)"
   # Builds de tracky-api sur 24 h (par date de creation d image, meme source que le bloc
