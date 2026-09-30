@@ -1670,6 +1670,40 @@ chez un vrai client restait impossible sans le prévenir de chaque geste.
 | Liste blanche (`EMAIL_LISTE_BLANCHE`) | pour un poste de dev muni d'une vraie clé Resend : seuls ces destinataires reçoivent un courriel. **Vide en prod ET sur la démo** — la démo invite des prospects à leurs vraies adresses, une liste blanche retiendrait leurs invitations |
 | Panne de lecture | le garde-fou ne lève jamais : base illisible → l'avis PART (il ne devient pas, lui, une coupure des avis) |
 
+**Vérifié.** `pnpm verify` vert : API **4 821/4 821** (276 suites), web **987/987**, shared 423, 154 migrations
+rejouées (le schéma rejoué = `schema.prisma`), smoke 5/5 ; `ng build` sans erreur ; `verif:*` sans nouvelle entrée.
+Le premier passage avait trouvé UN défaut : `demo/import/allowlist.spec` exige une décision pour chaque colonne
+neuve — `envoisSuspendusJusqua` est IMPOSÉE à null dans l'import de la démo (le mode recette d'une société réelle
+ne suit jamais dans la démo, qui a le sien). Commit `813e2bad` sur `origin/main`.
+
+**🚀 Déployé le 30/09 à 14:17 (Paris) — `813e2bad`, SANS `--force`**, par un guetteur côté serveur (images
+pré-construites ; `deploy.sh` lancé au premier moment calme : aucun passage, aucun geste client depuis
+10 min, minute ≤ 38). Le passage de 12:45 a fini à 13:40 (trop tard pour l'heure) ; celui de 13:45 à 14:11 →
+déploiement à 14:11, API saine à 14:17 en 15 s, 0 redémarrage, démo à jour. Vérifié DANS les conteneurs :
+`dist/email/garde-fou-envois.service.js`, « Mode recette » dans le bundle de l'agenda, « Retenus » dans celui
+des e-mails ; colonne et valeur `BLOCKED` en base (prod et démo) ; 0 erreur API depuis.
+
+### Recette en prod (14:25 – 14:31) — Client test, dans Chrome, puis en base
+
+| | Résultat |
+|---|---|
+| Garde-fou COMPILÉ lancé dans le conteneur contre la vraie base (lecture seule), AVANT | tout part ; liste blanche vide en prod |
+| Menu ⋯ → « Mode recette (2 h) » | posé jusqu'à 16:25 ; bandeau violet ; une ligne « Avis retenus (mode recette) » au journal, signée « Équipe Tracky » ; l'entrée devient « Rétablir les avis — avis retenus jusqu'à 16:25 » |
+| Garde-fou compilé, PENDANT | « demande à valider », SMS au demandeur, push à l'équipe : **retenus** ; invitation, alerte : **partent** ; cdef31 (témoin) : rien de retenu |
+| Une demande par le lien public de Client test (données factices, `recette-garde-fou@demo.vizyoagency.com`) | la demande arrive (TEST-006-XX, en attente) ; accusé de réception au demandeur, « demande à valider » au valideur : **Retenu** (`BLOCKED`, aucun identifiant Resend) ; push : retenu ; **0 SMS, 0 push, 0 courriel parti** |
+| Centre des e-mails → « Retenus » | les deux lignes, pastille violette « Retenu », « ID Resend — » ; les volumes (141 envoyés sur 30 j) ne les comptent pas |
+| Refuser la demande (feuille « À valider ») | le refus au demandeur : **Retenu** aussi |
+| « Rétablir les avis » (bandeau) | bandeau retiré, toast « Avis rétablis » ; base à null ; ligne « Avis rétablis » au journal ; garde-fou compilé : tout repart |
+| Activité de Client test, fil « Agenda » | toute la séance, dans l'ordre : avis retenus, demande reçue, demande refusée, avis rétablis |
+
+**Défaut trouvé pendant cette recette** : dans la feuille « À valider », « Refuser » écrivait d'UN clic —
+et un refus de demande publique prévient le demandeur (courriel ou SMS, toujours). Le panneau du jour
+demandait déjà « Refuser cette demande ? » ; la file ne demandait rien (depuis sa création, `e5501a13`).
+→ La même modale de l'application : « Refuser cette demande ? » (« Refuser les N véhicules de cette
+demande ? », « Retirer votre demande ? » pour la sienne), le demandeur, les plaques et le créneau, et qui
+est prévenu ; focus sur « Garder ». Spec neuve `reservation-sheet.refus.spec.ts` (rien ne part avant la
+confirmation, « Garder » n'écrit rien, un refus par véhicule, public / interne / la sienne). Web 992/992.
+
 ### La démo prête à filmer
 
 Les 8 évènements de test laissés sur la démo par les recettes (« Vidange + filtres (recette — hier) »,
@@ -1735,7 +1769,9 @@ de la démo garde la trace des gestes de recette (on n'efface pas un journal).
   natif (l'invitation ne la pousse que de 8 px, c'est le doigt qui glisse) ; la modale n'écoute plus le
   curseur une fois confirmée et repart de zéro à chaque ouverture.
 - **Plus de `confirm()` natif dans l'agenda** : la modale de l'application, qui dit si le demandeur est
-  prévenu. Un refus de demande publique prévient TOUJOURS (`annoncerRefus` n'a aucune borne).
+  prévenu. Un refus de demande publique prévient TOUJOURS (`annoncerRefus` n'a aucune borne). Et
+  **refuser se confirme PARTOUT** — panneau du jour comme file « À valider » (30/09) : un refus d'un
+  clic est un courriel ou un SMS parti chez quelqu'un.
 - **Un avis de réservation ou de mission passe par le garde-fou d'envoi** (`GardeFouEnvoisService`) :
   le courriel par `EmailService.send` (un seul chemin d'envoi), le SMS au demandeur et le push
   « demande à valider » par le notifier. Un nouveau canal d'avis qui ne lui pose pas la question
