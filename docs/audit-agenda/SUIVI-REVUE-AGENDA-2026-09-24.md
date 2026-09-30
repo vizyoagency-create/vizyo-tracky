@@ -1743,6 +1743,13 @@ Design (qui en a fait le diaporama) et la vidéo : 4 min 37 s en 1080p, 37 scèn
 anneaux et étiquettes, fabriquée sur le poste sans rien installer. Aucune capture ne montre d'adresse
 réelle : tout vient de la démo, et ce qui aurait montré les administrateurs a été masqué ou écarté.
 
+**🌐 En ligne le 30/09 à 20:39** sur https://cdef31.vizyoagency.com/tuto-agenda/ (à la place de « En
+préparation ») : vidéo en 1080p ou 720p selon l'écran, 6 chapitres, les 29 étapes en image avec « Voir ce
+passage », visionneuse ; lecture réelle prouvée dans Chrome (ordinateur et téléphone). Les captures 27 et 28
+y sont publiées avec leurs masques INCRUSTÉS (« Mode recette », avis « aucun moteur IA » de la démo). Source
+du site : dépôt local `cdef31-vizyoagency` (rapatrié du VPS — fiche V38). Version téléphone de la vidéo :
+720p, 27 Mo (`Tutoriel-Agenda-Tracky-CDEF-telephone.mp4`).
+
 ---
 
 ## Ce qu'il ne faut pas défaire
