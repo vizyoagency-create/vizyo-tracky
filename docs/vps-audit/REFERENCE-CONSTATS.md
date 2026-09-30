@@ -3967,6 +3967,7 @@ réellement besoin d'un conteneur.
 
 **À ne pas faire** : ajouter une exclusion au prune nocturne « au cas où ». On ne sait pas encore
 que c'est lui, et le constat ci-dessus explique pourquoi cette certitude-là était fausse.
+- **2026-09-30 — 28ᵉ prédiction en cours** : alpine présent, tiré le 27/09 03:31:04 (71 h à 02:32) ; le ménage de 00:40 l'a **épargné** (< 72 h) ; il aura 93 h au ménage du 01/10 → retiré, puis re-tiré par la sauvegarde Verify de 03:31. Cron relu : `until=72h`.
 
 ---
 
@@ -5455,6 +5456,7 @@ confondre les deux ferait accuser le mauvais coupable.
 - **`aNePasFaire`** : ⚠️ **ne pas remonter le seuil de 48 h à 96 h pour éteindre l'alerte.** C'est
   le motif exact du correctif anti-bruit qui, sur le centre d'alerte de Tracky, a éteint l'alarme
   d'alimentation de 33 boîtiers sur 42 chaque nuit.
+- **2026-09-30 — le réveil a sonné, sur secteur** : `Vizyo-Reveil-Audits` `LastRunTime` 30/09 **04:15:01**, résultat 0, **`NumberOfMissedRuns = 0`** (après 3 refus) ; `Win32_Battery` **89 %, `BatteryStatus = 2`** (secteur). Copie hors-site : `vizyo-verify OK 22 h`, 0 paire sans copie. ⚠️ Un matin sur secteur ne prouve pas V6 : le refus venait de la **batterie**, et `powercfg /h /type full` n'est pas fait. Le seuil reste le même.
 
 ---
 
@@ -5735,6 +5737,7 @@ confondre les deux ferait accuser le mauvais coupable.
   `2ad69ac1…` se tait, **ou** si les six ne sont pas revenus au passage du **2026-09-05** (cinq
   jours de silence). Redescendre en `SURVEILLANCE` dès que le compte d'émetteurs de `wire_logs`
   repasse à 38 sur 24 h.
+- **2026-09-30 — 36 / 36 / 36, et le boîtier « jamais émis » a émis** : les trois étages s'accordent à **36** (34 hier) ; registre **10 silencieux sur 46** (bandes 0/0/0/10), **plus aucune ligne « jamais émis »** — le boîtier déclaré le 25/09 a parlé **avant** son échéance du 01/10 21:14. Fraîcheur `wire_logs` : aucun émetteur muet > 6 h. Les « 9 muets > 6 h » de `positions` sont des véhicules garés (la même ligne rend 0 côté `wire_logs`).
 
 ---
 
@@ -6258,6 +6261,18 @@ confondre les deux ferait accuser le mauvais coupable.
   d'une **autre** adresse que `179.198.198.199`, ou si `vault-dump` / `recevoir-dump` change
   d'empreinte sans commit connu ; `ACCEPTE` dès reconnaissance écrite du propriétaire, limite
   mémoire posée et copie du coffre nommée.
+- **2026-09-30 — UN QUATRIÈME DÉPOSANT, FOODSQAN, et le collecteur l'a dit trois fois** (bloc périmètre VPS-M92 :
+  *« compte NEUF : foodsqanbk »* et *« dossier NEUF : foodsqan-distant »* ; bloc `useradd` : *« 2026-09-29 19:05:02 foodsqanbk »*).
+  Lecture seule en marge : `getent passwd` → uid 995, `/bin/sh`, commentaire *« depot des dumps FOODSQAN (recevoir-dump-foodsqan
+  seulement) »* ; clé `depot-sauvegarde@foodsqan` **`command="/usr/local/bin/recevoir-dump-foodsqan",restrict`** ;
+  `/usr/local/bin/recevoir-dump-foodsqan` (2 419 o, 29/09 19:05:02, md5 `3f94adcb…`) = **copie de `recevoir-dump-dispocar` au nom et au
+  motif près** (`diff` après substitution du nom : seuls les commentaires diffèrent). Origine **`179.198.198.199`, la même** (5 sessions
+  la veille). Dépôt `/var/backups/foodsqan-distant/` (`foodsqanbk`, 700) : **2 dumps**, 180 872 o (essai 29/09 19:05:59) et **192 698 o**
+  (nuit, **30/09 02:05:56 UTC = 04:05 Paris**) — une base **pleine**, contrairement à Dispocar `prd` (1 172 o, **18ᵉ nuit**). Conductor
+  `prd` 2 582 945 o (×1,8 en une nuit). Même main, même adresse, même modèle : **c'est le catalogue qui est en retard, pas une intrusion**.
+  `ordonnancement` : `foodsqan-depot-dump` ajouté. V30 s'élargit d'un point **(g)** : reconnaître `foodsqanbk` et le rôle de dépositaire
+  d'une **troisième** application. ✅ Le conteneur `foodsqan-maquettes` a disparu le même jour (périmètre : *« DISPARU »*) — c'était un
+  déploiement **temporaire**, dont le retrait était prévu.
 
 ---
 
@@ -6729,6 +6744,7 @@ confondre les deux ferait accuser le mauvais coupable.
   l'ajouter aux sauvegardes nocturnes « par symétrie » : des fichiers statiques retouchés à la main se **versionnent**.
 - **Seuil de réescalade** : gravité 2 si le site gagne un formulaire, une base ou un second conteneur (il cesserait d'être
   reconstructible depuis une copie de fichiers).
+- **2026-09-30 — J+7, rien n'a bougé** : `Test-Path D:\www\vizyo-agency\cdef31-vizyoagency` = False ; `/opt/cdef31-vizyoagency` 20 Mo, `cdef31-site` sans limite ni sonde. Une semaine pile : la seule version de ce site vit toujours sur le VPS.
 
 ---
 
@@ -6810,6 +6826,9 @@ confondre les deux ferait accuser le mauvais coupable.
   port ouvert (v4 + v6), 0 connexion établie ; journal **12 588 016 o, dernière écriture 27/09 12:19:48** (fin de la session unique du FMC130 :
   *« 347 paquet(s) AVL · 822 s »*) ; 12 lignes `ufw.log` vers 5027 (balayages rejetés). Le seuil de réescalade n'est pas franchi ; la question
   « le test est-il fini ? » reste sans réponse — **V41 J+1**.
+- **2026-09-30 (3ᵉ passage) — inchangé, J+2** : pid 4030432, root, **62 h** (`etimes` 224 967), `session-6560.scope`, 5027 ouvert v4 + v6,
+  0 connexion ; journal **12 588 016 o**, toujours figé au 27/09 12:19:48. Le bloc VPS-M128 rend *« écoutes publiques IDENTIQUES au manifeste
+  du 2026-09-29 »* : la première comparaison a tourné, et elle ne montre aucun changement. Seuil non franchi.
 
 ---
 
@@ -6844,11 +6863,73 @@ confondre les deux ferait accuser le mauvais coupable.
 - **`aNePasFaire`** : ❌ ne pas renommer à la main les repères existants (ils seront élagués par les 3 prochains déploiements) ; ❌ ne pas
   « corriger » en retirant le `git pull` de la préversion : c'est lui qui permet la recette sur la démo avant la production.
 - **Seuil de réescalade** : gravité 2 si un repli est lancé **par le nom** et rend le mauvais code.
+- **2026-09-30 (2ᵉ passage) — inchangé, et toujours sans conséquence** : 9 déploiements en 24 h, aucun repli lancé. Les repères du jour
+  (`avant-20260930-0116-a3c99795` = `74963a853f3b`, née 29/09 19:48:47, et le web `dbfde0504491`) ressortent **« PLAUSIBLE »** (VPS-M129),
+  pas « MENT ». V43 n'est pas faite.
+
+---
+
+
+## VPS-052 — La garde du matin de `deploy.sh` a été franchie par `--force` trois fois en deux jours, et cinq `--force` en un jour ont tué trois passages
+
+- **Domaine** : déploiement · **Gravité** : 3 · **Statut** : `A_TRAITER` — tâche **V44**
+- **Vu** : 2026-09-30. Le seuil était **écrit d'avance** dans le rapport du 29/09 (§ 4) : *« un deuxième `force=true` entre 05 h 30 et
+  09 h 00 … ouvre un constat »*. Il est franchi deux fois. **Mesure** (journal T33 `/opt/tracky-deploiements/journal.jsonl`, lu par le
+  collecteur ; heure de Paris calculée par `TZ=Europe/Paris date -d`, bloc VPS-M130) :
+
+  | Fin (UTC) | Paris | sha | `force` | Fenêtre franchie | Effet mesuré (centre d'alerte) |
+  |---|---|---|:--:|---|---|
+  | 28/09 06:22:23 | **08:22** | `46ec3f32` | true | **matin** 05:30–09:00 | 29 / 29 reprises (audit CA du 29/09) |
+  | 29/09 03:37:22 | **05:37** | `0c6767c7` | true | **matin** | « passages épargnés » (`6f96d77e`) |
+  | 29/09 06:12:53 | **08:12** | `c10e27d5` | true | **matin** | idem ; nuit 14 propre (audit CA du 30/09) |
+  | 29/09 15:06:47 | 17:06 | `7d64b18c` | true | passages | **passage de 14:45 tué** (`CRITICAL TRIP_AUTOMATION`) |
+  | 29/09 16:10:54 | 18:10 | `f37cf73d` | true | passages | **passage de 15:45 tué** |
+  | 29/09 18:10:30 | 20:10 | `39187df5` | true | passages | **passage de 17:45 tué** |
+
+  Le 29/09 (jour UTC) : **8 déploiements, dont 5 forcés** ; les 3 autres (`--attendre` ou dans la bonne minute) n'ont rien tué. Le centre
+  d'alerte du 30/09 en compte « 5, dont 3 `--force` » : il ne voit pas les deux du matin.
+- **QUOI — la cause** : les deux gardes de D1 sont **larges par construction**. La garde du matin couvre **3 h 30** (05:30–09:00), parce que
+  `deploy.sh` ne sait pas **quand** tombe la prochaine reprise du coupe-circuit : il protège toute la plage où elle *pourrait* tomber. La garde
+  des passages refuse tant qu'un passage tourne (jusqu'à 54 min par heure). Un opérateur qui livre par petits lots — c'est le mode de travail
+  du 28 et du 29/09 — rencontre donc une garde à presque chaque déploiement, et `--force` devient **le chemin normal**. Chaque `--force` est
+  documenté et voulu ; c'est leur **fréquence** qui retire à la garde sa valeur : une garde qu'on franchit cinq fois par jour n'arrête plus rien.
+- **Pourquoi c'est un constat, sans dommage mesuré** : l'incident du 17/09 (API à terre 56 min → 28 véhicules coupés au réveil) est **la**
+  raison de la garde du matin. Aucune reprise n'a manqué ; mais la seule chose qui sépare un `--force` à 05:37 d'une reprise manquée, c'est
+  qu'aucun véhicule n'avait sa reprise dans la minute de recréation — **le hasard**, pas la garde.
+- **`pourquoiInvisible`** : le collecteur imprimait `force=true` sans croiser l'heure (corrigé : **VPS-M130**) ; le centre d'alerte, qui voit
+  les passages tués, ne voit pas les déploiements du matin (ils ne tuent rien de visible tant qu'aucune reprise ne tombe dessus).
+- **QUOI FAIRE — V44** (code de `deploy.sh`, hors de l'audit) : **rétrécir la garde plutôt que la franchir.** La plage 05:30–09:00 devient une
+  question précise : *« une reprise est-elle due dans les 10 min qui viennent ? »* — lue dans `vehicle_schedules` par le même
+  `docker exec … psql` borné que la garde des passages (`timeout 20`). Hors de ces 10 min, pas de refus ; dedans, refus **même avec `--force`**
+  sauf `--force-reprise`, un second drapeau au nom explicite. Gain : `--force` redevient rare, et la protection du 17/09 devient exacte au lieu
+  d'être large. Risque : faible (harnais `deploy.test.sh`) ; contrepartie : une requête de plus au départ. *Variante à coût nul, en attendant* :
+  `--attendre` plutôt que `--force` hors urgence — c'est ce qu'ont fait `ba07aa2a` (20:06) et `a3c99795` (01:22), sans rien tuer.
+- **`aNePasFaire`** : ❌ ne pas retirer `--force` : c'est la sortie d'urgence d'un correctif qui doit passer. ❌ ne pas élargir la garde : elle
+  est déjà trop large, c'est pour ça qu'on la franchit. ❌ ne pas lire ce constat comme un reproche : chaque `--force` est écrit dans son
+  commit (« passages épargnés », « déployé 17:06 sur ordre du propriétaire »).
+- **Seuil de réescalade** : **gravité 1** à la première reprise manquée ou tardive (> 10 min) pendant un déploiement forcé ; `APPLIQUE` quand
+  7 jours de journal T33 ne portent plus aucun `force=true` dans la fenêtre du matin, ou quand V44 est déployée.
 
 ---
 
 
 ## Constats de méthode (sur l'audit lui-même)
+
+### VPS-M130 — Le journal des déploiements imprimait `force=true` sans dire quelle garde avait été franchie
+
+- **Domaine** : méthode · **Gravité** : 3 · **Statut** : `APPLIQUE` (2026-09-30 — bloc T33, banc sur le journal réel)
+- **Vu** : 2026-09-30, **angle mort n° 5 du rapport du 29/09** (1ᵉʳ report). **Mesure** : le 28/09 06:22 UTC = **08:22 Paris**, un déploiement
+  forcé a franchi la garde du matin ; le collecteur l'a imprimé `force=true` comme les autres lignes, et c'est la lecture humaine du rapport
+  qui l'a vu. Le 29/09, **cinq** lignes `force=true`, dont deux dans la fenêtre du matin.
+- **QUOI** : le bloc T33 lisait chaque champ séparément, sans croiser l'heure. L'heure est en UTC ; les deux gardes sont en heure de Paris
+  (matin) et en minutes d'horloge (passages HH:45).
+- **Correctif** : pour chaque ligne `force=true`, le bloc calcule l'heure de Paris de la fin (`TZ=Europe/Paris date -d "$at" +%H%M`) : 🟠 entre
+  05:30 et 09:00 (*« DANS la fenêtre … à relier aux reprises du centre d'alerte »*), ℹ️ ailleurs (*« la garde des passages est franchie aussi »*) ;
+  et 🟠 si la minute de fin tombe entre HH:42 et HH:59. Une heure illisible donne *« croisement NON FAIT »*, jamais un silence (VPS-M02).
+  **Banc** (VPS, 1 s, sur les 8 dernières lignes réelles) puis collecte : 3 lignes 🟠 matin (28/09 08:22, 29/09 05:37 et 08:12), 3 lignes ℹ️
+  (17:06, 18:10, 20:10) — exactement les 3 passages tués que le centre d'alerte a comptés. `bash -n` OK.
+- **Reste ouvert** : la minute de fin n'est qu'un indice — la recréation précède la fin de ~60 s, et un passage peut durer 54 min : le vrai
+  croisement se fait avec la table des passages, côté centre d'alerte.
 
 ### VPS-M129 — « 🔴 le repli MENT », deuxième fausse alerte : la vérification supposait qu'un build produit une image neuve, et que le nom du repère dit le code sortant
 
@@ -7110,6 +7191,7 @@ confondre les deux ferait accuser le mauvais coupable.
   heure en UTC — angle mort n° 4 du 23/09.
 - **`aNePasFaire`** : ❌ ne pas lire ces sessions comme une anomalie : ~3 par passage, c'est le fond de VPS-032. ❌ Ne pas
   déplacer `LimitesVitesse` pour « éviter l'audit » : c'est l'audit qui est en retard quand ils se croisent.
+- **2026-09-30 — pas de collision, par attente encore** : `LimitesVitesse` 04:30:01 Paris, `Ready` à 04:30:26 ; collecte partie à 04:30:44. Déclencheurs toujours `T04:30:00` : **V40 non faite**. 1 session étrangère pendant la collecte (bloc « pendant MA collecte »).
 
 ### VPS-M114 — Le rapport a publié l'`iowait` sous le nom de steal : « 0,24 % de moyenne » pour un steal réel de 2,76 %
 
@@ -9960,6 +10042,7 @@ qui rend le budget tenable *et* garde une contrainte réelle sur le poste qui d�
 mesurer » : ce serait **+8 s sur une collecte déjà hors budget**, pour un dossier de développement
 sans enjeu de production. ⚠️ **Et ne pas relever le budget en silence** : un budget modifié sans que
 le rapport le dise transforme un dépassement en conformité, sans que rien n'ait changé.
+- **2026-09-30 — 38ᵉ dépassement, et la charge a franchi 2** : **155 s** (1,7×), charge **1,12 → 2,88**. Le collecteur ventile : audit **17,9 %** de la machine, `dockerd` 3,7 %, **inactif 40,1 %**, iowait 12,4 % → *« la charge annoncée est une FILE D'ATTENTE, pas une consommation »*. La machine était déjà à 1,12 au départ (R=2), le 30/09 porte un déploiement à 01:22 et `/opt` a mis 39 s (partiel 21 / 22, `maalem` > 12 s, **9ᵉ matin**). Pas de collision : `LimitesVitesse` était finie (04:30:01 → Ready à 04:30:26 Paris) avant le départ. V5 non tranché, **24 jours**.
 
 ---
 
