@@ -1712,6 +1712,37 @@ CarcassonneCarcassonne » ×2…) ont été retirés, après sauvegarde JSON des
 réalistes (« Ramassage secteur nord », « Demande publique → Albi », « Trajet récurrent »…). Le journal
 de la démo garde la trace des gestes de recette (on n'efface pas un journal).
 
+## 2026-09-30, soir — « Refuser » confirmé en prod, et le tutoriel de l'agenda
+
+### Le déploiement de 19:18 — `bd6b35f5`, SANS `--force`
+
+Même guetteur côté serveur que le midi (images pré-construites, `deploy.sh` au premier moment calme :
+aucun passage, aucun geste client depuis 10 min, minute ≤ 36). `deploy.sh` lancé à 19:13:58 ; API saine
+à 19:18:15 (10 s, 0 redémarrage), démo saine à 19:18:43 (15 s). Repère de repli :
+`avant-20260930-1713-45367344` (l'image qui tournait depuis 14:17).
+⚠️ Le `git pull` a emporté `origin/main` ENTIER, donc aussi `45367344` (« la ligne d'urgence 24 h/24 »,
+poussé par une autre session à 16:39) : aucune migration dedans, 0 erreur API depuis.
+Vérifié DANS les conteneurs : `chunk-ZRLAUWUQ.js` contient « de cette demande ? » dans `tracky-web` ET
+`tracky-demo-web` ; 0 erreur API (niveaux 50/60) depuis la recréation ; 0 client `docker` resté ouvert.
+
+### Recette dans Chrome, sur la démo (19:21, Transports Méridien)
+
+| | Résultat |
+|---|---|
+| Version servie | le `main-*.js` chargé = celui de `index.html` en réseau ; le service worker n'a qu'UNE version, celle du déploiement |
+| Demandes → À valider → GD-057-AG (« Association Les Amis du Quartier ») → Refuser | la modale : « Refuser cette demande ? », « « Association Les Amis du Quartier » · GD-057-AG · ven. 9 oct. 08:00 → 18:00 », « Le créneau reste libre. Le demandeur (lien public) est prévenu (courriel ou SMS). **Irréversible.** », Garder / Refuser la demande |
+| Garder | la modale se ferme, la demande reste « À valider (1) » ; réseau : seul `POST /api/activity/batch` (le journal d'usage), **aucune écriture** |
+
+Le refus confirmé n'a volontairement pas été rejoué : la demande reste sur la démo pour le tournage. Ce
+chemin est couvert par `reservation-sheet.refus.spec.ts`, et l'appel serveur par la recette de 14:25.
+
+### Le tutoriel (hors dépôt : `vizyo-tracky/tuto-agenda-cdef/`)
+
+29 captures (01 → 29 ; la 08 est celle de la modale ci-dessus), un scénario, le prompt donné à Claude
+Design (qui en a fait le diaporama) et la vidéo : 4 min 37 s en 1080p, 37 scènes, sous-titres, zooms,
+anneaux et étiquettes, fabriquée sur le poste sans rien installer. Aucune capture ne montre d'adresse
+réelle : tout vient de la démo, et ce qui aurait montré les administrateurs a été masqué ou écarté.
+
 ---
 
 ## Ce qu'il ne faut pas défaire
