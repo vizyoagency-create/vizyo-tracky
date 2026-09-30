@@ -95,6 +95,21 @@ describe('ConfirmModalComponent — confirmation par glissement', () => {
     expect(confirmed).toHaveBeenCalledTimes(1);
   });
 
+  it('30/09 — un VRAI bouton : le libellé sur la piste, la pastille, le doigt qui montre le geste ; « Envoi… » pendant l’envoi', () => {
+    const { fixture } = monter('Couper le moteur ?');
+    fixture.componentRef.setInput('slideLabel', 'Glissez pour couper le moteur');
+    fixture.detectChanges();
+    const n = fixture.nativeElement as HTMLElement;
+    expect(n.querySelector('.cm-glisse-texte')?.textContent?.trim()).toBe('Glissez pour couper le moteur');
+    expect(n.querySelector('.cm-glisse-bouton')).not.toBeNull();
+    expect(n.querySelector('.cm-glisse-doigt')).not.toBeNull();
+    expect(n.querySelector('.cm-glisse-aide')?.textContent).toContain('faites-le glisser jusqu’au bout');
+    fixture.componentRef.setInput('loading', true);
+    fixture.detectChanges();
+    expect(n.querySelector('.cm-glisse-texte')?.textContent?.trim()).toBe('Envoi…');
+    expect(n.querySelector('.cm-glisse')?.classList).toContain('cm-glisse--envoi');
+  });
+
   it('conserve le bouton classique sur les autres modales de l’application', () => {
     const fixture = TestBed.createComponent(ConfirmModalComponent);
     fixture.componentRef.setInput('open', true);

@@ -57,6 +57,7 @@ import { AgendaIaViewComponent } from './ia/agenda-ia-view.component';
 import { AgendaParcViewComponent } from './parc/agenda-parc-view.component';
 import { ReservationQrDialogComponent } from './reservation-qr-dialog.component';
 import { ReorganisationSheetComponent, type PresetReorganisation } from './sheets/reorganisation-sheet.component';
+import { ConfirmModalComponent } from '../../shared/ui/confirm-modal/confirm-modal.component';
 import { AiJobPillComponent } from './ai-job-pill.component';
 import { AiJobService, type AiJob } from '../../core/services/ai-job.service';
 import { AuthService } from '../../core/services/auth.service';
@@ -67,6 +68,7 @@ import { AgendaSyncService } from './agenda-sync.service';
 import {
   addMonths,
   demandeNonReaffectable,
+  demandeurPrevenuDeLAnnulation,
   dureeEnJours,
   estUneEcheance,
   eventColor,
@@ -143,7 +145,7 @@ function groupeReservationId(ev: VehicleEventDto): string | null {
   selector: 'app-agenda',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [FormsModule, LucideAngularModule, DatePipe, GroupBadgeComponent, AgendaCalendarComponent, ReservationSheetComponent, AgendaAgentSettingsSheetComponent, AgendaIaViewComponent, AgendaParcViewComponent, AiJobPillComponent, VehicleLinkDirective, PlanUpsellComponent, MissionsPanelComponent, ReservationQrDialogComponent, ReorganisationSheetComponent],
+  imports: [FormsModule, LucideAngularModule, DatePipe, GroupBadgeComponent, AgendaCalendarComponent, ReservationSheetComponent, AgendaAgentSettingsSheetComponent, AgendaIaViewComponent, AgendaParcViewComponent, AiJobPillComponent, VehicleLinkDirective, PlanUpsellComponent, MissionsPanelComponent, ReservationQrDialogComponent, ReorganisationSheetComponent, ConfirmModalComponent],
   template: `
     <div class="flex flex-col gap-5">
       <app-plan-upsell feature="agenda" />
@@ -1116,6 +1118,21 @@ function groupeReservationId(ev: VehicleEventDto): string | null {
       (closed)="reorgSheetOpen.set(false); reorgPreset.set(null)"
       (ouvrirIa)="reorgSheetOpen.set(false); reorgPreset.set(null); vue.set('ia')"
       (applique)="onReservationChanged()" />
+    <!-- 30/09 : les gestes irréversibles de l'agenda se confirment dans la modale de l'application —
+         plus la boîte native du navigateur (« app-tracky… indique », OK / Annuler), relevée par le
+         propriétaire. Le créneau et la plaque y sont rappelés ; ce qui part (courriel ou non) est dit. -->
+    <app-confirm-modal
+      [open]="confirmation() !== null"
+      [title]="confirmation()?.titre ?? ''"
+      [etat]="confirmation()?.etat"
+      [consequences]="confirmation()?.consequences"
+      [irreversible]="true"
+      [danger]="true"
+      [confirmLabel]="confirmation()?.libelle ?? 'Confirmer'"
+      cancelLabel="Garder"
+      [loading]="confirmationEnCours()"
+      (confirmed)="confirmer()"
+      (cancelled)="confirmation.set(null)" />
   `,
   styles: [`
     /* Cibles tactiles au doigt — critère de recette « iPhone 390 px : cibles ≥ 44 px ».
@@ -3299,9 +3316,20 @@ export class AgendaComponent implements OnInit {
     }
   }
 
-  protected async deleteEvent(ev: VehicleEventDto): Promise<void> {
+  protected deleteEvent(ev: VehicleEventDto): void {
     if (!this.canManage()) return;
-    if (!confirm(`Supprimer « ${ev.title} » ?`)) return;
+    this.confirmation.set({
+      titre: 'Supprimer cet évènement ?',
+      etat: this.resumeConfirmation(ev),
+      consequences:
+        "Il disparaît de l'agenda et de l'historique du véhicule" +
+        (ev.blocksVehicle ? ' ; le véhicule redevient disponible sur ce créneau.' : '.'),
+      libelle: 'Supprimer',
+      action: () => this.supprimerEvenement(ev),
+    });
+  }
+
+  private async supprimerEvenement(ev: VehicleEventDto): Promise<void> {
     this.busyId.set(ev.id);
     try {
       await firstValueFrom(this.api.deleteEvent(ev.id));
@@ -4123,9 +4151,20 @@ export class AgendaComponent implements OnInit {
   }
 
   /** #4 — Annuler une réservation depuis le panneau jour (annulable même validée). T18 : reservations_manage, comme `/cancel`. */
-  protected async cancelDayReservation(ev: VehicleEventDto): Promise<void> {
+  protected cancelDayReservation(ev: VehicleEventDto): void {
     if (!this.canValidate()) return;
-    if (!confirm(`Annuler la réservation « ${ev.title} » ?`)) return;
+    this.confirmation.set({
+      titre: 'Annuler cette réservation ?',
+      etat: this.resumeConfirmation(ev),
+      consequences:
+        'Le véhicule est libéré sur ce créneau. ' +
+        (demandeurPrevenuDeLAnnulation(ev) ? 'Le demandeur (lien public) est prévenu par courriel.' : "Aucun courriel n'est envoyé."),
+      libelle: 'Annuler la réservation',
+      action: () => this.annulerReservation(ev),
+    });
+  }
+
+  private async annulerReservation(ev: VehicleEventDto): Promise<void> {
     this.busyId.set(ev.id);
     try {
       await firstValueFrom(this.api.cancelReservation(ev.id));
@@ -4138,6 +4177,44 @@ export class AgendaComponent implements OnInit {
     } finally {
       this.busyId.set(null);
     }
+  }
+
+  /**
+   * 30/09 — la confirmation EN COURS (modale de l'application) : son texte et le geste qu'elle
+   * déclenche. `null` = fermée. Un seul geste à la fois ; la modale reste ouverte, bouton en attente,
+   * le temps de l'appel, puis se ferme — succès ou échec (le toast dit lequel).
+   */
+  protected readonly confirmation = signal<{
+    titre: string;
+    etat: string;
+    consequences: string;
+    libelle: string;
+    action: () => Promise<void>;
+  } | null>(null);
+  protected readonly confirmationEnCours = signal(false);
+
+  protected async confirmer(): Promise<void> {
+    const c = this.confirmation();
+    if (!c || this.confirmationEnCours()) return;
+    this.confirmationEnCours.set(true);
+    try {
+      await c.action();
+    } finally {
+      this.confirmationEnCours.set(false);
+      this.confirmation.set(null);
+    }
+  }
+
+  /** « « Trajet récurrent » · AB-123-CD · mer. 30 sept. 08:00 → 12:00 » — ce qu'on s'apprête à toucher. */
+  private resumeConfirmation(ev: VehicleEventDto): string {
+    const debut = new Date(ev.startAt);
+    const fin = ev.endAt ? new Date(ev.endAt) : null;
+    let creneau = Number.isNaN(debut.getTime()) ? '' : formatDate(debut, 'EEE d MMM HH:mm', 'fr');
+    if (creneau && fin && !Number.isNaN(fin.getTime())) {
+      const memeJour = formatDate(debut, 'yyyy-MM-dd', 'fr') === formatDate(fin, 'yyyy-MM-dd', 'fr');
+      creneau += ` → ${formatDate(fin, memeJour ? 'HH:mm' : 'EEE d MMM HH:mm', 'fr')}`;
+    }
+    return [`« ${ev.title} »`, ev.vehiclePlate ?? null, creneau || null].filter(Boolean).join(' · ');
   }
 
   /** ⚙️ Ouvre les paramètres de l'agent (config par société via le sélecteur global). */
