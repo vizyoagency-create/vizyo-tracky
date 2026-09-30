@@ -11,6 +11,15 @@
 #   RETENTION_DAYS         = 30 (defaut)
 #   RCLONE_REMOTE          = (optionnel, ex: 'b2:tracky-backups')
 #                            Si defini, upload via rclone vers ce remote.
+#
+# ── V34 (CLAUDE.md) : la commande docker est BORNÉE (2026-10-01) ──────────────────────────────
+# pg_dump dure 33 à 42 s d'ordinaire (journal du 25 au 30/09/2026) — et 64 min le 20/09, quand
+# l'hébergeur avait retiré 80–90 % du CPU de la VM (doc 36). La borne ne presse pas la sauvegarde :
+# elle l'empêche de rester bloquée. Un service `oneshot` qui ne rend jamais la main (aucun
+# `TimeoutStartSec` : infini) empêche TOUTES les sauvegardes suivantes — systemd ne relance pas
+# ce qui tourne encore —, et sans un bruit.
+# Code de sortie : 0 = archive complète ; 124 = pg_dump interrompu par la borne ; autre = échec.
+# Dans les deux derniers cas, AUCUNE archive n'est gardée (voir l'étape 1).
 
 set -euo pipefail
 
@@ -20,6 +29,7 @@ RETENTION_DAYS="${RETENTION_DAYS:-30}"
 API_URL="${API_URL:-}"
 INTERNAL_API_SECRET="${INTERNAL_API_SECRET:-}"
 RCLONE_REMOTE="${RCLONE_REMOTE:-}"
+BORNE_DUMP_S="${BORNE_DUMP_S:-10800}"   # 3 h : ~300 fois l'ordinaire, ~3 fois le pire mesuré
 
 TIMESTAMP=$(date +%Y%m%d-%H%M%S)
 FILENAME="tracky_prod_${TIMESTAMP}.sql.gz"
@@ -53,7 +63,9 @@ post_health() {
 }
 EOF
 )
-  curl -fsS -X POST \
+  # --max-time : une API qui accepte la connexion sans jamais répondre bloquerait ce service —
+  # et donc les sauvegardes suivantes — exactement comme un pg_dump sans borne.
+  curl -fsS --max-time 30 -X POST \
     -H "Content-Type: application/json" \
     -H "X-Internal-Secret: $INTERNAL_API_SECRET" \
     -d "$payload" \
@@ -63,9 +75,24 @@ EOF
 
 trap 'post_health "FAILED" 0 0 "$DESTINATION" "$FILENAME" "Backup script crashed"' ERR
 
-# 1) pg_dump local
-docker exec tracky-postgres pg_dump -U tracky tracky_prod | gzip > \
-  "${BACKUP_DIR}/${FILENAME}"
+# 1) pg_dump local — dans un fichier PARTIEL, renommé seulement quand le dump est complet.
+#    Un dump interrompu (borne, erreur, Postgres arrêté) laissait sinon une archive gzip VALIDE
+#    d'un SQL TRONQUÉ, au nom du jour : elle passait pour une sauvegarde, et la rotation la gardait.
+PARTIEL="${BACKUP_DIR}/${FILENAME}.partiel"
+rc=0
+timeout "$BORNE_DUMP_S" docker exec tracky-postgres pg_dump -U tracky tracky_prod | gzip > "$PARTIEL" || rc=$?
+if [ "$rc" -ne 0 ]; then
+  rm -f "$PARTIEL"
+  if [ "$rc" -eq 124 ]; then
+    RAISON="pg_dump interrompu : borne de ${BORNE_DUMP_S} s dépassée (V34) — aucune archive gardée"
+  else
+    RAISON="pg_dump en échec (code $rc) — aucune archive gardée"
+  fi
+  echo "[$(date)] ERREUR : $RAISON"
+  post_health "FAILED" 0 "$(( $(date +%s%3N) - START_MS ))" "$DESTINATION" "$FILENAME" "$RAISON"
+  exit "$rc"
+fi
+mv "$PARTIEL" "${BACKUP_DIR}/${FILENAME}"
 
 SIZE=$(stat -c%s "${BACKUP_DIR}/${FILENAME}")
 
@@ -81,8 +108,9 @@ if [ -n "$RCLONE_REMOTE" ]; then
   fi
 fi
 
-# 3) Rotation locale
+# 3) Rotation locale — et les partiels qu'un arrêt brutal (SIGKILL, redémarrage) aurait laissés.
 find "$BACKUP_DIR" -name "tracky_prod_*.sql.gz" -mtime +${RETENTION_DAYS} -delete
+find "$BACKUP_DIR" -name "tracky_prod_*.sql.gz.partiel" -mtime +0 -delete
 
 # 4) Healthcheck API (succes)
 END_MS=$(date +%s%3N)

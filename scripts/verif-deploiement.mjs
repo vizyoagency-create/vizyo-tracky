@@ -19,7 +19,13 @@
  * └───────────────────────────────────────────────────────────────────────────┘
  *
  * CE QUE CE SCRIPT FAIT : trouver un bash (Git Bash sur Windows, `bash` ailleurs) et
- * lancer le harnais. Le VPS et la CI n'ont pas Windows ; le poste du propriétaire, si.
+ * lancer les harnais. Le VPS et la CI n'ont pas Windows ; le poste du propriétaire, si.
+ *
+ * Depuis le 2026-10-01, un second harnais : `deploy/vps/scripts-planifies.test.sh` joue
+ * `backup-db.sh` et `demo-refresh.sh` (services systemd `oneshot`, sans limite de durée) avec un
+ * faux `docker` qui répond, échoue ou se BLOQUE — règle V34 : aucune commande docker sans borne,
+ * et jamais une archive de sauvegarde tronquée gardée. Les deux harnais tournent toujours
+ * jusqu'au bout ; le code de sortie est non nul si l'un des deux échoue.
  */
 import { spawnSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
@@ -41,9 +47,15 @@ function trouverBash() {
 }
 
 const bash = trouverBash();
-const r = spawnSync(bash, ['deploy/vps/deploy.test.sh'], {
-  stdio: 'inherit',
-  // Git Bash sans PATH POSIX ne trouve ni `sed` ni `cut` : on le lui donne, il sait le lire.
-  env: { ...process.env, PATH: process.platform === 'win32' ? `/usr/bin:/bin:${process.env.PATH ?? ''}` : process.env.PATH },
-});
-process.exit(r.status ?? 1);
+const HARNAIS = ['deploy/vps/deploy.test.sh', 'deploy/vps/scripts-planifies.test.sh'];
+let code = 0;
+for (const harnais of HARNAIS) {
+  const r = spawnSync(bash, [harnais], {
+    stdio: 'inherit',
+    // Git Bash sans PATH POSIX ne trouve ni `sed` ni `cut` : on le lui donne, il sait le lire.
+    env: { ...process.env, PATH: process.platform === 'win32' ? `/usr/bin:/bin:${process.env.PATH ?? ''}` : process.env.PATH },
+  });
+  if ((r.status ?? 1) !== 0) code = r.status ?? 1;
+  console.log('');
+}
+process.exit(code);

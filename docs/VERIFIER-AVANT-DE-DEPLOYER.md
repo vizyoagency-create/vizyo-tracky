@@ -112,7 +112,9 @@ déploie rien. Une fois déployé, vérifiez que l'API a réellement démarré �
 peut être « up » tout en redémarrant en boucle :
 
 ```bash
-docker compose -f deploy/vps/docker-compose.prod.yml logs api --tail 100 | grep -icE "UnknownDependencies|Nest can't resolve"
+timeout 20 docker logs --tail 2000 tracky-api 2>&1 | grep -icE "UnknownDependencies|Nest can't resolve"
 ```
+
+(Borné, comme toute commande `docker` sur le VPS — règle V34 de `CLAUDE.md`.)
 
 Zéro attendu. Puis `curl -s -o /dev/null -w "%{http_code}" https://<api>/api/health` → 200.

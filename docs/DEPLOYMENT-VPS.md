@@ -100,10 +100,14 @@ aucune migration et ne peut pas être combiné avec `--avec-demo`.
 
 Un conteneur « up » peut redémarrer en boucle. Trois contrôles.
 
+> 🛑 **Chaque commande `docker` de cette page est bornée** (règle V34 de `CLAUDE.md`) : `timeout`
+> devant, `--tail` sur les journaux, jamais `-f`. Un client `docker` sans borne lancé depuis une
+> session SSH peut lui survivre et faire tourner dockerd à 100 % pendant des jours (VPS-016).
+
 **a) Aucune erreur de dépendance au démarrage :**
 
 ```bash
-docker logs tracky-api 2>&1 | grep -icE "UnknownDependencies|Nest can't resolve"
+timeout 20 docker logs --tail 2000 tracky-api 2>&1 | grep -icE "UnknownDependencies|Nest can't resolve"
 ```
 
 → **0 attendu**.
@@ -126,10 +130,10 @@ curl -s https://app-tracky.vizyoagency.com/api/health
 que l'écho :
 
 ```bash
-docker exec tracky-postgres psql -U tracky -d tracky_prod \
+timeout 20 docker exec tracky-postgres psql -U tracky -d tracky_prod \
   -tAc "select migration_name, finished_at is not null from _prisma_migrations
         where migration_name >= '20260809' order by migration_name"
-docker logs tracky-api 2>&1 | grep -iE "migration|prisma" | tail -20
+timeout 20 docker logs --tail 2000 tracky-api 2>&1 | grep -iE "migration|prisma" | tail -20
 ```
 
 → les quatre migrations présentes avec `finished_at` renseigné, et
@@ -156,7 +160,7 @@ Conséquence pratique : **l'API n'est joignable que par Traefik ou depuis le ré
 Pour un diagnostic hors Traefik, passer par le conteneur :
 
 ```bash
-docker exec tracky-api wget -qO- http://localhost:3000/api/health
+timeout 20 docker exec tracky-api wget -qO- http://localhost:3000/api/health
 ```
 
 > ⚠️ **Ce VPS est partagé.** Il héberge aussi `maalem`, `dronely`, `vizyo-verify` et
@@ -187,8 +191,8 @@ Deux façons, par le même script.
 bash /opt/vizyo-tracky/deploy/vps/deploy.sh --repli avant-20260913-1130-a8f9575e
 ```
 
-L'étiquette est celle que le script a affichée en déployant (« repère posé : … ») ; `docker images
-tracky-api` les liste, il y en a trois par image. Le repli passe par la garde comme un déploiement.
+L'étiquette est celle que le script a affichée en déployant (« repère posé : … ») ; `timeout 20
+docker images tracky-api` les liste, il y en a trois par image. Le repli passe par la garde comme un déploiement.
 
 **Au code d'avant** — un déploiement de `main` (ou de n'importe quel commit poussé) :
 
