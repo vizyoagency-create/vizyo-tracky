@@ -1418,6 +1418,7 @@ du propriétaire).
 **Écart qui existait déjà, laissé en l'état** : `apply` et `dismiss` à l'unité ne vérifient pas le droit
 de gérer les réservations du véhicule (`apply` vérifie seulement l'accès), et `list()` n'est pas borné
 aux véhicules accessibles. Le lot est désormais plus strict que le geste unitaire. À traiter à part.
+**→ Traité le 30/09 (section suivante), en production à 03:21.**
 
 **Fusion avec le correctif du filtre société (même soir).** Le correctif de la session parallèle
 (`f4bf992a` + `0e8e8169`, ci-dessus) a été relu fichier par fichier, puis rejoué SUR la relecture : deux
@@ -1464,6 +1465,109 @@ service worker, comme à chaque déploiement) ; la seconde a pris `main-6YJBPLQT
 | Client test (IA coupée) | « Réorganiser des réservations », pas d'onglet, aucune mention de l'agent, **aucune** requête de propositions |
 | journaux de l'API depuis le déploiement | aucune erreur ; une dégradation sans rapport (HD-584-BF en TCP seul, déjà connue) |
 
+## 2026-09-30, nuit — le droit par véhicule sur les propositions, et le ménage des doublons chez cdef31
+
+### La commande
+
+> « oui fais le 2 et nettoie les 181 doublons, et aussi fusionne etc les corrections de l'autre chat
+> (Ignore stale SA fleet filter for non-…) ! »
+
+Trois choses :
+
+1. **« le 2 »** — l'écart relevé à la relecture de la piste 3 (voir plus haut, « Écart qui existait
+   déjà ») : Réserver / Écarter une proposition à l'unité ne vérifiait pas le droit de gérer les
+   réservations de SON véhicule, et la liste montrait les propositions de tout le parc.
+2. **« nettoie les 181 doublons »** — les propositions en attente qui en chevauchent une autre du même
+   véhicule, créées avant la règle de non-chevauchement du 29/09.
+3. **« fusionne … les corrections de l'autre chat »** — déjà fait : le correctif du filtre société
+   (`f4bf992a` + `0e8e8169`) a été fusionné et déployé le 29/09 à 22:06 (section précédente). La
+   session parallèle n'a plus rien produit depuis 21:27 : rien d'autre à fusionner.
+
+### Point 2 — réserver ou écarter une proposition, c'est gérer SON véhicule
+
+| Avant | Maintenant |
+|---|---|
+| `apply` (Réserver) vérifiait l'accès au véhicule, pas le droit de gérer ses réservations | `exigerGestionDuVehicule` : la règle des réservations (`gereLesReservationsDe`, le scope le plus spécifique gagne) ; 403 qui nomme la plaque, rien n'est pris |
+| `dismiss` (Écarter) ne regardait que la société | même périmètre véhicule (`assertVehicleAccess`) et même droit que Réserver |
+| `list` (grille, badge de l'Assistant IA) montrait les propositions de tout le parc | bornée aux véhicules VISIBLES (`vehiculesAccessibles`, le périmètre de `scopedWhere`) ; le lot de Réorganiser aussi |
+| boutons ✓ ✗, « Tout réserver / Tout écarter » sous un droit GLOBAL | contrôlés VÉHICULE par véhicule (`perms.can('reservations_manage', vehicleId)`), dans l'Assistant IA et le panneau du jour, boutons et méthodes |
+
+Un gestionnaire qui ne peut que DEMANDER sur un groupe voyait les boutons sur tout le parc, et
+réservait fermement ou écartait à l'unité ce que Réorganiser lui refusait en lot. Le lot était plus
+strict que le geste unitaire : c'est fini.
+
+### Le nettoyage des doublons
+
+`POST agenda/agent/proposals/nettoyer-chevauchements` — **super-admin seulement** (geste de
+maintenance), avec les garde-fous de Réorganiser : simulation par défaut ; à l'écriture, `ids` = le
+lot montré, OBLIGATOIRE ; lot recalculé puis restreint à `ids` ; écriture sous condition « en
+attente » ; statuts relus après coup ; UNE ligne de journal pour la société, qui dit pourquoi.
+
+Dans chaque groupe de propositions en attente qui se chevauchent pour un véhicule, **la plus sûre
+reste** (`propositionsEnChevauchement`) : validée par l'IA d'abord, puis la plus confiante, puis la
+plus ancienne (vue le plus longtemps), puis la plus tôt. Une chaîne A–B–C (A chevauche B, B chevauche
+C, pas A et C) garde A et C quand A est la plus sûre. **Les créneaux déjà pris** (réservation ferme,
+immobilisation — la règle de `isVehicleFree`) sont gardés d'office : une proposition qui en chevauche
+un ne se réserve pas, elle ne l'emporte jamais sur sa jumelle libre (relecture, ci-dessous).
+
+### Relecture contradictoire — aucun bloquant, deux importants, tous traités
+
+| Relevé | Traité |
+|---|---|
+| **Important** — le journal de Réorganiser disait « tous les véhicules » pour un gestionnaire limité à un groupe : `horsGestion` ne comptant plus les véhicules invisibles, il valait 0 | « tous les véhicules » seulement si l'auteur VOIT tout le parc et le gère en entier ; testé dans les deux sens |
+| **Important** — le nettoyage ne lisait que les propositions en attente : il pouvait garder une proposition sous une réservation (« Réserver » → 409) et écarter sa jumelle libre, ou laisser le doublon d'une proposition déjà réservée | les réservations fermes (CONFIRMED / IN_PROGRESS) et les immobilisations (fin effective) sont lues et gardées d'office ; le lot compte à part `sousUnBloquant`. Mesuré : **0** créneau pris à venir chez cdef31 (effet nul aujourd'hui), 5 sur la démo dont 2 sous des propositions |
+| une proposition d'un véhicule SUPPRIMÉ (pas de clé étrangère) ou passé dans une autre société restait listée, mais ne s'écartait plus (`dismiss` vérifie désormais le véhicule) | elle sort de la liste et expire seule ; « Réserver » refuse (400) un véhicule d'une autre société, même pour un super-admin (sinon réservation de l'ANCIENNE société). 0 cas en prod aujourd'hui |
+| la garde « seul le lot montré est écrit » du nettoyage n'était prouvée par aucun test ; plafond, périmètre vide, pluriel non testés | 11 cas de plus |
+| compteurs du dernier passage (toute la société) sous « Aucune proposition en attente » d'un gestionnaire limité | « … proposée(s) pour la société » |
+| textes : `restees`, avertissement de `bilanDesMontrees`, « le même choix que l'agent » | corrigés (l'agent garde la proposition CONNUE ; le nettoyage, qui voit le groupe entier, la plus sûre) |
+
+**Laissé en l'état, dit :** si `GET /api/users/me/access` échoue, un gestionnaire limité ne voit plus
+les boutons de propositions (le contrôle par véhicule ne trouve aucune entrée) jusqu'au prochain retour
+sur l'onglet, qui relit ses droits. Passager ; le serveur, lui, ne s'en sert pas.
+
+**Vérifié.** `pnpm verify` vert deux fois (avant et après la relecture) : API **4 784/4 784**, web
+970/970, shared 423, 153 migrations rejouées, smoke 5/5 ; `ng build` sans erreur. Les fixtures du
+journal métier prenaient une proposition du client sur un véhicule rendu « f1 » : alignées (le véhicule
+d'une proposition du client est dans la société du client). Greffé sur `origin/main` : `a3c99795`.
+
+### Répétition sur la démo (03:14 – 03:20, Transports Méridien)
+
+Images construites sur le VPS sans rien recréer, puis la démo SEULE recréée (saine, nouvelle version
+`main-6UL5YPRV.js`, route présente dans le conteneur). Nettoyage joué par l'API depuis la session
+super-admin, simulation puis écriture du lot montré :
+
+| | Résultat |
+|---|---|
+| simulation | 486 en attente → **164 à écarter** (dont 2 sous une réservation ou une immobilisation), 25 véhicules, pas de plafond |
+| écriture (`ids` = les 164 montrées) | 164 écartées, 0 déjà traitée, 0 restée |
+| base après | **322 en attente, 0 chevauchement**, 0 proposition sous un créneau pris ; les 30 véhicules gardent au moins une proposition |
+| journal | UNE ligne : « 164 propositions de l'agent écartées au nettoyage des doublons — 162 chevauchaient une proposition plus sûre du même véhicule, 2 une réservation ferme ou une immobilisation (25 véhicules ; 322 restent en attente). » — auteur « Équipe Tracky » dans l'activité de la société |
+| écran (nouvelle version) | badge « Assistant IA 322 » |
+
+**🚀 Déployé le 30/09 à 03:21 (Paris) — `a3c99795`, SANS `--force`,** sur l'ordre du propriétaire
+(« ok continue, déploie et nettoie cdef31 » ; seul en ligne). `deploy.sh --attendre` : le passage de
+02:45 avait fini à 02:48 ; construction, migration, recréation ; API saine en 15 s, 0 redémarrage ; démo
+à jour. Artefacts vérifiés DANS les conteneurs (`creneauxPris`, `exigerGestionDuVehicule`, route
+`nettoyer-chevauchements`, `vehiculesAccessibles`, `main-6UL5YPRV.js`). Aucune erreur API depuis.
+
+### Le ménage chez cdef31 (03:22 – 03:24) — à la demande du propriétaire
+
+Depuis la session super-admin de la prod, par l'API — simulation, puis écriture des SEULES propositions
+montrées :
+
+| | Résultat |
+|---|---|
+| simulation | 338 en attente → **106 à écarter**, 19 véhicules (GS-187-NY et GT-493-KS : 15 chacun), **0** sous un créneau pris, pas de plafond — le chiffre de la mesure à blanc du 29/09 |
+| écriture (`ids` = les 106 montrées) | 106 écartées, 0 déjà traitée, 0 restée |
+| base après | **232 en attente, 0 chevauchement** ; les 25 véhicules gardent au moins une proposition ; écartées 412 → 518 |
+| HD-686-QX (5 propositions empilées le 30/09) | une par jour : le 30/09, 14:07 → 16:30 Launaguet, 90 % — la plus sûre |
+| journal de la société | UNE ligne, 03:23, « Équipe Tracky » : « 106 propositions de l'agent écartées au nettoyage des doublons — elles chevauchaient une proposition plus sûre du même véhicule (19 véhicules ; 232 restent en attente). » |
+| écran (nouvelle version) | badge « Assistant IA 232 » ; 0 chevauchement parmi les 232 lues par l'écran |
+| courriels | **0** depuis 03:10 — une proposition n'en envoie jamais |
+
+L'agent ne les recréera pas : il ne propose plus une occurrence qui chevauche une proposition CONNUE du
+même véhicule, quel que soit son statut — écartée comprise (relecture du 29/09).
+
 ---
 
 ## Ce qu'il ne faut pas défaire
@@ -1505,3 +1609,10 @@ service worker, comme à chaque déploiement) ; la seconde a pris `main-6YJBPLQT
   29/09). Le dédoublonnage par début EXACT ne suffit pas : l'heure d'un motif est une moyenne qui
   dérive d'une nuit à l'autre. Retirer cette règle ramène les journées écartées le lendemain, et les
   181 chevauchements relevés chez cdef31.
+- **Réserver ou écarter une proposition = GÉRER les réservations de SON véhicule** (serveur :
+  `exigerGestionDuVehicule` ; écran : `perms.can('reservations_manage', vehicleId)`), et la liste des
+  propositions est bornée aux véhicules VISIBLES. Revenir à un droit global rend le geste unitaire plus
+  large que le lot de Réorganiser — un gestionnaire limité réservait fermement hors de son groupe.
+- **Le nettoyage des chevauchements garde d'office les créneaux déjà pris** (réservations fermes,
+  immobilisations, fin effective). Sans eux, il garde une proposition non réservable et écarte sa
+  jumelle libre. Et il n'écrit que le lot montré (`ids`), comme Réorganiser.
