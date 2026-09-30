@@ -149,7 +149,32 @@ NUIT_FIN=0700
 # Le repère posé par CE passage — c'est vers lui que le repli automatique revient.
 ETIQUETTE_POSEE=""
 
+# ── V34 (2026-09-20) : TOUTE commande docker de ce script est BORNÉE ─────────────────────────
+#
+# Sur cet hôte, un client docker que rien ne borne peut survivre à sa session et faire tourner
+# dockerd à 100 % d'un cœur pendant des jours (VPS-016, sept occurrences sur sept). Il n'existe
+# aucun réglage global (`DOCKER_CLIENT_TIMEOUT` n'existe pas) : la protection se porte à CHAQUE
+# appel, et ce script ne la portait que sur deux. Une borne n'est pas une attente : elle
+# transforme « bloqué pour toujours » en un échec DIT. Chacune est large devant l'ordinaire mesuré.
+BORNE_DOCKER_S=20            # lectures et gestes courts : inspect, images, ps, tag, rmi, exec psql
+BORNE_COMPOSE_S=300          # `compose up -d` (≈ 13 s mesurées) et `run` courts
+BORNE_MIGRATION_S=1800       # `prisma migrate deploy` dans le conteneur éphémère (≈ 5 s mesurées)
+BORNE_CONSTRUCTION_S=3600    # `compose build` : 15 s en cache, 3 à 8 min sinon — une heure, c'est autre chose
+
 dire() { echo "[$(date -u +%H:%M:%S) UTC] $*"; }
+
+# Une commande LONGUE, bornée : `borner <secondes> <libellé> <commande…>`. Rend le code de la
+# commande, comme avant — sous `set -e`, l'appelant s'arrête donc là où il s'arrêtait — mais DIT le
+# dépassement : sans ce mot, un 124 arrêterait le script en silence.
+borner() {
+  local s="$1" quoi="$2" rc=0
+  shift 2
+  timeout "$s" "$@" || rc=$?
+  if [ "$rc" -eq 124 ]; then
+    dire "⏱️  $quoi : borne de ${s} s dépassée — commande interrompue (V34)."
+  fi
+  return "$rc"
+}
 
 # ── l'horloge et les commandes, isolées pour les tests (deploy.test.sh les remplace) ───────
 minute_utc()   { local m; m="$(date -u +%M)"; echo "${m#0}"; }
@@ -194,7 +219,7 @@ lire_options() {
 # — on ne sait pas, donc on laisse passer. Une garde qui empêche de déployer parce qu'elle ne
 # sait pas lire serait pire que pas de garde.
 passage_en_cours() {
-  docker exec tracky-postgres psql -U tracky -d tracky_prod -At -F '|' -c \
+  timeout "$BORNE_DOCKER_S" docker exec tracky-postgres psql -U tracky -d tracky_prod -At -F '|' -c \
     "SELECT to_char(\"startedAt\", 'HH24:MI:SS'), origin,
             round(extract(epoch from (now() - \"startedAt\")) / 60)::int
      FROM trip_automation_runs WHERE status = 'running'
@@ -330,7 +355,7 @@ garde() {
       fi
       dire "⛔ Déploiement REFUSÉ ($moment) : un passage d'automatisation tourne (départ $debut UTC, $origine, $minutes min)."
       dire "   Il dure jusqu'à 54 min. Relancer après sa fin, ou avec --attendre (patiente), ou --force (le tue en le disant)."
-      dire "   État : docker exec tracky-postgres psql -U tracky -d tracky_prod -c \\"
+      dire "   État : timeout 20 docker exec tracky-postgres psql -U tracky -d tracky_prod -c \\"
       dire "            \"select \\\"startedAt\\\", status from trip_automation_runs order by \\\"startedAt\\\" desc limit 3\""
       exit 1
     fi
@@ -386,12 +411,12 @@ garde() {
 # repère posé dessus ferait revenir exactement à la version qu'on voulait quitter. On le dit, et
 # on ne pose rien — `repli_automatique` refuse déjà de partir sans repère pour chaque image.
 image_en_service() {   # $1 = conteneur ; rend l'ID d'image tel quel (présent ou non)
-  docker inspect --format '{{.Image}}' "$1" 2>/dev/null || true
+  timeout "$BORNE_DOCKER_S" docker inspect --format '{{.Image}}' "$1" 2>/dev/null || true
 }
 
 # L'image de ce conteneur existe-t-elle encore comme objet image ?
 image_encore_presente() {   # $1 = ID d'image
-  [ -n "$1" ] && docker image inspect "$1" >/dev/null 2>&1
+  [ -n "$1" ] && timeout "$BORNE_DOCKER_S" docker image inspect "$1" >/dev/null 2>&1
 }
 
 # ── V42 (2026-09-28) : L'IMAGE EN SERVICE GARDE UN NOM ──────────────────────────────────────
@@ -430,7 +455,7 @@ nommer_en_service() {   # $1 = périmètre : production (défaut) | demo
       dire "   ⚠️ $conteneur tourne sur une image déjà absente (${source:7:12}) : pas de nom posable — la prochaine recréation assainira."
       continue
     fi
-    if docker tag "$source" "$nom" >/dev/null 2>&1; then
+    if timeout "$BORNE_DOCKER_S" docker tag "$source" "$nom" >/dev/null 2>&1; then
       dire "   nom posé : $nom ← ${source:7:12} (l'image de $conteneur survivra aux reconstructions de latest)"
     else
       dire "   ⚠️ docker tag $nom en échec — sans effet sur ce passage, mais l'image de $conteneur n'est pas protégée."
@@ -447,7 +472,7 @@ etiqueter_repli() {
     local source_dite="l'image du conteneur $image"
     if [ -z "$source" ]; then
       # Pas de conteneur (premier déploiement, ou pile arrêtée) : `latest` est le seul repère possible.
-      if ! docker image inspect "$image:latest" >/dev/null 2>&1; then
+      if ! timeout "$BORNE_DOCKER_S" docker image inspect "$image:latest" >/dev/null 2>&1; then
         dire "   (ni conteneur $image ni image $image:latest à étiqueter — premier déploiement ?)"
         continue
       fi
@@ -459,7 +484,7 @@ etiqueter_repli() {
       dire "      Le repli automatique sera donc refusé pour ce passage. Recréer la pile assainira la situation."
       continue
     else
-      local latest_id; latest_id="$(docker image inspect --format '{{.Id}}' "$image:latest" 2>/dev/null || true)"
+      local latest_id; latest_id="$(timeout "$BORNE_DOCKER_S" docker image inspect --format '{{.Id}}' "$image:latest" 2>/dev/null || true)"
       if [ -n "$latest_id" ] && [ "$latest_id" != "$source" ]; then
         dire "   ⚠️ $image:latest (${latest_id:7:12}) ≠ image en service (${source:7:12}) — image pré-construite ou retenue :"
         dire "      le repère pointe ce qui TOURNE, pas latest (V32 b)."
@@ -468,7 +493,7 @@ etiqueter_repli() {
     # Les étiquettes se trient par leur date : les plus anciennes d'abord. On CHOISIT ici, mais on
     # ne retire rien encore (voir juste en dessous). Le nouveau repère n'est pas dans cette liste :
     # d'où le « − 1 », qui lui réserve sa place parmi les $REPLIS_A_GARDER conservés.
-    local anciennes; anciennes="$(docker images "$image" --format '{{.Tag}}' | grep '^avant-' | sort || true)"
+    local anciennes; anciennes="$(timeout "$BORNE_DOCKER_S" docker images "$image" --format '{{.Tag}}' | grep '^avant-' | sort || true)"
     local a_retirer; a_retirer="$(echo "$anciennes" | sed '/^$/d' | head -n "-$((REPLIS_A_GARDER - 1))" || true)"
 
     # ⚠️ V39 (2026-09-23) — ON POSE LE REPÈRE AVANT D'ÉLAGUER, jamais l'inverse.
@@ -479,12 +504,12 @@ etiqueter_repli() {
     # déploiement. Poser d'abord garantit que l'image porte toujours au moins un nom au moment où
     # on lui en retire d'autres. (Le CHOIX des repères à retirer, lui, est fait au-dessus : il ne
     # doit pas voir l'étiquette qu'on vient d'ajouter.)
-    docker tag "$source" "$image:$etiquette"
+    timeout "$BORNE_DOCKER_S" docker tag "$source" "$image:$etiquette"
     dire "   repère posé : $image:$etiquette ← $source_dite"
 
     local vieille
     for vieille in $a_retirer; do
-      docker rmi "$image:$vieille" >/dev/null 2>&1 || true
+      timeout "$BORNE_DOCKER_S" docker rmi "$image:$vieille" >/dev/null 2>&1 || true
       dire "   repère élagué : $image:$vieille"
     done
   done
@@ -522,14 +547,14 @@ contexte_de_construction_sain() {
 reprendre_repli() {
   local image
   for image in $IMAGES; do
-    if ! docker image inspect "$image:$REPLI" >/dev/null 2>&1; then
+    if ! timeout "$BORNE_DOCKER_S" docker image inspect "$image:$REPLI" >/dev/null 2>&1; then
       dire "⛔ Repère introuvable : $image:$REPLI. Repères disponibles :"
-      docker images "$image" --format '   {{.Repository}}:{{.Tag}}  ({{.CreatedSince}})' | grep 'avant-' || dire "   (aucun)"
+      timeout "$BORNE_DOCKER_S" docker images "$image" --format '   {{.Repository}}:{{.Tag}}  ({{.CreatedSince}})' | grep 'avant-' || dire "   (aucun)"
       exit 2
     fi
   done
   for image in $IMAGES; do
-    docker tag "$image:$REPLI" "$image:latest"
+    timeout "$BORNE_DOCKER_S" docker tag "$image:$REPLI" "$image:latest"
     dire "   $image:$REPLI → $image:latest"
   done
 }
@@ -545,21 +570,31 @@ reprendre_repli() {
 migrer_avant() {
   cd "$RACINE/deploy/vps"
   dire "prisma migrate deploy — image neuve, conteneur éphémère ; l'API en place n'est pas touchée"
-  local sortie
-  if sortie="$(docker compose --env-file .env.prod -f "$COMPOSE_PROD" run --rm --no-deps --entrypoint sh api -c "pnpm prisma migrate deploy" 2>&1)"; then
+  local sortie rc=0
+  sortie="$(timeout "$BORNE_MIGRATION_S" docker compose --env-file .env.prod -f "$COMPOSE_PROD" run --rm --no-deps --entrypoint sh api -c "pnpm prisma migrate deploy" 2>&1)" || rc=$?
+  if [ "$rc" -eq 0 ]; then
     echo "$sortie" | grep -E "migration|applied|No pending|Database schema is up to date" | tail -n 4 | sed 's/^/   /' || true
     return 0
   fi
   echo "$sortie" | tail -n 25 | sed 's/^/   /'
+  # V34 : la borne n'arrête que CE client — le conteneur éphémère peut jouer la migration jusqu'au
+  # bout sans nous. La marquer « annulée » pendant qu'elle tourne mentirait à Prisma : on s'arrête
+  # sans rien recréer ni résoudre, et on dit où regarder.
+  if [ "$rc" -eq 124 ]; then
+    dire "⛔ MIGRATION TOUJOURS EN COURS après ${BORNE_MIGRATION_S} s (borne V34) — l'API en place n'a PAS été touchée, rien n'est recréé."
+    dire "   Le conteneur éphémère peut continuer sans ce script : NE RIEN marquer « annulé » tant qu'il tourne."
+    dire "   Le voir : timeout 20 docker ps --filter name=api-run — puis relancer ce script une fois la migration finie."
+    exit 3
+  fi
   local nom; nom="$(echo "$sortie" | grep -oE "The \`[^\`]+\` migration" | head -n 1 | sed 's/The `//; s/` migration//')"
   dire "⛔ MIGRATION EN ÉCHEC — l'API en place n'a PAS été touchée, rien n'est recréé."
   if [ -n "$nom" ]; then
     dire "   migration : $nom — on la marque « annulée » pour ne pas bloquer un redémarrage de l'API en place"
-    if docker compose --env-file .env.prod -f "$COMPOSE_PROD" run --rm --no-deps --entrypoint sh api -c "pnpm prisma migrate resolve --rolled-back $nom" >/dev/null 2>&1; then
+    if timeout "$BORNE_COMPOSE_S" docker compose --env-file .env.prod -f "$COMPOSE_PROD" run --rm --no-deps --entrypoint sh api -c "pnpm prisma migrate resolve --rolled-back $nom" >/dev/null 2>&1; then
       dire "   marquée annulée. Corriger le fichier, rejouer les migrations sur une copie du schéma (pnpm verif:migrations), puis redéployer."
     else
       dire "   ⚠️ impossible de la marquer annulée : à faire à la main AVANT tout redémarrage de l'API :"
-      dire "      docker compose --env-file .env.prod -f $COMPOSE_PROD run --rm --no-deps --entrypoint sh api -c \"pnpm prisma migrate resolve --rolled-back $nom\""
+      dire "      timeout $BORNE_COMPOSE_S docker compose --env-file .env.prod -f $COMPOSE_PROD run --rm --no-deps --entrypoint sh api -c \"pnpm prisma migrate resolve --rolled-back $nom\""
     fi
   fi
   exit 3
@@ -574,7 +609,14 @@ attendre_sante_conteneur() {
   local t0; t0="$(epoch_s)"
   dire "attente de santé de $conteneur ($quoi, ${SANTE_MAX_S} s au plus)…"
   while :; do
-    local etat; etat="$(docker inspect -f '{{.State.Status}} {{.State.Health.Status}} {{.RestartCount}}' "$conteneur" 2>/dev/null || echo 'absent ? 0')"
+    # V34 : lecture bornée. Un démon qui ne répond pas dans la borne ne dit rien du conteneur :
+    # « inconnu », et on relit au pas suivant, jusqu'à SANTE_MAX_S. Le lire « absent » ferait d'une
+    # lenteur de dockerd un REPLI AUTOMATIQUE.
+    local etat rc=0
+    etat="$(timeout "$BORNE_DOCKER_S" docker inspect -f '{{.State.Status}} {{.State.Health.Status}} {{.RestartCount}}' "$conteneur" 2>/dev/null)" || rc=$?
+    if [ "$rc" -eq 124 ]; then etat="inconnu inconnu 0"
+    elif [ "$rc" -ne 0 ]; then etat="absent ? 0"
+    fi
     local statut sante redemarrages
     statut="$(echo "$etat" | cut -d' ' -f1)"; sante="$(echo "$etat" | cut -d' ' -f2)"; redemarrages="$(echo "$etat" | cut -d' ' -f3)"
     if [ "$sante" = "healthy" ] && [ "${redemarrages:-0}" -eq 0 ]; then
@@ -583,7 +625,7 @@ attendre_sante_conteneur() {
     fi
     local raison=""
     if [ "${redemarrages:-0}" -gt 0 ]; then raison="redémarrée $redemarrages fois"
-    elif [ "$statut" != "running" ]; then raison="état « $statut »"
+    elif [ "$statut" != "running" ] && [ "$statut" != "inconnu" ]; then raison="état « $statut »"
     elif [ "$sante" = "unhealthy" ]; then raison="sonde en échec (unhealthy)"
     elif [ $(( $(epoch_s) - t0 )) -ge "$SANTE_MAX_S" ]; then raison="toujours « $sante » après ${SANTE_MAX_S} s"
     fi
@@ -606,16 +648,18 @@ attendre_sante() {
   fi
 }
 
+# Chaque `up -d` passe par `borner` : même enchaînement qu'avant (sous `set -e`, un échec arrête le
+# script ; dans le repli automatique, appelé en condition, il ne l'arrête pas), un dépassement DIT.
 recreer_perimetre() {
   cd "$RACINE/deploy/vps"
   if [ "$MARKETING_SEUL" -eq 1 ]; then
     dire "docker compose up -d (site marketing uniquement)"
-    docker compose --env-file .env.prod -f "$COMPOSE_LP" up -d
+    borner "$BORNE_COMPOSE_S" "docker compose up -d (site marketing)" docker compose --env-file .env.prod -f "$COMPOSE_LP" up -d
   else
     dire "docker compose up -d (prod)"
-    docker compose --env-file .env.prod -f "$COMPOSE_PROD" up -d
+    borner "$BORNE_COMPOSE_S" "docker compose up -d (prod)" docker compose --env-file .env.prod -f "$COMPOSE_PROD" up -d
     dire "docker compose up -d (site marketing)"
-    docker compose --env-file .env.prod -f "$COMPOSE_LP" up -d
+    borner "$BORNE_COMPOSE_S" "docker compose up -d (site marketing)" docker compose --env-file .env.prod -f "$COMPOSE_LP" up -d
   fi
 }
 
@@ -623,19 +667,19 @@ recreer_perimetre() {
 repli_automatique() {
   if [ -z "$ETIQUETTE_POSEE" ]; then
     dire "⛔ Pas de repère posé par ce passage : pas de repli automatique possible. Repères disponibles :"
-    docker images tracky-api --format '   {{.Repository}}:{{.Tag}}  ({{.CreatedSince}})' | grep 'avant-' || dire "   (aucun)"
+    timeout "$BORNE_DOCKER_S" docker images tracky-api --format '   {{.Repository}}:{{.Tag}}  ({{.CreatedSince}})' | grep 'avant-' || dire "   (aucun)"
     return 1
   fi
   local image
   for image in $IMAGES; do
-    if ! docker image inspect "$image:$ETIQUETTE_POSEE" >/dev/null 2>&1; then
+    if ! timeout "$BORNE_DOCKER_S" docker image inspect "$image:$ETIQUETTE_POSEE" >/dev/null 2>&1; then
       dire "⛔ Repère $image:$ETIQUETTE_POSEE introuvable : pas de repli automatique possible."
       return 1
     fi
   done
   dire "↩️  REPLI AUTOMATIQUE vers $ETIQUETTE_POSEE"
   for image in $IMAGES; do
-    docker tag "$image:$ETIQUETTE_POSEE" "$image:latest"
+    timeout "$BORNE_DOCKER_S" docker tag "$image:$ETIQUETTE_POSEE" "$image:latest"
     dire "   $image:$ETIQUETTE_POSEE → $image:latest"
   done
   cd "$RACINE/deploy/vps"
@@ -664,8 +708,8 @@ mettre_a_jour_demo() {
     DEMO_ETAT="absente"; return 0
   fi
   dire "docker compose up -d (démo, mêmes images — les migrations de la démo se jouent au démarrage)"
-  if ! docker compose --env-file .env.demo -f "$COMPOSE_DEMO" up -d; then
-    dire "⚠️  La démo n'a pas pu être recréée. La PRODUCTION n'est pas concernée — voir « docker compose --env-file .env.demo -f $COMPOSE_DEMO ps »."
+  if ! borner "$BORNE_COMPOSE_S" "docker compose up -d (démo)" docker compose --env-file .env.demo -f "$COMPOSE_DEMO" up -d; then
+    dire "⚠️  La démo n'a pas pu être recréée. La PRODUCTION n'est pas concernée — voir « timeout 20 docker compose --env-file .env.demo -f $COMPOSE_DEMO ps »."
     DEMO_ETAT="malade"; return 0
   fi
   if attendre_sante_conteneur tracky-demo-api "démo"; then
@@ -683,9 +727,9 @@ mettre_a_jour_demo() {
 journaliser() {
   local sha="$1" duree="$2" sante="${3:-healthy}"
   local id_api id_web id_lp
-  id_api="$(docker inspect --format '{{.Id}}' tracky-api 2>/dev/null || echo '')"
-  id_web="$(docker inspect --format '{{.Id}}' tracky-web 2>/dev/null || echo '')"
-  id_lp="$(docker inspect --format '{{.Id}}' tracky-lp 2>/dev/null || echo '')"
+  id_api="$(timeout "$BORNE_DOCKER_S" docker inspect --format '{{.Id}}' tracky-api 2>/dev/null || echo '')"
+  id_web="$(timeout "$BORNE_DOCKER_S" docker inspect --format '{{.Id}}' tracky-web 2>/dev/null || echo '')"
+  id_lp="$(timeout "$BORNE_DOCKER_S" docker inspect --format '{{.Id}}' tracky-lp 2>/dev/null || echo '')"
   # Qui a déployé, et d'où : `SSH_CLIENT` n'existe pas hors SSH (console, test) — sans valeur
   # par défaut, `set -u` ferait échouer le journal après un déploiement réussi.
   local client="${SSH_CLIENT:-}"
@@ -741,12 +785,12 @@ main() {
     cd "$RACINE/deploy/vps"
     if [ "$MARKETING_SEUL" -eq 1 ]; then
       dire "docker compose build (site marketing uniquement)"
-      docker compose --env-file .env.prod -f "$COMPOSE_LP" build
+      borner "$BORNE_CONSTRUCTION_S" "docker compose build (site marketing)" docker compose --env-file .env.prod -f "$COMPOSE_LP" build
     else
       dire "docker compose build (prod)"
-      docker compose --env-file .env.prod -f "$COMPOSE_PROD" build
+      borner "$BORNE_CONSTRUCTION_S" "docker compose build (prod)" docker compose --env-file .env.prod -f "$COMPOSE_PROD" build
       dire "docker compose build (site marketing)"
-      docker compose --env-file .env.prod -f "$COMPOSE_LP" build
+      borner "$BORNE_CONSTRUCTION_S" "docker compose build (site marketing)" docker compose --env-file .env.prod -f "$COMPOSE_LP" build
     fi
 
     # ── 3 bis. LA MIGRATION, AVANT DE TOUCHER À L'API (incident du 17/09) ──
@@ -799,7 +843,7 @@ main() {
   # 2026-09-07). L'âge affiché ici est la seule preuve : « Up 4 weeks » après un déploiement
   # veut dire que rien n'a été remplacé.
   dire "état des conteneurs :"
-  docker ps --format '  {{.Names}} — {{.Status}}' | grep -E 'tracky-(api|web|lp|demo-api|demo-web)' || true
+  timeout "$BORNE_DOCKER_S" docker ps --format '  {{.Names}} — {{.Status}}' | grep -E 'tracky-(api|web|lp|demo-api|demo-web)' || true
   if [ "$MARKETING_SEUL" -eq 1 ]; then
     dire "Déploiement terminé : site marketing sain ; API et Web applicatif non recréés. Vérifier les URLs publiques, pas seulement docker ps."
   else

@@ -17,9 +17,14 @@ Voir `docs/DEPLOYMENT-VPS.md` pour la procédure complète.
     # Site marketing uniquement : ne recrée ni l'API ni l'application Web
     bash /opt/vizyo-tracky/deploy/vps/deploy.sh --marketing-seul
 
-    # Logs
-    docker logs -f tracky-api
-    docker compose --env-file .env.prod -f docker-compose.prod.yml logs -f
+    # Journaux — toujours BORNÉS sur ce VPS (règle V34 de CLAUDE.md) : `timeout`, `--tail`, jamais `-f`
+    timeout 20 docker logs --tail 200 tracky-api
+    timeout 20 docker compose --env-file .env.prod -f docker-compose.prod.yml logs --tail 200 api
+
+> ⛔ Un `docker logs -f` — ou tout client `docker` sans `timeout` — lancé depuis une session SSH
+> peut lui survivre et faire tourner dockerd à 100 % d'un cœur pendant des jours : sept fois sur
+> sept (VPS-016). Pour suivre en direct, relancer la commande bornée. `deploy.sh` borne lui-même
+> chacun de ses appels (constantes `BORNE_*` en tête du script).
 
 ## ⛔ La production se déploie par `deploy.sh` — et par rien d'autre
 
@@ -99,7 +104,8 @@ il rend seulement la nouvelle option disponible.
 > alerte critique partira. Un correctif urgent vaut parfois un passage perdu, mais ce doit être
 > un choix, pas une surprise.
 
-Le script se teste à blanc, sans VPS : `pnpm verif:deploiement` (131 contrôles, `deploy.test.sh`).
+Le script se teste à blanc, sans VPS : `pnpm verif:deploiement` (205 contrôles au 01/10/2026,
+`deploy.test.sh` — dont « aucun appel `docker` sans borne », dans le script comme dans ce README).
 
 ## Environnement de démonstration (2026-09)
 
@@ -109,7 +115,7 @@ c'était « une ligne de plus » à taper à la main — et elle n'a pas été t
 suite : l'import hebdomadaire du 20/09 a échoué sur une colonne du lot D absente de la base de
 démo (VPS-046). Si la démo doit être recréée hors déploiement (elle a été arrêtée, par exemple) :
 
-    docker compose --env-file .env.demo -f docker-compose.demo.yml up -d      # démo, à la main
+    timeout 300 docker compose --env-file .env.demo -f docker-compose.demo.yml up -d      # démo, à la main
 
 Installation, rafraîchissement (hebdomadaire + à la demande), comptes et procédure prospect :
 `docs/environnement-demo/EXPLOITATION.md`. Plan et garanties : `docs/environnement-demo/PLAN-2026-09-07.md`.

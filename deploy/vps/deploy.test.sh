@@ -58,7 +58,8 @@ FAUSSE_SECONDE=0
 FAUSSE_EPOCH=1000
 ETIQUETTES_EXISTANTES=""      # ce que `docker images` rend pour les repères de repli
 FAUSSE_HEURE_PARIS=1200       # HHMM à Paris — 12:00 : hors de la fenêtre du matin
-CODE_MIGRATION=0              # ce que rend `prisma migrate deploy` dans le conteneur éphémère
+CODE_MIGRATION=0              # ce que rend `prisma migrate deploy` dans le conteneur éphémère (124 = borne)
+CODE_BUILD=0                  # ce que rend `compose build` de la prod (124 = borne dépassée)
 declare -a REPONSES_SANTE=()  # une réponse `docker inspect` par lecture : « status health restarts »
 COMPTEUR_SANTE="$(mktemp)"
 declare -a REPONSES_SANTE_LP=()
@@ -82,9 +83,12 @@ trace() { paste -sd'|' "$TRACE"; }
 # il exécute un programme, jamais une fonction shell (« timeout … command docker » rend 127).
 # Sans ce passe-plat, toute lecture BORNÉE du script — et la règle V34 en impose une devant
 # chaque appel `docker` sur le VPS — échapperait au harnais et parlerait au vrai Docker.
-timeout() { shift; "$@"; }
+# Il MARQUE aussi ce qu'il laisse passer (`DOCKER_BORNE=1`, visible le temps de l'appel) : un
+# `docker` qui arrive sans la marque a été appelé SANS borne, et la trace le dit (V34, 2026-10-01).
+timeout() { shift; DOCKER_BORNE=1 "$@"; }
 
 docker() {
+  [ "${DOCKER_BORNE:-0}" = 1 ] || noter "NON BORNÉ : docker $*"
   case "$*" in
     "exec tracky-postgres psql"*)
       local n; n="$(cat "$COMPTEUR_PSQL" 2>/dev/null || echo 0)"
@@ -93,12 +97,17 @@ docker() {
       noter "psql"
       [ -n "$r" ] && echo "$r"
       ;;
-    "compose --env-file .env.prod -f docker-compose.prod.yml build")   noter "build" ;;
+    "compose --env-file .env.prod -f docker-compose.prod.yml build")   noter "build"; return "$CODE_BUILD" ;;
     "compose --env-file .env.prod -f docker-compose.prod.yml up -d")   noter "up" ;;
     "compose --env-file .env.prod -f docker-compose.lp.yml build")     noter "build-lp" ;;
     "compose --env-file .env.prod -f docker-compose.lp.yml up -d")     noter "up-lp" ;;
     "compose --env-file .env.prod -f docker-compose.prod.yml run --rm --no-deps --entrypoint sh api -c pnpm prisma migrate deploy")
       noter "migrate"
+      if [ "$CODE_MIGRATION" -eq 124 ]; then
+        # La borne est tombée pendant la migration : ni succès ni P3009, juste une sortie coupée.
+        echo "1 migration found in prisma/migrations"; echo "Applying migration \`20260917090000_rdv_lot_a\`"
+        return 124
+      fi
       if [ "$CODE_MIGRATION" -ne 0 ]; then
         echo "Error: P3009"
         echo "The \`20260917090000_rdv_lot_a\` migration started at 2026-09-17 04:56:35 UTC failed"
@@ -112,6 +121,7 @@ docker() {
       local n; n="$(cat "$COMPTEUR_SANTE" 2>/dev/null || echo 0)"
       local r="${REPONSES_SANTE[$n]:-running healthy 0}"
       echo $((n + 1)) > "$COMPTEUR_SANTE"
+      [ "$r" = "__BORNE__" ] && return 124   # dockerd n'a pas répondu dans la borne
       echo "$r"
       ;;
     "inspect -f {{.State.Status}} {{.State.Health.Status}} {{.RestartCount}} tracky-lp")
@@ -173,7 +183,7 @@ reinitialiser() {
   REPONSES_SANTE_LP=(); echo 0 > "$COMPTEUR_SANTE_LP"
   REPONSES_SANTE_DEMO=(); echo 0 > "$COMPTEUR_SANTE_DEMO"
   FAUSSE_MINUTE=30; FAUSSE_SECONDE=0; FAUSSE_EPOCH=1000; ETIQUETTES_EXISTANTES=""
-  FAUSSE_HEURE_PARIS=1200; CODE_MIGRATION=0; ETIQUETTE_POSEE=""
+  FAUSSE_HEURE_PARIS=1200; CODE_MIGRATION=0; CODE_BUILD=0; ETIQUETTE_POSEE=""
   FORCE=0; ATTENDRE=0; AVEC_DEMO=1; MARKETING_SEUL=0; BRANCHE=main; REPLI=""; DEMO_ETAT="non"
   IMAGE_EN_SERVICE_API="$IMG_API"; IMAGE_EN_SERVICE_WEB="$IMG_WEB"; IMAGE_EN_SERVICE_LP="$IMG_LP"
   LATEST_ID_API="$IMG_API"; LATEST_ID_WEB="$IMG_WEB"; LATEST_ID_LP="$IMG_LP"; CODE_UP_DEMO=0
@@ -450,6 +460,84 @@ absent "--marketing-seul : pas d'avertissement (le site public ne copie que lp/p
 reinitialiser; RACINE="$(cd ../.. && pwd)"
 contexte_de_construction_sain >/dev/null 2>&1; code=$?
 attend "le .dockerignore DU DÉPÔT passe le contrôle" 0 "$code"
+
+# ── V34 (2026-09-20, porté ici le 2026-10-01) : TOUTE commande docker est bornée ─────────────
+# Un client docker non borné, orphelin de sa session SSH, a fait tourner dockerd à 100 % pendant
+# des jours, sept fois (VPS-016). Le double de `timeout` marque ce qu'il laisse passer : un appel
+# qui arrive sans la marque est écrit « NON BORNÉ » dans la trace.
+echo "deploy.sh — V34 : toute commande docker est bornée (2026-10-01)"
+
+scenario_sans_fuite() {   # $1 = libellé ; le scénario est déjà posé par l'appelant
+  local libelle="$1"; shift
+  ( main "$@" ) >/dev/null 2>&1
+  absent "aucun docker sans borne — $libelle" "NON BORNÉ" "$(trace)"
+}
+reinitialiser; scenario_sans_fuite "déploiement ordinaire"
+reinitialiser; scenario_sans_fuite "--marketing-seul" --marketing-seul
+reinitialiser; REPLI="avant-20260913-1130-a8f9575e"; scenario_sans_fuite "--repli"
+reinitialiser; IMAGES_ABSENTES="tracky-api:avant-inexistant"; REPLI="avant-inexistant"; scenario_sans_fuite "--repli vers un repère absent (liste des repères)"
+reinitialiser; CODE_MIGRATION=1; scenario_sans_fuite "migration en échec (resolve)"
+reinitialiser; REPONSES_SANTE=("running unhealthy 0"); scenario_sans_fuite "sonde en échec → repli automatique"
+reinitialiser; CODE_UP_DEMO=1; scenario_sans_fuite "démo qui ne se recrée pas"
+
+# Et à la lecture du source, pour les chemins qu'aucun scénario ne parcourt.
+re_docker='(^|[^-_[:alnum:]])docker (compose|inspect|image|images|tag|rmi|ps|exec|logs|run|stats|pull|build)'
+re_borne='(timeout|borner)[^|]*docker'
+non_bornes=""; n=0
+while IFS= read -r ligne; do
+  n=$((n + 1))
+  [[ "$ligne" =~ ^[[:space:]]*# ]] && continue      # commentaire
+  [[ "$ligne" == *'dire "'* ]] && continue           # libellé ou message à l'opérateur
+  if [[ "$ligne" =~ $re_docker ]] && ! [[ "$ligne" =~ $re_borne ]]; then non_bornes+="$n "; fi
+done < ./deploy.sh
+attend "…à la lecture de deploy.sh : aucun appel docker hors de timeout/borner (lignes fautives)" "" "$non_bornes"
+
+# Le README donne des commandes à taper sur le VPS : elles doivent être bornées, elles aussi.
+re_code='^    '                                        # bloc de code Markdown (indenté de 4)
+re_suivi='docker.*logs.*( -f|--follow)'
+non_bornes=""; n=0
+while IFS= read -r ligne; do
+  n=$((n + 1))
+  [[ "$ligne" =~ $re_code ]] || continue
+  if [[ "$ligne" =~ $re_docker ]] && ! [[ "$ligne" =~ $re_borne ]]; then non_bornes+="$n "; fi
+  if [[ "$ligne" =~ $re_suivi ]]; then non_bornes+="$n(-f) "; fi
+done < ./README.md
+attend "…et les commandes du README de deploy/vps sont bornées, sans « logs -f » (lignes fautives)" "" "$non_bornes"
+
+# La SONDE DE SANTÉ : une lecture qui dépasse sa borne ne dit rien du conteneur — on relit.
+reinitialiser; REPONSES_SANTE=("__BORNE__" "__BORNE__" "running healthy 0")
+sortie="$( (main) 2>&1 )"; code=$?
+attend "🔴 dockerd muet deux lectures de suite, puis sain : déploiement ordinaire (0), PAS de repli" 0 "$code"
+absent "…aucun repli automatique déclenché par une lenteur du démon" "REPLI AUTOMATIQUE" "$sortie"
+contient "…la santé est constatée ensuite" "tracky-api est sain" "$sortie"
+
+reinitialiser; REPONSES_SANTE=(); for i in $(seq 1 31); do REPONSES_SANTE+=("__BORNE__"); done
+sortie="$( (main) 2>&1 )"; code=$?
+attend "dockerd muet pendant tout le délai de santé : on ne sait pas → repli, code 4" 4 "$code"
+contient "…et la raison dit « inconnu », pas « absent »" "toujours « inconnu » après 150 s" "$sortie"
+
+# La MIGRATION : la borne n'arrête que le client — le conteneur éphémère peut continuer.
+reinitialiser; CODE_MIGRATION=124
+sortie="$( (main) 2>&1 )"; code=$?
+attend "🔴 migration qui dépasse sa borne : arrêt, code 3" 3 "$code"
+contient "…elle est dite « toujours en cours »" "MIGRATION TOUJOURS EN COURS" "$sortie"
+absent "…et JAMAIS marquée « annulée » pendant qu'elle tourne peut-être encore" "resolve" "$(trace)"
+absent "…rien n'est recréé" "|up" "$(trace)"
+if [ -s "$JOURNAL" ]; then ko "…rien au journal"; else ok "…rien au journal"; fi
+
+# La CONSTRUCTION : `borner` dit le dépassement, et `set -e` s'arrête là où il s'arrêtait. Le
+# harnais tourne SANS `set -e` (il lit les codes) ; ces deux cas le réarment, comme en production.
+reinitialiser; CODE_BUILD=124
+sortie="$( (set -e; main) 2>&1 )"; code=$?
+attend "une construction qui dépasse sa borne arrête le script (124)" 124 "$code"
+contient "…et le DIT au lieu de s'arrêter en silence" "docker compose build (prod) : borne de ${BORNE_CONSTRUCTION_S} s dépassée" "$sortie"
+absent "…sans migrer ni recréer" "migrate" "$(trace)"
+absent "…ni recréer" "|up" "$(trace)"
+
+reinitialiser; CODE_BUILD=1
+sortie="$( (set -e; main) 2>&1 )"; code=$?
+attend "une construction en échec (hors borne) s'arrête comme avant (1)" 1 "$code"
+absent "…sans parler de borne" "borne de" "$sortie"
 
 echo "deploy.sh — la migration AVANT la recréation (incident du 17/09)"
 
