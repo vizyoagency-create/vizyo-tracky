@@ -125,6 +125,7 @@ describe('Réorganiser — onglet « Propositions de l’agent » (29/09, piste 
   const glisserPourConfirmer = (): void => {
     const slider = el().querySelector<HTMLInputElement>('app-confirm-modal input[type="range"]');
     if (!slider) throw new Error('pas de glissière de confirmation');
+    slider.dispatchEvent(new Event('pointerdown'));
     for (let v = 2; v <= 100; v += 7) {
       slider.value = String(v);
       slider.dispatchEvent(new Event('input'));
@@ -315,7 +316,7 @@ describe('Réorganiser — onglet « Propositions de l’agent » (29/09, piste 
 
     const change = textes('.ro-change li');
     expect(change).toContain("2 propositions de l'agent écartées sur 1 véhicule.");
-    expect(change).toContain('Aucun courriel ne part.');
+    expect(change).toContain('Personne n’est prévenu : ni courriel, ni SMS.');
     expect(change.join(' ')).toContain('Temps gagné : ≈ 20 s de saisie');
     expect(modale()).toBeNull();
 
@@ -323,8 +324,8 @@ describe('Réorganiser — onglet « Propositions de l’agent » (29/09, piste 
     rendre();
     expect(modale()).not.toBeNull();
     expect(textes('app-confirm-modal .cm-titre')[0]).toBe("Écarter ces 2 propositions de l'agent ?");
-    expect(textes('app-confirm-modal .ro-conf li')).toContain('Aucun courriel ne part.');
-    expect(textes('app-confirm-modal .cm-glisse-texte')[0]).toBe('Glissez pour écarter les 2 propositions');
+    expect(textes('app-confirm-modal .ro-conf li')).toContain('Personne n’est prévenu : ni courriel, ni SMS.');
+    expect(textes('app-confirm-modal .cm-glisse-texte')[0]).toBe('Glissez pour écarter');
 
     const revenir = [...el().querySelectorAll<HTMLButtonElement>('app-confirm-modal button')].find((b) => /Revenir/.test(b.textContent ?? ''));
     revenir?.click();
@@ -343,7 +344,7 @@ describe('Réorganiser — onglet « Propositions de l’agent » (29/09, piste 
     }));
     rendre();
 
-    expect(textes('.ro-change li')).toContain('Au plus 1 courriel : le demandeur du lien public est prévenu.');
+    expect(textes('.ro-change li')).toContain('1 demandeur du lien public est prévenu (courriel ou SMS).');
     boutonPied(/réservations/)?.click();
     rendre();
     expect(textes('app-confirm-modal .cm-titre')[0]).toBe('Annuler ces 3 réservations ?');
@@ -377,6 +378,44 @@ describe('Réorganiser — onglet « Propositions de l’agent » (29/09, piste 
     expect(http.match((r) => r.url === URL_PROPOSITIONS).length).toBe(0);
     expect(toast.warning).toHaveBeenCalledWith('La simulation a changé', jasmine.stringContaining('Rien n’a été appliqué'));
     expect(modale()).toBeNull();
+  });
+
+  it('refermer la feuille vide la confirmation : elle ne réapparaît pas, périmée, à la réouverture', () => {
+    ouvrir({ total: 0 });
+    repondreP(resultatP());
+    repondreR();
+    rendre();
+    boutonEcarter()?.click();
+    rendre();
+    expect(modale()).not.toBeNull();
+
+    fixture.componentRef.setInput('open', false);
+    rendre();
+    fixture.componentRef.setInput('open', true);
+    rendre();
+    expect(modale()).toBeNull();
+    repondreP(resultatP());
+    repondreR();
+  });
+
+  it('une erreur à l’écriture : la lecture n’est plus applicable et l’état est relu — pas de second envoi du même lot', () => {
+    ouvrir({ total: 0 });
+    repondreP(resultatP());
+    repondreR();
+    rendre();
+    boutonEcarter()?.click();
+    rendre();
+    glisserPourConfirmer();
+    http.expectOne((r) => r.url === URL_PROPOSITIONS && r.body.simulation === false).flush({ message: 'coupure' }, { status: 502, statusText: 'Bad Gateway' });
+    rendre();
+
+    expect(modale()).toBeNull();
+    expect(toast.error).toHaveBeenCalled();
+    // Relue aussitôt : la nouvelle simulation part.
+    const relue = http.match((r) => r.url === URL_PROPOSITIONS);
+    expect(relue.length).toBe(1);
+    expect(relue[0].request.body.simulation).toBeTrue();
+    relue[0].flush(resultatP());
   });
 
   it('une simulation relancée et ENCORE en vol au moment du glissement : rien ne part, et on le dit', () => {

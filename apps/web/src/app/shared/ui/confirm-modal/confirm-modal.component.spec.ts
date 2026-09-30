@@ -12,6 +12,7 @@ describe('ConfirmModalComponent — confirmation par glissement', () => {
     const confirmed = jasmine.createSpy('confirmed');
     fixture.componentInstance.confirmed.subscribe(confirmed);
     const slider = fixture.nativeElement.querySelector('input[type="range"]') as HTMLInputElement;
+    slider.dispatchEvent(new Event('pointerdown'));
     slider.value = '75';
     slider.dispatchEvent(new Event('input'));
     slider.dispatchEvent(new Event('change'));
@@ -21,8 +22,9 @@ describe('ConfirmModalComponent — confirmation par glissement', () => {
     expect(slider.value).toBe('0');
   });
 
-  /** Un vrai geste : le pouce (ou une flèche maintenue) traverse la piste par paliers. */
+  /** Un vrai geste au POINTEUR : appui, le pouce traverse la piste par paliers, relâché (`change`). */
   function glisser(slider: HTMLInputElement, valeurs: number[]) {
+    slider.dispatchEvent(new Event('pointerdown'));
     for (const v of valeurs) {
       slider.value = String(v);
       slider.dispatchEvent(new Event('input'));
@@ -81,12 +83,34 @@ describe('ConfirmModalComponent — confirmation par glissement', () => {
     expect(confirmed).not.toHaveBeenCalled();
   });
 
-  it('T50 : une flèche droite MAINTENUE (une valeur par répétition) reste un chemin clavier valide', () => {
+  it('T50 : une flèche droite MAINTENUE reste un chemin clavier valide — le navigateur émet input ET change à chaque pas', () => {
     const { fixture, confirmed, slider } = monter('Rallumer le moteur ?');
-    const valeurs = Array.from({ length: 100 }, (_, i) => i + 1); // 1 → 100, comme l'auto-répétition du clavier
-    glisser(slider, valeurs);
+    // Comme Chromium, Firefox et WebKit : chaque pas clavier émet `input` puis `change`. Relecture du
+    // 30/09 : pris pour un relâché, ce `change` remettait le curseur à zéro après chaque flèche.
+    for (let v = 1; v <= 100; v++) {
+      slider.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight' }));
+      slider.value = String(v);
+      slider.dispatchEvent(new Event('input'));
+      slider.dispatchEvent(new Event('change'));
+    }
     fixture.detectChanges();
     expect(confirmed).toHaveBeenCalledTimes(1);
+  });
+
+  it('30/09 : un départ à 20 % (le doigt posé sur le bord de la pastille, téléphone étroit) est un geste valable', () => {
+    const { confirmed, slider } = monter('Couper le moteur ?');
+    glisser(slider, [20, 31, 42, 53, 64, 75, 86, 97, 100]);
+    expect(confirmed).toHaveBeenCalledTimes(1);
+  });
+
+  it('30/09 : allé au bout mais parti de la piste — refusé, et l’aide dit comment faire', () => {
+    const { fixture, confirmed, slider } = monter('Couper le moteur ?');
+    glisser(slider, [55, 62, 70, 78, 85, 90, 95, 98, 100]);
+    fixture.detectChanges();
+    expect(confirmed).not.toHaveBeenCalled();
+    const aide = (fixture.nativeElement as HTMLElement).querySelector('.cm-glisse-aide');
+    expect(aide?.textContent).toContain('Partez du bouton rond');
+    expect(aide?.classList).toContain('cm-glisse-aide--indice');
   });
 
   it('T50 : un tremblement du pouce (retours en arrière) ne casse pas un geste par ailleurs complet', () => {

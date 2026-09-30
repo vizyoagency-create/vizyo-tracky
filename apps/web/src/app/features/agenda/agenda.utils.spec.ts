@@ -1232,41 +1232,48 @@ describe('Réorganiser — ce que ça change et le temps gagné (30/09, dernier 
     expect(tempsGagne('annuler', 0).texte).toBe('≈ 0 min');
   });
 
-  it('ligneCourriels : aucun, un, plusieurs', () => {
-    expect(ligneCourriels(0)).toBe('Aucun courriel ne part.');
-    expect(ligneCourriels(1)).toContain('le demandeur du lien public est prévenu');
-    expect(ligneCourriels(3)).toBe('Au plus 3 courriels : les demandeurs du lien public sont prévenus.');
+  it('ligneCourriels : personne, un, plusieurs — courriel OU SMS (le contact peut être un numéro)', () => {
+    expect(ligneCourriels(0)).toBe('Personne n’est prévenu : ni courriel, ni SMS.');
+    expect(ligneCourriels(1)).toBe('1 demandeur du lien public est prévenu (courriel ou SMS).');
+    expect(ligneCourriels(3)).toBe('3 demandeurs du lien public sont prévenus (courriel ou SMS).');
   });
 
   it('réaffecter : le véhicule libéré, la destination, les refus et les courriels', () => {
     expect(changementsReservations({ action: 'reaffecter', prevues: 12, refusees: 2, plaque: 'AB-123-CD', vers: null, decalageMinutes: null, courriels: 0 })).toEqual([
-      'AB-123-CD est libéré : 12 réservations partent chacune sur le premier véhicule libre et conforme à ses critères.',
+      '12 réservations quittent AB-123-CD : elles partent chacune sur le premier véhicule libre et conforme à ses critères.',
       '2 ne bougent pas : leurs motifs sont dans la liste.',
-      'Aucun courriel ne part.',
+      'Personne n’est prévenu : ni courriel, ni SMS.',
     ]);
     expect(changementsReservations({ action: 'reaffecter', prevues: 1, refusees: 0, plaque: 'AB-123-CD', vers: 'EF-456-GH', decalageMinutes: null, courriels: 1 })).toEqual([
-      'AB-123-CD est libéré : 1 réservation part sur EF-456-GH.',
-      'Au plus 1 courriel : le demandeur du lien public est prévenu.',
+      '1 réservation quitte AB-123-CD : elle part sur EF-456-GH.',
+      '1 demandeur du lien public est prévenu (courriel ou SMS).',
     ]);
   });
 
   it('annuler / décaler ; courriels inconnus (API d’avant) : on n’en dit rien', () => {
     expect(changementsReservations({ action: 'annuler', prevues: 3, refusees: 0, plaque: null, vers: null, decalageMinutes: null, courriels: null })).toEqual([
-      '3 réservations annulées : leurs véhicules sont libérés sur ces créneaux.',
+      '3 réservations annulées — une demande en attente est refusée : leurs créneaux sont libérés.',
     ]);
     expect(changementsReservations({ action: 'decaler', prevues: 1, refusees: 1, plaque: null, vers: null, decalageMinutes: -30, courriels: 0 })).toEqual([
       '1 réservation décalée de −30 min, sur le même véhicule.',
       '1 ne bouge pas : son motif est dans la liste.',
-      'Aucun courriel ne part.',
+      'Personne n’est prévenu : ni courriel, ni SMS.',
     ]);
+    expect(changementsReservations({ action: 'annuler', prevues: 500, refusees: 0, plaque: null, vers: null, decalageMinutes: null, courriels: 0, plafonne: true }))
+      .toContain('Seules les 500 premières sont prises : relancez ensuite pour les suivantes.');
   });
 
   it('propositions : écartées, rien de bloqué, pas reproposées, aucun courriel', () => {
     expect(changementsPropositions({ n: 106, vehicules: 19, plaque: null })).toEqual([
       "106 propositions de l'agent écartées sur 19 véhicules.",
       'Aucun véhicule n’est bloqué ni libéré : une proposition ne réserve rien.',
-      'L’agent ne les reproposera pas, ni un créneau qui les chevauche.',
-      'Aucun courriel ne part.',
+      'L’agent ne les reproposera pas, ni un créneau qui les chevauche sur le même véhicule.',
+      'Personne n’est prévenu : ni courriel, ni SMS.',
+    ]);
+    // Plafonné : le nombre de véhicules de la fenêtre surestimerait le lot — on ne le dit pas.
+    expect(changementsPropositions({ n: 500, vehicules: 30, plaque: null, plafonne: true }).slice(0, 2)).toEqual([
+      "500 propositions de l'agent écartées.",
+      'Seules les 500 premières sont prises : relancez ensuite pour les suivantes.',
     ]);
     expect(changementsPropositions({ n: 1, vehicules: 1, plaque: 'HD-686-QX' })[0]).toBe("1 proposition de l'agent écartée sur HD-686-QX.");
   });
@@ -1279,6 +1286,11 @@ describe('Réorganiser — ce que ça change et le temps gagné (30/09, dernier 
     expect(demandeurPrevenuDeLAnnulation({ metadata: pub, status: 'REQUESTED', endAt: fin }, maintenant)).toBeTrue();
     expect(demandeurPrevenuDeLAnnulation({ metadata: { public: true }, status: 'CONFIRMED', endAt: fin }, maintenant)).toBeFalse();
     expect(demandeurPrevenuDeLAnnulation({ metadata: { ...pub, retroactive: true }, status: 'CONFIRMED', endAt: fin }, maintenant)).toBeFalse();
+    // Relecture du 30/09 : une demande EN ATTENTE refusée prévient TOUJOURS — même finie ou consignée
+    // après coup (`annoncerRefus` n'a aucune borne), et par SMS si le contact est un numéro.
+    expect(demandeurPrevenuDeLAnnulation({ metadata: pub, status: 'REQUESTED', endAt: '2026-09-29T10:00:00Z' }, maintenant)).toBeTrue();
+    expect(demandeurPrevenuDeLAnnulation({ metadata: { ...pub, retroactive: true }, status: 'REQUESTED', endAt: fin }, maintenant)).toBeTrue();
+    expect(demandeurPrevenuDeLAnnulation({ metadata: { public: true, requesterContact: '+33612345678' }, status: 'REQUESTED', endAt: fin }, maintenant)).toBeTrue();
     expect(demandeurPrevenuDeLAnnulation({ metadata: null, status: 'CONFIRMED', endAt: fin }, maintenant)).toBeFalse();
     expect(demandeurPrevenuDeLAnnulation({ metadata: pub, status: 'CONFIRMED', endAt: '2026-09-29T10:00:00Z' }, maintenant)).toBeFalse();
     expect(demandeurPrevenuDeLAnnulation({ metadata: pub, status: 'IN_PROGRESS', endAt: fin }, maintenant)).toBeFalse();
