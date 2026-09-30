@@ -97,6 +97,32 @@ describe('ConfirmModalComponent — confirmation par glissement', () => {
     expect(confirmed).toHaveBeenCalledTimes(1);
   });
 
+  it('recette du 30/09 : après une confirmation au clavier, les répétitions de la flèche ne comptent plus, et la modale rouverte repart de zéro', () => {
+    const { fixture, confirmed, slider } = monter('Écarter ces 4 propositions ?');
+    // La flèche maintenue : 100 pas, et l'auto-répétition continue un peu après la confirmation.
+    for (let v = 1; v <= 100; v++) {
+      slider.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight' }));
+      slider.value = String(v);
+      slider.dispatchEvent(new Event('input'));
+      slider.dispatchEvent(new Event('change'));
+    }
+    fixture.detectChanges();
+    expect(confirmed).toHaveBeenCalledTimes(1);
+
+    // La page referme puis rouvre la modale pour la confirmation suivante.
+    fixture.componentRef.setInput('open', false);
+    fixture.detectChanges();
+    fixture.componentRef.setInput('open', true);
+    fixture.detectChanges();
+    const neuf = fixture.nativeElement.querySelector('input[type="range"]') as HTMLInputElement;
+    expect(neuf.value).toBe('0');
+    const pastille = (fixture.nativeElement as HTMLElement).querySelector('.cm-glisse') as HTMLElement;
+    expect(pastille.style.getPropertyValue('--p').trim()).toBe('0');
+    // Et un nouveau geste confirme de nouveau.
+    glisser(neuf, [2, 15, 28, 41, 54, 67, 80, 93, 100]);
+    expect(confirmed).toHaveBeenCalledTimes(2);
+  });
+
   it('30/09 : un départ à 20 % (le doigt posé sur le bord de la pastille, téléphone étroit) est un geste valable', () => {
     const { confirmed, slider } = monter('Couper le moteur ?');
     glisser(slider, [20, 31, 42, 53, 64, 75, 86, 97, 100]);
