@@ -371,6 +371,12 @@ export function transformerBoitier(
     fixModeOverrideUntil: null,
     lastValidFrameAt: src.lastValidFrameAt,
     simPhoneNumber,
+    // Le mot de passe du boîtier ne traverse JAMAIS vers la démo : c'est le secret qui commande
+    // l'immobilisation d'un véhicule réel par SMS, et les comptes de démonstration sont remis à
+    // des prospects. La démo n'atteint aucun boîtier — la valeur d'usine y suffit, et le fait
+    // d'être fausse est ici une propriété, pas un défaut.
+    devicePassword: '123456',
+    devicePasswordSetAt: null,
     accConnected: src.accConnected,
     vehicleId: ctx.ids.siImporte('Vehicle', src.vehicleId),
     createdAt: src.createdAt,

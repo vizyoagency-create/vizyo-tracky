@@ -92,6 +92,9 @@ const trackerWithVehicle = {
   imei: '123456789012345',
   model: 'COBAN_GPS403D',
   status: 'OFFLINE',
+  // 2026-09-30 — le mot de passe du boîtier vit en base et voyage avec lui : sans lui, le repli
+  // SMS partirait en « stopundefined ». La valeur d'usine reste celle des boîtiers non changés.
+  devicePassword: '123456',
   vehicleId: VEHICLE_ID,
   vehicle: {
     id: VEHICLE_ID,
@@ -2169,7 +2172,7 @@ describe('EngineControlService', () => {
       const sms = testModule.get(SmsGatewayService) as unknown as { isEnabled: jest.Mock; send: jest.Mock };
       sms.isEnabled.mockReturnValue(true);
       sms.send.mockResolvedValue({ ok: true, outcome: 'accepted', submittedStatus: 'queued', smsLogId: 'sms-restore' });
-      prisma.tracker.findFirst.mockResolvedValue({ simPhoneNumber: '+33600000000' });
+      prisma.tracker.findFirst.mockResolvedValue({ simPhoneNumber: '+33600000000', devicePassword: '123456' });
       prisma.engineControlCommand.findMany
         .mockResolvedValueOnce([
           {
@@ -2259,7 +2262,7 @@ describe('EngineControlService', () => {
         smsLogId: '00000000-0000-0000-0000-000000000099',
         twilioSid: 'cap-99',
       });
-      prisma.tracker.findFirst.mockResolvedValue({ simPhoneNumber: '+33600000000' });
+      prisma.tracker.findFirst.mockResolvedValue({ simPhoneNumber: '+33600000000', devicePassword: '123456' });
       prisma.engineControlCommand.findMany
         .mockResolvedValueOnce([{
           ...createdCommand({
@@ -2293,7 +2296,7 @@ describe('EngineControlService', () => {
     it('🔴 T48 : un ACK TCP arrivé pendant l envoi du SMS n est PAS écrasé — la ligne reste acquittée et le SMS inutile est annulé', async () => {
       const sms = testModule.get(SmsGatewayService) as unknown as { isEnabled: jest.Mock; send: jest.Mock; cancelOutbound: jest.Mock };
       sms.isEnabled.mockReturnValue(true);
-      prisma.tracker.findFirst.mockResolvedValue({ simPhoneNumber: '+33600000000' });
+      prisma.tracker.findFirst.mockResolvedValue({ simPhoneNumber: '+33600000000', devicePassword: '123456' });
       prisma.engineControlCommand.findFirst.mockResolvedValue(null);
       // Pendant `send`, l'écho K arrive et un autre chemin acquitte la commande.
       const acquittee = createdCommand({ action: EngineAction.RESTORE, status: CommandStatus.ACKNOWLEDGED, ackedAt: new Date(), activeKey: null });
@@ -2397,7 +2400,7 @@ describe('EngineControlService', () => {
         submittedStatus: 'queued',
         smsLogId: '00000000-0000-0000-0000-000000000098',
       });
-      prisma.tracker.findFirst.mockResolvedValue({ simPhoneNumber: '+33600000000' });
+      prisma.tracker.findFirst.mockResolvedValue({ simPhoneNumber: '+33600000000', devicePassword: '123456' });
       registry.send.mockReturnValue(false);
       prisma.engineControlCommand.findMany
         .mockResolvedValueOnce([{
@@ -2827,7 +2830,7 @@ describe('EngineControlService', () => {
       const sms = testModule.get(SmsGatewayService) as unknown as { isEnabled: jest.Mock; send: jest.Mock };
       sms.isEnabled.mockReturnValue(true);
       sms.send.mockResolvedValue({ ok: false, error: 'passerelle injoignable' });
-      prisma.tracker.findFirst.mockResolvedValue({ simPhoneNumber: '+33600000000' });
+      prisma.tracker.findFirst.mockResolvedValue({ simPhoneNumber: '+33600000000', devicePassword: '123456' });
       prisma.engineControlCommand.findFirst.mockResolvedValue(null);
       prisma.engineControlCommand.findMany
         .mockResolvedValueOnce([dueRestore({ channel: 'SMS', smsLogId: null, smsAttemptCount: 2, attemptCount: 3 })])
@@ -2966,7 +2969,7 @@ describe('EngineControlService', () => {
         sms.isEnabled.mockReturnValue(true);
         // La file SMS est longue : l'envoi ne rend la main qu'après 2 s.
         sms.send.mockImplementation(() => new Promise((resolve) => setTimeout(() => resolve({ ok: true, outcome: 'accepted', submittedStatus: 'queued', smsLogId: 'sms-lent' }), 2_000)));
-        prisma.tracker.findFirst.mockResolvedValueOnce(trackerWithVehicle).mockResolvedValue({ simPhoneNumber: '+33600000000' });
+        prisma.tracker.findFirst.mockResolvedValueOnce(trackerWithVehicle).mockResolvedValue({ simPhoneNumber: '+33600000000', devicePassword: '123456' });
         prisma.position.findFirst.mockResolvedValue(recentPosition(0));
         registry.send.mockReturnValue(false);
 
@@ -3308,7 +3311,7 @@ describe('EngineControlService', () => {
     it('worker : après 6 h sans nouvel échec, UN SMS-sonde est tenté (la voie SMS peut être revenue)', async () => {
       prisma.smsLog.findMany.mockResolvedValue(echecs(3, 7 * 60 * 60_000));
       registry.send.mockReturnValue(false);
-      prisma.tracker.findFirst.mockResolvedValue({ simPhoneNumber: SIM });
+      prisma.tracker.findFirst.mockResolvedValue({ simPhoneNumber: SIM, devicePassword: '123456' });
       const sms = testModule.get(SmsGatewayService) as unknown as { isEnabled: jest.Mock; send: jest.Mock };
       sms.isEnabled.mockReturnValue(true);
       sms.send.mockResolvedValue({ ok: true, outcome: 'accepted', submittedStatus: 'queued', smsLogId: 'sms-sonde' });

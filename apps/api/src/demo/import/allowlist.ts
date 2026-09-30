@@ -86,7 +86,13 @@ export const ALLOWLIST: Readonly<Record<string, RegleModele>> = {
       "carte soit peuplée dès le démarrage. Le numéro de SIM n'est plus effacé mais REMPLACÉ par " +
       "celui de la SIM de démo posée dans ce boîtier — un numéro de la plage de fiction de l'ARCEP. " +
       "Vidé, il faisait afficher « SIM manquante » sur les trente-sept véhicules, l'écran dérivant " +
-      "ce badge de cette seule colonne.",
+      "ce badge de cette seule colonne. " +
+      "⚠️ Le MOT DE PASSE du boîtier (2026-09-30) n'est NI copié NI transformé : il est IMPOSÉ à la " +
+      "valeur d'usine. C'est un secret d'exploitation — celui qui commande l'immobilisation d'un " +
+      "véhicule réel par SMS. Le recopier mettrait les mots de passe de la vraie flotte dans une " +
+      "base de démonstration dont les comptes sont distribués à des prospects. La démo n'atteint " +
+      "aucun boîtier (ni clé SMS, ni TCP), donc la valeur n'y sert à rien : elle n'a aucune raison " +
+      "d'être vraie, et toutes les raisons de ne pas l'être.",
     copies: [
       'model', 'status', 'lastSeenAt', 'lastKnownIgnition', 'lastIgnitionChangeAt', 'lastLat', 'lastLng',
       'lastSpeedKmh', 'lastHeading', 'lastIgnition', 'lastValid', 'lastPositionAt', 'lastNoFixAt',
@@ -96,7 +102,7 @@ export const ALLOWLIST: Readonly<Record<string, RegleModele>> = {
       'fixCommandFailing', 'lastValidFrameAt', 'accConnected', 'createdAt', 'updatedAt',
     ],
     transformes: ['id', 'imei', 'vehicleId', 'simPhoneNumber'],
-    imposes: ['verboseUntil', 'fixModeOverrideUntil'],
+    imposes: ['verboseUntil', 'fixModeOverrideUntil', 'devicePassword', 'devicePasswordSetAt'],
   },
   Sim: {
     pourquoi:

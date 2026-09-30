@@ -41,12 +41,27 @@ export interface CobanCommandTemplate {
   requiresConfirmation: boolean;
   dangerous: boolean;
   params: CommandParamSpec[];
-  buildPayload: (imei: string, params: Record<string, unknown>) => string;
+  /**
+   * ⚠️ `pwd` EST OBLIGATOIRE, ET C'EST VOULU (2026-09-30).
+   *
+   * Chaque commande SMS Coban porte le mot de passe du boîtier, collé à la commande :
+   * `stop<pwd>`, `sensitivity<pwd> 3`, `apn<pwd> …`. Il était écrit en dur — la
+   * valeur d'usine — dans les vingt gabarits ci-dessous. Le 24/09/2026 cette valeur a été
+   * trouvée sur internet par une veilleuse de CDEF31 et diffusée par courriel : qui connaît
+   * le numéro de SIM d'un boîtier peut l'immobiliser, sans Tracky et sans trace.
+   *
+   * Le paramètre n'a PAS de valeur par défaut. Un défaut aurait laissé passer en silence tout
+   * appelant qui l'oublie, et la commande serait partie avec le mauvais mot de passe — le
+   * boîtier l'ignore, sans rien dire à personne. Ici le compilateur refuse l'oubli.
+   */
+  buildPayload: (imei: string, params: Record<string, unknown>, pwd: string) => string;
   /**
    * TRK-012 — enveloppe TCP quand elle diffère de la forme SMS. Les deux canaux n'ont
    * pas la même grammaire : `buildPayload` est la forme texte SMS (mot de passe inclus),
    * `buildTcpPayload` la trame `**,imei:<IMEI>,…;` que le parseur TCP du Coban lit.
    * Absent = `buildPayload` vaut pour les deux (cas des trames déjà en `**,imei:`).
+   *
+   * Le TCP ne porte PAS de mot de passe : la session est déjà authentifiée par l'IMEI.
    */
   buildTcpPayload?: (imei: string, params: Record<string, unknown>) => string;
   expectedAckPattern: RegExp;
@@ -115,7 +130,7 @@ export const COBAN_COMMAND_CATALOG: CobanCommandTemplate[] = [
     requiresConfirmation: true,
     dangerous: true,
     params: [],
-    buildPayload: () => 'reset123456',
+    buildPayload: (_imei, _params, pwd) => `reset${pwd}`,
     expectedAckPattern: /reset\s*ok/i,
     ackTimeoutMs: 30000,
     availableVia: ['sms'],
@@ -129,7 +144,7 @@ export const COBAN_COMMAND_CATALOG: CobanCommandTemplate[] = [
     requiresConfirmation: true,
     dangerous: true,
     params: [],
-    buildPayload: () => 'factory123456',
+    buildPayload: (_imei, _params, pwd) => `factory${pwd}`,
     expectedAckPattern: /factory\s*ok/i,
     ackTimeoutMs: 30000,
     availableVia: ['sms'],
@@ -143,7 +158,7 @@ export const COBAN_COMMAND_CATALOG: CobanCommandTemplate[] = [
     requiresConfirmation: false,
     dangerous: false,
     params: [],
-    buildPayload: () => 'sleep123456 on',
+    buildPayload: (_imei, _params, pwd) => `sleep${pwd} on`,
     expectedAckPattern: /sleep.*ok/i,
     ackTimeoutMs: 15000,
     availableVia: ['sms'],
@@ -157,7 +172,7 @@ export const COBAN_COMMAND_CATALOG: CobanCommandTemplate[] = [
     requiresConfirmation: false,
     dangerous: false,
     params: [],
-    buildPayload: () => 'sleep123456 off',
+    buildPayload: (_imei, _params, pwd) => `sleep${pwd} off`,
     expectedAckPattern: /sleep.*ok/i,
     ackTimeoutMs: 15000,
     availableVia: ['sms'],
@@ -203,7 +218,7 @@ export const COBAN_COMMAND_CATALOG: CobanCommandTemplate[] = [
         ],
       },
     ],
-    buildPayload: (_imei, params) => `fix${params['interval'] as string}***n123456`,
+    buildPayload: (_imei, params, pwd) => `fix${params['interval'] as string}***n${pwd}`,
     // TRK-012 — la trame TCP n'est PAS la forme SMS : 4 120 commandes au format texte
     // émises sur la socket depuis le 2026-04-27, 0 réponse. Le parseur TCP attend
     // `**,imei:<IMEI>,C,05m;` — fréquence sur DEUX chiffres (Traccar `%02d`).
@@ -227,7 +242,7 @@ export const COBAN_COMMAND_CATALOG: CobanCommandTemplate[] = [
     requiresConfirmation: true,
     dangerous: false,
     params: [],
-    buildPayload: () => 'nofix123456',
+    buildPayload: (_imei, _params, pwd) => `nofix${pwd}`,
     expectedAckPattern: /nofix\s*ok/i,
     ackTimeoutMs: 15000,
     availableVia: ['sms'],
@@ -241,7 +256,7 @@ export const COBAN_COMMAND_CATALOG: CobanCommandTemplate[] = [
     requiresConfirmation: false,
     dangerous: false,
     params: [],
-    buildPayload: () => 'less gprs123456 on',
+    buildPayload: (_imei, _params, pwd) => `less gprs${pwd} on`,
     expectedAckPattern: /less gprs.*ok/i,
     ackTimeoutMs: 15000,
     availableVia: ['sms'],
@@ -255,7 +270,7 @@ export const COBAN_COMMAND_CATALOG: CobanCommandTemplate[] = [
     requiresConfirmation: false,
     dangerous: false,
     params: [],
-    buildPayload: () => 'less gprs123456 off',
+    buildPayload: (_imei, _params, pwd) => `less gprs${pwd} off`,
     expectedAckPattern: /less gprs.*ok/i,
     ackTimeoutMs: 15000,
     availableVia: ['sms'],
@@ -280,9 +295,9 @@ export const COBAN_COMMAND_CATALOG: CobanCommandTemplate[] = [
         max: 200,
       },
     ],
-    buildPayload: (_imei, params) => {
+    buildPayload: (_imei, params, pwd) => {
       const speed = String(params['speed_kmh']).padStart(3, '0');
-      return `speed123456 ${speed}`;
+      return `speed${pwd} ${speed}`;
     },
     expectedAckPattern: /speed\s*ok/i,
     ackTimeoutMs: 15000,
@@ -297,7 +312,7 @@ export const COBAN_COMMAND_CATALOG: CobanCommandTemplate[] = [
     requiresConfirmation: false,
     dangerous: false,
     params: [],
-    buildPayload: () => 'move123456',
+    buildPayload: (_imei, _params, pwd) => `move${pwd}`,
     expectedAckPattern: /move\s*ok/i,
     ackTimeoutMs: 15000,
     availableVia: ['sms'],
@@ -316,7 +331,7 @@ export const COBAN_COMMAND_CATALOG: CobanCommandTemplate[] = [
     requiresConfirmation: false,
     dangerous: false,
     params: [],
-    buildPayload: () => 'shock123456',
+    buildPayload: (_imei, _params, pwd) => `shock${pwd}`,
     expectedAckPattern: /shock\s*ok/i,
     ackTimeoutMs: 15000,
     availableVia: ['sms'],
@@ -330,7 +345,7 @@ export const COBAN_COMMAND_CATALOG: CobanCommandTemplate[] = [
     requiresConfirmation: false,
     dangerous: false,
     params: [],
-    buildPayload: () => 'noshock123456',
+    buildPayload: (_imei, _params, pwd) => `noshock${pwd}`,
     expectedAckPattern: /noshock\s*ok/i,
     ackTimeoutMs: 15000,
     availableVia: ['sms'],
@@ -356,7 +371,7 @@ export const COBAN_COMMAND_CATALOG: CobanCommandTemplate[] = [
         ],
       },
     ],
-    buildPayload: (_imei, params) => `sensitivity123456 ${params['level']}`,
+    buildPayload: (_imei, params, pwd) => `sensitivity${pwd} ${params['level']}`,
     expectedAckPattern: /sensitivity\s*ok/i,
     ackTimeoutMs: 15000,
     availableVia: ['sms'],
@@ -377,8 +392,8 @@ export const COBAN_COMMAND_CATALOG: CobanCommandTemplate[] = [
       { name: 'lat2', label: 'Latitude coin 2', type: 'number', required: true, min: -90, max: 90 },
       { name: 'lng2', label: 'Longitude coin 2', type: 'number', required: true, min: -180, max: 180 },
     ],
-    buildPayload: (_imei, params) =>
-      `stockade123456 ${params['lat1']},${params['lng1']};${params['lat2']},${params['lng2']}`,
+    buildPayload: (_imei, params, pwd) =>
+      `stockade${pwd} ${params['lat1']},${params['lng1']};${params['lat2']},${params['lng2']}`,
     expectedAckPattern: /stockade\s*ok/i,
     ackTimeoutMs: 15000,
     availableVia: ['sms'],
@@ -392,7 +407,7 @@ export const COBAN_COMMAND_CATALOG: CobanCommandTemplate[] = [
     requiresConfirmation: true,
     dangerous: false,
     params: [],
-    buildPayload: () => 'nostockade123456',
+    buildPayload: (_imei, _params, pwd) => `nostockade${pwd}`,
     expectedAckPattern: /nostockade\s*ok/i,
     ackTimeoutMs: 15000,
     availableVia: ['sms'],
@@ -410,7 +425,7 @@ export const COBAN_COMMAND_CATALOG: CobanCommandTemplate[] = [
     params: [
       { name: 'offset', label: 'Offset UTC (-12 à +12)', type: 'number', required: true, min: -12, max: 12 },
     ],
-    buildPayload: (_imei, params) => `time zone123456,${params['offset']}`,
+    buildPayload: (_imei, params, pwd) => `time zone${pwd},${params['offset']}`,
     expectedAckPattern: /time zone\s*ok/i,
     ackTimeoutMs: 15000,
     availableVia: ['sms'],
@@ -428,11 +443,11 @@ export const COBAN_COMMAND_CATALOG: CobanCommandTemplate[] = [
       { name: 'user', label: 'Utilisateur', type: 'string', required: false },
       { name: 'pass', label: 'Mot de passe', type: 'string', required: false },
     ],
-    buildPayload: (_imei, params) => {
+    buildPayload: (_imei, params, pwd) => {
       const parts = [params['apn'] as string];
       if (params['user']) parts.push(params['user'] as string);
       if (params['pass']) parts.push(params['pass'] as string);
-      return `apn123456 ${parts.join(',')}`;
+      return `apn${pwd} ${parts.join(',')}`;
     },
     expectedAckPattern: /APN\s*ok/i,
     ackTimeoutMs: 15000,
@@ -450,7 +465,7 @@ export const COBAN_COMMAND_CATALOG: CobanCommandTemplate[] = [
       { name: 'ip', label: 'Adresse IP', type: 'string', required: true },
       { name: 'port', label: 'Port', type: 'number', required: true, min: 1, max: 65535 },
     ],
-    buildPayload: (_imei, params) => `adminip123456 ${params['ip']} ${params['port']}`,
+    buildPayload: (_imei, params, pwd) => `adminip${pwd} ${params['ip']} ${params['port']}`,
     expectedAckPattern: /adminip\s*ok/i,
     ackTimeoutMs: 15000,
     availableVia: ['sms'],
@@ -472,7 +487,7 @@ export const COBAN_COMMAND_CATALOG: CobanCommandTemplate[] = [
         validate: (v) => /^\d{6}$/.test(String(v)) ? null : 'Doit être exactement 6 chiffres',
       },
     ],
-    buildPayload: (_imei, params) => `password123456 ${params['new_pass']}`,
+    buildPayload: (_imei, params, pwd) => `password${pwd} ${params['new_pass']}`,
     expectedAckPattern: /password\s*ok/i,
     ackTimeoutMs: 15000,
     availableVia: ['sms'],
@@ -486,7 +501,7 @@ export const COBAN_COMMAND_CATALOG: CobanCommandTemplate[] = [
     requiresConfirmation: false,
     dangerous: false,
     params: [],
-    buildPayload: () => 'protocol123456 18',
+    buildPayload: (_imei, _params, pwd) => `protocol${pwd} 18`,
     expectedAckPattern: /protocol18\s*ok/i,
     ackTimeoutMs: 15000,
     availableVia: ['sms'],
@@ -522,7 +537,7 @@ export const COBAN_COMMAND_CATALOG: CobanCommandTemplate[] = [
       },
       { name: 'ack_pattern', label: 'Pattern ACK (regex)', type: 'string', required: false },
     ],
-    buildPayload: (imei, params) => {
+    buildPayload: (imei, params, pwd) => {
       // V1.16 (audit D2/E1) — TOUJOURS ré-encapsuler sur l'IMEI résolu (jamais de
       // frame verbatim ni override "imei:"). Defense-in-depth : on re-nettoie même
       // si `validate` a déjà filtré le param en amont (cf. tracker-commands.service).

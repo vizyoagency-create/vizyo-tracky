@@ -93,6 +93,26 @@ import { GroupBadgeComponent } from '../../shared/ui/group-badge/group-badge.com
         </div>
       </div>
 
+      <!--
+        LE COMPTEUR AVANT LE TABLEAU. Un badge par ligne dit le cas ; il ne dit pas l'ampleur.
+        « 46 boîtiers sur 46 » se lit d'un coup d'œil et se suit dans le temps — c'est le seul
+        chiffre qui permette de savoir si la campagne de changement avance.
+        La bande disparaît quand le compte tombe à zéro : un bandeau permanent finit invisible.
+      -->
+      @if (nbMotDePasseUsine() > 0) {
+        <div class="flex items-start gap-3 rounded-lg border border-amber-500/35 bg-amber-500/[0.07] p-3">
+          <lucide-icon [img]="AlertTriangle" [size]="16" class="shrink-0 mt-0.5 text-amber-400"></lucide-icon>
+          <div class="text-sm leading-relaxed">
+            <strong class="text-fg-primary font-semibold">{{ nbMotDePasseUsine() }} boîtier(s) sur {{ trackers().length }} sont encore au mot de passe d'usine.</strong>
+            <span class="block text-xs text-fg-tertiary mt-1">
+              Toute commande SMS d'un boîtier Coban porte son mot de passe. Tant qu'il est celui
+              d'usine, qui connaît le numéro de SIM peut immobiliser le véhicule sans passer par
+              Tracky, sans trace et sans droit — c'est arrivé le 24/09/2026.
+            </span>
+          </div>
+        </div>
+      }
+
       <!-- Filters -->
       <div class="flex flex-wrap items-center gap-3">
         <div class="relative flex-1 min-w-[200px] max-w-[360px]">
@@ -152,6 +172,20 @@ import { GroupBadgeComponent } from '../../shared/ui/group-badge/group-badge.com
                   <!-- IMEI -->
                   <td class="p-3 font-mono text-xs">
                     <a [routerLink]="['/admin/trackers', t.id]" class="text-tracky-light hover:underline">{{ t.imei }}</a>
+                    <!--
+                      Le mot de passe du boîtier est accolé à l'IMEI, pas mis dans une colonne à
+                      part : c'est une propriété DU boîtier, et une colonne de plus pousserait le
+                      tableau au défilement horizontal. Seul l'état « usine » s'affiche — jamais
+                      la valeur, qui ne sort d'ailleurs pas de l'API par cette route.
+                    -->
+                    @if (t.motDePasseUsine) {
+                      <span class="mt-1 inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium
+                                   font-sans text-amber-400 bg-amber-500/10 border border-amber-500/30 whitespace-nowrap"
+                            title="Ce boîtier est encore au mot de passe d'usine : qui connaît son numéro de SIM peut l'immobiliser par SMS, sans passer par Tracky.">
+                        <lucide-icon [img]="AlertTriangle" [size]="11"></lucide-icon>
+                        mot de passe d'usine
+                      </span>
+                    }
                   </td>
                   <!-- Model -->
                   <td class="p-3 text-fg-secondary text-xs">{{ t.model }}</td>
@@ -303,6 +337,12 @@ export class AdminTrackersComponent implements OnInit {
 
   // State
   readonly trackers = signal<TrackerDetail[]>([]);
+  /**
+   * Combien de boîtiers restent en configuration d'usine. Compté sur TOUS les boîtiers chargés,
+   * pas sur `filtered()` : une recherche en cours ne doit pas faire croire que le risque a
+   * baissé. C'est un état de parc, pas un résultat de filtre.
+   */
+  readonly nbMotDePasseUsine = computed(() => this.trackers().filter((t) => t.motDePasseUsine).length);
   readonly loading = signal(false);
 
   // Filters

@@ -343,7 +343,10 @@ export class TrackerFixModeService {
 
     // 2) Echecs repetes — firmware probablement bloque.
     if (input.failureCount >= 3) {
-      return `${input.failureCount} commandes consecutives ignorees par le boitier. Tester un reset SMS (commande "RESET123456" via 07-sms-gateway) ou planifier une intervention physique.`;
+      // Le conseil ne cite plus « RESET123456 » : depuis le 30/09/2026 chaque boitier a SON mot
+      // de passe, et dicter la valeur d'usine enverrait l'operateur sur une commande que le
+      // boitier ignore — un diagnostic qui echoue pour la mauvaise raison coute une intervention.
+      return `${input.failureCount} commandes consecutives ignorees par le boitier. Tester un reset SMS (commande "reset" du catalogue, qui porte le mot de passe du boitier) ou planifier une intervention physique.`;
     }
     if (input.failureCount === 2) {
       return 'Deuxieme tentative apres echec. Si cette commande echoue aussi, le boitier sera marque FAILING — preparer un diagnostic SMS.';
@@ -1049,11 +1052,15 @@ export class TrackerFixModeService {
     }
     // TRK-012 — deux canaux, deux grammaires. La socket TCP reçoit `**,imei:<IMEI>,C,05m;`
     // (fréquence sur DEUX chiffres, fidèle à Traccar) ; le repli SMS garde la forme texte
-    // `fix005m***n123456`, la seule que le firmware lit dans un SMS.
+    // `fix005m***n<mdp>`, la seule que le firmware lit dans un SMS.
+    //
+    // Le mot de passe vient du boîtier depuis le 30/09/2026 : la forme SMS le porte, la forme
+    // TCP non (la session est authentifiée par l'IMEI).
+    const pwd = tracker.devicePassword;
     const payloadTcp = template.buildTcpPayload
       ? template.buildTcpPayload(tracker.imei, { interval })
-      : template.buildPayload(tracker.imei, { interval });
-    const payloadSms = template.buildPayload(tracker.imei, { interval });
+      : template.buildPayload(tracker.imei, { interval }, pwd);
+    const payloadSms = template.buildPayload(tracker.imei, { interval }, pwd);
 
     // Persist command + snapshot before any wire IO.
     const command = await this.prisma.trackerCommand.create({

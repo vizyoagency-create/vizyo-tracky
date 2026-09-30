@@ -20,6 +20,22 @@ interface RequestedBy {
   fleetId: string | null;
 }
 
+/**
+ * Retire `devicePassword` d'une réponse et le remplace par le seul fait utile : ce boîtier
+ * est-il encore en configuration d'usine ?
+ *
+ * ⚠️ Le verdict repose sur `devicePasswordSetAt`, PAS sur une comparaison avec « 123456 ».
+ * Un boîtier qu'on changerait un jour POUR cette valeur resterait exposé et doit continuer de
+ * le dire ; et inversement, la valeur d'usine peut changer d'un lot de matériel à l'autre.
+ * Ce qui compte n'est pas la chaîne, c'est « quelqu'un s'en est-il occupé ».
+ */
+function sansMotDePasse<T extends { devicePassword?: string; devicePasswordSetAt?: Date | null }>(
+  t: T,
+): T {
+  const { devicePassword: _secret, ...reste } = t;
+  return { ...(reste as T), motDePasseUsine: t.devicePasswordSetAt == null } as T;
+}
+
 @Injectable()
 export class TrackersService {
   constructor(
@@ -47,7 +63,9 @@ export class TrackersService {
       if (sim) {
         this.eventEmitter.emit('tracker.sim-changed', { trackerId: created.id, imei: created.imei });
       }
-      return created;
+      // Règle uniforme : aucune route de ce service ne rend le mot de passe. Une exception
+    // « juste pour la création » serait la première marche vers celle qu'on oublie.
+    return sansMotDePasse(created);
     } catch (err) {
       if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
         // Si le tracker existe deja et est non-assigne, on le reutilise
@@ -68,14 +86,14 @@ export class TrackersService {
               include: { vehicle: true },
             });
             this.eventEmitter.emit('tracker.sim-changed', { trackerId: updated.id, imei: updated.imei });
-            return updated;
+            return sansMotDePasse(updated);
           }
           if (sim && existing.simPhoneNumber && existing.simPhoneNumber !== sim) {
             throw new ConflictException(
               `IMEI "${dto.imei}" déjà enregistré avec une autre SIM. Modifiez la SIM via la fiche du boîtier.`,
             );
           }
-          return existing;
+          return sansMotDePasse(existing);
         }
         throw new ConflictException(`IMEI "${dto.imei}" déjà enregistré`);
       }
@@ -83,6 +101,21 @@ export class TrackersService {
     }
   }
 
+  /**
+   * ══ LE MOT DE PASSE DU BOÎTIER NE SORT JAMAIS PAR CES ROUTES (2026-09-30) ══════════════════
+   *
+   * `findAll` et `findOne` renvoient le Tracker ENTIER (`include`), et sont ouvertes à
+   * FLEET_ADMIN, FLEET_MANAGER et VIEWER. Ajouter `devicePassword` au modèle l'aurait donc
+   * envoyé en clair à tous ces rôles, sans que personne n'ait rien demandé : c'est exactement
+   * ainsi qu'un secret fuit — pas par une faille, par un `include` qui ne se relit plus.
+   *
+   * Ce que ces routes servent à la place : `motDePasseUsine`, un booléen. Il dit le RISQUE sans
+   * livrer le secret, et c'est tout ce dont l'écran d'administration a besoin pour montrer
+   * quels boîtiers restent en configuration d'usine.
+   *
+   * La valeur elle-même n'est lue que là où elle sert : au moment de construire un SMS, par un
+   * `select` nommé (coupe-circuit, audio, commandes, mode fix).
+   */
   async findAll(
     requestedBy: RequestedBy,
     filters?: { status?: string; unassigned?: string; limit?: number },
@@ -118,7 +151,9 @@ export class TrackersService {
       take: limit,
     });
     // Aplatit le groupe du véhicule (groups[0].group → vehicle.group) pour l'admin trackers.
-    return rows.map((t) => (t.vehicle ? { ...t, vehicle: flattenVehicleGroup(t.vehicle) } : t));
+    return rows.map((t) =>
+      sansMotDePasse(t.vehicle ? { ...t, vehicle: flattenVehicleGroup(t.vehicle) } : t),
+    );
   }
 
   async findOne(id: string, requestedBy: RequestedBy): Promise<Tracker> {
@@ -139,7 +174,7 @@ export class TrackersService {
     const out = tracker.vehicle
       ? { ...tracker, vehicle: flattenVehicleGroup(tracker.vehicle) }
       : tracker;
-    return out;
+    return sansMotDePasse(out);
   }
 
   async update(id: string, dto: UpdateTrackerDto, requestedBy: RequestedBy): Promise<Tracker> {
@@ -175,7 +210,7 @@ export class TrackersService {
     if (simChanged) {
       this.eventEmitter.emit('tracker.sim-changed', { trackerId: id, imei: updated.imei });
     }
-    return updated;
+    return sansMotDePasse(updated);
   }
 
   async remove(id: string, requestedBy: RequestedBy): Promise<void> {
@@ -250,7 +285,7 @@ export class TrackersService {
     });
 
     this.eventEmitter.emit('tracker.assigned', { trackerId, imei: updated.imei });
-    return updated;
+    return sansMotDePasse(updated);
   }
 
   async unassign(trackerId: string, requestedBy: RequestedBy): Promise<Tracker> {
@@ -267,6 +302,6 @@ export class TrackersService {
     });
 
     this.eventEmitter.emit('tracker.unassigned', { trackerId, imei: updated.imei });
-    return updated;
+    return sansMotDePasse(updated);
   }
 }

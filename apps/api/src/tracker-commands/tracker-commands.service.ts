@@ -185,7 +185,10 @@ export class TrackerCommandsService {
     const payload =
       template.availableVia.includes('tcp') && template.buildTcpPayload
         ? template.buildTcpPayload(tracker.imei, params)
-        : template.buildPayload(tracker.imei, params);
+        // Le mot de passe vient du BOÎTIER (2026-09-30) : il était en dur dans le catalogue,
+        // à la valeur d'usine. Un boîtier dont le mot de passe a changé ignorerait une
+        // commande construite avec l'ancienne — en silence, sans accusé ni erreur.
+        : template.buildPayload(tracker.imei, params, tracker.devicePassword);
 
     const command = await this.prisma.trackerCommand.create({
       data: {
@@ -276,11 +279,24 @@ export class TrackerCommandsService {
     // reconstruit la forme SMS depuis le gabarit. Envoyer la trame TCP par SMS serait
     // TRK-012 à l'envers — le défaut qu'on vient de passer quatre mois à trouver.
     if (!sentOk && template?.availableVia.includes('sms')) {
+      // Le mot de passe du boîtier est relu ICI, au moment du repli (2026-09-30). `dispatch`
+      // ne reçoit qu'un IMEI — volontairement, pour éviter un lookup non cloisonné (cf. l'en-tête
+      // de cette méthode). La lecture est donc bornée à ce seul champ, par IMEI, et ne révèle
+      // rien d'autre. Défaut « 123456 » si le boîtier a disparu entre-temps : c'est l'état des
+      // boîtiers non encore changés, et se taire enverrait un SMS que le matériel ignorerait.
+      const devicePassword =
+        (
+          await this.prisma.tracker.findFirst({
+            where: { imei: resolvedImei },
+            select: { devicePassword: true },
+          })
+        )?.devicePassword ?? '123456';
       let payloadSms: string | null = null;
       try {
         payloadSms = template.buildPayload(
           resolvedImei,
           (command.params ?? {}) as Record<string, unknown>,
+          devicePassword,
         );
       } catch {
         // Gabarit dont la forme SMS n'est pas reconstructible sans ses paramètres : on ne

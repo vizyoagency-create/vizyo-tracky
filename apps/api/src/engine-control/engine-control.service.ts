@@ -3017,10 +3017,21 @@ export class EngineControlService implements OnModuleDestroy {
     }
     const tracker = await this.prisma.tracker.findFirst({
       where: { imei },
-      select: { simPhoneNumber: true },
+      // `devicePassword` est lu ICI, à l'instant de l'envoi, et jamais mis en cache : si le mot
+      // de passe d'un boîtier vient d'être changé, la commande suivante doit partir avec le
+      // NOUVEAU. Un cache de quelques secondes suffirait à envoyer un `resume` que le boîtier
+      // ignorerait — sur une remise en route, c'est un véhicule qui reste immobilisé.
+      select: { simPhoneNumber: true, devicePassword: true },
     });
     if (!tracker?.simPhoneNumber) {
       return { ok: false, reason: 'aucun numéro SIM enregistré pour ce boîtier' };
+    }
+    // Sans mot de passe, la commande partirait en « stopundefined » — un texte que le boîtier
+    // ignore, et un SMS facturé pour rien. La colonne est NOT NULL avec un défaut, donc ce cas
+    // ne peut venir que d'un `select` incomplet introduit plus tard : on échoue en le DISANT,
+    // plutôt que d'envoyer une commande qui a l'air partie et n'a jamais rien fait.
+    if (!tracker.devicePassword) {
+      return { ok: false, reason: 'mot de passe du boîtier illisible — commande SMS non envoyée' };
     }
     // T62 — une COUPURE automatique ne dépense pas un SMS vers une SIM que rien n'atteint : la
     // coupe est reportée ou échoue proprement. Une action MANUELLE (antivol) tente sa chance —
@@ -3034,7 +3045,10 @@ export class EngineControlService implements OnModuleDestroy {
         };
       }
     }
-    const smsPayload = action === EngineAction.CUT ? 'stop123456' : 'resume123456';
+    // Le mot de passe du boîtier est COLLÉ à la commande, sans espace : c'est la grammaire Coban.
+    // Il venait d'être écrit en dur (`stop123456`) — la valeur d'usine, trouvable sur internet,
+    // et effectivement trouvée puis diffusée par courriel le 24/09/2026.
+    const smsPayload = `${action === EngineAction.CUT ? 'stop' : 'resume'}${tracker.devicePassword}`;
     const result = await this.sms.send(tracker.simPhoneNumber, smsPayload, {
       imei,
       commandId,

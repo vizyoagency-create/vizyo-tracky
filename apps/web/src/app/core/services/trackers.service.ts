@@ -14,6 +14,17 @@ export interface TrackerDetail {
   accConnected: boolean;
   /** V1.14 — numero SIM data (E.164) pour fallback SMS + allowlist vizyo-texto. */
   simPhoneNumber: string | null;
+  /**
+   * 2026-09-30 — le boîtier est-il encore au mot de passe d'usine ?
+   *
+   * Toute commande SMS Coban le porte (`stop<mdp>`, `resume<mdp>`) : tant qu'il vaut la valeur
+   * d'usine, quiconque connaît le numéro de SIM peut immobiliser le véhicule sans passer par
+   * Tracky, sans trace et sans droit. C'est arrivé le 24/09/2026 chez CDEF31.
+   *
+   * ⚠️ L'API ne sert PAS le mot de passe lui-même par cette route — seulement ce booléen. Le
+   * secret n'est lu qu'au moment de construire un SMS, côté serveur.
+   */
+  motDePasseUsine?: boolean;
   // V2 — champs détaillés (page détail tracker), renvoyés par GET /trackers/:id.
   lastLat?: number | null;
   lastLng?: number | null;

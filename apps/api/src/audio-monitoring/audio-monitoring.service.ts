@@ -78,9 +78,18 @@ export class AudioMonitoringService {
     private readonly systemActivity: SystemActivityService,
   ) {}
 
-  /** Mot de passe boîtier Coban/Baanool (ARM `monitor<pwd>` / DISARM `tracker<pwd>`). */
-  private devicePassword(): string {
-    return this.config.get('AUDIO_DEVICE_PASSWORD', { infer: true });
+  /**
+   * Mot de passe boîtier Coban/Baanool (ARM `monitor<pwd>` / DISARM `tracker<pwd>`).
+   *
+   * 30/09/2026 — LE MOT DE PASSE VIENT DU BOÎTIER, plus d'une variable d'environnement.
+   * `AUDIO_DEVICE_PASSWORD` valait « 123456 » pour TOUS les boîtiers ; depuis que chacun a le
+   * sien (`Tracker.devicePassword`), une valeur globale enverrait une commande que le boîtier
+   * ignorerait — et une écoute qui ne s'arme pas ne le dit pas : elle échoue en silence.
+   *
+   * L'environnement reste le repli pour un boîtier qu'on n'a pas su relire, et pour les tests.
+   */
+  private devicePassword(tracker?: { devicePassword?: string | null }): string {
+    return tracker?.devicePassword || this.config.get('AUDIO_DEVICE_PASSWORD', { infer: true });
   }
 
   /**
@@ -208,7 +217,7 @@ export class AudioMonitoringService {
 
     let sent: AudioMonitoringCommand;
     try {
-      const pwd = this.devicePassword();
+      const pwd = this.devicePassword(tracker);
       const r = await this.sms.send(tracker.simPhoneNumber, 'monitor' + pwd, {
         imei: tracker.imei,
         commandId: command.id,
@@ -281,7 +290,7 @@ export class AudioMonitoringService {
     }
     const tracker = await this.prisma.tracker.findFirst({
       where: trackerWhere,
-      select: { id: true, imei: true, simPhoneNumber: true, vehicle: { select: { id: true, fleetId: true } } },
+      select: { id: true, imei: true, simPhoneNumber: true, devicePassword: true, vehicle: { select: { id: true, fleetId: true } } },
     });
     if (!tracker) {
       throw new NotFoundException('Tracker introuvable');
@@ -304,7 +313,7 @@ export class AudioMonitoringService {
 
     let ok = false;
     try {
-      const pwd = this.devicePassword();
+      const pwd = this.devicePassword(tracker);
       const r = await this.sms.send(tracker.simPhoneNumber, 'tracker' + pwd, {
         imei: tracker.imei,
         template: 'audio_disarm', source: 'audio-disarm',
