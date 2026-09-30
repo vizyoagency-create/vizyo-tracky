@@ -1,7 +1,7 @@
 {
   "_comment": "Ce que le POSTE DE COMMANDE montre en plus des tâches. Les tâches, elles, viennent de docs/centre-alerte/app/taches.json et ne se recopient JAMAIS ici — voir generer.mjs. Ce fichier ne porte que ce qu'aucune tâche ne décrit : les mesures de tête, les mécaniques qui tournent seules, les décisions posées au propriétaire, et ce qui est prouvé.",
   "version": 1,
-  "releve": "29 septembre 2026, 03h14 Paris",
+  "releve": "30 septembre 2026, 03h14 Paris",
   "machines": [
     {
       "nom": "Rattrapage du recalage des tracés",
@@ -20,23 +20,23 @@
       "pied2": "s’éteint seule"
     },
     {
-      "nom": "Coupe-circuit automatique — 14 nuits sur le chantier : nuit 28→29 à l’heure ; le téléphone s’est tu deux fois lundi en journée",
-      "texte": "Nuit propre : 28 coupes à l’heure (MH Cars à 20:00, CDEF31 de 22:00 à 22:06), toutes acquittées — 3 par le secours SMS ; 29 reprises lundi matin, toutes acquittées, HM-787-GA comprise ; preuve SMS 3 sur 3, aucune coupe retenue. Mais le S21 s’est tu deux fois lundi : de 13:11 à environ 14:20, puis de 17:04 à environ 17:15 (Paris) — hors de toute plage de coupe, donc sans conséquence cette fois ; tu as reçu 3 notifications. C’est le 7ᵉ et le 8ᵉ silence en 14 jours. Deux déploiements d’agenda (17:42 et 21:14) sans rien interrompre.",
+      "nom": "Coupe-circuit automatique — 15 nuits sur le chantier : nuit 29→30 à l’heure ; une coupe réussie reste sans preuve (SIM en double)",
+      "texte": "Nuit propre : 29 coupes à l’heure (MH Cars à 20:00, CDEF31 de 22:00 à 22:06), 28 acquittées par TCP ; 28 reprises mardi matin, toutes acquittées ; preuve SMS 3 sur 3, le téléphone ne s’est pas tu, aucune coupe retenue. Mais le déploiement de 22:06 a recréé l’API en plein milieu de la vague : la coupe de HM-787-GA est partie par SMS, le boîtier a répondu « Stop engine Succeed »… et la réponse a été écartée, parce que son numéro de SIM est aussi enregistré sur un vieux boîtier de stock. Le véhicule est coupé ; seule la preuve manque — et une reprise par SMS de ce véhicule ne serait jamais confirmée non plus.",
       "fait": null,
       "total": null,
-      "pied": "31 plannings actifs sur 37 mesurés (26 CDEF31 + 5 MH Cars) — 14 nuits : 11 probantes, 1 retenue par l’interlock (15/09), 2 retardées par le téléphone (22/09, 24/09) ; 2 reprises perdues pour HM-787-GA (26 et 27/09, coupe veilleur) ; 8 silences du téléphone en 14 jours",
-      "pied2": "le téléphone (T55) — deux silences lundi en journée ; écrire T84 et trancher l’échéance d’une coupe veilleur ; T82 + T79 + T76 ensemble ; T80 côté code (rebond → ligne) ; T83 (petit) ; décider l’élargissement (T38)"
+      "pied": "31 plannings actifs sur 37 mesurés (26 CDEF31 + 5 MH Cars) — 15 nuits : 12 probantes, 1 retenue par l’interlock (15/09), 2 retardées par le téléphone (22/09, 24/09) ; 2 reprises perdues pour HM-787-GA (26 et 27/09, coupe veilleur) ; 8 silences du téléphone en 15 jours",
+      "pied2": "effacer le numéro de SIM du boîtier de stock 864035054756292 (T85, 1 min) ; ne plus déployer pendant les vagues de 20:00, 22:00 et 05:00 (T86) ; le téléphone (T55) ; T84 ; T82 + T79 + T76 ensemble ; T80 côté code ; décider l’élargissement (T38)"
     }
   ],
   "chiffres": [
     {
-      "v": "8",
-      "t": "silences du téléphone SMS en 14 jours — deux lundi en journée (13:11 → ~14:20, 17:04 → ~17:15 Paris), sans coupe à faire donc sans conséquence ; nuit 28→29 propre : 28 coupes et 29 reprises acquittées, preuve 3/3 ; ✅ le rapport hebdo cdef31 est enfin remis (premier depuis le 27/07) ; 153 CRITICAL actives (+6, toutes du téléphone), 0 signature nouvelle",
+      "v": "1",
+      "t": "numéro de SIM en double — HM-787-GA et un boîtier de stock muet depuis juillet : la coupe par SMS de mardi 22:06 a réussi, mais sa confirmation a été écartée en silence (T85, geste d’écran) ; nuit 29→30 propre : 29 coupes, 28 reprises acquittées, preuve 3/3, téléphone présent toute la journée ; 156 CRITICAL actives (+3 : trois passages d’automatisation tués par trois déploiements forcés), 1 signature nouvelle",
       "alerte": true
     },
     {
-      "v": "507/507",
-      "t": "trajets des 25, 26 et 27/09 recalés dans les 2 h suivant leur création — trois journées figées (T28) ; le 28/09 est à 197/197, fenêtre encore ouverte"
+      "v": "476/476",
+      "t": "trajets des 26, 27 et 28/09 recalés dans les 2 h suivant leur création — trois journées figées (T28) ; le 29/09 est à 201/201, fenêtre encore ouverte"
     },
     {
       "v": "auto",
