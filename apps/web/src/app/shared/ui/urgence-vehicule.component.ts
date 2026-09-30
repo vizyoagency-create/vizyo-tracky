@@ -1,10 +1,7 @@
 import { ChangeDetectionStrategy, Component, input } from '@angular/core';
-import { AlertTriangle, LucideAngularModule, MessageSquare, PhoneCall } from 'lucide-angular';
-import {
-  URGENCE_TEL_AFFICHE,
-  URGENCE_TEL_URL,
-  urgenceWhatsappLien,
-} from '../../core/config/assistance-urgence';
+import { AlertTriangle, FileText, LucideAngularModule, MessageSquare } from 'lucide-angular';
+import { CONTACT_EMAIL } from '@vizyo/tracky-shared';
+import { URGENCE_TEL_AFFICHE, urgenceWhatsappLien } from '../../core/config/assistance-urgence';
 
 /**
  * ══ LA LIGNE D'URGENCE VÉHICULE ══════════════════════════════════════════════════════════════
@@ -53,26 +50,34 @@ import {
             <h2 id="urg-titre" class="urg-titre">Véhicule bloqué — urgence 24&nbsp;h/24</h2>
             <p class="urg-sous">
               Un véhicule ne redémarre pas, le rallumage à distance ne passe pas, quelqu'un est
-              immobilisé&nbsp;: écrivez ou appelez, à n'importe quelle heure, week-end compris.
+              immobilisé&nbsp;: écrivez sur WhatsApp, à n'importe quelle heure, week-end compris.
             </p>
           </div>
         </div>
 
-        <div class="urg-actions">
-          <a [href]="lienWhatsapp" target="_blank" rel="noopener" class="urg-btn urg-btn-1">
-            <lucide-icon [img]="MessageSquare" [size]="15" />
-            Écrire sur WhatsApp
-          </a>
-          <a [href]="lienTel" class="urg-btn urg-btn-2">
-            <lucide-icon [img]="PhoneCall" [size]="15" />
-            Appeler le {{ tel }}
-          </a>
-        </div>
+        <!--
+          UN SEUL CANAL, ET C'EST WHATSAPP. Un bouton « Appeler » a existé ici quelques heures ;
+          il a été retiré le 30/09/2026 quand la fiche remise au client a été arrêtée sur
+          « WhatsApp uniquement ». Deux promesses différentes pour le même numéro, c'est la
+          garantie qu'une des deux sera fausse un jour — et celle qu'on vérifie le moins est
+          toujours celle qui est à l'écran.
+          WhatsApp laisse en plus une trace écrite, horodatée, avec la plaque : au téléphone,
+          à 3 h du matin, la plaque se perd.
+        -->
+        <a [href]="lienWhatsapp" target="_blank" rel="noopener" class="urg-btn urg-btn-1">
+          <lucide-icon [img]="MessageSquare" [size]="16" />
+          Écrire sur WhatsApp — {{ tel }}
+        </a>
 
         <p class="urg-astuce">
-          Indiquez la <strong>plaque</strong> et ce que vous voyez&nbsp;: c'est ce qui permet
-          d'agir tout de suite.
+          Indiquez la <strong>plaque</strong>, où vous êtes et ce que vous voyez&nbsp;: c'est ce
+          qui permet d'agir tout de suite.
         </p>
+
+        <a class="urg-fiche" href="/fiche-urgence-nuit.html" target="_blank" rel="noopener">
+          <lucide-icon [img]="FileText" [size]="14" />
+          <span>Lire ou imprimer la fiche d'urgence <span class="urg-fiche-h">— à garder près des clés</span></span>
+        </a>
 
         <!--
           La frontière, avec sa raison. Sans elle, la ligne d'astreinte devient un standard
@@ -80,8 +85,9 @@ import {
         -->
         <p class="urg-limite">
           Cette ligne est réservée aux <strong>véhicules immobilisés</strong>. Pour une question
-          sur l'application, la demande écrite ci-dessous est plus rapide — et elle laisse la
-          ligne libre pour quelqu'un debout devant une voiture qui ne démarre pas.
+          sur l'application, passez par l'assistant ci-dessous ou écrivez à
+          <a [href]="lienEmail">{{ email }}</a> — et laissez la ligne libre pour quelqu'un debout
+          devant une voiture qui ne démarre pas.
         </p>
       </section>
     }
@@ -124,13 +130,12 @@ import {
       color: var(--fg-secondary); text-wrap: pretty;
     }
 
-    /* Deux actions à parts égales : écrire OU appeler. À 3 h du matin on ne choisit pas entre
-       un bouton et un lien discret — les deux se touchent pareil. */
-    .urg-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+    /* UNE seule action, donc pleine largeur : il n'y a rien à arbitrer. Un peu plus haut que
+       les 44 px réglementaires — c'est le geste utile de l'écran, il doit se toucher sans viser. */
     .urg-btn {
-      flex: 1 1 165px; display: inline-flex; align-items: center; justify-content: center;
-      gap: 7px; min-height: 44px; padding: 10px 12px; border-radius: 10px;
-      font-size: 13px; font-weight: 600; text-decoration: none; white-space: nowrap;
+      display: flex; align-items: center; justify-content: center; gap: 8px;
+      min-height: 48px; padding: 12px 14px; border-radius: 10px;
+      font-size: 14px; font-weight: 700; text-decoration: none; text-align: center;
       transition: background-color 120ms ease;
     }
     .urg-btn-1 {
@@ -139,11 +144,17 @@ import {
       color: var(--fg-primary);
     }
     .urg-btn-1:hover { background: color-mix(in srgb, var(--texte-danger, #f87171) 30%, transparent); }
-    .urg-btn-2 {
-      background: var(--bg-secondary); border: 1px solid var(--border-subtle);
+
+    /* La fiche : présente, secondaire. Elle sert AVANT la panne, pas pendant. */
+    .urg-fiche {
+      display: flex; align-items: center; gap: 7px; min-height: 40px;
+      font-size: 12px; line-height: 1.4; text-decoration: none;
       color: var(--fg-secondary);
     }
-    .urg-btn-2:hover { background: var(--bg-tertiary); }
+    .urg-fiche:hover { color: var(--fg-primary); text-decoration: underline; }
+    .urg-fiche lucide-icon { flex: none; }
+    .urg-fiche-h { color: var(--fg-tertiary); }
+    @media (max-width: 400px) { .urg-fiche-h { display: none; } }
 
     .urg-astuce, .urg-limite {
       margin: 0; font-size: 11.5px; line-height: 1.5; text-wrap: pretty;
@@ -153,6 +164,8 @@ import {
       padding-top: 10px; border-top: 1px solid color-mix(in srgb, var(--fg-tertiary) 20%, transparent);
     }
     .urg-astuce strong, .urg-limite strong { color: var(--fg-secondary); }
+    .urg-limite a { color: var(--texte-succes); text-decoration: none; }
+    .urg-limite a:hover { text-decoration: underline; }
     `,
   ],
 })
@@ -163,10 +176,11 @@ export class UrgenceVehiculeComponent {
 
   protected readonly AlertTriangle = AlertTriangle;
   protected readonly MessageSquare = MessageSquare;
-  protected readonly PhoneCall = PhoneCall;
+  protected readonly FileText = FileText;
 
   protected readonly tel = URGENCE_TEL_AFFICHE;
-  protected readonly lienTel = URGENCE_TEL_URL;
+  protected readonly email = CONTACT_EMAIL;
+  protected readonly lienEmail = `mailto:${CONTACT_EMAIL}?subject=${encodeURIComponent('Question sur Tracky')}`;
   protected get lienWhatsapp(): string {
     return urgenceWhatsappLien(this.plaque());
   }

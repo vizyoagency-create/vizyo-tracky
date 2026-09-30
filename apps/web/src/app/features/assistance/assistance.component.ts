@@ -1,24 +1,25 @@
-﻿import { Component, inject, OnInit, signal } from '@angular/core';
+import { Component, inject, OnInit, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute } from '@angular/router';
 import type { AssistanceConversationDto, AssistanceListItemDto } from '@vizyo/tracky-shared';
 import { firstValueFrom } from 'rxjs';
-import { LifeBuoy, LucideAngularModule, MessageSquare, PhoneCall, Send, Sparkles, User } from 'lucide-angular';
+import { LifeBuoy, LucideAngularModule, Mail, MessageSquare, PhoneCall, Send, Sparkles, User } from 'lucide-angular';
+import { CONTACT_EMAIL } from '@vizyo/tracky-shared';
 import { swallow } from '../../core/error/swallow';
 import { AssistanceApiService } from '../../core/services/assistance.service';
 import { ToastService } from '../../shared/ui/toast/toast.service';
 import { UrgenceVehiculeComponent } from '../../shared/ui/urgence-vehicule.component';
 
 /**
- * Assistance IA â€” l'Ã©cran de l'utilisateur.
+ * Assistance IA — l'écran de l'utilisateur.
  *
- * ConÃ§u pour 375 px d'abord : une colonne, le fil au centre, la saisie collÃ©e en bas. Sur Ã©cran
- * large, la liste des demandes passÃ©es vient Ã  gauche â€” c'est un confort, pas la structure.
+ * Conçu pour 375 px d'abord : une colonne, le fil au centre, la saisie collée en bas. Sur écran
+ * large, la liste des demandes passées vient à gauche — c'est un confort, pas la structure.
  *
- * Trois choses sont dites Ã€ L'Ã‰CRAN plutÃ´t que subies en silence :
- *   - le nombre de rÃ©ponses automatiques restantes, AVANT d'arriver Ã  zÃ©ro ;
- *   - que l'assistance ne fait rien Ã  votre place : elle explique, elle n'agit pas ;
- *   - qu'un rappel humain est possible Ã  tout moment, sans quota.
+ * Trois choses sont dites À L'ÉCRAN plutôt que subies en silence :
+ *   - le nombre de réponses automatiques restantes, AVANT d'arriver à zéro ;
+ *   - que l'assistance ne fait rien à votre place : elle explique, elle n'agit pas ;
+ *   - qu'un rappel humain est possible à tout moment, sans quota.
  */
 @Component({
   selector: 'app-assistance',
@@ -32,33 +33,46 @@ import { UrgenceVehiculeComponent } from '../../shared/ui/urgence-vehicule.compo
           Assistance
         </h1>
         <p class="text-xs text-fg-tertiary">
-          Deux chemins, et ils ne servent pas Ã  la mÃªme chose&nbsp;: l'urgence ci-dessous quand un
-          vÃ©hicule est immobilisÃ©, la demande Ã©crite pour tout le reste.
+          Deux chemins, et ils ne servent pas à la même chose&nbsp;: l'urgence ci-dessous quand un
+          véhicule est immobilisé, la demande écrite pour tout le reste.
         </p>
       </header>
 
       <!--
-        L'URGENCE PASSE DEVANT, ET C'EST DÃ‰LIBÃ‰RÃ‰.
-        Quelqu'un dont le vÃ©hicule ne dÃ©marre pas Ã  2 h du matin ne fait pas dÃ©filer une page
-        d'aide : il doit trouver le numÃ©ro en arrivant. La demande Ã©crite, elle, se cherche
-        calmement â€” on n'ouvre pas cet Ã©cran en urgence pour poser une question.
+        L'URGENCE PASSE DEVANT, ET C'EST DÉLIBÉRÉ.
+        Quelqu'un dont le véhicule ne démarre pas à 2 h du matin ne fait pas défiler une page
+        d'aide : il doit trouver le numéro en arrivant. La demande écrite, elle, se cherche
+        calmement — on n'ouvre pas cet écran en urgence pour poser une question.
       -->
       <app-urgence-vehicule variante="complet" />
 
-      <section class="space-y-1 pt-1">
+      <section class="space-y-2 pt-1">
         <h2 class="text-sm font-medium text-fg-primary flex items-center gap-2">
           <lucide-icon [img]="MessageSquare" [size]="15" class="text-fg-tertiary" />
           Une question sur l'application&nbsp;?
         </h2>
         <p class="text-xs text-fg-tertiary">
-          RÃ©ponse immÃ©diate de l'assistant, puis un conseiller reprend le fil aux heures de
-          bureau. L'assistant explique et oriente&nbsp;; il ne modifie rien Ã  votre place.
+          Deux façons, au choix&nbsp;: <strong class="text-fg-secondary">l'assistant ci-dessous</strong>
+          — réponse immédiate, puis un conseiller reprend le fil aux heures de bureau — ou
+          <strong class="text-fg-secondary">un courriel</strong> si vous préférez écrire.
+          L'assistant explique et oriente&nbsp;; il ne modifie rien à votre place.
         </p>
+        <!--
+          Le courriel est une SORTIE, pas un doublon : quelqu'un qui n'obtient pas ce qu'il veut
+          de l'assistant doit pouvoir écrire à un humain sans chercher l'adresse ailleurs. Il
+          reste secondaire — l'assistant répond tout de suite, pas la boîte aux lettres.
+        -->
+        <a [href]="lienEmail"
+           class="inline-flex items-center gap-2 text-xs text-fg-secondary hover:text-fg-primary
+                  min-h-[40px] transition-colors">
+          <lucide-icon [img]="Mail" [size]="14" />
+          Écrire à {{ email }}
+        </a>
       </section>
 
       @if (indisponible()) {
         <p class="rounded-lg border border-border-subtle bg-bg-secondary p-3 text-sm text-fg-secondary">
-          L'assistance est momentanÃ©ment indisponible. Vous pouvez tout de mÃªme demander un rappel
+          L'assistance est momentanément indisponible. Vous pouvez tout de même demander un rappel
           depuis une demande existante.
         </p>
       }
@@ -118,9 +132,9 @@ import { UrgenceVehiculeComponent } from '../../shared/ui/urgence-vehicule.compo
           @if (conv.reponsesRestantes <= 3) {
             <p class="text-xs text-fg-tertiary">
               @if (conv.reponsesRestantes > 0) {
-                {{ conv.reponsesRestantes }} rÃ©ponse(s) automatique(s) restante(s) sur cette demande.
+                {{ conv.reponsesRestantes }} réponse(s) automatique(s) restante(s) sur cette demande.
               } @else {
-                Cette demande a atteint son nombre de rÃ©ponses automatiques. Demandez un rappel&nbsp;:
+                Cette demande a atteint son nombre de réponses automatiques. Demandez un rappel&nbsp;:
                 un conseiller reprendra le fil.
               }
             </p>
@@ -140,8 +154,8 @@ import { UrgenceVehiculeComponent } from '../../shared/ui/urgence-vehicule.compo
             Demander à être rappelé par un conseiller
           </button>
           <p class="text-xs text-fg-tertiary text-center">
-            Aux heures de bureau. Un véhicule immobilisé&nbsp;? Utilisez la ligne d'urgence en
-            haut de cette page, elle répond 24&nbsp;h/24.
+            Aux heures de bureau. Un véhicule immobilisé&nbsp;? Utilisez WhatsApp en haut de cette
+            page, la ligne répond 24&nbsp;h/24.
           </p>
         </section>
       }
@@ -151,7 +165,7 @@ import { UrgenceVehiculeComponent } from '../../shared/ui/urgence-vehicule.compo
         <label for="assistance-msg" class="sr-only">Votre question</label>
         <textarea id="assistance-msg" rows="3" [(ngModel)]="brouillon" [disabled]="envoi()"
                   [attr.maxlength]="2000"
-                  placeholder="Par exemple : pourquoi mon trajet est-il coupÃ© en deux ?"
+                  placeholder="Par exemple : pourquoi mon trajet est-il coupé en deux ?"
                   class="w-full rounded-lg border border-border-subtle bg-bg-secondary px-3 py-2
                          text-sm text-fg-primary placeholder:text-fg-tertiary
                          focus:outline-none focus:border-border-strong disabled:opacity-40"></textarea>
@@ -161,7 +175,7 @@ import { UrgenceVehiculeComponent } from '../../shared/ui/urgence-vehicule.compo
                        border border-tracky/30 px-3 py-2 text-sm text-fg-primary
                        hover:bg-tracky/30 transition-colors disabled:opacity-40">
           <lucide-icon [img]="Send" [size]="14" />
-          {{ envoi() ? 'Envoiâ€¦' : 'Envoyer' }}
+          {{ envoi() ? 'Envoi…' : 'Envoyer' }}
         </button>
       </section>
     </div>
@@ -174,7 +188,10 @@ export class AssistanceComponent implements OnInit {
 
   protected readonly LifeBuoy = LifeBuoy;
   protected readonly MessageSquare = MessageSquare;
+  protected readonly Mail = Mail;
   protected readonly PhoneCall = PhoneCall;
+  protected readonly email = CONTACT_EMAIL;
+  protected readonly lienEmail = `mailto:${CONTACT_EMAIL}?subject=${encodeURIComponent('Question sur Tracky')}`;
   protected readonly Send = Send;
   protected readonly Sparkles = Sparkles;
   protected readonly User = User;
@@ -193,7 +210,7 @@ export class AssistanceComponent implements OnInit {
       ]);
       this.indisponible.set(!dispo.disponible);
       this.liste.set(mes);
-      // Ouverture directe depuis une notification Â« un conseiller vous a rÃ©pondu Â».
+      // Ouverture directe depuis une notification « un conseiller vous a répondu ».
       const cible = this.route.snapshot.queryParamMap.get('conversation');
       if (cible) await this.ouvrir(cible);
     } catch (err) {
@@ -225,9 +242,9 @@ export class AssistanceComponent implements OnInit {
       this.liste.set(await firstValueFrom(this.api.mesConversations()));
     } catch (err) {
       swallow('assistance:envoyer', err);
-      // Le message est enregistrÃ© cÃ´tÃ© serveur AVANT tout appel : on le dit, sinon la personne
+      // Le message est enregistré côté serveur AVANT tout appel : on le dit, sinon la personne
       // croit avoir perdu sa question et la retape.
-      this.toast.error('RÃ©ponse indisponible', 'Votre message est enregistrÃ©, rÃ©essayez dans un instant.');
+      this.toast.error('Réponse indisponible', 'Votre message est enregistré, réessayez dans un instant.');
     } finally {
       this.envoi.set(false);
     }
@@ -239,7 +256,7 @@ export class AssistanceComponent implements OnInit {
     this.envoi.set(true);
     try {
       this.active.set(await firstValueFrom(this.api.rappel(conv.id)));
-      this.toast.success('Rappel demandÃ©', 'Les responsables viennent d\'Ãªtre prÃ©venus.');
+      this.toast.success('Rappel demandé', 'Les responsables viennent d\'être prévenus.');
     } catch (err) {
       swallow('assistance:rappel', err);
       this.toast.error('Demande de rappel impossible');
