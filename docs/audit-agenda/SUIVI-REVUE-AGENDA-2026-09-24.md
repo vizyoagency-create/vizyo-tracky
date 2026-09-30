@@ -1750,6 +1750,11 @@ y sont publiées avec leurs masques INCRUSTÉS (« Mode recette », avis « aucu
 du site : dépôt local `cdef31-vizyoagency` (rapatrié du VPS — fiche V38). Version téléphone de la vidéo :
 720p, 27 Mo (`Tutoriel-Agenda-Tracky-CDEF-telephone.mp4`).
 
+**QR de l'étape 01 flouté (30/09, 21 h)** : c'était celui de la démo (Transports Méridien) — scanné depuis la
+vidéo ou la capture, il ouvrait le formulaire de la démo. Flou irréversible (réduction 8 × 8 puis flou) dans la
+capture, les trois vidéos et l'archive pour Claude Design ; médias du site republiés dans un nouveau dossier
+(`medias/2026-09-30b/`, cache immutable) et l'ancien SUPPRIMÉ du serveur.
+
 ---
 
 ## Ce qu'il ne faut pas défaire
