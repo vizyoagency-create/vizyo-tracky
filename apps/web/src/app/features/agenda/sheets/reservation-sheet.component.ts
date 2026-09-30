@@ -10,7 +10,7 @@ import {
   signal,
   untracked,
 } from '@angular/core';
-import { DatePipe, DecimalPipe, NgClass } from '@angular/common';
+import { DatePipe, DecimalPipe, formatDate, NgClass } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
 import { apiErrorMessage } from '../../../core/error/api-error';
 import {
@@ -37,7 +37,8 @@ import { PermissionsService } from '../../../core/services/permissions.service';
 import { ToastService } from '../../../shared/ui/toast/toast.service';
 import { BottomSheetComponent } from '../../../shared/ui/bottom-sheet/bottom-sheet.component';
 import { DateTimeRangePickerComponent } from '../../../shared/ui/datetime-range/datetime-range-picker.component';
-import { placesMaxLibres, type CapaciteLibres } from '../agenda.utils';
+import { demandeurPrevenuDeLAnnulation, placesMaxLibres, type CapaciteLibres } from '../agenda.utils';
+import { ConfirmModalComponent } from '../../../shared/ui/confirm-modal/confirm-modal.component';
 
 export interface ReservationSheetVehicle {
   id: string;
@@ -287,7 +288,7 @@ function toLocalInput(d: Date): string {
   selector: 'app-reservation-sheet',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [DatePipe, DecimalPipe, NgClass, LucideAngularModule, BottomSheetComponent, DateTimeRangePickerComponent],
+  imports: [DatePipe, DecimalPipe, NgClass, LucideAngularModule, BottomSheetComponent, DateTimeRangePickerComponent, ConfirmModalComponent],
   template: `
     <app-bottom-sheet [open]="open()" ariaLabel="Réservations" (closed)="closed.emit()">
       <div class="rs">
@@ -658,7 +659,7 @@ function toLocalInput(d: Date): string {
                   }
                   <div class="rs-q-actions">
                     <button type="button" class="rs-btn rs-btn--ok" [disabled]="busyId() === g.cle" (click)="confirmGroupe(g)"><lucide-icon [img]="CheckIcon" [size]="13"></lucide-icon> Valider@if (g.items.length > 1) { les {{ g.items.length }} }</button>
-                    <button type="button" class="rs-btn rs-btn--no" [disabled]="busyId() === g.cle" (click)="rejectGroupe(g)">Refuser@if (g.items.length > 1) { les {{ g.items.length }} }</button>
+                    <button type="button" class="rs-btn rs-btn--no" [disabled]="busyId() === g.cle" (click)="demanderRefus(g)">Refuser@if (g.items.length > 1) { les {{ g.items.length }} }</button>
                   </div>
                 </div>
               }
@@ -667,6 +668,23 @@ function toLocalInput(d: Date): string {
         }
       </div>
     </app-bottom-sheet>
+
+    <!-- 30/09 — REFUSER SE CONFIRME, comme partout dans l'agenda. Refuser une demande du lien public
+         prévient le demandeur (courriel ou SMS, toujours) : la file « À valider » le faisait d'un
+         clic, le panneau du jour demandait déjà « Refuser cette demande ? ». Sœur de la feuille, pas
+         dedans : Échap ne ferme que la modale ; le focus part sur « Garder ». -->
+    <app-confirm-modal
+      [open]="refusEnAttente() !== null"
+      [title]="refusTitre()"
+      [etat]="refusEtat()"
+      [consequences]="refusConsequences()"
+      [irreversible]="true"
+      [danger]="true"
+      [confirmLabel]="refusLibelle()"
+      cancelLabel="Garder"
+      [loading]="refusEnCours()"
+      (confirmed)="confirmerRefus()"
+      (cancelled)="refusEnAttente.set(null)" />
   `,
   styles: [`
     .rs { display: flex; flex-direction: column; padding: 2px 2px 0; }
@@ -1764,6 +1782,73 @@ export class ReservationSheetComponent {
       if (faits > 0) this.created.emit();
     } finally {
       this.busyId.set(null);
+    }
+  }
+
+  /**
+   * 30/09 — le refus EN ATTENTE de confirmation : une demande, ou les véhicules d'une même demande.
+   * Refuser prévient le demandeur d'une demande publique (courriel ou SMS — le refus part toujours) :
+   * un clic ne suffit plus, la modale de l'application dit qui est prévenu, comme le panneau du jour.
+   */
+  protected readonly refusEnAttente = signal<{ cle: string; items: VehicleEventDto[] } | null>(null);
+  protected readonly refusEnCours = computed(() => {
+    const g = this.refusEnAttente();
+    return g !== null && this.busyId() === g.cle;
+  });
+  /** Sa PROPRE demande, on la retire (même mot que le panneau du jour). */
+  private readonly refusDeLaSienne = computed(() => {
+    const g = this.refusEnAttente();
+    const moi = this.auth.user()?.sub;
+    return !!g && !!moi && g.items.every((r) => r.metadata?.['requesterId'] === moi);
+  });
+  protected readonly refusTitre = computed(() => {
+    const n = this.refusEnAttente()?.items.length ?? 0;
+    if (this.refusDeLaSienne()) return n > 1 ? `Retirer votre demande (${n} véhicules) ?` : 'Retirer votre demande ?';
+    return n > 1 ? `Refuser les ${n} véhicules de cette demande ?` : 'Refuser cette demande ?';
+  });
+  protected readonly refusLibelle = computed(() => {
+    const n = this.refusEnAttente()?.items.length ?? 0;
+    if (this.refusDeLaSienne()) return 'Retirer la demande';
+    return n > 1 ? `Refuser les ${n}` : 'Refuser la demande';
+  });
+  /** « Recette garde-fou (Tracky) » · TEST-006-XX · mer. 1 oct. 09:00 → 17:00 — ce qu'on s'apprête à refuser. */
+  protected readonly refusEtat = computed(() => {
+    const g = this.refusEnAttente();
+    const r = g?.items[0];
+    if (!g || !r) return '';
+    const qui = this.publicInfo(r)?.requester ?? r.title;
+    const plaques = g.items.map((x) => x.vehiclePlate ?? '').filter(Boolean).join(', ');
+    const debut = new Date(r.startAt);
+    const fin = r.endAt ? new Date(r.endAt) : null;
+    let creneau = Number.isNaN(debut.getTime()) ? '' : formatDate(debut, 'EEE d MMM HH:mm', 'fr');
+    if (creneau && fin && !Number.isNaN(fin.getTime())) {
+      const memeJour = formatDate(debut, 'yyyy-MM-dd', 'fr') === formatDate(fin, 'yyyy-MM-dd', 'fr');
+      creneau += ` → ${formatDate(fin, memeJour ? 'HH:mm' : 'EEE d MMM HH:mm', 'fr')}`;
+    }
+    return [`« ${qui} »`, plaques || null, creneau || null].filter(Boolean).join(' · ');
+  });
+  protected readonly refusConsequences = computed(() => {
+    const g = this.refusEnAttente();
+    if (!g) return '';
+    const prevenu = g.items.some((r) => demandeurPrevenuDeLAnnulation(r))
+      ? 'Le demandeur (lien public) est prévenu (courriel ou SMS).'
+      : 'Personne n’est prévenu : ni courriel, ni SMS.';
+    return 'Le créneau reste libre. ' + prevenu;
+  });
+
+  /** « Refuser » : ouvre la confirmation — rien n'est écrit avant « Refuser la demande ». */
+  protected demanderRefus(g: { cle: string; items: VehicleEventDto[] }): void {
+    if (this.busyId() !== null) return;
+    this.refusEnAttente.set(g);
+  }
+
+  protected async confirmerRefus(): Promise<void> {
+    const g = this.refusEnAttente();
+    if (!g || this.busyId() !== null) return;
+    try {
+      await this.rejectGroupe(g);
+    } finally {
+      this.refusEnAttente.set(null);
     }
   }
 
