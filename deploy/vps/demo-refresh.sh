@@ -126,16 +126,40 @@ arreter_importeur() {
   fi
 }
 
+# Un passage qui échoue SANS que l'importeur l'ait consigné (borne dépassée, importeur tué par
+# manque de mémoire…) laissait la demande « en attente » : le minuteur de 15 min la rejouait, démo
+# arrêtée à chaque tour, sans fin. On consigne donc l'échec nous-mêmes, avec les mêmes libellés que
+# l'importeur (apps/api/src/demo/journal-demo.ts — catégorie DEMO, action refresh_done, FAILURE) :
+# la demande est consommée, et la carte /admin/demo dit pourquoi. Seulement si l'importeur n'a
+# rien écrit depuis le début de CE passage : son propre compte rendu, quand il existe, fait foi.
+psql_demo() { timeout "$BORNE_LECTURE_S" docker exec tracky-demo-postgres psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -v ON_ERROR_STOP=1 "$@"; }
+consigner_echec_si_muet() {   # $1 = début du passage (UTC), $2 = détail, $3 = durée en ms
+  local deja apos="'" detail
+  detail="${2//$apos/$apos$apos}"   # apostrophes doublées pour SQL (« l'importeur »)
+  deja="$(psql_demo -tAc "SELECT count(*) FROM system_activity_logs WHERE category = 'DEMO' AND action = 'refresh_done' AND \"createdAt\" >= '$1'" 2>/dev/null || echo "?")"
+  if [ "$deja" != "0" ]; then return 0; fi   # consigné par l'importeur — ou illisible : on n'écrit rien
+  if psql_demo -qc "INSERT INTO system_activity_logs (id, \"createdAt\", category, action, status, actor, target, detail, \"durationMs\")
+      VALUES (gen_random_uuid(), now() at time zone 'UTC', 'DEMO', 'refresh_done', 'FAILURE', 'demo-refresh.sh', 'base de démonstration', '$detail', $3)" >>"$JOURNAL" 2>&1; then
+    log "   échec consigné au journal de la démo : la demande ne sera pas rejouée en boucle"
+  else
+    log "   AVERTISSEMENT : échec non consigné au journal de la démo — une demande en attente sera retentée au prochain tour"
+  fi
+}
+
 log "Import…"
+DEBUT_IMPORT="$(date -u '+%F %T')"; DEBUT_S="$(date -u +%s)"
 rc=0
 timeout "$BORNE_IMPORT_S" "${COMPOSE[@]}" run --rm importer >>"$JOURNAL" 2>&1 || rc=$?
+DUREE_MS=$(( ($(date -u +%s) - DEBUT_S) * 1000 ))
 if [ "$rc" -eq 0 ]; then
   log "Import réussi"
 elif [ "$rc" -eq 124 ]; then
   log "IMPORT INTERROMPU : borne de ${BORNE_IMPORT_S} s dépassée (V34) — la base de démo reste dans son état précédent"
   arreter_importeur
+  consigner_echec_si_muet "$DEBUT_IMPORT" "Import interrompu : borne de ${BORNE_IMPORT_S} s dépassée — base de démo inchangée" "$DUREE_MS"
   exit 1
 else
   log "IMPORT EN ÉCHEC — la base de démo est restée dans son état précédent (voir ci-dessus, et la carte /admin/demo)"
+  consigner_echec_si_muet "$DEBUT_IMPORT" "Import en échec sans compte rendu de l'importeur (code $rc) — base de démo inchangée" "$DUREE_MS"
   exit 1
 fi

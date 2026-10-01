@@ -21,6 +21,9 @@ ECHECS=0; TOTAL=0
 ok()    { TOTAL=$((TOTAL + 1)); echo "  ✓ $1"; }
 ko()    { TOTAL=$((TOTAL + 1)); ECHECS=$((ECHECS + 1)); echo "  ✗ $1"; [ -n "${2:-}" ] && echo "      $2"; }
 attend()   { if [ "$2" = "$3" ]; then ok "$1"; else ko "$1" "attendu « $2 », obtenu « $3 »"; fi; }
+avant()    { # avant <libellé> <a> <b> <botte> : « a » apparaît, puis « b » plus loin
+  local reste="${4#*"$2"}"
+  if [[ "$4" == *"$2"* && "$reste" == *"$3"* ]]; then ok "$1"; else ko "$1" "« $2 » puis « $3 » attendus dans : $4"; fi; }
 contient() { if [[ "$3" == *"$2"* ]]; then ok "$1"; else ko "$1" "« $2 » absent de : $3"; fi; }
 absent()   { if [[ "$3" != *"$2"* ]]; then ok "$1"; else ko "$1" "« $2 » présent dans : $3"; fi; }
 
@@ -41,8 +44,16 @@ case "$*" in
       bloque) printf -- '-- PostgreSQL database dump\nCREATE TA'; exec sleep 30 ;;
     esac ;;
   "exec tracky-demo-postgres psql"*)
-    if [ "${FAUX_DEMANDE:-0}" = bloque ]; then exec sleep 30; fi
-    echo "${FAUX_DEMANDE:-0}" ;;
+    case "$*" in
+      *"INSERT INTO system_activity_logs"*)   # l'échec consigné par le script
+        [ "${FAUX_INSERT:-ok}" = ok ] ;;
+      *refresh_requested*)                    # la lecture de la demande
+        if [ "${FAUX_DEMANDE:-0}" = bloque ]; then exec sleep 30; fi
+        echo "${FAUX_DEMANDE:-0}" ;;
+      *)                                      # « l'importeur a-t-il rendu compte de ce passage ? »
+        if [ "${FAUX_COMPTE_RENDU:-0}" = illisible ]; then exit 2; fi
+        echo "${FAUX_COMPTE_RENDU:-0}" ;;
+    esac ;;
   *" stop api")
     if [ "${FAUX_STOP:-ok}" = bloque ]; then exec sleep 30; fi
     [ "${FAUX_STOP:-ok}" = ok ] ;;
@@ -138,15 +149,31 @@ attend "passage planifié réussi : code 0" 0 "$code"
 contient "…dans l'ordre : arrêt de l'API, import, redémarrage" "stop api|compose --env-file .env.demo -f docker-compose.demo.yml run --rm importer|compose --env-file .env.demo -f docker-compose.demo.yml start api" "$(trace)"
 contient "…« Import réussi » au journal" "Import réussi" "$(journal)"
 contient "…« API de démo redémarrée »" "API de démo redémarrée" "$(journal)"
+absent "…et rien d'écrit au journal de la démo par le script (l'importeur s'en charge)" "INSERT INTO" "$(trace)"
 
-(export FAUX_IMPORT=echec; rafraichir); code=$?
+(export FAUX_IMPORT=echec FAUX_COMPTE_RENDU=1; rafraichir); code=$?
 attend "import en échec : code 1" 1 "$code"
 contient "…l'API repart quand même" "start api" "$(trace)"
+absent "…l'importeur a rendu compte lui-même : le script n'écrit RIEN au journal de la démo" "INSERT INTO" "$(trace)"
+
+(export FAUX_IMPORT=echec FAUX_COMPTE_RENDU=0; rafraichir); code=$?
+attend "importeur mort sans rendre compte (mémoire, signal) : code 1" 1 "$code"
+contient "…le script consigne l'échec lui-même — sinon la demande serait rejouée sans fin" "INSERT INTO system_activity_logs" "$(trace)"
+contient "…avec les libellés de l'importeur (DEMO, refresh_done, FAILURE)" "'DEMO', 'refresh_done', 'FAILURE'" "$(trace)"
+contient "…et le code de sortie de l'importeur dans le détail" "sans compte rendu de l''importeur (code 1)" "$(trace)"
+
+(export FAUX_IMPORT=echec FAUX_COMPTE_RENDU=illisible; rafraichir)
+absent "journal de la démo illisible : on n'écrit rien à l'aveugle" "INSERT INTO" "$(trace)"
+
+(export FAUX_IMPORT=echec FAUX_COMPTE_RENDU=0 FAUX_INSERT=echec; rafraichir)
+contient "écriture impossible : l'avertissement le dit (la demande sera retentée)" "échec non consigné au journal de la démo" "$(journal)"
 
 (export FAUX_IMPORT=bloque BORNE_IMPORT_S=1 FAUX_ORPHELIN=1; rafraichir); code=$?
 attend "🔴 import bloqué : la borne l'interrompt, code 1 (import en échec)" 1 "$code"
 contient "…le journal dit « interrompu », pas seulement « en échec »" "IMPORT INTERROMPU : borne de 1 s" "$(journal)"
-contient "…l'importeur ORPHELIN est arrêté AVANT que l'API de démo reparte" "rm -f c0ffee1234ab|compose --env-file .env.demo -f docker-compose.demo.yml start api" "$(trace)"
+avant "…l'importeur ORPHELIN est arrêté AVANT que l'API de démo reparte" "rm -f c0ffee1234ab" "start api" "$(trace)"
+avant "…puis l'échec est consigné, toujours avant le redémarrage" "INSERT INTO system_activity_logs" "start api" "$(trace)"
+contient "…« borne dépassée » dans le détail consigné" "Import interrompu : borne de 1 s dépassée" "$(trace)"
 contient "…retrouvé par les étiquettes de Compose (projet de la démo, service importer)" "--filter label=com.docker.compose.project=tracky-demo --filter label=com.docker.compose.service=importer" "$(trace)"
 
 (export FAUX_IMPORT=bloque BORNE_IMPORT_S=1 FAUX_ORPHELIN=0; rafraichir)
@@ -166,7 +193,7 @@ absent "…et le journal ne prétend plus « API de démo redémarrée »" "API 
 # ════════════════════════════════════════════════════════════════════════════════════════════
 echo "Lecture du source et des documents : aucune commande docker sans borne"
 
-re_docker='(^|[^-_[:alnum:]])docker (compose|inspect|image|images|tag|rmi|ps|exec|logs|run|stats|pull|build|rm|stop|start)'
+re_docker='(^|[^-_[:alnum:]])docker (compose|inspect|image|images|tag|rmi|ps|exec|logs|run|stats|pull|build|rm|stop|start|cp)'
 re_compose='"\$\{COMPOSE\[@\]\}"'
 re_borne='timeout[^|]*(docker|"\$\{COMPOSE\[@\]\}")'
 re_suivi='docker.*logs.*( -f|--follow)'
@@ -202,6 +229,11 @@ lignes_non_bornees_doc() {   # $1 = document Markdown : les blocs ``` et les blo
 }
 attend "docs/DEPLOYMENT-VPS.md : commandes docker bornées (lignes fautives)" "" "$(lignes_non_bornees_doc ../../docs/DEPLOYMENT-VPS.md)"
 attend "docs/VERIFIER-AVANT-DE-DEPLOYER.md : commandes docker bornées (lignes fautives)" "" "$(lignes_non_bornees_doc ../../docs/VERIFIER-AVANT-DE-DEPLOYER.md)"
+attend "docs/environnement-demo/EXPLOITATION.md : commandes docker bornées (lignes fautives)" "" "$(lignes_non_bornees_doc ../../docs/environnement-demo/EXPLOITATION.md)"
+attend "docs/24-integration-maestroo-deploiement.md : commandes docker bornées (lignes fautives)" "" "$(lignes_non_bornees_doc ../../docs/24-integration-maestroo-deploiement.md)"
+# Les rapports datés (docs/vps-audit/rapports/…) et les références d'audit CITENT des commandes
+# d'époque — un processus orphelin, une ligne de cron : ce sont des preuves, on ne les réécrit pas,
+# et ce contrôle ne les lit pas.
 
 rm -rf "$BAC"
 echo
