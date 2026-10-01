@@ -82,25 +82,25 @@
 
 <header>
   <h1>Tableau de bord des corrections — Tracky</h1>
-  <p class="sous">Genere le <b>2026-09-30</b> depuis <code>app/taches.json</code>.
+  <p class="sous">Genere le <b>2026-10-01</b> depuis <code>app/taches.json</code>.
   Le detail, le pourquoi et les pieges vivent dans <b>ROADMAP-CORRECTIFS.md</b> —
   ce tableau ne dit que <b>l'etat</b>.</p>
 </header>
 
 <div class="kpis">
-  <div class="k ok"><div class="n">71</div><div class="l">faites et verifiees</div></div>
+  <div class="k ok"><div class="n">72</div><div class="l">faites et verifiees</div></div>
   <div class="k warn"><div class="n">16</div><div class="l">deployees, preuve attendue</div></div>
-  <div class="k"><div class="n">43</div><div class="l">ouvertes sur 130</div></div>
+  <div class="k"><div class="n">42</div><div class="l">ouvertes sur 130</div></div>
   <div class="k dgr"><div class="n">3</div><div class="l">ouvertes en gravite 1</div></div>
   <div class="k dgr"><div class="n">0</div><div class="l">au-dela de 7 jours</div></div>
-  <div class="k info"><div class="n">18</div><div class="l">attendent un humain</div></div>
+  <div class="k info"><div class="n">16</div><div class="l">attendent un humain</div></div>
 </div>
 
-<div class="barre" role="img" aria-label="Avancement : 71 faites, 16 deployees, 43 ouvertes sur 130">
+<div class="barre" role="img" aria-label="Avancement : 72 faites, 16 deployees, 42 ouvertes sur 130">
   <span class="s-FAIT" style="width:55%"></span>
   <span class="s-DEPLOYE" style="width:12%"></span>
   <span class="s-COMMITE" style="width:0%"></span>
-  <span class="s-OUVERT" style="width:33%"></span>
+  <span class="s-OUVERT" style="width:32%"></span>
 </div>
 <p class="leg">
   <i><b>✓</b> faite ET verifiee</i>
@@ -112,13 +112,13 @@
 
 <div class="filtres" id="f">
   <button data-f="tout" aria-pressed="true">Tout (130)</button>
-  <button data-f="ouvert" aria-pressed="false">Ouvertes (43)</button>
+  <button data-f="ouvert" aria-pressed="false">Ouvertes (42)</button>
   <button data-f="g1" aria-pressed="false">Gravite 1 (3)</button>
-  <button data-f="humain" aria-pressed="false">Attendent un humain (18)</button>
-  <button data-f="code" aria-pressed="false">A faire soi-meme (24)</button>
+  <button data-f="humain" aria-pressed="false">Attendent un humain (16)</button>
+  <button data-f="code" aria-pressed="false">A faire soi-meme (25)</button>
   <button data-f="centre-alerte" aria-pressed="false">Centre d'alerte</button>
   <button data-f="vps" aria-pressed="false">VPS</button>
-  <button data-f="fait" aria-pressed="false">Closes (87)</button>
+  <button data-f="fait" aria-pressed="false">Closes (88)</button>
 </div>
 
 <h2 class="sec">Les 130 taches — ouvertes et graves d'abord</h2>
@@ -130,7 +130,7 @@
     <span class="fiche">TRK-066</span>
     <span class="classe">🤝 Decision ou geste humain</span>
     <span class="grav" title="gravite 1">G1</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-13">17 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-13">18 j</span>
     
   </div>
   <h3>Remettre en service les plannings du coupe-circuit — 2e nuit : PROBANTE (preuve 21:30 OK, 0 refus, 28 coupes dont 4 MH Cars, 27 acquittées, 4 reprises MH Cars ≤ 4 s) ; 22 reprises CDEF31 à lire à 07:10 ; GR-898-HY « non confirmé » = TRK-083</h3>
@@ -145,7 +145,7 @@
     <span class="fiche">TRK-084</span>
     <span class="classe">🔧 A coder</span>
     <span class="grav" title="gravite 1">G1</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-18">12 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-18">13 j</span>
     
   </div>
   <h3>Le retard d une reprise doit exister quelque part : scheduledAt sur les RESTORE, une ligne CRITICAL au demarrage pour les transitions en retard, un temoin de l API HORS de l API — l incident du 17/09 n a laisse aucune ligne</h3>
@@ -160,7 +160,7 @@
     <span class="fiche">TRK-083</span>
     <span class="classe">🔧 A coder</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-17">13 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-17">14 j</span>
     
   </div>
   <h3>Armer le guetteur d ACK TCP AVANT l écriture socket (ou mémoire de 30 s dans AckWaiter) — un boîtier qui répond plus vite que la base est déclaré « non confirmé »</h3>
@@ -175,7 +175,7 @@
     <span class="fiche">TRK-090 · TRK-066 · TRK-018 · T45 · T65</span>
     <span class="classe">🔧 A coder</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-21">9 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-21">10 j</span>
     
   </div>
   <h3>Preuve SMS quotidienne : un delai client de 10 s n est pas un refus (sortant « queued », pas « failed »), et l echo entrant prouve la remise quel que soit le statut du sortant — l instrument a dit « chaine cassee » deux fois avec la preuve du contraire en base</h3>
@@ -190,7 +190,7 @@
     <span class="fiche">TRK-066 · S21 · doc 10 test B/C</span>
     <span class="classe">🤝 Decision ou geste humain</span>
     <span class="grav" title="gravite 3">G3</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-14">16 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-14">17 j</span>
     
   </div>
   <h3>Deux SIM de boîtiers (HD-584-BF, BP-434-RD) restent INJOIGNABLES par SMS depuis le S21 après remise en état ; les huit autres sont revenues — test depuis un autre opérateur ou ticket WhereverSIM</h3>
@@ -205,7 +205,7 @@
     <span class="fiche">TRK-035</span>
     <span class="classe">🤝 Decision ou geste humain</span>
     <span class="grav" title="gravite 1">G1</span>
-    <span class="depuis" title="ouverte depuis le 2026-08-20">41 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-08-20">42 j</span>
     
   </div>
   <h3>Ouvrir la fenetre de maintenance du role non-superutilisateur</h3>
@@ -220,7 +220,7 @@
     <span class="fiche">—</span>
     <span class="classe">🔵 Action materielle</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-03">27 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-03">28 j</span>
     
   </div>
   <h3>Boîtiers muets, antennes et déclarations — UNE fiche terrain : lever la déclaration des trois HM-… qui roulent alertes coupées ; déclarer ou dépanner GLA•KC•31, FG-669-DQ, FS-253-HR, FS-808-CE, FZ-862-VY, DZ-034-CA, HD-292-SH, KSR•370 ; porter les 6 IMEI muets à l'exploitant ou les sortir du parc (statut, pas DELETE)</h3>
@@ -235,7 +235,7 @@
     <span class="fiche">TRK-066 · doc 12 · doc 19 P2-8</span>
     <span class="classe">🤝 Decision ou geste humain</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-13">17 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-13">18 j</span>
     
   </div>
   <h3>Téléphone passerelle : le S21 branché EN PERMANENCE et déverrouillé (hors ligne 15:49→19:51 le 15/09), puis un second téléphone + seconde SIM (autre opérateur), jamais sous le même deviceId</h3>
@@ -250,7 +250,7 @@
     <span class="fiche">TRK-077</span>
     <span class="classe">🔧 A coder</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-15">15 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-15">16 j</span>
     
   </div>
   <h3>deploy.sh journalise ses REFUS et ses abandons, et la sentinelle « deploiement » les dit — un refus qui ne s ecrit nulle part se lit comme un succes</h3>
@@ -265,7 +265,7 @@
     <span class="fiche">TRK-085 · TRK-088 · T51</span>
     <span class="classe">🔧 A coder</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-18">12 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-18">13 j</span>
     
   </div>
   <h3>L identite du vehicule dans le message des temoins par vehicule, et un compteur d anti-flood qui ne se perd jamais — 7 RESTORE non prouvees, 14 notifications, 1 ligne</h3>
@@ -280,7 +280,7 @@
     <span class="fiche">TRK-094 · TRK-092</span>
     <span class="classe">🤝 Decision ou geste humain</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-22">8 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-22">9 j</span>
     
   </div>
   <h3>Le rapport hebdomadaire de cdef31 n est jamais remis depuis le 27/07 : verifier l adresse avec le client, lever la suppression Resend — et un rebond ou un refus a l envoi doit ecrire une ligne au centre d alerte</h3>
@@ -295,7 +295,7 @@
     <span class="fiche">TRK-098 · TRK-066 · T38 · Sprint 3</span>
     <span class="classe">🔧 A coder</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-27">3 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-27">4 j</span>
     
   </div>
   <h3>Une coupe du veilleur posee sur un vehicule deja coupe par le planning ne doit pas lui retirer sa reprise du matin en silence — le dire (une DEGRADATION par vehicule et par jour), le montrer sur la page des horaires, et trancher son echeance</h3>
@@ -303,19 +303,19 @@
   <p class="attendue"><b>Preuve attendue</b> — Au prochain « rallumer puis recouper » du veilleur : une ligne DEGRADATION a l heure de la reprise sautee le lendemain, et l etat visible sur /fleet-schedules ; ET une coupe veilleur posee pendant la plage (vraie coupe antivol) tient toujours jusqu au geste humain.</p>
   <div class="badges"></div>
 </article>
-<article class="t etat-OUVERT g2" data-etat="OUVERT" data-partie="centre-alerte" data-classe="HUMAIN" data-g="2">
+<article class="t etat-OUVERT g2" data-etat="OUVERT" data-partie="centre-alerte" data-classe="A_CODER" data-g="2">
   <div class="t-h">
     <span class="marque" title="Ouvert">☐</span>
     <span class="id">T85</span>
     <span class="fiche">TRK-100 · TRK-036 · TRK-018</span>
-    <span class="classe">🤝 Decision ou geste humain</span>
+    <span class="classe">🔧 A coder</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-30">0 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-30">1 j</span>
     
   </div>
   <h3>Numero de SIM en double : effacer celui du boitier de stock 864035054756292 (HM-787-GA en depend), puis faire parler l abstention du rapprochement SMS et refuser un numero deja porte</h3>
-  <p class="detail">TROUVE LE 30/09. Le 29/09 a 20h06m30 UTC la coupe planifiee de HM-787-GA part par SMS (API recreee a 20h06m06, sockets tombees) ; « Stop engine Succeed » revient a 20h06m42 depuis sa SIM ; la commande passe SENT_UNCONFIRMED a 20h40, sans ligne. Cause mesuree : deux boitiers portent le meme numero de SIM (suffixe 9 chiffres identique, longueur 16) — 864035054756102 (HM-787-GA, ONLINE) et 864035054756292 (sans vehicule, OFFLINE depuis le 01/07). onAccuseSmsMoteur (engine-control.service.ts:565-629) et resoudreImeiParSim (sms-gateway.service.ts:1168) s abstiennent quand deux boitiers repondent — a juste titre — mais sans rien ecrire. Seul doublon du parc. Risque : une RESTORE de HM-787-GA partie par SMS ne serait jamais acquittee meme reussie (relances, rappels CRITICAL T51). HUMAIN : verifier quel boitier porte la SIM, effacer le numero du boitier de stock depuis sa fiche. CODE : (1) une ligne DEGRADATION par numero et par jour a l abstention, nommant les deux IMEI et la commande laissee non confirmee ; (2) refuser a la saisie un simPhoneNumber dont les 9 derniers chiffres sont deja portes ; (3) section « SIM en double » dans collecte.sql. OPTION (relecture humaine obligatoire, garde de securite) : departager par la seule commande SENT de l action accusee. NE PAS acquitter la commande du 29/09 a la main ; NE PAS supprimer le boitier de stock.</p>
-  <p class="attendue"><b>Preuve attendue</b> — Apres le geste humain : plus aucun doublon de suffixe dans trackers, et le prochain accuse SMS de HM-787-GA fait passer sa commande en ACKNOWLEDGED. Apres le code : un accuse venu d un numero ambigu (en recette) ne confirme toujours rien mais ecrit sa ligne DEGRADATION.</p>
+  <p class="detail">TROUVE LE 30/09. Le 29/09 a 20h06m30 UTC la coupe planifiee de HM-787-GA part par SMS (API recreee a 20h06m06, sockets tombees) ; « Stop engine Succeed » revient a 20h06m42 depuis sa SIM ; la commande passe SENT_UNCONFIRMED a 20h40, sans ligne. Cause mesuree : deux boitiers portent le meme numero de SIM (suffixe 9 chiffres identique, longueur 16) — 864035054756102 (HM-787-GA, ONLINE) et 864035054756292 (sans vehicule, OFFLINE depuis le 01/07). onAccuseSmsMoteur (engine-control.service.ts:565-629) et resoudreImeiParSim (sms-gateway.service.ts:1168) s abstiennent quand deux boitiers repondent — a juste titre — mais sans rien ecrire. Seul doublon du parc. Risque : une RESTORE de HM-787-GA partie par SMS ne serait jamais acquittee meme reussie (relances, rappels CRITICAL T51). HUMAIN : verifier quel boitier porte la SIM, effacer le numero du boitier de stock depuis sa fiche. CODE : (1) une ligne DEGRADATION par numero et par jour a l abstention, nommant les deux IMEI et la commande laissee non confirmee ; (2) refuser a la saisie un simPhoneNumber dont les 9 derniers chiffres sont deja portes ; (3) section « SIM en double » dans collecte.sql. OPTION (relecture humaine obligatoire, garde de securite) : departager par la seule commande SENT de l action accusee. NE PAS acquitter la commande du 29/09 a la main ; NE PAS supprimer le boitier de stock. — 01/10 : (a) PREDICTION VERIFIEE le 30/09 : la RESTORE de HM-787-GA part par SMS (socket absente a 05h00m08, sans deploiement), Resume engine Succeed revient a 05h01m06 depuis sa SIM et est ecarte, CRITICAL engine-control-restore a 05h01m15 et push restore-non-prouvee pour un vehicule deja rallume, preuve par TCP a 05h02m55 (2 min 47 s). (b) VOLET HUMAIN FAIT ET MESURE : la fiche du boitier 864035054756292 a ete modifiee le 30/09 a 10h04m52 UTC, simPhoneNumber vide ; regroupement du parc par suffixe a 9 chiffres le 01/10 01h25 = 0 doublon. La tache passe en A_CODER : reste la ligne DEGRADATION a l abstention et le refus d un numero deja porte. Non encore exerce : la coupe du 30/09 20h06m20 est partie par TCP. Observation : pwd fail puis un second Succeed depuis la meme SIM a 05h03, sans SMS sortant (1 point).</p>
+  <p class="attendue"><b>Preuve attendue</b> — Volet donnee (fait, a confirmer) : le prochain accuse SMS de HM-787-GA fait passer sa commande en ACKNOWLEDGED. Volet code : un accuse venu d un numero ambigu (en recette) ne confirme toujours rien mais ecrit sa ligne DEGRADATION, et la saisie d un numero deja porte est refusee.</p>
   <div class="badges"></div>
 </article>
 <article class="t etat-OUVERT g2" data-etat="OUVERT" data-partie="vps" data-classe="PRODUIT" data-g="2">
@@ -325,7 +325,7 @@
     <span class="fiche">VPS-036 · VPS-027</span>
     <span class="classe">🔵 Exploitant / equipe produit</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-08-28">33 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-08-28">34 j</span>
     
   </div>
   <h3>Un seul ticket hebergeur pour les deux ecritures root</h3>
@@ -340,11 +340,11 @@
     <span class="fiche">VPS-M56</span>
     <span class="classe">🟢 Agent, seul, avec preuve</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-08-04">57 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-08-04">58 j</span>
     
   </div>
   <h3>Arbitrer le budget de collecte</h3>
-  <p class="detail">📏 30/09 (audit VPS) : 38e depassement — 155 s (1,7x), charge 1,12 → 2,88 (AU-DESSUS de 2, file d attente : inactif 40,1 %, iowait 12,4 %, audit 17,9 %) ; /opt partiel 21/22 (maalem), 9e matin. 24 jours sans arbitrage. || 📏 29/09 (audit VPS) : 37e depassement — 162 s (1,8x), charge 0,75 → 1,86 (sous 2), collecte SEULE ; audit 21,2 % de la machine ; /opt 44 s, partiel 21/22, 8e matin. 23 jours sans arbitrage. || 📏 28/09 (audit VPS) : 36e depassement — 170 s (1,9x), charge 2,61 → 4,01 AVEC LimitesVitesse (V40) ; audit 18,4 % de la machine ; /opt 42 s, partiel 21/22, 7e matin. 22 jours sans arbitrage. || 📏 27/09 (audit VPS) : 35e depassement — 173 s (1,9x), charge 0,47 → 1,79 (sous 2) ; audit 22,4 % de la machine ; /opt 44 s, partiel 21/22, 6e matin ; 6 sessions etrangeres (V40). 21 jours sans arbitrage. || 📏 26/09 (audit VPS) : 34e depassement — 168 s (1,9x), charge 0,32 → 1,74 (sous 2) ; collecte SEULE sur la machine (1 session, la sienne) et pourtant audit = 25,7 % de la machine : le depassement est celui de l audit, pas d un voisin. /opt partiel 21/22, 5e matin (maalem &gt; 12 s). 20 jours sans arbitrage. || 📏 25/09 (audit VPS) : 33e depassement — 184 s (2,0x), charge 0,13 → 1,86 (sous 2) ; /opt partiel 21/22, 4e matin (maalem &gt; 12 s). VizyoTracky-LimitesVitesse a tourne de 02:30:14 a 02:32:06 UTC, PENDANT toute la collecte, 2e jour de suite (7 sessions etrangeres) → V40. || 📏 24/09 : 32e depassement — 184 s (2,0×), charge 0,29 → 2,59 : LIMITE DE 2 FRANCHIE (2e fois) ; /opt 43 s, partiel 21/22 (maalem &gt; 12 s, 3e matin) ; iowait 8,5 % sur la fenetre. 18 jours sans arbitrage. || 📏 23/09 (audit VPS) : 31e depassement — 172 s (1,9x), charge 0,63 → 1,70, audit 22,7 % de la machine ; /opt PARTIEL 21/22 pour le 2e matin de suite (maalem &gt; 12 s). (a) ou (b) toujours a trancher. || 📏 22/09 (audit VPS) — 30e DEPASSEMENT : 157 s (1,7x), audit 23,9 % de la machine, dockerd 2,5 %, inexplique 20,4 % ; charge 1,09 → 2,07 (limite 2,0 FRANCHIE de 0,07 — la machine etait DEJA a 1,09 au depart, 5 min 0,58, pour une cause non nommee : sar 04:30 = 0,14) ; /opt : maalem NON MESURE (&gt; 12 s, cache froid), somme partielle 20/21 — les deux reponses (a) et (b) restent posees, aucune choisie. || 📏 16/09 (audit VPS) — PREMIERE MESURE SANS dockerd : 143 s (1,6x), audit 20,9 %, dockerd 4,8 %, inexplique 23,3 %. 143 s ≈ 147 s du 09-09 (avant l incident) : dockerd n expliquait PAS le depassement. Poste n° 1 = le parcours /opt : 42 s sur 143 (29 %), dont maalem 12,0 s pour un chiffre absent (delai), vizyo-auth 7,1, vizyo-leads 6,1 (pile supprimee), vizyo-tracky 5,8, vizyo-manager 4,5 ; iowait 6,8 % pendant la collecte. Sections : disque 46 s, donnees 30, Docker 24, planification 12, sauvegardes 9. L arbitrage se fait maintenant : (a) taille de maalem en dur avec sa date (−12 s, et une somme /opt de nouveau comparable — VPS-M95 regle du meme coup) ; (b) /opt un jour sur sept (−36 s x 6 : le disque bouge par Docker, pas par /opt). Les deux ensemble ramenent la collecte a ~95 s six jours sur sept. || 📏 14/09 — 189 s (2,1x), 24e depassement, a l heure (02:22), SEUL. Ventilation : audit 16,0 %, dockerd 45,4 %, inexplique 22,8 %. Tant que VPS-016 confisque un coeur, ce chiffre ne mesure que dockerd : l arbitrage attend V28. || 🔄 LA QUESTION A CHANGE LE 09/09, ET ELLE EST PLUS FACILE A TRANCHER QU AVANT. 22e depassement : 147 s pour un budget de 90 s (charge 0,28 → 1,21 sur 2 coeurs, limite 2,0 ; cout reel 20,7 % de la machine, 39,4 % d inactivite restante). Mais pour la premiere fois la ventilation dit ou part l argent, et la reponse est embarrassante : 20 DES 23 SECONDES SUPPLEMENTAIRES N ONT ACHETE NI INFORMATION NI FIABILITE. (a) /opt/maalem a consomme 12 004 ms et n a RIEN rendu — il a atteint son timeout, et sa disparition de la somme a fabrique un -1,5 Go sur /opt (VPS-M95). (b) tracky_demo (459 Mo) franchit le seuil de 100 Mo de la section 5 : 8 s pour produire TROIS 🔴 qui sont des artefacts de demonstration, dont un FAUX (VPS-M96). ➜ La proposition du 08/09 — « budget = 90 s + 3 s par conteneur » — indexait le budget sur la TAILLE du perimetre. Ce passage suggere l inverse : BORNER CE QU ON MESURE, pas ce qu on s autorise a depenser. Deux gestes chiffres, independants : donner son budget a maalem ou l exclure explicitement en ecrivant sa taille en dur (gain 12 s/jour, et une somme /opt de nouveau comparable) ; et distinguer production et demonstration au seuil de la section 5 (gain 8 s/jour) — ⚠️ SANS liste de noms, c est VPS-M88. 🔓 15/09 : V28 est fait — les trois prochaines nuits mesurent enfin le budget sans dockerd à un cœur ; trancher ensuite. 📏 17/09 (audit VPS) : 228 s (2,5x) — dockerd 43,2 % de la machine (V33), audit 13,4 %, collision avec l autre audit (27 sessions SSH). Ne se compare pas au 143 s d hier.</p>
+  <p class="detail">📏 01/10 (audit VPS) : 178 s (2,0×), 39e depassement, /opt partiel 10e matin ; 25 j sans arbitrage. || 📏 30/09 (audit VPS) : 38e depassement — 155 s (1,7x), charge 1,12 → 2,88 (AU-DESSUS de 2, file d attente : inactif 40,1 %, iowait 12,4 %, audit 17,9 %) ; /opt partiel 21/22 (maalem), 9e matin. 24 jours sans arbitrage. || 📏 29/09 (audit VPS) : 37e depassement — 162 s (1,8x), charge 0,75 → 1,86 (sous 2), collecte SEULE ; audit 21,2 % de la machine ; /opt 44 s, partiel 21/22, 8e matin. 23 jours sans arbitrage. || 📏 28/09 (audit VPS) : 36e depassement — 170 s (1,9x), charge 2,61 → 4,01 AVEC LimitesVitesse (V40) ; audit 18,4 % de la machine ; /opt 42 s, partiel 21/22, 7e matin. 22 jours sans arbitrage. || 📏 27/09 (audit VPS) : 35e depassement — 173 s (1,9x), charge 0,47 → 1,79 (sous 2) ; audit 22,4 % de la machine ; /opt 44 s, partiel 21/22, 6e matin ; 6 sessions etrangeres (V40). 21 jours sans arbitrage. || 📏 26/09 (audit VPS) : 34e depassement — 168 s (1,9x), charge 0,32 → 1,74 (sous 2) ; collecte SEULE sur la machine (1 session, la sienne) et pourtant audit = 25,7 % de la machine : le depassement est celui de l audit, pas d un voisin. /opt partiel 21/22, 5e matin (maalem &gt; 12 s). 20 jours sans arbitrage. || 📏 25/09 (audit VPS) : 33e depassement — 184 s (2,0x), charge 0,13 → 1,86 (sous 2) ; /opt partiel 21/22, 4e matin (maalem &gt; 12 s). VizyoTracky-LimitesVitesse a tourne de 02:30:14 a 02:32:06 UTC, PENDANT toute la collecte, 2e jour de suite (7 sessions etrangeres) → V40. || 📏 24/09 : 32e depassement — 184 s (2,0×), charge 0,29 → 2,59 : LIMITE DE 2 FRANCHIE (2e fois) ; /opt 43 s, partiel 21/22 (maalem &gt; 12 s, 3e matin) ; iowait 8,5 % sur la fenetre. 18 jours sans arbitrage. || 📏 23/09 (audit VPS) : 31e depassement — 172 s (1,9x), charge 0,63 → 1,70, audit 22,7 % de la machine ; /opt PARTIEL 21/22 pour le 2e matin de suite (maalem &gt; 12 s). (a) ou (b) toujours a trancher. || 📏 22/09 (audit VPS) — 30e DEPASSEMENT : 157 s (1,7x), audit 23,9 % de la machine, dockerd 2,5 %, inexplique 20,4 % ; charge 1,09 → 2,07 (limite 2,0 FRANCHIE de 0,07 — la machine etait DEJA a 1,09 au depart, 5 min 0,58, pour une cause non nommee : sar 04:30 = 0,14) ; /opt : maalem NON MESURE (&gt; 12 s, cache froid), somme partielle 20/21 — les deux reponses (a) et (b) restent posees, aucune choisie. || 📏 16/09 (audit VPS) — PREMIERE MESURE SANS dockerd : 143 s (1,6x), audit 20,9 %, dockerd 4,8 %, inexplique 23,3 %. 143 s ≈ 147 s du 09-09 (avant l incident) : dockerd n expliquait PAS le depassement. Poste n° 1 = le parcours /opt : 42 s sur 143 (29 %), dont maalem 12,0 s pour un chiffre absent (delai), vizyo-auth 7,1, vizyo-leads 6,1 (pile supprimee), vizyo-tracky 5,8, vizyo-manager 4,5 ; iowait 6,8 % pendant la collecte. Sections : disque 46 s, donnees 30, Docker 24, planification 12, sauvegardes 9. L arbitrage se fait maintenant : (a) taille de maalem en dur avec sa date (−12 s, et une somme /opt de nouveau comparable — VPS-M95 regle du meme coup) ; (b) /opt un jour sur sept (−36 s x 6 : le disque bouge par Docker, pas par /opt). Les deux ensemble ramenent la collecte a ~95 s six jours sur sept. || 📏 14/09 — 189 s (2,1x), 24e depassement, a l heure (02:22), SEUL. Ventilation : audit 16,0 %, dockerd 45,4 %, inexplique 22,8 %. Tant que VPS-016 confisque un coeur, ce chiffre ne mesure que dockerd : l arbitrage attend V28. || 🔄 LA QUESTION A CHANGE LE 09/09, ET ELLE EST PLUS FACILE A TRANCHER QU AVANT. 22e depassement : 147 s pour un budget de 90 s (charge 0,28 → 1,21 sur 2 coeurs, limite 2,0 ; cout reel 20,7 % de la machine, 39,4 % d inactivite restante). Mais pour la premiere fois la ventilation dit ou part l argent, et la reponse est embarrassante : 20 DES 23 SECONDES SUPPLEMENTAIRES N ONT ACHETE NI INFORMATION NI FIABILITE. (a) /opt/maalem a consomme 12 004 ms et n a RIEN rendu — il a atteint son timeout, et sa disparition de la somme a fabrique un -1,5 Go sur /opt (VPS-M95). (b) tracky_demo (459 Mo) franchit le seuil de 100 Mo de la section 5 : 8 s pour produire TROIS 🔴 qui sont des artefacts de demonstration, dont un FAUX (VPS-M96). ➜ La proposition du 08/09 — « budget = 90 s + 3 s par conteneur » — indexait le budget sur la TAILLE du perimetre. Ce passage suggere l inverse : BORNER CE QU ON MESURE, pas ce qu on s autorise a depenser. Deux gestes chiffres, independants : donner son budget a maalem ou l exclure explicitement en ecrivant sa taille en dur (gain 12 s/jour, et une somme /opt de nouveau comparable) ; et distinguer production et demonstration au seuil de la section 5 (gain 8 s/jour) — ⚠️ SANS liste de noms, c est VPS-M88. 🔓 15/09 : V28 est fait — les trois prochaines nuits mesurent enfin le budget sans dockerd à un cœur ; trancher ensuite. 📏 17/09 (audit VPS) : 228 s (2,5x) — dockerd 43,2 % de la machine (V33), audit 13,4 %, collision avec l autre audit (27 sessions SSH). Ne se compare pas au 143 s d hier.</p>
   
   <div class="badges"></div>
 </article>
@@ -355,7 +355,7 @@
     <span class="fiche">VPS-005</span>
     <span class="classe">🤝 Decision ou geste humain</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-08-04">57 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-08-04">58 j</span>
     
   </div>
   <h3>Poser les limites memoire sur 30 conteneurs</h3>
@@ -370,7 +370,7 @@
     <span class="fiche">VPS-020</span>
     <span class="classe">🤝 Decision ou geste humain</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-08-08">53 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-08-08">54 j</span>
     
   </div>
   <h3>Separer les projets compose deploy</h3>
@@ -385,7 +385,7 @@
     <span class="fiche">VPS-012</span>
     <span class="classe">🟡 Commande ecrite, arbitrage humain</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-08-06">55 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-08-06">56 j</span>
     
   </div>
   <h3>Restreindre la cle CI github-actions-vizyo-auth</h3>
@@ -400,7 +400,7 @@
     <span class="fiche">VPS-015</span>
     <span class="classe">🟢 Agent, seul, avec preuve</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-08-05">56 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-08-05">57 j</span>
     
   </div>
   <h3>ExecStart par bash, et OnFailure sur tracky-backup</h3>
@@ -415,7 +415,7 @@
     <span class="fiche">VPS-034</span>
     <span class="classe">🤝 Decision ou geste humain</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-08-21">40 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-08-21">41 j</span>
     
   </div>
   <h3>Epingler Traefik par digest</h3>
@@ -430,7 +430,7 @@
     <span class="fiche">VPS-M73</span>
     <span class="classe">⛔ Bloque par un prerequis</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-01">29 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-01">30 j</span>
     
   </div>
   <h3>Afficher l'ecart en jours sur /admin → Audit VPS</h3>
@@ -445,11 +445,11 @@
     <span class="fiche">VPS-042</span>
     <span class="classe">🔵 Exploitant / equipe produit</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-13">17 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-13">18 j</span>
     
   </div>
   <h3>Reconnaitre le coffre Vaultwarden, les comptes vaultbk / conductorbk / dispocarbk, l adresse 179.198.198.199 et le role de depositaire de DEUX applications</h3>
-  <p class="detail">📏 30/09 (audit VPS) : (g) 🆕 QUATRIEME DEPOSANT : foodsqanbk (uid 995, cree 29/09 19:05:02), cle depot-sauvegarde@foodsqan command=recevoir-dump-foodsqan + restrict, script = copie de recevoir-dump-dispocar, origine 179.198.198.199 ; /var/backups/foodsqan-distant : 2 dumps (192 698 o la nuit) — a reconnaitre. (f) Dispocar prd 1 172 o, 18e nuit. || 📏 23/09 (audit VPS) : (f) Dispocar prd 1 172 o — 11e nuit (prd-dispocar-20260923-033353), dev 49 553 o. Et Conductor prd a pris x8 en une nuit : 36 142 → 288 710 o (dev 40 848) — mise en service reelle cote expediteur ? A joindre a la meme question. || 📏 22/09 (audit VPS) : (f) prd Dispocar LU enfin — 1 172 o CE MATIN ENCORE (prd-dispocar-20260922-033907.sql.gz.age), 10e nuit a l identique depuis le 14/09, pendant que dev = 49 553 o et que les deux instances Conductor sont pleines (prd 36 142, dev 39 077). Le collecteur ne l imprimait qu une nuit sur deux (il lisait LE fichier le plus recent du dossier : tantot dev, tantot prd) — corrige (VPS-M111 : une sous-ligne par instance pour les depots). La question reste cote expediteur : la cle age n est pas ici. Depots : Conductor 03:06 / 03:09, Dispocar 03:36 / 03:39 ; tirage vaultbk 7 connexions / 7 j ; 0 empreinte inconnue. || 📏 21/09 (audit VPS) : (c) SANS OBJET — la session vaultbk de 253 h est partie avec le reboot V4 (« aucune session de plus d un jour ») ; le tirage de la nuit par une session neuve. Depots : Conductor 28 (01:03), Dispocar 16 (01:35) — ⚠️ taille de prd NON LUE ce passage (angle mort n° 2 du collecteur) : 8e nuit a 1 172 o non mesuree, pas dementie. Dossier neuf instantanes-chantier-20260915 = V17, reconnu. || 📏 16/09 (audit VPS) — 3e NUIT DE DISPOCAR A 1 172 OCTETS (6 dumps, 01:32 / 01:34, prd = dev a l octet) — le collecteur l imprime desormais (🟠 « probablement une base VIDE (ou la mauvaise base) — a verifier cote expediteur »). Conductor 18 fichiers ; tirage vaultbk 01:43 ; session vaultbk 150 h, aucune commande. comptesListe (conductorbk, dispocarbk, ubuntu, vaultbk) et dossiersSauvegardeListe posees au manifeste : des demain un compte ou un dossier neuf sort par difference d ensembles. || 🆕 15/09 (audit VPS) — UN TROISIEME DEPOSANT, ET LE COLLECTEUR L A DIT DEUX FOIS : useradd 2026-09-14 05:32:03 UTC, compte dispocarbk (uid 1001, /bin/sh, commentaire « depot des dumps DISPOCAR (recevoir-dump-dispocar seulement) »), cle depot-sauvegarde@dispocar avec command=/usr/local/bin/recevoir-dump-dispocar + restrict — copie de recevoir-dump (motif prd|dev-dispocar-* seulement, plus strict). MEME adresse 179.198.198.199 (42 connexions sur 7 j = 18 vaultbk + 17 conductorbk + 7 dispocarbk). Depot /var/backups/dispocar-distant/ (dispocarbk, 700) : 4 dumps age de 1 172 OCTETS chacun, prd = dev a l octet — essais 09-14 05:32 (5 connexions en 37 s), puis 01:30 (dev) et 01:32 (prd) UTC cette nuit. Le bloc useradd (VPS-M98) l a nomme, le bloc « non reclames » (VPS-M99) l a marque « depot ecrit par dispocarbk ». ⚠️ 1 172 octets = la taille d une base VIDE (pg_dump | gzip | age) : soit Dispocar n a pas de donnees, soit le dump vise la mauvaise base — A VERIFIER COTE DISPOCAR, pas d ici. QUESTIONS ELARGIES : (e) reconnaitre dispocarbk et le role de depositaire d une SECONDE application ; (f) les 1 172 octets sont-ils voulus ? Session vaultbk : 124 h, toujours aucune commande. ordonnancement : dispocar-depot-dump ajoute. ❌ « 3 comptes en 5 jours » n est pas une derive : meme main, meme adresse, meme modele — c est le catalogue qui est en retard. || 🔁 14/09 (audit VPS) — LA LECTURE DU 13/09 ETAIT A MOITIE FAUSSE, LES SCRIPTS LE DISENT : recevoir-dump est un DEPOT ENTRANT — Vizyo Conductor (179.198.198.199) POUSSE chaque nuit ses dumps chiffres age (instances prd et dev, une connexion chacune a 01:00-01:08 UTC) dans /var/backups/vizyo-conductor-distant/ : 14 fichiers, 26-31 Ko, retention 14 par instance ecrite dans le script, cle de dechiffrement ABSENTE de cette machine. CETTE MACHINE EST LE DEPOSITAIRE HORS-SITE DE CONDUCTOR (ce que VPS-037 reclame pour ses propres sauvegardes). vault-dump EST un tirage sortant (sqlite3 .backup + tar → stdout, ~0,6 s/nuit). La session vaultbk de 100 h ne porte AUCUNE commande (canal vide, do_poll) : ce n est pas un dump bloque ; multiplexage plausible, non prouve. Le collecteur imprimait « vizyo-conductor-distant AUCUNE SAUVEGARDE » deux passages de suite faute de connaitre .age : VPS-M99, corrige. QUESTIONS REFORMULEES : (a) reconnaitre les 4 objets ET le role de depositaire ; (b) la copie du coffre vit cote Conductor — qui la relit ? (c) fermer ou assumer la session de 100 h ; (d) limite memoire 256 Mo sur vizyo-vault (24 Mo utilises). || Apparus le 09/09 pendant les trois passages manques : conteneur vizyo-vault (vaultwarden/server epingle par empreinte ✅, vault.vizyoagency.com, healthy, memlimit 0, donnees en bind /opt/vizyo-vault/data 1,1 Mo) cree 20:56 ; compte vaultbk (22:21, groupe vaultro, cle sauvegarde-coffre@conductor avec command=/usr/local/bin/vault-dump + restrict) ; compte conductorbk (22:41, cle depot-sauvegarde@conductor avec command=/usr/local/bin/recevoir-dump + restrict). Connexions quotidiennes depuis 179.198.198.199 (conductorbk 01:00 et 01:08, vaultbk 01:35 UTC, 4 nuits sur 4) ; UNE SESSION vaultbk OUVERTE SANS INTERRUPTION depuis le 09/09 22:22:25 (3,5 j). Aucun sudo ✅. Ce qui est bien fait : ce sont les deux cles les mieux bornees de la machine (la cle root du poste n a AUCUNE option). Ce qui manque : aucun catalogue (les deux tirages sont declares dans ordonnancement ce jour, couche externe), aucune limite memoire sur le conteneur le plus sensible de la machine, une sauvegarde du coffre visible SEULEMENT par son tirage (la couverture du §11 ne voit que des bases par image), et ce que recevoir-dump ecrit sur le disque n a pas ete lu. TROIS QUESTIONS, pour le proprietaire : (a) ces objets et cette adresse sont-ils a vous ? (b) ou vit la copie du coffre, qui la relit ? (c) pourquoi une session vaultbk reste-t-elle ouverte 3,5 jours ? Puis : limite memoire (256 Mo) sur vizyo-vault, et une ligne pour le coffre dans la couverture des sauvegardes. ❌ Ne retirer ni cle ni compte avant reconnaissance (VPS-002). ❌ Ne pas tuer la session sans savoir ce qu elle porte. Le collecteur avait crie « EMPREINTE NON DECLAREE » x2 parce qu il ne lisait que /root : VPS-M98, corrige (tous les comptes + useradd). 🔵 17/09 (audit VPS) : Dispocar dev-…-20260917 = 44 064 o (premiere copie NON vide) ; prd = 1 172 o pour la 4e nuit → c est prd qui vise une base vide ou inexistante, a verifier cote Dispocar. Conductor 20 fichiers (depot a 03:06, l heure a glisse). Session vaultbk 172 h. Comptes 4 = 4, dossiers 12 = 12.</p>
+  <p class="detail">📏 01/10 (audit VPS) : foodsqan-distant 2e nuit : 231 404 o (cadence prouvee) ; Dispocar prd 1 172 o, 19e nuit. (g) foodsqanbk a reconnaitre, (f) Dispocar sans reponse. || 📏 30/09 (audit VPS) : (g) 🆕 QUATRIEME DEPOSANT : foodsqanbk (uid 995, cree 29/09 19:05:02), cle depot-sauvegarde@foodsqan command=recevoir-dump-foodsqan + restrict, script = copie de recevoir-dump-dispocar, origine 179.198.198.199 ; /var/backups/foodsqan-distant : 2 dumps (192 698 o la nuit) — a reconnaitre. (f) Dispocar prd 1 172 o, 18e nuit. || 📏 23/09 (audit VPS) : (f) Dispocar prd 1 172 o — 11e nuit (prd-dispocar-20260923-033353), dev 49 553 o. Et Conductor prd a pris x8 en une nuit : 36 142 → 288 710 o (dev 40 848) — mise en service reelle cote expediteur ? A joindre a la meme question. || 📏 22/09 (audit VPS) : (f) prd Dispocar LU enfin — 1 172 o CE MATIN ENCORE (prd-dispocar-20260922-033907.sql.gz.age), 10e nuit a l identique depuis le 14/09, pendant que dev = 49 553 o et que les deux instances Conductor sont pleines (prd 36 142, dev 39 077). Le collecteur ne l imprimait qu une nuit sur deux (il lisait LE fichier le plus recent du dossier : tantot dev, tantot prd) — corrige (VPS-M111 : une sous-ligne par instance pour les depots). La question reste cote expediteur : la cle age n est pas ici. Depots : Conductor 03:06 / 03:09, Dispocar 03:36 / 03:39 ; tirage vaultbk 7 connexions / 7 j ; 0 empreinte inconnue. || 📏 21/09 (audit VPS) : (c) SANS OBJET — la session vaultbk de 253 h est partie avec le reboot V4 (« aucune session de plus d un jour ») ; le tirage de la nuit par une session neuve. Depots : Conductor 28 (01:03), Dispocar 16 (01:35) — ⚠️ taille de prd NON LUE ce passage (angle mort n° 2 du collecteur) : 8e nuit a 1 172 o non mesuree, pas dementie. Dossier neuf instantanes-chantier-20260915 = V17, reconnu. || 📏 16/09 (audit VPS) — 3e NUIT DE DISPOCAR A 1 172 OCTETS (6 dumps, 01:32 / 01:34, prd = dev a l octet) — le collecteur l imprime desormais (🟠 « probablement une base VIDE (ou la mauvaise base) — a verifier cote expediteur »). Conductor 18 fichiers ; tirage vaultbk 01:43 ; session vaultbk 150 h, aucune commande. comptesListe (conductorbk, dispocarbk, ubuntu, vaultbk) et dossiersSauvegardeListe posees au manifeste : des demain un compte ou un dossier neuf sort par difference d ensembles. || 🆕 15/09 (audit VPS) — UN TROISIEME DEPOSANT, ET LE COLLECTEUR L A DIT DEUX FOIS : useradd 2026-09-14 05:32:03 UTC, compte dispocarbk (uid 1001, /bin/sh, commentaire « depot des dumps DISPOCAR (recevoir-dump-dispocar seulement) »), cle depot-sauvegarde@dispocar avec command=/usr/local/bin/recevoir-dump-dispocar + restrict — copie de recevoir-dump (motif prd|dev-dispocar-* seulement, plus strict). MEME adresse 179.198.198.199 (42 connexions sur 7 j = 18 vaultbk + 17 conductorbk + 7 dispocarbk). Depot /var/backups/dispocar-distant/ (dispocarbk, 700) : 4 dumps age de 1 172 OCTETS chacun, prd = dev a l octet — essais 09-14 05:32 (5 connexions en 37 s), puis 01:30 (dev) et 01:32 (prd) UTC cette nuit. Le bloc useradd (VPS-M98) l a nomme, le bloc « non reclames » (VPS-M99) l a marque « depot ecrit par dispocarbk ». ⚠️ 1 172 octets = la taille d une base VIDE (pg_dump | gzip | age) : soit Dispocar n a pas de donnees, soit le dump vise la mauvaise base — A VERIFIER COTE DISPOCAR, pas d ici. QUESTIONS ELARGIES : (e) reconnaitre dispocarbk et le role de depositaire d une SECONDE application ; (f) les 1 172 octets sont-ils voulus ? Session vaultbk : 124 h, toujours aucune commande. ordonnancement : dispocar-depot-dump ajoute. ❌ « 3 comptes en 5 jours » n est pas une derive : meme main, meme adresse, meme modele — c est le catalogue qui est en retard. || 🔁 14/09 (audit VPS) — LA LECTURE DU 13/09 ETAIT A MOITIE FAUSSE, LES SCRIPTS LE DISENT : recevoir-dump est un DEPOT ENTRANT — Vizyo Conductor (179.198.198.199) POUSSE chaque nuit ses dumps chiffres age (instances prd et dev, une connexion chacune a 01:00-01:08 UTC) dans /var/backups/vizyo-conductor-distant/ : 14 fichiers, 26-31 Ko, retention 14 par instance ecrite dans le script, cle de dechiffrement ABSENTE de cette machine. CETTE MACHINE EST LE DEPOSITAIRE HORS-SITE DE CONDUCTOR (ce que VPS-037 reclame pour ses propres sauvegardes). vault-dump EST un tirage sortant (sqlite3 .backup + tar → stdout, ~0,6 s/nuit). La session vaultbk de 100 h ne porte AUCUNE commande (canal vide, do_poll) : ce n est pas un dump bloque ; multiplexage plausible, non prouve. Le collecteur imprimait « vizyo-conductor-distant AUCUNE SAUVEGARDE » deux passages de suite faute de connaitre .age : VPS-M99, corrige. QUESTIONS REFORMULEES : (a) reconnaitre les 4 objets ET le role de depositaire ; (b) la copie du coffre vit cote Conductor — qui la relit ? (c) fermer ou assumer la session de 100 h ; (d) limite memoire 256 Mo sur vizyo-vault (24 Mo utilises). || Apparus le 09/09 pendant les trois passages manques : conteneur vizyo-vault (vaultwarden/server epingle par empreinte ✅, vault.vizyoagency.com, healthy, memlimit 0, donnees en bind /opt/vizyo-vault/data 1,1 Mo) cree 20:56 ; compte vaultbk (22:21, groupe vaultro, cle sauvegarde-coffre@conductor avec command=/usr/local/bin/vault-dump + restrict) ; compte conductorbk (22:41, cle depot-sauvegarde@conductor avec command=/usr/local/bin/recevoir-dump + restrict). Connexions quotidiennes depuis 179.198.198.199 (conductorbk 01:00 et 01:08, vaultbk 01:35 UTC, 4 nuits sur 4) ; UNE SESSION vaultbk OUVERTE SANS INTERRUPTION depuis le 09/09 22:22:25 (3,5 j). Aucun sudo ✅. Ce qui est bien fait : ce sont les deux cles les mieux bornees de la machine (la cle root du poste n a AUCUNE option). Ce qui manque : aucun catalogue (les deux tirages sont declares dans ordonnancement ce jour, couche externe), aucune limite memoire sur le conteneur le plus sensible de la machine, une sauvegarde du coffre visible SEULEMENT par son tirage (la couverture du §11 ne voit que des bases par image), et ce que recevoir-dump ecrit sur le disque n a pas ete lu. TROIS QUESTIONS, pour le proprietaire : (a) ces objets et cette adresse sont-ils a vous ? (b) ou vit la copie du coffre, qui la relit ? (c) pourquoi une session vaultbk reste-t-elle ouverte 3,5 jours ? Puis : limite memoire (256 Mo) sur vizyo-vault, et une ligne pour le coffre dans la couverture des sauvegardes. ❌ Ne retirer ni cle ni compte avant reconnaissance (VPS-002). ❌ Ne pas tuer la session sans savoir ce qu elle porte. Le collecteur avait crie « EMPREINTE NON DECLAREE » x2 parce qu il ne lisait que /root : VPS-M98, corrige (tous les comptes + useradd). 🔵 17/09 (audit VPS) : Dispocar dev-…-20260917 = 44 064 o (premiere copie NON vide) ; prd = 1 172 o pour la 4e nuit → c est prd qui vise une base vide ou inexistante, a verifier cote Dispocar. Conductor 20 fichiers (depot a 03:06, l heure a glisse). Session vaultbk 172 h. Comptes 4 = 4, dossiers 12 = 12.</p>
   
   <div class="badges"></div>
 </article>
@@ -460,7 +460,7 @@
     <span class="fiche">VPS-043 · VPS-037</span>
     <span class="classe">🟢 Agent, seul, avec preuve</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-15">15 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-15">16 j</span>
     
   </div>
   <h3>Reparer le copieur hors-site de Vizyo Verify : ne plus s arreter sur un manifeste orphelin (cote poste), purger par paire (cote VPS)</h3>
@@ -475,7 +475,7 @@
     <span class="fiche">TRK-071</span>
     <span class="classe">🤝 Decision ou geste humain</span>
     <span class="grav" title="gravite 3">G3</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-03">27 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-03">28 j</span>
     
   </div>
   <h3>Recharger au moins UN des deux comptes IA</h3>
@@ -490,7 +490,7 @@
     <span class="fiche">TRK-071</span>
     <span class="classe">🤝 Decision ou geste humain</span>
     <span class="grav" title="gravite 3">G3</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-13">17 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-13">18 j</span>
     
   </div>
   <h3>Ouvrir un second abonnement reserve aux agents du poste — quand tu le decideras (D7)</h3>
@@ -505,7 +505,7 @@
     <span class="fiche">TRK-065</span>
     <span class="classe">🤝 Decision ou geste humain</span>
     <span class="grav" title="gravite 3">G3</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-13">17 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-13">18 j</span>
     
   </div>
   <h3>Rouvrir les notifications aux clients (PUSH_ROLLOUT=ALL) quand les tests seront finis</h3>
@@ -520,7 +520,7 @@
     <span class="fiche">TRK-081 · T49</span>
     <span class="classe">🔧 A coder</span>
     <span class="grav" title="gravite 3">G3</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-16">14 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-16">15 j</span>
     
   </div>
   <h3>L interlock rouge toute une nuit ne doit ecrire qu UN CRITICAL, des rappels DEGRADATION horaires et une ligne de cloture — pas un CRITICAL par quart d heure et un e-mail par heure</h3>
@@ -535,7 +535,7 @@
     <span class="fiche">TRK-082</span>
     <span class="classe">🔧 A coder</span>
     <span class="grav" title="gravite 3">G3</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-17">13 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-17">14 j</span>
     
   </div>
   <h3>La sentinelle « excès sans alerte » doit lire la même clé que T30 (l excès, pas le trajet) — 3 trajets recréés accusés à tort</h3>
@@ -550,7 +550,7 @@
     <span class="fiche">TRK-086 · TRK-047 · T13</span>
     <span class="classe">🔧 A coder</span>
     <span class="grav" title="gravite 3">G3</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-18">12 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-18">13 j</span>
     
   </div>
   <h3>Le recalcul horaire ne doit pas choisir un trajet brut qu il ne peut pas figer — HM-769-GA sans fix depuis 33 h fait crier TRIP_AUTOMATION toutes les heures</h3>
@@ -565,7 +565,7 @@
     <span class="fiche">TRK-089 · TRK-081 · TRK-090 · T68 · T45 · T69</span>
     <span class="classe">🔧 A coder</span>
     <span class="grav" title="gravite 3">G3</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-20">10 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-20">11 j</span>
     
   </div>
   <h3>Le watchdog du telephone ET du relais : UNE CRITICAL par episode, rappels DEGRADATION horaires, UNE ligne de sortie qui archive, un motif traduit — et la preuve quotidienne remise en retard doit refermer son verdict INDETERMINEE</h3>
@@ -580,11 +580,11 @@
     <span class="fiche">TRK-091 · TRK-083 · TRK-085 · T71 · T53</span>
     <span class="classe">🔧 A coder</span>
     <span class="grav" title="gravite 3">G3</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-21">9 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-21">10 j</span>
     
   </div>
   <h3>Le worker RESTORE ne doit pas re-emettre une commande dont le dispatch en ligne est en vol : bail pose a la creation, numero de tentative lu en base, ligne de tentative puis guetteur puis trame — et une P2002 n est pas une CRITICAL</h3>
-  <p class="detail">TROUVE LE 21/09 sur les reprises du 20/09 (VM a 10 pour cent de son CPU) : 6 RESTORE (EY-613-MF 03h00 ; GR-294-VW, GS-878-NX, HD-584-BF, HD-603-XY, HD-998-XY entre 05h02m59 et 05h05m44) ont produit « Unique constraint failed on the fields: (commandId, attemptNumber) » dans le worker → 4 CRITICAL « Worker RESTORE en erreur — intention conservee pour reprise » (+1 fondue par l anti-flood, TRK-085) et un lastError Prisma brut sur la commande — alors que les 6 ont ete ACQUITTEES par TCP 6 a 17 s apres leur creation (GR-294-VW : creee 05h02m59,3 → tentative 1 a 05h03m02,3 → K a 05h03m03,1 → kt a 05h03m05,2 → ACK 05h03m16 → CRITICAL a 05h03m18). MECANISME : createCommand (engine-control.service.ts:1131) cree la RESTORE PENDING avec nextAttemptAt = maintenant SANS dispatchLeaseUntil, puis la dispatche en ligne (:1228) ; le worker de 15 s (:2193) selectionne les PENDING sans bail (:2199), pose le sien (:2216) et appelle dispatchCommand (:2292) — qui ecrit la trame sur la socket (:1808) AVANT d ouvrir la ligne de tentative (:1951), numerotee attemptCount + 1 depuis l objet en memoire (:1770), donc 0 + 1 pendant que le dispatch en ligne passe a 1. En temps ordinaire le dispatch en ligne prend 50-100 ms ; le 20/09 a 89 pour cent de steal il a pris 3-4 s et le tick de 05h03m00 a pris 5 commandes sur 27. COUT : une seconde trame K sur la socket par commande touchee (invisible dans wire_logs : la ligne OUT est ecrite apres la tentative, :1953 — idempotente pour une RESTORE), 4 CRITICAL fausses, un e-mail, un lastError brut sur 5 commandes reussies ; et nextAttemptAt +30 s pose par le catch (:2404) aurait fait partir une 3e trame sur une commande lente a acquitter. La contrainte unique (T53) a fait son travail. GESTE (meme chantier que T71) : (1) createCommand pose dispatchLeaseUntil = maintenant + ENGINE_DISPATCH_LEASE_MS a la creation — le dispatch en ligne est le premier detenteur du bail, le worker le respecte deja (:2206, :2221), le dispatch le libere deja (:1972) ; (2) beginAttempt numerote depuis la base (max attemptNumber + 1 sous le bail, ou SELECT FOR UPDATE sur la commande) ; (3) la ligne de tentative, puis waitForAck, puis sessionRegistry.send — le geste de T71 ferme les deux fiches ; (4) dans le catch du worker, une P2002 sur engine_delivery_attempts = logger.warn « commande deja en cours de dispatch », pas de lastError, pas de CRITICAL, relecture au tick suivant.</p>
+  <p class="detail">TROUVE LE 21/09 sur les reprises du 20/09 (VM a 10 pour cent de son CPU) : 6 RESTORE (EY-613-MF 03h00 ; GR-294-VW, GS-878-NX, HD-584-BF, HD-603-XY, HD-998-XY entre 05h02m59 et 05h05m44) ont produit « Unique constraint failed on the fields: (commandId, attemptNumber) » dans le worker → 4 CRITICAL « Worker RESTORE en erreur — intention conservee pour reprise » (+1 fondue par l anti-flood, TRK-085) et un lastError Prisma brut sur la commande — alors que les 6 ont ete ACQUITTEES par TCP 6 a 17 s apres leur creation (GR-294-VW : creee 05h02m59,3 → tentative 1 a 05h03m02,3 → K a 05h03m03,1 → kt a 05h03m05,2 → ACK 05h03m16 → CRITICAL a 05h03m18). MECANISME : createCommand (engine-control.service.ts:1131) cree la RESTORE PENDING avec nextAttemptAt = maintenant SANS dispatchLeaseUntil, puis la dispatche en ligne (:1228) ; le worker de 15 s (:2193) selectionne les PENDING sans bail (:2199), pose le sien (:2216) et appelle dispatchCommand (:2292) — qui ecrit la trame sur la socket (:1808) AVANT d ouvrir la ligne de tentative (:1951), numerotee attemptCount + 1 depuis l objet en memoire (:1770), donc 0 + 1 pendant que le dispatch en ligne passe a 1. En temps ordinaire le dispatch en ligne prend 50-100 ms ; le 20/09 a 89 pour cent de steal il a pris 3-4 s et le tick de 05h03m00 a pris 5 commandes sur 27. COUT : une seconde trame K sur la socket par commande touchee (invisible dans wire_logs : la ligne OUT est ecrite apres la tentative, :1953 — idempotente pour une RESTORE), 4 CRITICAL fausses, un e-mail, un lastError brut sur 5 commandes reussies ; et nextAttemptAt +30 s pose par le catch (:2404) aurait fait partir une 3e trame sur une commande lente a acquitter. La contrainte unique (T53) a fait son travail. GESTE (meme chantier que T71) : (1) createCommand pose dispatchLeaseUntil = maintenant + ENGINE_DISPATCH_LEASE_MS a la creation — le dispatch en ligne est le premier detenteur du bail, le worker le respecte deja (:2206, :2221), le dispatch le libere deja (:1972) ; (2) beginAttempt numerote depuis la base (max attemptNumber + 1 sous le bail, ou SELECT FOR UPDATE sur la commande) ; (3) la ligne de tentative, puis waitForAck, puis sessionRegistry.send — le geste de T71 ferme les deux fiches ; (4) dans le catch du worker, une P2002 sur engine_delivery_attempts = logger.warn « commande deja en cours de dispatch », pas de lastError, pas de CRITICAL, relecture au tick suivant. — 01/10 : 7e commande, EP-047-TY le 30/09, sur un VPS AU REPOS (charge 0,3) : creee 03h00m01,5, tentative 03h00m02,7, CRITICAL 03h00m08,9, ACQUITTEE 03h00m09, push centre-alerte a 05h10 Paris. 1,2 s entre la creation et la tentative suffisent ; la preuve attendue « au prochain matin charge » est donc trop etroite : le defaut s exerce sans charge.</p>
   <p class="attendue"><b>Preuve attendue</b> — Au prochain matin charge (steal &gt; 20 pour cent a 05h00 UTC, ou un pg_sleep de 3 s en recette) : 0 « Unique constraint » et 0 CRITICAL « Worker RESTORE en erreur » sur une commande acquittee ; ET une RESTORE dont le dispatch en ligne echoue vraiment (socket absente, crash entre create et dispatch) est toujours reprise par le worker au tick suivant (isOrphanPending et T48 restent exerces). Ne pas retirer la contrainte unique.</p>
   <div class="badges"></div>
 </article>
@@ -595,7 +595,7 @@
     <span class="fiche">TRK-093 · TRK-081 · TRK-089 · T49 · T68 · T76</span>
     <span class="classe">🔧 A coder</span>
     <span class="grav" title="gravite 3">G3</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-22">8 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-22">9 j</span>
     
   </div>
   <h3>L interlock ne doit ecrire qu une ligne par cause et par quart d heure, un push par cause et par heure, et ne compter comme « retenue » qu une coupe qui serait partie — un code stable dans la raison, pas les secondes du dernier ping</h3>
@@ -610,11 +610,11 @@
     <span class="fiche">TRK-095 · TRK-043 · TRK-037</span>
     <span class="classe">🔧 A coder</span>
     <span class="grav" title="gravite 3">G3</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-22">8 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-22">9 j</span>
     
   </div>
   <h3>Un passage d automatisation ecourte sur son budget doit se compter (colonnes budgetAtteint / skippedBudget), se dire au 3e de suite (une DEGRADATION par episode) — et mesurer d abord le temps passe dans Overpass</h3>
-  <p class="detail">TROUVE LE 22/09 : le 21/09, 24 passages sur 24 done, 0 interrompu, mais 11 de 50,0 a 57,4 min (07h45 → 17h45) en abordant 5, 9, 15, 18, 20, 31, 4, 8, 10, 34, 34 vehicules sur 34 — stats.vehicles compte les vehicules abordes (trip-automation.service.ts:578) ; au-dela de RUN_BUDGET_MS = 50 min (:85) le passage ne demarre plus de vehicule (:548-553) et reporte le reste en logger.log (:616) « passage ECOURTE sur son budget de temps ». Serie &gt; 45 min : 18/09 7, 19/09 7 (VM a 10 pour cent de son CPU), 20/09 1, 21/09 11. LA MACHINE EST HORS DE CAUSE : system_metrics du 21/09 = CPU 10 a 20 pour cent, charge 0,35 a 1,10 sur les 24 heures. Piste mesuree une fois : le passage de 00h45 (8,7 min) a passe 4 min 46 s entre « 24 analyses rejouees » et « 25 analyses reprises » avec un Overpass HTTP 504 au milieu ; 3 echecs Overpass dans la journee (TRK-037). A ~10 min par vehicule aborde aux heures pleines, la dependance cartographique est la seule candidate mesurable — non demontree, le journal ne couvre pas 07h45 → 17h45. Pas de perte (fenetre de 26 h), de la latence (un trajet du matin analyse l apres-midi, un exces alerte des heures plus tard) et un instrument aveugle : dix heures a un tiers de flotte ressemblent a une journee ordinaire au centre d alerte — le profil de TRK-043. GESTE : (1) trip_automation_runs gagne budgetAtteint (bool) et skippedBudget (int), deux colonnes additives ; (2) une DEGRADATION TRIP_AUTOMATION a partir de 3 passages consecutifs ecourtes, une ligne par episode, refermee par le premier passage complet ; (3) EN PREMIER : mesurer le temps Overpass par passage (appels, duree cumulee, echecs) et l ecrire dans items ou une colonne ; (4) collecte.sql : min / max de vehicles et compte des passages ecourtes dans la section trip_automation_runs. — 24/09 : 3e jour mesure : 8 passages de 50,0 a 57,1 min (07h45 → 15h45), 4 a 15 vehicules sur 34 ; serie 21/09 11 · 22/09 9 · 23/09 8 — trois jours ouvres de suite, regime des heures de bureau ; CPU 10 a 34 pour cent (7 deploiements ce jour-la ; 07h45 et 08h45, avant tout deploiement, ecourtes aussi). 3 echecs Overpass. — 25/09 : 4e jour — 24/09, 5 passages de 47,8 a 57,4 min (09h45 → 14h45), vehicles 3, 5, 18, 32, 34. Serie &gt; 45 min : 11 · 9 · 8 · 5. — 27/09 : 25/09 : 9 passages de 50,8 a 57,9 min (07h45 → 15h45) ; 26/09 : 5 passages de 46,0 a 58,3 min. Serie &gt; 45 min : 11 · 9 · 8 · 5 · 9 · 5. — 28/09 : dimanche 27/09, 24 passages done, 0 de plus de 45 min (max 39,8). Serie &gt; 45 min : 11 · 9 · 8 · 5 · 9 · 5 · 0 — un dimanche ne dit rien des jours ouvres. — 29/09 : lundi 28/09 : 8 passages sur 24 au-dela de 45 min (07h45 → 15h45, max 59,1) — serie 11 · 9 · 8 · 5 · 9 · 5 · 0 · 8 ; deploy.sh --attendre a patiente 55 min derriere le passage de 14h45.</p>
+  <p class="detail">TROUVE LE 22/09 : le 21/09, 24 passages sur 24 done, 0 interrompu, mais 11 de 50,0 a 57,4 min (07h45 → 17h45) en abordant 5, 9, 15, 18, 20, 31, 4, 8, 10, 34, 34 vehicules sur 34 — stats.vehicles compte les vehicules abordes (trip-automation.service.ts:578) ; au-dela de RUN_BUDGET_MS = 50 min (:85) le passage ne demarre plus de vehicule (:548-553) et reporte le reste en logger.log (:616) « passage ECOURTE sur son budget de temps ». Serie &gt; 45 min : 18/09 7, 19/09 7 (VM a 10 pour cent de son CPU), 20/09 1, 21/09 11. LA MACHINE EST HORS DE CAUSE : system_metrics du 21/09 = CPU 10 a 20 pour cent, charge 0,35 a 1,10 sur les 24 heures. Piste mesuree une fois : le passage de 00h45 (8,7 min) a passe 4 min 46 s entre « 24 analyses rejouees » et « 25 analyses reprises » avec un Overpass HTTP 504 au milieu ; 3 echecs Overpass dans la journee (TRK-037). A ~10 min par vehicule aborde aux heures pleines, la dependance cartographique est la seule candidate mesurable — non demontree, le journal ne couvre pas 07h45 → 17h45. Pas de perte (fenetre de 26 h), de la latence (un trajet du matin analyse l apres-midi, un exces alerte des heures plus tard) et un instrument aveugle : dix heures a un tiers de flotte ressemblent a une journee ordinaire au centre d alerte — le profil de TRK-043. GESTE : (1) trip_automation_runs gagne budgetAtteint (bool) et skippedBudget (int), deux colonnes additives ; (2) une DEGRADATION TRIP_AUTOMATION a partir de 3 passages consecutifs ecourtes, une ligne par episode, refermee par le premier passage complet ; (3) EN PREMIER : mesurer le temps Overpass par passage (appels, duree cumulee, echecs) et l ecrire dans items ou une colonne ; (4) collecte.sql : min / max de vehicles et compte des passages ecourtes dans la section trip_automation_runs. — 24/09 : 3e jour mesure : 8 passages de 50,0 a 57,1 min (07h45 → 15h45), 4 a 15 vehicules sur 34 ; serie 21/09 11 · 22/09 9 · 23/09 8 — trois jours ouvres de suite, regime des heures de bureau ; CPU 10 a 34 pour cent (7 deploiements ce jour-la ; 07h45 et 08h45, avant tout deploiement, ecourtes aussi). 3 echecs Overpass. — 25/09 : 4e jour — 24/09, 5 passages de 47,8 a 57,4 min (09h45 → 14h45), vehicles 3, 5, 18, 32, 34. Serie &gt; 45 min : 11 · 9 · 8 · 5. — 27/09 : 25/09 : 9 passages de 50,8 a 57,9 min (07h45 → 15h45) ; 26/09 : 5 passages de 46,0 a 58,3 min. Serie &gt; 45 min : 11 · 9 · 8 · 5 · 9 · 5. — 28/09 : dimanche 27/09, 24 passages done, 0 de plus de 45 min (max 39,8). Serie &gt; 45 min : 11 · 9 · 8 · 5 · 9 · 5 · 0 — un dimanche ne dit rien des jours ouvres. — 29/09 : lundi 28/09 : 8 passages sur 24 au-dela de 45 min (07h45 → 15h45, max 59,1) — serie 11 · 9 · 8 · 5 · 9 · 5 · 0 · 8 ; deploy.sh --attendre a patiente 55 min derriere le passage de 14h45. — 01/10 : mercredi 30/09, 8 passages de 50,1 a 58,2 min (07h45 a 15h45 sauf 11h45), vehicles 33, 27, 5, 4, 5, 5, 10, 10 ; 0 interrompu malgre 7 deploiements. Serie &gt; 45 min : 11 · 9 · 8 · 5 · 9 · 5 · 0 · 8 · 6 · 8.</p>
   <p class="attendue"><b>Preuve attendue</b> — Au prochain jour a 3 passages ecourtes ou plus : UNE ligne DEGRADATION qui nomme les vehicules reportes et le temps Overpass ; ET un jour a 24 passages courts n en produit aucune. En attendant, relever chaque matin la serie des passages &gt; 45 min et le min de vehicles.</p>
   <div class="badges"></div>
 </article>
@@ -625,7 +625,7 @@
     <span class="fiche">TRK-096 · TRK-093 · TRK-089 · T79 · T76 · T68 · T49</span>
     <span class="classe">🔧 A coder</span>
     <span class="grav" title="gravite 3">G3</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-23">7 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-23">8 j</span>
     
   </div>
   <h3>Quand l interlock repasse au vert, les coupes qu il a retenues repartent au tick suivant — pas a l echeance de leur palier de 30 min — et une ligne de sortie dit le retard</h3>
@@ -640,7 +640,7 @@
     <span class="fiche">TRK-100 · TRK-077 · C6</span>
     <span class="classe">🔧 A coder</span>
     <span class="grav" title="gravite 3">G3</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-30">0 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-30">1 j</span>
     
   </div>
   <h3>deploy.sh : refuser la recreation de l API autour des vagues du coupe-circuit (coupes 20h00 et 22h00 Paris, reprises 05h00 Paris) — lues dans vehicle_schedules, pas codees en dur</h3>
@@ -651,30 +651,15 @@
 <article class="t etat-OUVERT g3" data-etat="OUVERT" data-partie="vps" data-classe="HUMAIN" data-g="3">
   <div class="t-h">
     <span class="marque" title="Ouvert">☐</span>
-    <span class="id">V38</span>
-    <span class="fiche">VPS-048</span>
-    <span class="classe">🤝 Decision ou geste humain</span>
-    <span class="grav" title="gravite 3">G3</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-23">7 j</span>
-    
-  </div>
-  <h3>Rapatrier et versionner cdef31-site : la derniere version d un livrable client n existe que sur le VPS</h3>
-  <p class="detail">📏 30/09 (audit VPS) : J+7, RIEN N A BOUGE — Test-Path D:/www/vizyo-agency/cdef31-vizyoagency = False. || 📏 29/09 (audit VPS) : J+6, RIEN N A BOUGE — Test-Path D:/www/vizyo-agency/cdef31-vizyoagency = False. || 📏 28/09 (audit VPS) : J+5, RIEN N A BOUGE — Test-Path D:/www/vizyo-agency/cdef31-vizyoagency = False. || 📏 27/09 (audit VPS) : J+4, RIEN N A BOUGE — Test-Path D:/www/vizyo-agency/cdef31-vizyoagency = False. || 📏 26/09 (audit VPS) : J+3, RIEN N A BOUGE — Test-Path D:/www/vizyo-agency/cdef31-vizyoagency = False ; cdef31-site memlimit=0, sans sonde. || 📏 25/09 (audit VPS) : J+2, RIEN N A BOUGE — aucun dossier cdef31* sous D:/www/vizyo-agency ; cdef31-site toujours memlimit=0, sans sonde, perimetre identique. || 📏 24/09 : J+1, RIEN N A BOUGE — aucun dossier cdef31* sous D:/www/vizyo-agency, memlimit=0, sans sonde ; perimetre identique, donc des aujourd hui plus aucune ligne du collecteur ne le signale (seule la fiche VPS-048). || TROUVE LE 23/09 (audit VPS, bloc VPS-M92) : cdef31-site (nginx:alpine, cdef31.vizyoagency.com, 3 pages statiques, 21 Mo dont 12 videos) cree le 22/09 13:53 UTC sans annonce ; memlimit=0, aucune sonde, /opt hors de toute sauvegarde. Copies hors VPS : 3 zips dans Downloads du poste (le plus recent 13:34 UTC), aucun depot git. 5 fichiers retouches SUR LE VPS a 17:59 UTC (index, tuto-agenda, ateliers, deux logos) + README 18:01 — apres le dernier zip. GESTE (poste, 30 s, lecture seule cote VPS) : scp -r root@72.62.26.240:/opt/cdef31-vizyoagency D:/www/vizyo-agency/cdef31-vizyoagency puis git init + commit ; les retouches suivantes se font localement puis scp (le README le permet). Plus tard : mem_limit 32m dans son compose. PAS de sonde (Traefik voit la panne ; +2 invocations/min a VPS-011 pour rien). ❌ Pas de docker cp / exec ; ❌ pas de sauvegarde nocturne « par symetrie ».</p>
-  
-  <div class="badges"></div>
-</article>
-<article class="t etat-OUVERT g3" data-etat="OUVERT" data-partie="vps" data-classe="HUMAIN" data-g="3">
-  <div class="t-h">
-    <span class="marque" title="Ouvert">☐</span>
     <span class="id">V39</span>
     <span class="fiche">VPS-010</span>
     <span class="classe">🤝 Decision ou geste humain</span>
     <span class="grav" title="gravite 3">G3</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-24">6 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-24">7 j</span>
     
   </div>
   <h3>Redemarrer sur le noyau 6.8.0-142 installe le 24/09 06:09 UTC (reboot-required revenu)</h3>
-  <p class="detail">📏 30/09 (audit VPS) : PAS ENCORE FAIT — 139 actif, 142 installe, uptime 226 h ; dockerd 1 299 Mo. Canal : TEST 2 → 0 REUSSI (29/09 06:07 : python3-jwt, libevent-core) ; 6 nouveaux pour 30/09 06:14. Toujours APRES V41. || 📏 29/09 (audit VPS) : PAS ENCORE FAIT — 139 actif, 142 installe, uptime 202 h ; dockerd 1 286 Mo. Canal : 2 → 0 reussi le 28/09 06:42 ; 2 nouveaux (libevent-core, python3-jwt) pour 06:41. Toujours APRES V41. || 📏 28/09 (audit VPS) : PAS ENCORE FAIT — 139 actif, 142 installe, uptime 178 h ; dockerd 1 153 Mo ; 2 correctifs de securite a installer a 06:28 (pas un retard). ⚠️ NOUVEAU : le reboot couperait l ecoute Teltonika (V41 / VPS-050, hors de toute unite) sans fermer son port — trancher V41 AVANT. Fenetre : apres le deploiement de lundi 10 h verifie. || 📏 27/09 (audit VPS) : PAS ENCORE FAIT — 139 actif, 142 installe, uptime 154 h ; dockerd 1 134 Mo. Canal sain : libpcap installe 26/09 06:16 (1 → 0), 0 en attente. Pas avant 04:10 UTC le 27/09 (import demo = preuve de V36 b). || 📏 26/09 (audit VPS) : PAS ENCORE FAIT — 6.8.0-139 actif, 142 installe, uptime 132 h ; dockerd 1 114 Mo. Canal de securite SAIN : les 4 correctifs du 25/09 installes a 06:03 (curl x3, libexpat1). Eviter aussi dimanche 04:00 UTC (import demo, V36 b). || 📏 25/09 (audit VPS) : PAS ENCORE FAIT — uname -r = 6.8.0-139, uptime 106 h, levier 7 « noyau actif 6.8.0-139 → viser 6.8.0-142 : REDEMARRAGE requis » (le 🟠 annonce hier) ; reboot-required toujours present ; memoire de dockerd 1 126 Mo. Rien ne presse cote securite (4 correctifs decouverts a 01:43, installateur prevu 06:41 UTC). || TROUVE LE 24/09 (audit VPS, lecture de marge 07:37) : apt-daily-upgrade a installe a 06:08-06:10 UTC linux-image-6.8.0-142-generic (+ modules, en-tetes, linux-virtual) ; /var/run/reboot-required present (linux-image-6.8.0-142-generic, linux-base) ; uname -r = 6.8.0-139. Cycle normal d un canal de securite sain (7 → 0 le meme matin). GESTE : ssh root@72.62.26.240 &quot;systemctl reboot&quot; — HORS 05:30-09:00 Paris (reprises coupe-circuit), HORS HH:42-46 (automatisation des trajets), pas un soir de coupes CDEF31 (20h-22h Paris), jamais dans la meme minute qu un deploiement. Mode operatoire de V4 (20/09 : 2 min 40, 38/38 revenus seuls en 60 s) ; aujourd hui 39/39 unless-stopped. Gain : correctifs noyau actifs + memoire de dockerd rendue (1 126 Mo). Preuve : uname -r = 6.8.0-142-generic, /api/health 200, levier 7 « a jour ».</p>
+  <p class="detail">📏 01/10 (audit VPS) : INCHANGE — 139 actif / 142 installe, uptime 250 h. ⚠️ Occasion : un reboot relancera dockerd sur un historique BuildKit propre seulement si on l a nettoye (VPS-053). || 📏 30/09 (audit VPS) : PAS ENCORE FAIT — 139 actif, 142 installe, uptime 226 h ; dockerd 1 299 Mo. Canal : TEST 2 → 0 REUSSI (29/09 06:07 : python3-jwt, libevent-core) ; 6 nouveaux pour 30/09 06:14. Toujours APRES V41. || 📏 29/09 (audit VPS) : PAS ENCORE FAIT — 139 actif, 142 installe, uptime 202 h ; dockerd 1 286 Mo. Canal : 2 → 0 reussi le 28/09 06:42 ; 2 nouveaux (libevent-core, python3-jwt) pour 06:41. Toujours APRES V41. || 📏 28/09 (audit VPS) : PAS ENCORE FAIT — 139 actif, 142 installe, uptime 178 h ; dockerd 1 153 Mo ; 2 correctifs de securite a installer a 06:28 (pas un retard). ⚠️ NOUVEAU : le reboot couperait l ecoute Teltonika (V41 / VPS-050, hors de toute unite) sans fermer son port — trancher V41 AVANT. Fenetre : apres le deploiement de lundi 10 h verifie. || 📏 27/09 (audit VPS) : PAS ENCORE FAIT — 139 actif, 142 installe, uptime 154 h ; dockerd 1 134 Mo. Canal sain : libpcap installe 26/09 06:16 (1 → 0), 0 en attente. Pas avant 04:10 UTC le 27/09 (import demo = preuve de V36 b). || 📏 26/09 (audit VPS) : PAS ENCORE FAIT — 6.8.0-139 actif, 142 installe, uptime 132 h ; dockerd 1 114 Mo. Canal de securite SAIN : les 4 correctifs du 25/09 installes a 06:03 (curl x3, libexpat1). Eviter aussi dimanche 04:00 UTC (import demo, V36 b). || 📏 25/09 (audit VPS) : PAS ENCORE FAIT — uname -r = 6.8.0-139, uptime 106 h, levier 7 « noyau actif 6.8.0-139 → viser 6.8.0-142 : REDEMARRAGE requis » (le 🟠 annonce hier) ; reboot-required toujours present ; memoire de dockerd 1 126 Mo. Rien ne presse cote securite (4 correctifs decouverts a 01:43, installateur prevu 06:41 UTC). || TROUVE LE 24/09 (audit VPS, lecture de marge 07:37) : apt-daily-upgrade a installe a 06:08-06:10 UTC linux-image-6.8.0-142-generic (+ modules, en-tetes, linux-virtual) ; /var/run/reboot-required present (linux-image-6.8.0-142-generic, linux-base) ; uname -r = 6.8.0-139. Cycle normal d un canal de securite sain (7 → 0 le meme matin). GESTE : ssh root@72.62.26.240 &quot;systemctl reboot&quot; — HORS 05:30-09:00 Paris (reprises coupe-circuit), HORS HH:42-46 (automatisation des trajets), pas un soir de coupes CDEF31 (20h-22h Paris), jamais dans la meme minute qu un deploiement. Mode operatoire de V4 (20/09 : 2 min 40, 38/38 revenus seuls en 60 s) ; aujourd hui 39/39 unless-stopped. Gain : correctifs noyau actifs + memoire de dockerd rendue (1 126 Mo). Preuve : uname -r = 6.8.0-142-generic, /api/health 200, levier 7 « a jour ».</p>
   
   <div class="badges"></div>
 </article>
@@ -685,11 +670,11 @@
     <span class="fiche">VPS-050 · VPS-M127</span>
     <span class="classe">🤝 Decision ou geste humain</span>
     <span class="grav" title="gravite 3">G3</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-28">2 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-28">3 j</span>
     
   </div>
   <h3>Refermer l ecoute de test Teltonika (node en root dans un tmux, port 5027 ouvert a Internet) — ou lui donner une echeance, un utilisateur non root et un journal borne</h3>
-  <p class="detail">📏 30/09 (audit VPS) : J+2, INCHANGE — pid 4030432 root, 62 h, session-6560.scope, 5027 ouvert v4+v6, 0 connexion ; journal 12 588 016 o fige au 27/09 12:19:48. VPS-M128 : ecoutes publiques IDENTIQUES au 29/09. || 📏 29/09 (audit VPS) : J+1, INCHANGE — pid 4030432 root, 38 h, session-6560.scope, 5027 ouvert v4+v6, 0 connexion ; journal 12 588 016 o fige depuis le 27/09 12:19:48 ; 12 paquets ufw vers 5027 (balayages). Question toujours sans reponse. || TROUVE LE 28/09 (audit VPS) : node /opt/ecoute-teltonika.mjs --port 5027 tourne en ROOT sur l hote depuis le 27/09 12:05:12 UTC, lance par « tmux new -d -s teltonika node … 2&gt;&amp;1 | tee -a /opt/ecoute-teltonika.log » depuis une session root de 11:41 (78.240.218.252, cle du poste) ; cgroup session-6560.scope = AUCUNE unite (ne revient pas apres un reboot) ; ufw allow 5027/tcp pose a 12:04:48 (v4 + v6) ; un seul boitier FMC130 (46.114.215.195) de 12:04:07 a 12:19:48, 0 connexion depuis 14 h ; il repond (accuses Teltonika) ; journal 12 Mo / 115 180 lignes en 15 min, sans rotation. QUESTION : le test est-il fini ? SI OUI (poste, 1 min, risque nul) : scp root@72.62.26.240:/opt/ecoute-teltonika.log vers docs/teltonika-fmc130/ ; puis ssh root@72.62.26.240 &quot;tmux kill-session -t teltonika&quot; ; puis ssh root@72.62.26.240 &quot;ufw delete allow 5027/tcp&quot;. SINON : echeance ecrite, utilisateur non root (5027 &gt; 1024), journal borne (le plus simple : un petit conteneur, json-file 10 Mo x 3). ❌ Ne pas retirer la seule regle ufw en laissant le processus ; ❌ ne pas supprimer le journal sans copie ; ❌ ne pas redemarrer (V39) avant d avoir tranche.</p>
+  <p class="detail">📏 01/10 (audit VPS) : J+3, INCHANGE — pid 4030432, 86 h, 5027 ouvert v4+v6, 0 connexion, journal fige au 27/09 12:19. || 📏 30/09 (audit VPS) : J+2, INCHANGE — pid 4030432 root, 62 h, session-6560.scope, 5027 ouvert v4+v6, 0 connexion ; journal 12 588 016 o fige au 27/09 12:19:48. VPS-M128 : ecoutes publiques IDENTIQUES au 29/09. || 📏 29/09 (audit VPS) : J+1, INCHANGE — pid 4030432 root, 38 h, session-6560.scope, 5027 ouvert v4+v6, 0 connexion ; journal 12 588 016 o fige depuis le 27/09 12:19:48 ; 12 paquets ufw vers 5027 (balayages). Question toujours sans reponse. || TROUVE LE 28/09 (audit VPS) : node /opt/ecoute-teltonika.mjs --port 5027 tourne en ROOT sur l hote depuis le 27/09 12:05:12 UTC, lance par « tmux new -d -s teltonika node … 2&gt;&amp;1 | tee -a /opt/ecoute-teltonika.log » depuis une session root de 11:41 (78.240.218.252, cle du poste) ; cgroup session-6560.scope = AUCUNE unite (ne revient pas apres un reboot) ; ufw allow 5027/tcp pose a 12:04:48 (v4 + v6) ; un seul boitier FMC130 (46.114.215.195) de 12:04:07 a 12:19:48, 0 connexion depuis 14 h ; il repond (accuses Teltonika) ; journal 12 Mo / 115 180 lignes en 15 min, sans rotation. QUESTION : le test est-il fini ? SI OUI (poste, 1 min, risque nul) : scp root@72.62.26.240:/opt/ecoute-teltonika.log vers docs/teltonika-fmc130/ ; puis ssh root@72.62.26.240 &quot;tmux kill-session -t teltonika&quot; ; puis ssh root@72.62.26.240 &quot;ufw delete allow 5027/tcp&quot;. SINON : echeance ecrite, utilisateur non root (5027 &gt; 1024), journal borne (le plus simple : un petit conteneur, json-file 10 Mo x 3). ❌ Ne pas retirer la seule regle ufw en laissant le processus ; ❌ ne pas supprimer le journal sans copie ; ❌ ne pas redemarrer (V39) avant d avoir tranche.</p>
   <p class="attendue"><b>Preuve attendue</b> — Le bloc VPS-M127 du collecteur rend « ✅ aucune : toute ecoute publique passe par docker-proxy ou sshd », et ufw status ne porte plus 5027 — OU une echeance ecrite et un processus non root dans une unite ou un conteneur.</p>
   <div class="badges"></div>
 </article>
@@ -700,7 +685,7 @@
     <span class="fiche">VPS-051 · VPS-M129</span>
     <span class="classe">🔧 A coder</span>
     <span class="grav" title="gravite 3">G3</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-29">1 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-29">2 j</span>
     
   </div>
   <h3>deploy.sh : nommer le repere de repli d apres le code qui TOURNE (dernier sha du journal T33), pas d apres HEAD — et journaliser l ImageId</h3>
@@ -715,11 +700,11 @@
     <span class="fiche">VPS-052 · VPS-M130</span>
     <span class="classe">🔧 A coder</span>
     <span class="grav" title="gravite 3">G3</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-30">0 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-30">1 j</span>
     
   </div>
   <h3>deploy.sh : retrecir la garde du matin a « une reprise est-elle due dans les 10 min ? » au lieu de la franchir par --force</h3>
-  <p class="detail">TROUVE LE 30/09 (audit VPS) : journal T33 — force=true le 28/09 08:22 Paris, le 29/09 05:37 et 08:12 Paris (3 fois dans la fenetre 05:30-09:00 en 2 jours ; seuil ecrit le 29/09 : « un 2e ouvre un constat ») ; le 29/09, 8 deploiements dont 5 forces, et les 3 de l apres-midi (17:06, 18:10, 20:10 Paris) ont tue les passages de 14:45, 15:45, 17:45 (3 CRITICAL TRIP_AUTOMATION, centre d alerte du 30/09). Aucune reprise manquee. Cause : la garde du matin couvre 3 h 30 parce que deploy.sh ne sait pas QUAND tombe la prochaine reprise ; en livraison par petits lots, --force devient le chemin normal. GESTE : dans deploy.sh, lire la prochaine reprise dans vehicle_schedules (meme docker exec … psql borne timeout 20 que la garde des passages) ; refuser seulement si elle est due dans les 10 min, et exiger alors --force-reprise (second drapeau explicite). Harnais deploy.test.sh. En attendant, a cout nul : --attendre plutot que --force hors urgence.</p>
+  <p class="detail">📏 01/10 (audit VPS) : 0 force=true le 30/09 (6 deploiements, 4 --attendre) ; centre d alerte : 0 passage tue. Jour 1/7 vers APPLIQUE de VPS-052 ; code non ecrit. || TROUVE LE 30/09 (audit VPS) : journal T33 — force=true le 28/09 08:22 Paris, le 29/09 05:37 et 08:12 Paris (3 fois dans la fenetre 05:30-09:00 en 2 jours ; seuil ecrit le 29/09 : « un 2e ouvre un constat ») ; le 29/09, 8 deploiements dont 5 forces, et les 3 de l apres-midi (17:06, 18:10, 20:10 Paris) ont tue les passages de 14:45, 15:45, 17:45 (3 CRITICAL TRIP_AUTOMATION, centre d alerte du 30/09). Aucune reprise manquee. Cause : la garde du matin couvre 3 h 30 parce que deploy.sh ne sait pas QUAND tombe la prochaine reprise ; en livraison par petits lots, --force devient le chemin normal. GESTE : dans deploy.sh, lire la prochaine reprise dans vehicle_schedules (meme docker exec … psql borne timeout 20 que la garde des passages) ; refuser seulement si elle est due dans les 10 min, et exiger alors --force-reprise (second drapeau explicite). Harnais deploy.test.sh. En attendant, a cout nul : --attendre plutot que --force hors urgence.</p>
   <p class="attendue"><b>Preuve attendue</b> — 7 jours de journal T33 sans force=true entre 05:30 et 09:00 Paris (le bloc VPS-M130 ne sort plus de 🟠 « DANS la fenetre ») — ou V44 deployee et un deploiement de 07:00 Paris accepte sans --force, reprise suivante a l heure.</p>
   <div class="badges"></div>
 </article>
@@ -730,7 +715,7 @@
     <span class="fiche">TRK-066 · doc 19 §14</span>
     <span class="classe">🔧 A coder</span>
     <span class="grav" title="gravite 4">G4</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-13">17 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-13">18 j</span>
     
   </div>
   <h3>Dépendances : lot séparé après stabilisation (maplibre critique, socket.io/ws, axios via twilio, multer)</h3>
@@ -745,7 +730,7 @@
     <span class="fiche">TRK-097 · TRK-069 · T75 · T34</span>
     <span class="classe">🔧 A coder</span>
     <span class="grav" title="gravite 4">G4</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-24">6 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-24">7 j</span>
     
   </div>
   <h3>La sentinelle de file juge l age d un travail depuis la levee de la pause, pas depuis sa creation — et une ligne « file bouchee » s archive quand la file repasse sous 12 h</h3>
@@ -760,11 +745,11 @@
     <span class="fiche">VPS-M115 · VPS-M56</span>
     <span class="classe">🟡 Commande ecrite, arbitrage humain</span>
     <span class="grav" title="gravite 4">G4</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-25">5 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-25">6 j</span>
     
   </div>
   <h3>Decaler VizyoTracky-LimitesVitesse de 04:30 a 04:40 Paris : elle part pendant chaque collecte de l audit VPS</h3>
-  <p class="detail">📏 30/09 (audit VPS) : PAS FAIT — pas de collision, encore par attente : LimitesVitesse 04:30:01 Paris, Ready a 04:30:26 ; collecte 04:30:44. Declencheurs toujours T04:30:00. || 📏 29/09 (audit VPS) : PAS FAIT — pas de collision ce matin, mais parce que l audit a ATTENDU : LimitesVitesse 04:30:01 → 04:31:19 Paris (78 s), collecte partie a 04:31:31, 1 session etrangere. Declencheur toujours 04:30. || 📏 28/09 (audit VPS) : PAS FAIT — 4e COLLISION, LA 1re AU-DESSUS DE LA LIMITE : LimitesVitesse 04:30:01 Paris, 3 sessions (02:30:05/07/18 UTC), charge 0,37 a 02:29:46 → 2,61 a 02:30:20 (avant meme la collecte), 4,01 a la fin (limite 2,0) ; toujours en cours a 04:35 (267009). Declencheur toujours 2026-08-19T04:30:00+02:00. || 📏 27/09 (audit VPS) : PAS FAIT — 3e COLLISION (24, 25, 27/09) : LimitesVitesse 04:30:01 Paris pendant la collecte (02:30:21 → 02:33:11 UTC), 6 sessions etrangeres, docker exec psql vu a 02:30:06 ; charge 0,47 → 1,79 (sous 2). Declencheur toujours 2026-08-19T04:30:00+02:00. || 📏 26/09 (audit VPS) : PAS FAIT — declencheurs toujours 2026-08-19T04:30:00+02:00. Pas de collision ce matin UNIQUEMENT parce que l audit est parti a 04:35 UTC (+133 min) : LimitesVitesse 04:30:01 Paris etait finie. || TROUVE LE 25/09 (audit VPS) : l audit part a 04:20 Paris + gigue ≤ 514 s et dure ~184 s (fin au plus tard ~04:32) ; LimitesVitesse part a 04:30 Paris et ecrit le cache par lots via ssh + docker exec psql. 24/09 : fin 02:30:34 UTC, 6 connexions docker.sock pendant la collecte ; 25/09 : 02:30:14 → 02:32:06, collecte 02:30:05 → 02:33:09, 7 sessions SSH etrangeres pendant la mesure (bloc VPS-M57). Consequences : budget et charge de l audit mesures avec un voisin, compte docker.sock et « autres sessions » pollues chaque jour. GESTE (poste, 10 s, risque nul) : $t = Get-ScheduledTask VizyoTracky-LimitesVitesse ; $t.Triggers | Where-Object { $_.StartBoundary -like '*T04:30:00*' } | ForEach-Object { $_.StartBoundary = $_.StartBoundary -replace 'T04:30:00','T04:40:00' } ; Set-ScheduledTask -InputObject $t. ⚠️ Les declencheurs portent +02:00 (fuseau fixe) : au 25/10 ils partiront a 03:30 Paris / 02:30 UTC, l audit a 03:20 UTC (VPS-M117) — la collision disparait alors d elle-meme, mais pas d ici la. Preuve : le bloc « pendant MA collecte » rend 0 session etrangere et 0 connexion docker.sock un matin sans autre cause.</p>
+  <p class="detail">📏 01/10 (audit VPS) : NON FAITE — declencheurs toujours T04:30:00 ; 5e collision, la 1re NON evitee : LimitesVitesse 04:30:01 → apres 04:33:34 Paris, collecte 04:32:44 → 04:35:43 ; 3 sessions SSH etrangeres pendant la collecte. || 📏 30/09 (audit VPS) : PAS FAIT — pas de collision, encore par attente : LimitesVitesse 04:30:01 Paris, Ready a 04:30:26 ; collecte 04:30:44. Declencheurs toujours T04:30:00. || 📏 29/09 (audit VPS) : PAS FAIT — pas de collision ce matin, mais parce que l audit a ATTENDU : LimitesVitesse 04:30:01 → 04:31:19 Paris (78 s), collecte partie a 04:31:31, 1 session etrangere. Declencheur toujours 04:30. || 📏 28/09 (audit VPS) : PAS FAIT — 4e COLLISION, LA 1re AU-DESSUS DE LA LIMITE : LimitesVitesse 04:30:01 Paris, 3 sessions (02:30:05/07/18 UTC), charge 0,37 a 02:29:46 → 2,61 a 02:30:20 (avant meme la collecte), 4,01 a la fin (limite 2,0) ; toujours en cours a 04:35 (267009). Declencheur toujours 2026-08-19T04:30:00+02:00. || 📏 27/09 (audit VPS) : PAS FAIT — 3e COLLISION (24, 25, 27/09) : LimitesVitesse 04:30:01 Paris pendant la collecte (02:30:21 → 02:33:11 UTC), 6 sessions etrangeres, docker exec psql vu a 02:30:06 ; charge 0,47 → 1,79 (sous 2). Declencheur toujours 2026-08-19T04:30:00+02:00. || 📏 26/09 (audit VPS) : PAS FAIT — declencheurs toujours 2026-08-19T04:30:00+02:00. Pas de collision ce matin UNIQUEMENT parce que l audit est parti a 04:35 UTC (+133 min) : LimitesVitesse 04:30:01 Paris etait finie. || TROUVE LE 25/09 (audit VPS) : l audit part a 04:20 Paris + gigue ≤ 514 s et dure ~184 s (fin au plus tard ~04:32) ; LimitesVitesse part a 04:30 Paris et ecrit le cache par lots via ssh + docker exec psql. 24/09 : fin 02:30:34 UTC, 6 connexions docker.sock pendant la collecte ; 25/09 : 02:30:14 → 02:32:06, collecte 02:30:05 → 02:33:09, 7 sessions SSH etrangeres pendant la mesure (bloc VPS-M57). Consequences : budget et charge de l audit mesures avec un voisin, compte docker.sock et « autres sessions » pollues chaque jour. GESTE (poste, 10 s, risque nul) : $t = Get-ScheduledTask VizyoTracky-LimitesVitesse ; $t.Triggers | Where-Object { $_.StartBoundary -like '*T04:30:00*' } | ForEach-Object { $_.StartBoundary = $_.StartBoundary -replace 'T04:30:00','T04:40:00' } ; Set-ScheduledTask -InputObject $t. ⚠️ Les declencheurs portent +02:00 (fuseau fixe) : au 25/10 ils partiront a 03:30 Paris / 02:30 UTC, l audit a 03:20 UTC (VPS-M117) — la collision disparait alors d elle-meme, mais pas d ici la. Preuve : le bloc « pendant MA collecte » rend 0 session etrangere et 0 connexion docker.sock un matin sans autre cause.</p>
   
   <div class="badges"></div>
 </article>
@@ -775,7 +760,7 @@
     <span class="fiche">TRK-070</span>
     <span class="classe">🔧 A coder</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-06">24 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-06">25 j</span>
     <code class="commit">2112e9ae</code>
   </div>
   <h3>Le niveau de l'escalade doit suivre la CAUSE, pas la gravite</h3>
@@ -790,7 +775,7 @@
     <span class="fiche">TRK-078</span>
     <span class="classe">🔧 A coder</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-13">17 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-13">18 j</span>
     <code class="commit">229b7861</code>
   </div>
   <h3>Dedupliquer l alerte d exces de vitesse sur l EXCES, pas sur l identifiant de trajet</h3>
@@ -805,7 +790,7 @@
     <span class="fiche">TRK-066 · doc 19 P0-2</span>
     <span class="classe">🔧 A coder</span>
     <span class="grav" title="gravite 1">G1</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-13">17 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-13">18 j</span>
     <code class="commit">8ab1d08e</code>
   </div>
   <h3>P0 — Donner une validité aux SMS CUT (ttl), une priorité aux RESTORE, un appareil explicite, et annuler le SMS CUT supplanté — DÉPLOYÉ le 15/09</h3>
@@ -820,7 +805,7 @@
     <span class="fiche">TRK-016</span>
     <span class="classe">🏗️ Chantier, hors passe</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-08-09">52 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-08-09">53 j</span>
     <code class="commit">4d1c4cb5</code>
   </div>
   <h3>Recalage cartographique : flux neuf repare, mesure a redefinir, historique a rattraper</h3>
@@ -835,7 +820,7 @@
     <span class="fiche">TRK-069</span>
     <span class="classe">🔧 A coder</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-13">17 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-13">18 j</span>
     <code class="commit">507f0763</code>
   </div>
   <h3>Les agents du poste meurent d un Ctrl-C qui ne leur est pas destine — fenetre cachee, CLI isolee, limite corrigee</h3>
@@ -850,11 +835,11 @@
     <span class="fiche">VPS-037</span>
     <span class="classe">🤝 Decision ou geste humain</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-01">29 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-01">30 j</span>
     
   </div>
   <h3>Donner un second depositaire a la copie hors-site — et, en attendant, reveiller le poste (WakeToRun)</h3>
-  <p class="detail">📏 30/09 (audit VPS) : LE REVEIL A SONNE, SUR SECTEUR — Vizyo-Reveil-Audits 30/09 04:15:01, resultat 0, NumberOfMissedRuns 0 (apres 3 refus sur batterie) ; Win32_Battery 89 %, BatteryStatus 2 (secteur) ; copie vizyo-verify OK 22 h, 0 paire sans copie. Ne prouve pas V6 : le refus venait de la batterie, et powercfg /h /type full n est pas fait. Reste DEPLOYE. || 📏 29/09 (audit VPS) : 3e REFUS SUR BATTERIE — Vizyo-Reveil-Audits NumberOfMissedRuns = 1, prochaine 30/09 04:15 ; Win32_Battery 40 %, BatteryStatus 1 (decharge) ; poste eveille, audit +9 min ; copie du 28/09 OK (0 paire sans copie). || 📏 28/09 (audit VPS) : 2e REFUS SUR BATTERIE — Vizyo-Reveil-Audits LastRunTime 27/09 08:48, NumberOfMissedRuns = 1, prochaine 29/09 ; poste a 42 %, PowerOnline False / Discharging True (WMI) ; eveille, audit +8 min ; copie du 27/09 OK (0 paire sans copie). || 📏 27/09 (audit VPS) : 2e MODE D ECHEC — Vizyo-Reveil-Audits NON PARTIE a 04:15 Paris : poste SUR BATTERIE (75 %), DisallowStartIfOnBatteries = True, NumberOfMissedRuns = 1 ; poste eveille depuis 01:40 Paris, donc audit a l heure (+8 min). Un poste endormi sur batterie ne serait pas reveille non plus. La copie (06:30 Paris) accepte la batterie. Copie du 26/09 OK. || 📏 26/09 (audit VPS) : copie OK 04:30:07 UTC (1 paire, SHA-256) ; Vizyo-Reveil-Audits 04:15:01 resultat 0 = 4e sonnerie sur un poste DEJA eveille (sortie de veille 00:25:53) ; poste SUR BATTERIE (BatteryStatus 1, 100 %) ; powercfg /a : veille prolongee toujours indisponible. L audit, parti a 04:35, n a pas entraine la copie (VPS-M122). || 📏 25/09 (audit VPS) : Vizyo-Reveil-Audits 04:15:01 resultat 0 — 3e sonnerie sur un poste DEJA eveille (dernier Kernel-Power 507 le 24/09 23:41) ; poste sur secteur ; powercfg /a : veille prolongee toujours « non prise en charge par le type de fichier » (la moitie admin, powercfg /h /type full, n est pas faite). Copie du 25/09 pas encore passee a l heure de la collecte (06:30 Paris) — VPS-049 attend 20260910. || 📏 24/09 (audit VPS) : copie A JOUR — copie.log 23/09 06:30 : 20260922 + 20260923 (prediction « 2 paires » tenue) ; 24/09 06:30 : 20260909 + 20260924 (recopie de J-15 : VPS-049, gravite 4). Poste sur secteur, 0 Kernel-Power 42/107 sur 7 h, Vizyo-Reveil-Audits 04:15 resultat 0 = 2e sonnerie sur un poste DEJA eveille : le reveil n est toujours pas prouve. Audit +7 min. Reste DEPLOYE. || 📏 23/09 (audit VPS) : AUDIT A L HEURE (02:29 UTC, +7 min), poste SUR SECTEUR (PowerOnline=True). Vizyo-Reveil-Audits a sonne pour la 1re fois : LastRunTime 23/09 04:15:01, LastTaskResult 0 (hier 267011) — mais aucun Power-Troubleshooter 1 / Kernel-Power 107 a 04:15 : le poste etait eveille depuis 23:22 (Kernel-Power 507). Elle a prouve qu elle se DECLENCHE sur secteur, pas qu elle REVEILLE. powercfg /a : veille prolongee TOUJOURS indisponible (hiberfile reduced) — la moitie admin (powercfg /h /type full) n est pas faite. Copie hors-site : JSON du VPS 46 h, 1 paire sans copie (22/09) ; la copie de 04:30 UTC tombe APRES ce passage — pairesCopiees = 2 attendu, a lire demain. Reste DEPLOYE. || 🔴 22/09 (audit VPS) : LA MOITIE POSEE N A PAS SUFFI, EXACTEMENT COMME PREDIT — journal Windows : poste SUR BATTERIE, « Le systeme entre en veille » 03:44:14 Paris (batterie critique, 1 % au reveil), horloge sautee de 01:44:15Z a 04:37:07Z = machine ETEINTE 2 h 53 ; Vizyo-Reveil-Audits (04:15, DisallowStartIfOnBatteries) JAMAIS TOURNEE (LastTaskResult 267011) ; reveil a 06:37 Paris par le BRANCHEMENT SECTEUR (PowerOnline=True a 06:50). Consequences : audit VPS parti a 04:39 UTC (+137 min, VPS-M73 6e), copie hors-site de 04:30 UTC MANQUEE (DERNIERE-COPIE-LOCALE.json du 21/09 04:30 ; « 1 paire produite depuis la derniere copie reussie — n existe qu ICI » ; StartWhenAvailable=True n a PAS rattrape : dernier passage 21/09, prochain 23/09 06:30). VPS-037 : 1 paire sans copie sur 7 j (gravite 1 a 3). Ce qui manque est ecrit depuis hier : powercfg /h /type full en admin ET le secteur branche la nuit. || 🔧 21/09 05:08 Paris (« Go » du proprietaire) : POSEE A MOITIE — (a) Vizyo-Verify-Copie-HorsSite : WakeToRun=True (StartWhenAvailable garde, limite 2 h, batterie autorisee comme avant ; prochaine 22/09 06:30 ; la copie du 21/09 06:30:01 a reussi, Result 0, 6e nuit) ; (b) nouvelle tache Vizyo-Reveil-Audits : quotidienne 04:15 Paris, WakeToRun, action vide (cmd /c exit 0), DisallowStartIfOnBatteries, 5 min max (S4U refuse sans elevation → principal interactif comme les 6 autres taches). ⚠️ CE QUE LA MESURE A APPRIS : STANDBYIDLE = 0 sur secteur ET batterie (le PC ne s endort JAMAIS par inactivite — ses veilles sont le capot, le bouton ou la batterie critique), le poste etait SUR BATTERIE a 64 % a 05:00, et chaque veille FERME LA SESSION (hiberfile reduced, audit PC du 17/09) : la copie est LogonType=Interactive et l audit Claude a besoin de l app — un reveil rend un ecran de verrouillage. LA MOITIE QUI MANQUE EST EN ADMIN (hors perimetre de l agent) : powercfg /h /type full (+3,15 Go sur C: ; verification : powercfg /a liste « Mise en veille prolongee ») — et le secteur branche la nuit (la tache de reveil ne part pas sur batterie, a dessein). || 📏 21/09 (audit VPS) : l audit est parti a l heure (02:23, +1 min) et la copie du 20/09 04:30 a reussi (5e nuit) — le poste etait eveille les deux fois SANS WakeToRun : encore la chance. La copie du 21/09 tombe a 04:30, apres le passage. || 🔴 16/09 (audit VPS) — VPS-037 gravite 3 → 2, MESURE COMME PANNE COMMUNE : le poste est sorti de veille a 02:20:45 UTC (l heure de l audit), s est rendormi dans la seconde, a repris a 04:34:19 ; l audit a demarre a 04:36 (+134 min) et la tache Vizyo-Verify-Copie-HorsSite (04:30) n a PAS tourne (copie.log au 15/09 06:30:11, LastRunTime 15/09, NextRunTime 17/09, StartWhenAvailable=True n a rien rattrape, WakeToRun=FALSE). Deux devoirs du poste manques par le meme sommeil ; invisible cote VPS avant 30 h. GESTE IMMEDIAT cote poste (30 s) : Set-ScheduledTask -TaskName Vizyo-Verify-Copie-HorsSite -Settings (New-ScheduledTaskSettingsSet -WakeToRun -StartWhenAvailable -ExecutionTimeLimit (New-TimeSpan -Hours 2)) — et la meme chose sur la tache de l audit. Preuve : JSON du 17/09 04:30 avec pairesCopiees 2. Puis V6 proprement dit : cette machine RECOIT deja les dumps de Conductor et Dispocar par recevoir-dump + cle command= (VPS-042) — le mecanisme inverse (pousser la paire Verify vers l autre machine) existe, ~40 lignes et une cle cote vizyo-verify. ❌ Ne pas lancer le copieur a la main « pour rattraper » (geste, VPS-M81 ; masquerait la mesure de demain). Seuil : gravite 1 a la 3e paire sans copie sur 7 jours. || Depositaire unique, et c'est le meme poste que celui qui porte la planification de l'audit. 🔴 17/09 (audit VPS) : LE POSTE A DORMI DE 23:17 A 03:15 UTC (journal Windows, reveil source Unknown) — audit a 03:18 (+56 min), les deux audits lances a la meme seconde (VPS-M57, 3e collision), copie du 16/09 04:30 NON FAITE (WakeToRun toujours False). 2 paires produites depuis la derniere copie reussie (15/09 04:30) n existent qu ici : verify_20260916-033130 et verify_20260917-033056. Le collecteur ecrivait « OK 46 h a jour » (corrige : il compte les paires). La 3e paire sans copie sur 7 j — le seuil de gravite 1 de VPS-037 — se joue a 04:30 UTC ce matin selon que le poste reste eveille. Le geste WakeToRun (30 s) est inchange et decide de la gravite 1. 📏 20/09 : le poste dormait a 03h09 le 19/09 ; les trois audits sont partis ensemble a 14h12 UTC (4e collision) et celui du centre d alerte a ete interrompu par l utilisateur 2 min plus tard — pas de rapport du 19. Celui du 20 est parti a l heure.</p>
+  <p class="detail">📏 01/10 (audit VPS) : reveil 04:15:01 resultat 0, missed 0 ; poste sur secteur (100 %). powercfg /h toujours non fait. || 📏 30/09 (audit VPS) : LE REVEIL A SONNE, SUR SECTEUR — Vizyo-Reveil-Audits 30/09 04:15:01, resultat 0, NumberOfMissedRuns 0 (apres 3 refus sur batterie) ; Win32_Battery 89 %, BatteryStatus 2 (secteur) ; copie vizyo-verify OK 22 h, 0 paire sans copie. Ne prouve pas V6 : le refus venait de la batterie, et powercfg /h /type full n est pas fait. Reste DEPLOYE. || 📏 29/09 (audit VPS) : 3e REFUS SUR BATTERIE — Vizyo-Reveil-Audits NumberOfMissedRuns = 1, prochaine 30/09 04:15 ; Win32_Battery 40 %, BatteryStatus 1 (decharge) ; poste eveille, audit +9 min ; copie du 28/09 OK (0 paire sans copie). || 📏 28/09 (audit VPS) : 2e REFUS SUR BATTERIE — Vizyo-Reveil-Audits LastRunTime 27/09 08:48, NumberOfMissedRuns = 1, prochaine 29/09 ; poste a 42 %, PowerOnline False / Discharging True (WMI) ; eveille, audit +8 min ; copie du 27/09 OK (0 paire sans copie). || 📏 27/09 (audit VPS) : 2e MODE D ECHEC — Vizyo-Reveil-Audits NON PARTIE a 04:15 Paris : poste SUR BATTERIE (75 %), DisallowStartIfOnBatteries = True, NumberOfMissedRuns = 1 ; poste eveille depuis 01:40 Paris, donc audit a l heure (+8 min). Un poste endormi sur batterie ne serait pas reveille non plus. La copie (06:30 Paris) accepte la batterie. Copie du 26/09 OK. || 📏 26/09 (audit VPS) : copie OK 04:30:07 UTC (1 paire, SHA-256) ; Vizyo-Reveil-Audits 04:15:01 resultat 0 = 4e sonnerie sur un poste DEJA eveille (sortie de veille 00:25:53) ; poste SUR BATTERIE (BatteryStatus 1, 100 %) ; powercfg /a : veille prolongee toujours indisponible. L audit, parti a 04:35, n a pas entraine la copie (VPS-M122). || 📏 25/09 (audit VPS) : Vizyo-Reveil-Audits 04:15:01 resultat 0 — 3e sonnerie sur un poste DEJA eveille (dernier Kernel-Power 507 le 24/09 23:41) ; poste sur secteur ; powercfg /a : veille prolongee toujours « non prise en charge par le type de fichier » (la moitie admin, powercfg /h /type full, n est pas faite). Copie du 25/09 pas encore passee a l heure de la collecte (06:30 Paris) — VPS-049 attend 20260910. || 📏 24/09 (audit VPS) : copie A JOUR — copie.log 23/09 06:30 : 20260922 + 20260923 (prediction « 2 paires » tenue) ; 24/09 06:30 : 20260909 + 20260924 (recopie de J-15 : VPS-049, gravite 4). Poste sur secteur, 0 Kernel-Power 42/107 sur 7 h, Vizyo-Reveil-Audits 04:15 resultat 0 = 2e sonnerie sur un poste DEJA eveille : le reveil n est toujours pas prouve. Audit +7 min. Reste DEPLOYE. || 📏 23/09 (audit VPS) : AUDIT A L HEURE (02:29 UTC, +7 min), poste SUR SECTEUR (PowerOnline=True). Vizyo-Reveil-Audits a sonne pour la 1re fois : LastRunTime 23/09 04:15:01, LastTaskResult 0 (hier 267011) — mais aucun Power-Troubleshooter 1 / Kernel-Power 107 a 04:15 : le poste etait eveille depuis 23:22 (Kernel-Power 507). Elle a prouve qu elle se DECLENCHE sur secteur, pas qu elle REVEILLE. powercfg /a : veille prolongee TOUJOURS indisponible (hiberfile reduced) — la moitie admin (powercfg /h /type full) n est pas faite. Copie hors-site : JSON du VPS 46 h, 1 paire sans copie (22/09) ; la copie de 04:30 UTC tombe APRES ce passage — pairesCopiees = 2 attendu, a lire demain. Reste DEPLOYE. || 🔴 22/09 (audit VPS) : LA MOITIE POSEE N A PAS SUFFI, EXACTEMENT COMME PREDIT — journal Windows : poste SUR BATTERIE, « Le systeme entre en veille » 03:44:14 Paris (batterie critique, 1 % au reveil), horloge sautee de 01:44:15Z a 04:37:07Z = machine ETEINTE 2 h 53 ; Vizyo-Reveil-Audits (04:15, DisallowStartIfOnBatteries) JAMAIS TOURNEE (LastTaskResult 267011) ; reveil a 06:37 Paris par le BRANCHEMENT SECTEUR (PowerOnline=True a 06:50). Consequences : audit VPS parti a 04:39 UTC (+137 min, VPS-M73 6e), copie hors-site de 04:30 UTC MANQUEE (DERNIERE-COPIE-LOCALE.json du 21/09 04:30 ; « 1 paire produite depuis la derniere copie reussie — n existe qu ICI » ; StartWhenAvailable=True n a PAS rattrape : dernier passage 21/09, prochain 23/09 06:30). VPS-037 : 1 paire sans copie sur 7 j (gravite 1 a 3). Ce qui manque est ecrit depuis hier : powercfg /h /type full en admin ET le secteur branche la nuit. || 🔧 21/09 05:08 Paris (« Go » du proprietaire) : POSEE A MOITIE — (a) Vizyo-Verify-Copie-HorsSite : WakeToRun=True (StartWhenAvailable garde, limite 2 h, batterie autorisee comme avant ; prochaine 22/09 06:30 ; la copie du 21/09 06:30:01 a reussi, Result 0, 6e nuit) ; (b) nouvelle tache Vizyo-Reveil-Audits : quotidienne 04:15 Paris, WakeToRun, action vide (cmd /c exit 0), DisallowStartIfOnBatteries, 5 min max (S4U refuse sans elevation → principal interactif comme les 6 autres taches). ⚠️ CE QUE LA MESURE A APPRIS : STANDBYIDLE = 0 sur secteur ET batterie (le PC ne s endort JAMAIS par inactivite — ses veilles sont le capot, le bouton ou la batterie critique), le poste etait SUR BATTERIE a 64 % a 05:00, et chaque veille FERME LA SESSION (hiberfile reduced, audit PC du 17/09) : la copie est LogonType=Interactive et l audit Claude a besoin de l app — un reveil rend un ecran de verrouillage. LA MOITIE QUI MANQUE EST EN ADMIN (hors perimetre de l agent) : powercfg /h /type full (+3,15 Go sur C: ; verification : powercfg /a liste « Mise en veille prolongee ») — et le secteur branche la nuit (la tache de reveil ne part pas sur batterie, a dessein). || 📏 21/09 (audit VPS) : l audit est parti a l heure (02:23, +1 min) et la copie du 20/09 04:30 a reussi (5e nuit) — le poste etait eveille les deux fois SANS WakeToRun : encore la chance. La copie du 21/09 tombe a 04:30, apres le passage. || 🔴 16/09 (audit VPS) — VPS-037 gravite 3 → 2, MESURE COMME PANNE COMMUNE : le poste est sorti de veille a 02:20:45 UTC (l heure de l audit), s est rendormi dans la seconde, a repris a 04:34:19 ; l audit a demarre a 04:36 (+134 min) et la tache Vizyo-Verify-Copie-HorsSite (04:30) n a PAS tourne (copie.log au 15/09 06:30:11, LastRunTime 15/09, NextRunTime 17/09, StartWhenAvailable=True n a rien rattrape, WakeToRun=FALSE). Deux devoirs du poste manques par le meme sommeil ; invisible cote VPS avant 30 h. GESTE IMMEDIAT cote poste (30 s) : Set-ScheduledTask -TaskName Vizyo-Verify-Copie-HorsSite -Settings (New-ScheduledTaskSettingsSet -WakeToRun -StartWhenAvailable -ExecutionTimeLimit (New-TimeSpan -Hours 2)) — et la meme chose sur la tache de l audit. Preuve : JSON du 17/09 04:30 avec pairesCopiees 2. Puis V6 proprement dit : cette machine RECOIT deja les dumps de Conductor et Dispocar par recevoir-dump + cle command= (VPS-042) — le mecanisme inverse (pousser la paire Verify vers l autre machine) existe, ~40 lignes et une cle cote vizyo-verify. ❌ Ne pas lancer le copieur a la main « pour rattraper » (geste, VPS-M81 ; masquerait la mesure de demain). Seuil : gravite 1 a la 3e paire sans copie sur 7 jours. || Depositaire unique, et c'est le meme poste que celui qui porte la planification de l'audit. 🔴 17/09 (audit VPS) : LE POSTE A DORMI DE 23:17 A 03:15 UTC (journal Windows, reveil source Unknown) — audit a 03:18 (+56 min), les deux audits lances a la meme seconde (VPS-M57, 3e collision), copie du 16/09 04:30 NON FAITE (WakeToRun toujours False). 2 paires produites depuis la derniere copie reussie (15/09 04:30) n existent qu ici : verify_20260916-033130 et verify_20260917-033056. Le collecteur ecrivait « OK 46 h a jour » (corrige : il compte les paires). La 3e paire sans copie sur 7 j — le seuil de gravite 1 de VPS-037 — se joue a 04:30 UTC ce matin selon que le poste reste eveille. Le geste WakeToRun (30 s) est inchange et decide de la gravite 1. 📏 20/09 : le poste dormait a 03h09 le 19/09 ; les trois audits sont partis ensemble a 14h12 UTC (4e collision) et celui du centre d alerte a ete interrompu par l utilisateur 2 min plus tard — pas de rapport du 19. Celui du 20 est parti a l heure.</p>
   <p class="attendue"><b>Preuve attendue</b> — Une nuit ou le journal Windows montre un reveil a 04:15 Paris (Power-Troubleshooter 1 / Kernel-Power 107) ET une session ouverte, puis l audit VPS a 02:2x UTC et la copie a 04:30 UTC le meme jour. ⚠️ 23/09 : la tache a sonne (resultat 0) sur un poste DEJA eveille — ce n est pas cette preuve. Et la moitie admin : powercfg /a doit lister « Mise en veille prolongee ».</p>
   <div class="badges"></div>
 </article>
@@ -865,7 +850,7 @@
     <span class="fiche">VPS-047 · VPS-032</span>
     <span class="classe">🗓️ Deploye, a guetter</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-21">9 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-21">10 j</span>
     
   </div>
   <h3>Plus jamais une boucle du poste qui ouvre une session SSH par seconde — /usr/bin/sleep dans tout Monitor, et une surveillance du VPS = UNE session qui boucle cote serveur</h3>
@@ -880,7 +865,7 @@
     <span class="fiche">TRK-066 · doc 19 P2-1 · P2-4</span>
     <span class="classe">🔧 A coder</span>
     <span class="grav" title="gravite 3">G3</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-13">17 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-13">18 j</span>
     <code class="commit">8a8cb2c4</code>
   </div>
   <h3>Course ACK/SMS : ne jamais rétrograder ACKNOWLEDGED en SENT ; dispatcher une CUT PENDING orpheline au lieu de la rendre telle quelle — DÉPLOYÉ le 15/09</h3>
@@ -895,7 +880,7 @@
     <span class="fiche">TRK-066 · doc 19 P2-2</span>
     <span class="classe">🔧 A coder</span>
     <span class="grav" title="gravite 3">G3</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-13">17 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-13">18 j</span>
     <code class="commit">93dba465</code>
   </div>
   <h3>Kill-switch et interlock : une ligne par cause et espacée, pas un CRITICAL par appel — DÉPLOYÉ le 15/09</h3>
@@ -910,7 +895,7 @@
     <span class="fiche">TRK-066 · doc 19 P2-3</span>
     <span class="classe">🔧 A coder</span>
     <span class="grav" title="gravite 3">G3</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-13">17 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-13">18 j</span>
     <code class="commit">8bb24ca7</code>
   </div>
   <h3>Glissement de confirmation réellement volontaire : ni un clic en bout de piste, ni la touche End — DÉPLOYÉ le 15/09</h3>
@@ -925,7 +910,7 @@
     <span class="fiche">TRK-066 · doc 19 P2-5 · P2-6</span>
     <span class="classe">🔧 A coder</span>
     <span class="grav" title="gravite 3">G3</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-13">17 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-13">18 j</span>
     <code class="commit">b582fbf6</code>
   </div>
   <h3>Rappeler une RESTORE qui traîne (toutes les 15 min) et ne pas suspendre le clic manuel derrière la file SMS — DÉPLOYÉ le 15/09</h3>
@@ -940,7 +925,7 @@
     <span class="fiche">TRK-066 · doc 19 P2-8 · P2-9</span>
     <span class="classe">🔧 A coder</span>
     <span class="grav" title="gravite 3">G3</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-13">17 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-13">18 j</span>
     <code class="commit">428d1f39</code>
   </div>
   <h3>Santé par appareil (deviceId, simCards) et allowlist non bloquante pour une RESTORE — DÉPLOYÉ le 15/09</h3>
@@ -955,7 +940,7 @@
     <span class="fiche">TRK-066 · doc 19 P2-10</span>
     <span class="classe">🔧 A coder</span>
     <span class="grav" title="gravite 3">G3</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-13">17 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-13">18 j</span>
     <code class="commit">b407481a</code>
   </div>
   <h3>Tests : exercer la table des tentatives, index dans schema.prisma, migration rejouée sur PostgreSQL réel, changement d'heure du 25/10 — DÉPLOYÉ le 15/09</h3>
@@ -970,7 +955,7 @@
     <span class="fiche">TRK-069</span>
     <span class="classe">🔧 A coder</span>
     <span class="grav" title="gravite 3">G3</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-14">16 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-14">17 j</span>
     <code class="commit">1539674c</code>
   </div>
   <h3>La cle de refroidissement de la sentinelle des agents doit porter la CAUSE — et courrier-ia doit lire le premier objet JSON equilibre — sur main, FUSIONNÉ et poussé le 14/09, à déployer</h3>
@@ -985,7 +970,7 @@
     <span class="fiche">TRK-079</span>
     <span class="classe">🔧 A coder</span>
     <span class="grav" title="gravite 4">G4</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-14">16 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-14">17 j</span>
     <code class="commit">314e4193</code>
   </div>
   <h3>Ne plus remonter au centre d alerte les appels avortes par la fermeture de la page sur le canal anonyme (robots) — sur main, FUSIONNÉ et poussé le 14/09, à déployer</h3>
@@ -1000,7 +985,7 @@
     <span class="fiche">main · 152883ec</span>
     <span class="classe">🔧 A coder</span>
     <span class="grav" title="gravite 4">G4</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-14">16 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-14">17 j</span>
     <code class="commit">979fdfec</code>
   </div>
   <h3>Test fenetre-utile.spec.ts (trajets, sur main) tient à la milliseconde : deux Date.now() distincts — à figer — sur main, FUSIONNÉ et poussé le 14/09, à déployer</h3>
@@ -1015,7 +1000,7 @@
     <span class="fiche">TRK-075</span>
     <span class="classe">🔧 A coder</span>
     <span class="grav" title="gravite 1">G1</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-08">22 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-08">23 j</span>
     
   </div>
   <h3>Remonter la decision d alerter au bon etage, et borner le rejeu par la retention</h3>
@@ -1030,7 +1015,7 @@
     <span class="fiche">TRK-071 · TRK-069</span>
     <span class="classe">🤝 Decision ou geste humain</span>
     <span class="grav" title="gravite 1">G1</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-13">17 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-13">18 j</span>
     
   </div>
   <h3>Decider la parade au plafond hebdomadaire de la CLI du poste — le repli du repli n avait pas de plan</h3>
@@ -1045,7 +1030,7 @@
     <span class="fiche">TRK-066 · doc 19 P0-1</span>
     <span class="classe">🔧 A coder</span>
     <span class="grav" title="gravite 1">G1</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-13">17 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-13">18 j</span>
     <code class="commit">d5c19a17</code>
   </div>
   <h3>P0 — La clé d'unicité RESTORE ne doit plus vivre pour toujours (RESTORE du lendemain avalée) — DÉPLOYÉ le 15/09</h3>
@@ -1060,7 +1045,7 @@
     <span class="fiche">VPS-013</span>
     <span class="classe">🟢 Agent, seul, avec preuve</span>
     <span class="grav" title="gravite 1">G1</span>
-    <span class="depuis" title="ouverte depuis le 2026-08-05">56 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-08-05">57 j</span>
     
   </div>
   <h3>Trois bases de PRODUCTION sans sauvegarde reproductible</h3>
@@ -1075,7 +1060,7 @@
     <span class="fiche">VPS-016</span>
     <span class="classe">🤝 Decision ou geste humain</span>
     <span class="grav" title="gravite 1">G1</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-17">13 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-17">14 j</span>
     
   </div>
   <h3>Tuer les DEUX clients docker logs bloqués : PID 3366708 (vizyo-auth-api, depuis le 16/09 12:41 UTC, parent bash -c 3366707) et PID 2060212 (foodsqan-traefik, depuis le 19/09 18:30 UTC, parent bash -c 2060192) — VPS-016 nº 6 et nº 7, les deux cœurs pris, 89 % de steal au 20/09 01:10</h3>
@@ -1090,7 +1075,7 @@
     <span class="fiche">VPS-016</span>
     <span class="classe">🔧 A coder</span>
     <span class="grav" title="gravite 1">G1</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-20">10 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-20">11 j</span>
     
   </div>
   <h3>Plus jamais un docker logs sans timeout depuis le poste — 7 occurrences sur 7 viennent d une session SSH du poste : une ligne dans CLAUDE.md, la memoire des agents, et les scripts de diagnostic (« PROXY/ROUTEURS », « dernieres lignes vizyo-auth-api ») a corriger</h3>
@@ -1105,7 +1090,7 @@
     <span class="fiche">VPS-045 · VPS-016</span>
     <span class="classe">🤝 Decision ou geste humain</span>
     <span class="grav" title="gravite 1">G1</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-20">10 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-20">11 j</span>
     
   </div>
   <h3>L hote retient 80 a 90 % du CPU depuis le 19/09 22:10 UTC et ne l a pas rendu apres la mort des deux clients : (1) ticket hebergeur avec l extrait sar, (2) docker compose stop sur les 18 conteneurs hors production, (3) ne rien ajouter (ni deploiement, ni build, ni V4)</h3>
@@ -1120,7 +1105,7 @@
     <span class="fiche">TRK-069 · TRK-071</span>
     <span class="classe">🔧 A coder</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-13">17 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-13">18 j</span>
     <code class="commit">02d985c3</code>
   </div>
   <h3>Le poste sait qu il est au plafond : les agents s arretent seuls, un courriel part, un bouton relance tout — decision D5</h3>
@@ -1135,7 +1120,7 @@
     <span class="fiche">TRK-066 · doc 25 §2</span>
     <span class="classe">🤝 Decision ou geste humain</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-14">16 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-14">17 j</span>
     
   </div>
   <h3>C — Prérequis J-1 — FAITS le 15/09 (Device ID, numéro de preuve, v1.43.0, créneau) ; reste : le S21 branché EN PERMANENCE</h3>
@@ -1150,7 +1135,7 @@
     <span class="fiche">TRK-066 · T45 · T49 · T51 · T44</span>
     <span class="classe">🔧 A coder</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-16">14 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-16">15 j</span>
     <code class="commit">87ae29c9</code>
   </div>
   <h3>Preuve SMS aussi à 21:30 (verdict 21:45) et notifications push aux super-admins quand le coupe-circuit est bloqué — DÉPLOYÉ le 16/09</h3>
@@ -1165,7 +1150,7 @@
     <span class="fiche">TRK-069 · T34</span>
     <span class="classe">🤝 Decision ou geste humain</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-18">12 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-18">13 j</span>
     
   </div>
   <h3>Re-authentifier la session Claude Code du poste (claude auth login) puis « Reprendre maintenant » sur /admin/background-tasks — agents en pause depuis le 17/09 10:50 Paris, zero recit depuis le 16/09 22:00 UTC</h3>
@@ -1180,7 +1165,7 @@
     <span class="fiche">TRK-066</span>
     <span class="classe">⛔ Bloque par un prerequis</span>
     <span class="grav" title="gravite 1">G1</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-04">26 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-04">27 j</span>
     
   </div>
   <h3>Trancher les quatre questions du coupe-circuit — ou les tenir pour tranchees par le chantier fiabilite (D8)</h3>
@@ -1195,7 +1180,7 @@
     <span class="fiche">TRK-053</span>
     <span class="classe">🗓️ Test date : provoquer ou requalifier</span>
     <span class="grav" title="gravite 1">G1</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-01">29 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-01">30 j</span>
     
   </div>
   <h3>Provoquer ou requalifier : boitier debranche ne fait pas taire les alarmes</h3>
@@ -1210,7 +1195,7 @@
     <span class="fiche">TRK-064</span>
     <span class="classe">🗓️ Deploye, a guetter</span>
     <span class="grav" title="gravite 1">G1</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-04">26 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-04">27 j</span>
     
   </div>
   <h3>CLOSE — la sentinelle de vitesse designe des vehicules, et elle sait se taire</h3>
@@ -1225,7 +1210,7 @@
     <span class="fiche">TRK-066</span>
     <span class="classe">🗓️ Deploye, a guetter</span>
     <span class="grav" title="gravite 1">G1</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-04">26 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-04">27 j</span>
     
   </div>
   <h3>Guetter « SMS non remis au relais » — motif technique CONSERVE</h3>
@@ -1240,7 +1225,7 @@
     <span class="fiche">TRK-018</span>
     <span class="classe">⛔ Bloque par un prerequis</span>
     <span class="grav" title="gravite 1">G1</span>
-    <span class="depuis" title="ouverte depuis le 2026-08-11">50 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-08-11">51 j</span>
     
   </div>
   <h3>Accuse de remise de la passerelle SMS</h3>
@@ -1255,7 +1240,7 @@
     <span class="fiche">TRK-073</span>
     <span class="classe">🔧 A coder</span>
     <span class="grav" title="gravite 1">G1</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-06">24 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-06">25 j</span>
     
   </div>
   <h3>Marquer le passage au DEPART, pas a l arrivee</h3>
@@ -1270,7 +1255,7 @@
     <span class="fiche">—</span>
     <span class="classe">🟢 Agent, seul, avec preuve</span>
     <span class="grav" title="gravite 1">G1</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-06">24 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-06">25 j</span>
     
   </div>
   <h3>Verser docs/vps-audit sur main</h3>
@@ -1285,7 +1270,7 @@
     <span class="fiche">VPS-038</span>
     <span class="classe">🟢 Agent, seul, avec preuve</span>
     <span class="grav" title="gravite 1">G1</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-06">24 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-06">25 j</span>
     <code class="commit">fb0642f8</code>
   </div>
   <h3>Sentinelle « boitiers muets »</h3>
@@ -1300,7 +1285,7 @@
     <span class="fiche">VPS-016</span>
     <span class="classe">🤝 Decision ou geste humain</span>
     <span class="grav" title="gravite 1">G1</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-13">17 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-13">18 j</span>
     
   </div>
   <h3>Tuer le client Docker bloque depuis 04h34 UTC le 13/09 — 5e occurrence de VPS-016 (46e heure au 15/09)</h3>
@@ -1315,7 +1300,7 @@
     <span class="fiche">TRK-069</span>
     <span class="classe">🔵 Action materielle</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-05">25 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-05">26 j</span>
     
   </div>
   <h3>Rallumer le poste et lire le motif de agent-recit-trajet</h3>
@@ -1330,7 +1315,7 @@
     <span class="fiche">TRK-072</span>
     <span class="classe">🤝 Decision ou geste humain</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-06">24 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-06">25 j</span>
     
   </div>
   <h3>Calibrer les notifications d exces de vitesse — qui doit les recevoir (D9)</h3>
@@ -1345,7 +1330,7 @@
     <span class="fiche">TRK-062</span>
     <span class="classe">🔧 A coder</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-03">27 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-03">28 j</span>
     <code class="commit">66d286f5</code>
   </div>
   <h3>SENT_UNCONFIRMED pour les commandes de boitier parties par SMS — la migration autorisee, la borne posee</h3>
@@ -1360,7 +1345,7 @@
     <span class="fiche">TRK-068</span>
     <span class="classe">🔧 A coder</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-04">26 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-04">27 j</span>
     <code class="commit">c80632ba</code>
   </div>
   <h3>Borner le fetch vers Vizyo Auth, et son jumeau</h3>
@@ -1375,7 +1360,7 @@
     <span class="fiche">TRK-022</span>
     <span class="classe">🔧 A coder</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-08-13">48 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-08-13">49 j</span>
     
   </div>
   <h3>Deduplication GENERIQUE des alarmes du boitier</h3>
@@ -1390,7 +1375,7 @@
     <span class="fiche">TRK-032</span>
     <span class="classe">🗓️ Test date : provoquer ou requalifier</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-08-21">40 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-08-21">41 j</span>
     
   </div>
   <h3>REQUALIFIER — l'occasion ne viendra pas seule</h3>
@@ -1405,7 +1390,7 @@
     <span class="fiche">TRK-051</span>
     <span class="classe">🗓️ Test date : provoquer ou requalifier</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-08-25">36 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-08-25">37 j</span>
     
   </div>
   <h3>Confier a un humain : le badge ambre du mode fix</h3>
@@ -1420,7 +1405,7 @@
     <span class="fiche">TRK-074</span>
     <span class="classe">🔧 A coder</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-06">24 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-06">25 j</span>
     <code class="commit">171857fc</code>
   </div>
   <h3>Donner une resolution automatique au temoin des taches planifiees</h3>
@@ -1435,7 +1420,7 @@
     <span class="fiche">TRK-076</span>
     <span class="classe">🔧 A coder</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-07">23 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-07">24 j</span>
     
   </div>
   <h3>La carte survit a une perte de contexte WebGL</h3>
@@ -1450,7 +1435,7 @@
     <span class="fiche">TRK-016</span>
     <span class="classe">🔧 A coder</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-09">21 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-09">22 j</span>
     <code class="commit">4d1c4cb5</code>
   </div>
   <h3>Redefinir la mesure du recalage : a la cloture, sur une fenetre fermee</h3>
@@ -1465,7 +1450,7 @@
     <span class="fiche">TRK-077</span>
     <span class="classe">🔧 A coder</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-10">20 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-10">21 j</span>
     <code class="commit">18c975ee</code>
   </div>
   <h3>Relire la garde du deploiement au moment ou elle va tuer, pas au moment ou l on decide</h3>
@@ -1480,7 +1465,7 @@
     <span class="fiche">TRK-069</span>
     <span class="classe">🔧 A coder</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-13">17 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-13">18 j</span>
     <code class="commit">a8f9575e</code>
   </div>
   <h3>Une cause commune aux agents du poste doit produire UNE ligne, pas vingt-cinq CRITICAL</h3>
@@ -1495,7 +1480,7 @@
     <span class="fiche">TRK-077</span>
     <span class="classe">🔧 A coder</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-13">17 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-13">18 j</span>
     <code class="commit">18c975ee</code>
   </div>
   <h3>Rendre le script de deploiement INCONTOURNABLE — decision D1 du proprietaire</h3>
@@ -1510,7 +1495,7 @@
     <span class="fiche">TRK-066 · doc 19 P1-1</span>
     <span class="classe">🔧 A coder</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-13">17 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-13">18 j</span>
     <code class="commit">86c32fa9</code>
   </div>
   <h3>Relancer une RESTORE non prouvée à la reconnexion TCP du boîtier — et ne plus la rendre terminale après trois SMS — FUSIONNÉ sur main le 14/09, à déployer</h3>
@@ -1525,7 +1510,7 @@
     <span class="fiche">TRK-066 · doc 19 P1-2</span>
     <span class="classe">🔵 Action materielle</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-13">17 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-13">18 j</span>
     
   </div>
   <h3>Téléphone passerelle S21 configuré le 14/09 (ping 60 s vérifié, FIFO, délais, limite, veille OFF) — restent les variables du relais dans la fenêtre de déploiement</h3>
@@ -1540,7 +1525,7 @@
     <span class="fiche">TRK-066 · doc 19 P1-2</span>
     <span class="classe">🔧 A coder</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-13">17 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-13">18 j</span>
     <code class="commit">86a2fc53</code>
   </div>
   <h3>Sentinelle Android : hystérésis, bornes d'environnement, fraîcheur par appareil, délai d'envoi séparé du délai de santé — DÉPLOYÉ le 15/09</h3>
@@ -1555,7 +1540,7 @@
     <span class="fiche">TRK-066 · doc 19 P1-3</span>
     <span class="classe">🔧 A coder</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-13">17 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-13">18 j</span>
     <code class="commit">1aa1e0f9</code>
   </div>
   <h3>Preuve SMS quotidienne réconciliée (T-30 min avant chaque fenêtre) — et le relais pousse ses statuts — DÉPLOYÉ le 15/09</h3>
@@ -1570,7 +1555,7 @@
     <span class="fiche">TRK-066 · doc 19 P1-4</span>
     <span class="classe">🔧 A coder</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-13">17 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-13">18 j</span>
     <code class="commit">d5c19a17</code>
   </div>
   <h3>Nettoyer le diff du chantier (reformatage prettier), rebaser sur main, résoudre le conflit — la production est déjà sur 66d286f5</h3>
@@ -1585,7 +1570,7 @@
     <span class="fiche">TRK-066 · doc 19 P1-5</span>
     <span class="classe">🟡 Commande ecrite, arbitrage humain</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-13">17 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-13">18 j</span>
     
   </div>
   <h3>D — La fenêtre de déploiement — JOUÉE le 15/09 au soir : prod = chantier complet (fa9ff1d1 puis 0c9672c9), relais 724bcb8, kill-switch true</h3>
@@ -1600,7 +1585,7 @@
     <span class="fiche">TRK-066 · doc 19 §3 phase 5</span>
     <span class="classe">🔵 Action materielle</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-13">17 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-13">18 j</span>
     
   </div>
   <h3>Recette réelle : boîtier de banc, puis un canari MH Cars, puis un CDEF31 — un à la fois, présence physique, jamais les 37</h3>
@@ -1615,7 +1600,7 @@
     <span class="fiche">TRK-066 · doc 35</span>
     <span class="classe">🔧 A coder</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-14">16 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-14">17 j</span>
     <code class="commit">b3ee67e2</code>
   </div>
   <h3>Une SIM injoignable par SMS met le véhicule en « TCP seul » : coupe auto seulement boîtier connecté, RESTORE en TCP toutes les 5 min, un SMS-sonde par 6 h — DÉPLOYÉ le 15/09</h3>
@@ -1630,7 +1615,7 @@
     <span class="fiche">TRK-066 · doc 25 §7 · PROCEDURE-AUDIT</span>
     <span class="classe">🟢 Agent, seul, avec preuve</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-14">16 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-14">17 j</span>
     
   </div>
   <h3>E — Les 24 h de preuve après le déploiement, lues à chaque passage de la routine du centre d'alerte (six verdicts)</h3>
@@ -1645,7 +1630,7 @@
     <span class="fiche">TRK-066 · T51</span>
     <span class="classe">🔧 A coder</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-15">15 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-15">16 j</span>
     <code class="commit">0c9672c9</code>
   </div>
   <h3>La sentinelle des RESTORE non prouvées relit l'historique entier après la migration — bornée à 24 h (0c9672c9), DÉPLOYÉ le 15/09</h3>
@@ -1660,7 +1645,7 @@
     <span class="fiche">VPS-038</span>
     <span class="classe">🔵 Exploitant / equipe produit</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-08-31">30 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-08-31">31 j</span>
     
   </div>
   <h3>Porter les 6 IMEI muets a l'exploitant</h3>
@@ -1675,7 +1660,7 @@
     <span class="fiche">VPS-038</span>
     <span class="classe">🔵 Exploitant / equipe produit</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-04">26 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-04">27 j</span>
     
   </div>
   <h3>Sortir du parc les 6 boitiers muets depuis plus de 7 jours</h3>
@@ -1690,7 +1675,7 @@
     <span class="fiche">VPS-010</span>
     <span class="classe">🤝 Decision ou geste humain</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-08-04">57 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-08-04">58 j</span>
     
   </div>
   <h3>Planifier un redemarrage vers 23 h 30</h3>
@@ -1705,7 +1690,7 @@
     <span class="fiche">VPS-033</span>
     <span class="classe">🟡 Commande ecrite, arbitrage humain</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-08-20">41 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-08-20">42 j</span>
     
   </div>
   <h3>Fixer l'heure du rafraichissement apt (et non reduire son alea)</h3>
@@ -1720,7 +1705,7 @@
     <span class="fiche">VPS-030</span>
     <span class="classe">🟡 Commande ecrite, arbitrage humain</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-08-19">42 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-08-19">43 j</span>
     
   </div>
   <h3>Ménage du VPS — cinq gestes préparés, une seule session : renommer les deux dossiers de sauvegarde abandonnés (éteint deux 🟠 faux par jour), purger 1,4 Go de copies sans rétention, retirer /opt/vizyo-leads, trancher les 4,5 Go d'outillage dans /root, épingler alpine par empreinte</h3>
@@ -1735,7 +1720,7 @@
     <span class="fiche">VPS-M59</span>
     <span class="classe">🟢 Agent, seul, avec preuve</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-06">24 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-06">25 j</span>
     <code class="commit">9dce59ec</code>
   </div>
   <h3>chargeDeFond.note s'affiche, avec un repli explicite</h3>
@@ -1750,7 +1735,7 @@
     <span class="fiche">VPS-041</span>
     <span class="classe">🟡 Commande ecrite, arbitrage humain</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-13">17 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-13">18 j</span>
     
   </div>
   <h3>Un seul rotateur pour les journaux de conteneur — retirer la stanza logrotate a copytruncate</h3>
@@ -1765,7 +1750,7 @@
     <span class="fiche">VPS-046 · VPS-040</span>
     <span class="classe">🟡 Commande ecrite, arbitrage humain</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-20">10 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-20">11 j</span>
     
   </div>
   <h3>Recreer la pile de demo sur les images courantes (up -d, migrations jouees par le CMD) et faire lancer ce up -d par deploy.sh — l import hebdomadaire du 20/09 a echoue sur une colonne du lot D absente de la base de demo</h3>
@@ -1780,7 +1765,7 @@
     <span class="fiche">VPS-044</span>
     <span class="classe">🔧 A coder</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-28">2 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-28">3 j</span>
     
   </div>
   <h3>Donner un second nom a l image de chaque conteneur en service (tracky-*:en-service, demo-en-service) : reconstruire latest faisait disparaitre l ancienne image sous son conteneur</h3>
@@ -1795,7 +1780,7 @@
     <span class="fiche">TRK-065</span>
     <span class="classe">🤝 Decision ou geste humain</span>
     <span class="grav" title="gravite 3">G3</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-04">26 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-04">27 j</span>
     
   </div>
   <h3>Prevenir le titulaire de compte sans appareil — VOULU : les notifications sont en phase de test</h3>
@@ -1810,7 +1795,7 @@
     <span class="fiche">TRK-060</span>
     <span class="classe">🗓️ Deploye, a guetter</span>
     <span class="grav" title="gravite 3">G3</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-02">28 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-02">29 j</span>
     
   </div>
   <h3>Guetter : « Un point de mesure systeme n'a pas pu etre enregistre »</h3>
@@ -1825,7 +1810,7 @@
     <span class="fiche">TRK-065</span>
     <span class="classe">🗓️ Deploye, a guetter</span>
     <span class="grav" title="gravite 3">G3</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-04">26 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-04">27 j</span>
     
   </div>
   <h3>Guetter la ligne hebdomadaire : le compte technique doit etre ecarte</h3>
@@ -1840,7 +1825,7 @@
     <span class="fiche">TRK-014</span>
     <span class="classe">🧹 Dette de documentation</span>
     <span class="grav" title="gravite 3">G3</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-06">24 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-06">25 j</span>
     
   </div>
   <h3>Rectifier le quoiFaire de TRK-014</h3>
@@ -1855,7 +1840,7 @@
     <span class="fiche">TRK-071</span>
     <span class="classe">🟢 Agent, seul, avec preuve</span>
     <span class="grav" title="gravite 3">G3</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-13">17 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-13">18 j</span>
     
   </div>
   <h3>Rattraper les recits des trois jours de plafond — tous les trajets, decision D4</h3>
@@ -1870,7 +1855,7 @@
     <span class="fiche">VPS-017</span>
     <span class="classe">🤝 Decision ou geste humain</span>
     <span class="grav" title="gravite 3">G3</span>
-    <span class="depuis" title="ouverte depuis le 2026-08-06">55 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-08-06">56 j</span>
     
   </div>
   <h3>Trancher les 4,5 Go d'outillage de developpement dans /root</h3>
@@ -1885,7 +1870,7 @@
     <span class="fiche">VPS-026</span>
     <span class="classe">🟡 Commande ecrite, arbitrage humain</span>
     <span class="grav" title="gravite 3">G3</span>
-    <span class="depuis" title="ouverte depuis le 2026-08-14">47 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-08-14">48 j</span>
     
   </div>
   <h3>Epingler alpine par empreinte</h3>
@@ -1900,7 +1885,7 @@
     <span class="fiche">VPS-032</span>
     <span class="classe">🟢 Agent, seul, avec preuve</span>
     <span class="grav" title="gravite 3">G3</span>
-    <span class="depuis" title="ouverte depuis le 2026-08-19">42 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-08-19">43 j</span>
     
   </div>
   <h3>Multiplexage SSH cote POSTE</h3>
@@ -1915,7 +1900,7 @@
     <span class="fiche">VPS-M79</span>
     <span class="classe">⛔ Bloque par un prerequis</span>
     <span class="grav" title="gravite 3">G3</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-02">28 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-02">29 j</span>
     
   </div>
   <h3>Etiqueter les images de repli au build</h3>
@@ -1930,7 +1915,7 @@
     <span class="fiche">VPS-029</span>
     <span class="classe">⛔ Bloque par un prerequis</span>
     <span class="grav" title="gravite 3">G3</span>
-    <span class="depuis" title="ouverte depuis le 2026-08-20">41 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-08-20">42 j</span>
     
   </div>
   <h3>Trancher quel mecanisme gouverne le cache de build</h3>
@@ -1945,7 +1930,7 @@
     <span class="fiche">VPS-M36</span>
     <span class="classe">⛔ Bloque par un prerequis</span>
     <span class="grav" title="gravite 3">G3</span>
-    <span class="depuis" title="ouverte depuis le 2026-08-15">46 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-08-15">47 j</span>
     
   </div>
   <h3>Echantillonner wchan 3 fois et publier la repartition</h3>
@@ -1960,7 +1945,7 @@
     <span class="fiche">VPS-013 · VPS-M88</span>
     <span class="classe">🟡 Commande ecrite, arbitrage humain</span>
     <span class="grav" title="gravite 3">G3</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-07">23 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-07">24 j</span>
     
   </div>
   <h3>Ranger les deux dossiers de sauvegarde abandonnes</h3>
@@ -1975,7 +1960,7 @@
     <span class="fiche">VPS-040 · VPS-M91</span>
     <span class="classe">🔵 Exploitant / equipe produit</span>
     <span class="grav" title="gravite 3">G3</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-08">22 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-08">23 j</span>
     
   </div>
   <h3>Trancher si la base de DEMONSTRATION doit etre sauvegardee</h3>
@@ -1990,12 +1975,27 @@
     <span class="fiche">VPS-044</span>
     <span class="classe">🟡 Commande ecrite, arbitrage humain</span>
     <span class="grav" title="gravite 3">G3</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-16">14 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-16">15 j</span>
     
   </div>
   <h3>Rendre le repere de repli reel : (a) until=72h sur le menage des images (10 s), (b) deploy.sh etiquette l image du CONTENEUR, pas :latest (a coder)</h3>
   <p class="detail">📏 23/09 (audit VPS) : (a) les reperes avant-* de tracky-api ET tracky-web sont PARTIS sous until=72h (~103 h) — voulu, le contrat est 72 h ; 31 → 28 images (la prediction de 29 oubliait le repere tracky-web). (b) 0 deploiement sur 48 h : rien a prouver. || ✅ 21/09 03:05 UTC — CORRECTION : (b) est EN LIGNE sur le VPS DEPUIS LE 20/09 14:18 UTC (pull du proprietaire : /opt/vizyo-tracky a fcb1303a, 7c42337c en est un ancetre, md5 de deploy.sh identique cb4aee70…, l. 285 docker inspect --format {{.Image}}, l. 318 « repere pose ») — le rapport et la roadmap du matin disaient a tort « au prochain git pull ». Preuve inchangee : le prochain deploy.sh. || ✅ 21/09 (audit VPS) : (a) PROUVEE — tracky-api:avant-20260919-1537-1d1521b2 = 84cc3fe36db2 et tracky-web = 99811d3a61a2 PRESENTES a 02:24 apres le menage de 00:40 (33 h ; a 24 h elles partaient — 28 images predites sans V32 (a), il y en a 31) ; alpine (46 h) a survecu aussi ; cron relu until=72h. (b) : « pas de deploiement depuis le 20/09 : le repli n a rien a prouver » — la tache reste DEPLOYE jusqu au premier deploy.sh sur le code du 20/09 (7c42337c, apres git pull sur le VPS). || 🆕 16/09 (audit VPS) — LE REPERE DE REPLI DU CHANTIER A ETE EFFACE PAR LE MENAGE DE 00:40, 6 H 25 APRES LE DEPLOIEMENT DE 0c9672c9 : docker image inspect 5da87fd11e72 → « No such image » (l image de 9afdf52a, en service 09-14 08:20 → 09-15 17:35, etiquetee avant-20260914-1140 a 11:40 le 09-14 = 37 h au menage ; until=24h date l ETIQUETTE). La doc 25 §12 la nommait comme voie de retour : deploy.sh --repli avant-20260914-1140-9afdf52a ECHOUERAIT. Les etiquettes restantes mentent : avant-20260915-1731/1741-fa9ff1d1 = les images PRE-CONSTRUITES de fa9ff1d1 (creees 17:28:41), pas ce qui tournait ; cote web, avant-…-1731 = le build rdv-installation-v2 du 09-14 11:46, JAMAIS deploye. Cause : deploy.sh etiquette :latest comme « avant » (juste seulement quand latest = ce qui tourne), et le menage supprime toute etiquette de plus de 24 h sans conteneur → fenetre de repli par etiquette ≤ 24 h apres le deploiement suivant. Le retour reste possible par rebuild du SHA (~4 min a deux coeurs, V28 faite) — retour du CODE, pas de l ETAT (migrations conservees) ; l etat, lui, est dans les dumps de la fenetre (V17). GESTE (a), VPS, 10 s : cat /etc/cron.d/docker-image-prune puis sed -i s/until=24h/until=72h/ /etc/cron.d/docker-image-prune ; gain : une etiquette avant-* survit 3 nuits ; contrepartie : ~4 Go d images 2 jours de plus sur 44 Go libres ; risque nul ; ⚠️ ne corrige pas l etiquette qui ment. GESTE (b), deploy.sh (code applicatif) : etiqueter docker inspect --format {{.Image}} tracky-api (et tracky-web), pas :latest. Preuve : l audit verifiera que l ID de la derniere avant-* = l ID que portait le conteneur au passage precedent (journal.jsonl : apiContainerId). ❌ Ne pas re-etiqueter a la main (9afdf52a n existe plus) ; ❌ ne pas exclure avant-* du menage par une liste de noms (prune ne filtre que par label) ; ❌ ne pas retirer le menage (seule borne au nombre d images). 📏 16/09 (fenêtre du 15/09) : confirmé — tracky-api:avant-20260914-1140-9afdf52a a disparu la nuit même ; quand on PRÉ-construit l'image (doc 25 §6.1), l'étiquette avant-&lt;ts&gt;-&lt;sha&gt; posée par deploy.sh pointe l'image pré-construite, pas celle qui tournait — (b) est le vrai correctif. Repères actuels : avant-20260915-1741-fa9ff1d1, avant-20260916-0519-0c9672c9. 📏 17/09 (audit VPS) : PREMIERE MOITIE DE LA PREUVE — tracky-api:avant-20260916-0519-0c9672c9 = cc1fec4a6ebb et tracky-web = c8d99972e2eb, exactement les images des conteneurs au passage du 16/09 (latest n avait pas ete pre-construit : deploy.sh 87ae29c9 05:24:17, 292 s). MAIS until=24h est intact : etiquetee 05:19 le 16/09, elle aura 43 h au menage du 18/09 00:40 → supprimee sauf (a) ou nouveau deploiement. Le seuil « deux passages de suite » est INDECIDABLE sans (a) (VPS-M94) → reecrit « deux passages de suite OU une etiquette existe » ; (a) est la condition de la MESURE. Le collecteur porte desormais imagesProdListe et verifie l arriere a chaque passage. 📏 20/09 (audit VPS) : SECONDE MOITIE DE LA PREUVE PAR LA MEME CHANCE — tracky-api:avant-20260919-1537-1d1521b2 = 84cc3fe36db2 (creee 17/09 14:45:58 = l image de 1d1521b2 en service 17/09 15:37 → 19/09 16:36), web 99811d3a61a2, lp 744ac977a039 (image du 07/08). avant-0916 partie le 18/09 00:40 comme predit ; until=24h INTACT (a non faite) ; deploy.sh l. 278 etiquette toujours :latest (b non faite) — juste parce que latest n etait pas pre-construit, deux fois. L etiquette du 19/09 meurt le 21/09 00:40 (32 h). La tache reste OUVERTE : le seuil est atteint par le hasard que (b) doit rendre inutile. ✅ 20/09 13:12 UTC : (a) FAITE — /etc/cron.d/docker-image-prune = until=72h (sauvegarde /root/docker-image-prune.avant-v32a-2026-09-20). Preuve le 21/09 : avant-20260919-1537-1d1521b2 survit au menage de 00:40. (b) reste a coder dans deploy.sh. ✅ 20/09 ~14:30 UTC : (b) CODEE ET TESTEE — deploy.sh etiqueter_repli pose le repere sur l IMAGE DU CONTENEUR EN SERVICE (docker inspect --format {{.Image}} &lt;conteneur&gt;), latest n est qu un repli quand il n y a pas de conteneur, et le script dit quand latest ≠ image en service (pre-construite ou retenue) ; deploy.test.sh : 3 cas neufs (latest ≠ service, pas de conteneur, ni conteneur ni latest), 131 controles verts. ETAT : ecrite et commitee, PAS EN LIGNE tant que le VPS n a pas fait git pull (le prochain deploy.sh tire le depot APRES avoir pose ses reperes : faire un git -C /opt/vizyo-tracky pull --ff-only AVANT le prochain deploiement, comme pour --marketing-seul).</p>
   <p class="preuve"><b>Preuve</b> — 24/09 (audit VPS) : 7 deploiements le 23/09 (tous deploy.sh, healthy). Les 3 reperes gardes par service sont chacun NES PENDANT le deploiement du sha qu ils nomment, donc = image EN SERVICE avant le deploiement suivant : tracky-api avant-2318-2239076e = bb4c2e1ff330 cree 23:02:06 (deploiement 2239076e fini 23:04:18, 464 s) ; avant-2329-ccfef141 = c65f62f41e5b 23:23:43 (fin 23:24:45) ; avant-2335-40103d61 = fd40d5972728 23:34:09 (fin 23:35:10) ; tracky-web idem (23:00:58, 23:22:49, 23:33:19). docker image inspect sous timeout 15. Le collecteur criait « 🔴 le repli MENT » (reference = image d hier, sortie des 3 reperes par conception) : faux positif corrige (VPS-M116), banc → « ✅ repli REEL (chaine) ». VPS-044 → APPLIQUE. ⚠️ A savoir : apres 4 deploiements dans la soiree, --repli remonte 3 deploiements, pas a « hier ».</p><p class="attendue"><b>Preuve attendue</b> — Au prochain deploiement : la ligne « repere pose : tracky-api:avant-… ← l image du conteneur » au journal, puis le collecteur « ✅ repli REEL ». Le code est EN LIGNE sur le VPS depuis le 20/09 14:18 ; (a) PROUVEE le 21/09.</p>
+  <div class="badges"></div>
+</article>
+<article class="t etat-FAIT g3" data-etat="FAIT" data-partie="vps" data-classe="HUMAIN" data-g="3">
+  <div class="t-h">
+    <span class="marque" title="Fait et verifie">✓</span>
+    <span class="id">V38</span>
+    <span class="fiche">VPS-048</span>
+    <span class="classe">🤝 Decision ou geste humain</span>
+    <span class="grav" title="gravite 3">G3</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-23">8 j</span>
+    
+  </div>
+  <h3>Rapatrier et versionner cdef31-site : la derniere version d un livrable client n existe que sur le VPS</h3>
+  <p class="detail">📏 01/10 (audit VPS) : ✅ FAIT — Test-Path D:/www/vizyo-agency/cdef31-vizyoagency = True ; depot git, 1er commit 564147f « etat en production au 30/09/2026 (rapatrie du VPS) » 30/09 20:13 Paris, puis 4 commits jusqu a c85c63d (21:34) : le flux est desormais poste → VPS. VPS-048 → APPLIQUE. Reste hors tache : memlimit=0 (VPS-005). || 📏 30/09 (audit VPS) : J+7, RIEN N A BOUGE — Test-Path D:/www/vizyo-agency/cdef31-vizyoagency = False. || 📏 29/09 (audit VPS) : J+6, RIEN N A BOUGE — Test-Path D:/www/vizyo-agency/cdef31-vizyoagency = False. || 📏 28/09 (audit VPS) : J+5, RIEN N A BOUGE — Test-Path D:/www/vizyo-agency/cdef31-vizyoagency = False. || 📏 27/09 (audit VPS) : J+4, RIEN N A BOUGE — Test-Path D:/www/vizyo-agency/cdef31-vizyoagency = False. || 📏 26/09 (audit VPS) : J+3, RIEN N A BOUGE — Test-Path D:/www/vizyo-agency/cdef31-vizyoagency = False ; cdef31-site memlimit=0, sans sonde. || 📏 25/09 (audit VPS) : J+2, RIEN N A BOUGE — aucun dossier cdef31* sous D:/www/vizyo-agency ; cdef31-site toujours memlimit=0, sans sonde, perimetre identique. || 📏 24/09 : J+1, RIEN N A BOUGE — aucun dossier cdef31* sous D:/www/vizyo-agency, memlimit=0, sans sonde ; perimetre identique, donc des aujourd hui plus aucune ligne du collecteur ne le signale (seule la fiche VPS-048). || TROUVE LE 23/09 (audit VPS, bloc VPS-M92) : cdef31-site (nginx:alpine, cdef31.vizyoagency.com, 3 pages statiques, 21 Mo dont 12 videos) cree le 22/09 13:53 UTC sans annonce ; memlimit=0, aucune sonde, /opt hors de toute sauvegarde. Copies hors VPS : 3 zips dans Downloads du poste (le plus recent 13:34 UTC), aucun depot git. 5 fichiers retouches SUR LE VPS a 17:59 UTC (index, tuto-agenda, ateliers, deux logos) + README 18:01 — apres le dernier zip. GESTE (poste, 30 s, lecture seule cote VPS) : scp -r root@72.62.26.240:/opt/cdef31-vizyoagency D:/www/vizyo-agency/cdef31-vizyoagency puis git init + commit ; les retouches suivantes se font localement puis scp (le README le permet). Plus tard : mem_limit 32m dans son compose. PAS de sonde (Traefik voit la panne ; +2 invocations/min a VPS-011 pour rien). ❌ Pas de docker cp / exec ; ❌ pas de sauvegarde nocturne « par symetrie ».</p>
+  <p class="preuve"><b>Preuve</b> — Depot git local D:/www/vizyo-agency/cdef31-vizyoagency : 564147f (30/09 20:13, rapatrie du VPS) → c85c63d (30/09 21:34), 5 commits, arbre propre ; constate par l audit VPS du 01/10.</p>
   <div class="badges"></div>
 </article>
 <article class="t etat-FAIT g4" data-etat="FAIT" data-partie="centre-alerte" data-classe="TERRAIN" data-g="4">
@@ -2005,7 +2005,7 @@
     <span class="fiche">TRK-001 · TRK-027</span>
     <span class="classe">🔵 Action materielle</span>
     <span class="grav" title="gravite 4">G4</span>
-    <span class="depuis" title="ouverte depuis le 2026-08-03">58 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-08-03">59 j</span>
     
   </div>
   <h3>Controler les antennes de trois vehicules</h3>
@@ -2020,7 +2020,7 @@
     <span class="fiche">—</span>
     <span class="classe">🧹 Dette de documentation</span>
     <span class="grav" title="gravite 4">G4</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-06">24 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-06">25 j</span>
     
   </div>
   <h3>Creer ou dereferencer TACHES-AMELIORATION.md</h3>
@@ -2035,7 +2035,7 @@
     <span class="fiche">TRK-066 · doc 19 §15</span>
     <span class="classe">🧹 Dette de documentation</span>
     <span class="grav" title="gravite 4">G4</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-13">17 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-13">18 j</span>
     <code class="commit">0677cd05</code>
   </div>
   <h3>Corriger les promesses des documents du chantier qui dépassent le code — FUSIONNÉ sur main le 14/09, à déployer</h3>
@@ -2050,7 +2050,7 @@
     <span class="fiche">VPS-018</span>
     <span class="classe">🤝 Decision ou geste humain</span>
     <span class="grav" title="gravite 4">G4</span>
-    <span class="depuis" title="ouverte depuis le 2026-08-12">49 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-08-12">50 j</span>
     
   </div>
   <h3>Retirer /opt/vizyo-leads</h3>
@@ -2065,7 +2065,7 @@
     <span class="fiche">VPS-007</span>
     <span class="classe">🟡 Commande ecrite, arbitrage humain</span>
     <span class="grav" title="gravite 4">G4</span>
-    <span class="depuis" title="ouverte depuis le 2026-08-05">56 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-08-05">57 j</span>
     
   </div>
   <h3>random_page_cost sur 6 bases</h3>
