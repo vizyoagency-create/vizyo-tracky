@@ -26,6 +26,9 @@ import { FuelCalibrationService } from './fuel-calibration.service';
   providers: [TripAnalysisService, TripAnalysisLlmService, TripAutomationService, DrivingScoreService, SpeedLimitService, FuelStationService, FuelReportService, FuelCalibrationService],
   // `TripAutomationService` est exporté pour l'écran des tâches de fond : il y lit le reste à
   // faire des récits par `resteRecitTotal()`, seule définition de ce chiffre dans l'application.
-  exports: [TripAnalysisService, TripAutomationService],
+  // `DrivingScoreService` est exporté pour l'assistance IA : son lot « scores » répond à « qui
+  // conduit le mieux ? » avec CE classement, pas avec une moyenne refaite à côté. Un second
+  // barème serait un second barème à corriger (voir `AssistanceContextService.scores`).
+  exports: [TripAnalysisService, TripAutomationService, DrivingScoreService],
 })
 export class TripAnalysisModule {}
