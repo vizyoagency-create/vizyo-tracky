@@ -508,6 +508,48 @@ done
 echo "  ⚠️ Le cumul ne DIMINUE JAMAIS — il ne s efface qu au redemarrage du demon. Un 🟠 peut"
 echo "     donc rester allume des semaines apres la fin de l incident : c est 'maintenant' qui tranche."
 
+# ⚠️ AJOUTE LE 2026-10-01 (VPS-M131) — LE DEMON A PLANTE, ET LE COLLECTEUR L A LU COMME UNE BONNE NOUVELLE.
+# Le 2026-09-30 a 18:23:04 UTC, `docker buildx history ls` (un diagnostic tape depuis le poste) a fait
+# PANIQUER dockerd (nil pointer, BuildKit). systemd l a relance en 7 s ; live-restore a garde les 38
+# conteneurs, MAIS les docker-proxy de 80/443 sont nes a 18:23:07/08 : les anciens sont morts avec lui.
+# Le lendemain, la ligne ci-dessus a publie « cumul 0.2 h CPU » (5,7 h la veille) et le levier 7
+# « memoire de dockerd 695 Mo » (1 299 la veille) — deux chiffres qui BAISSENT, donc qui RASSURENT,
+# et aucune ligne ne disait pourquoi. Le cumul « ne s efface qu au redemarrage du demon » : encore
+# fallait-il dire QUAND le demon a redemarre. Cout : deux `systemctl show` et un `journalctl -u`
+# borne a 48 h (index du journal, pas un parcours de disque).
+sub "Demons : ont-ils REDEMARRE depuis le boot ? (un cumul qui baisse n est pas une guerison — VPS-M131)"
+BOOT_EP=$(( $(date +%s) - ${UPS%.*} ))
+for u in docker containerd; do
+  NR=$(systemctl show "$u" -p NRestarts --value 2>/dev/null)
+  ST=$(systemctl show "$u" -p ExecMainStartTimestamp --value 2>/dev/null)
+  ST_EP=$(date -d "$ST" +%s 2>/dev/null)
+  if [ -z "$ST_EP" ]; then
+    printf '  %-11s ⚠️ heure de demarrage ILLISIBLE — mesure NON FAITE (pas « jamais redemarre »)\n' "$u"; continue
+  fi
+  ECART=$(( ST_EP - BOOT_EP ))
+  if [ "$ECART" -lt 600 ]; then
+    printf '  %-11s ✅ demarre avec la machine (%s), NRestarts=%s\n' "$u" "$ST" "${NR:-?}"
+  else
+    printf '  %-11s 🔴 REDEMARRE %s apres le boot : %s  (NRestarts=%s)\n' "$u" "$(awk -v s="$ECART" 'BEGIN{printf "%.1f h", s/3600}')" "$ST" "${NR:-?}"
+    PAN=$(timeout 10 journalctl -u "$u" --since "48 hours ago" --no-pager 2>/dev/null | grep -c 'panic:' || true)
+    printf '     paniques dans le journal de %s (48 h) : %s\n' "$u" "${PAN:-?}"
+    timeout 10 journalctl -u "$u" --since "48 hours ago" --no-pager 2>/dev/null \
+      | grep -E 'panic:|Main process exited|Scheduled restart' | cut -c1-170 | tail -3 | sed 's/^/       /'
+    echo "     ⚠️ Le cumul CPU et la memoire de ce demon repartent de ZERO a cette heure : leur BAISSE"
+    echo "        ne se compare PAS au passage precedent. Chercher la commande qui l a precede (auth.log)."
+  fi
+done
+# L age des docker-proxy publics DATE un redemarrage du demon (ils renaissent avec lui) — temoin
+# independant de systemd. ⚠️ Il ne mesure PAS une coupure : le trafic EXTERNE passe par le NAT du
+# noyau (iptables DNAT), pas par le proxy (doc 39 § 7 : 36 boitiers restes connectes sur le 5023).
+for port in 80 443 5023; do
+  PP=$(pgrep -f -- "-host-port $port -container" 2>/dev/null | head -1)
+  [ -n "$PP" ] && printf '  docker-proxy :%-5s ne le %s\n' "$port" "$(ps -o lstart= -p "$PP" 2>/dev/null)"
+done
+echo "  ⚠️ live-restore garde les CONTENEURS ; les docker-proxy, eux, renaissent avec le demon (ou avec"
+echo "     leur conteneur). Ce n est PAS une coupure du trafic externe (NAT du noyau) : c est une DATE."
+echo "     Pendant les secondes du redemarrage, l API Docker et le DNS embarque (127.0.0.11) manquent."
+
 # ⚠️ AJOUTE LE 2026-08-10 — « IL CONSOMME » ET « IL TOURNE EN ROND » NE SONT PAS LA MEME CHOSE.
 # Le 2026-08-10 a 02 h 21, `dockerd` etait a 168 % d'un coeur. Un build en cours produit
 # exactement la meme ligne — et il y en avait eu trois la veille au soir. La seule mesure qui
@@ -5331,7 +5373,27 @@ if [ "$_ecart_min" -gt 20 ] || [ "$_ecart_min" -lt -20 ]; then
 else
   printf '  ✅ heure de depart : %s UTC (%+d min sur l heure planifiee %02d:%02d)\n' "$(date -u -d "@$T_DEBUT" +%H:%M)" "$_ecart_min" "$_att_h" "$_att_m"
 fi
-printf '  charge 1 min : %s au DEBUT  →  %s a la FIN   (limite imposee : 2.0 sur 2 coeurs)\n' \
+# ⚠️ AJOUTE LE 2026-10-01 (angle mort n° 7, 7 reports — VPS-M132) : les `heureUtc` du manifeste
+# (`ordonnancement`) sont ecrites a la main pour l heure d ETE. Au changement d heure, toutes celles
+# des taches planifiees en heure de Paris (poste, cron du centre d alerte, garde de deploy.sh) glissent
+# d une heure SANS qu aucune ligne ne le dise — et les collisions se calculent sur ces heures-la.
+# On ne corrige rien ici : on PREVIENT 30 jours avant, chaque matin, jusqu a ce que ce soit fait.
+# Cout : 31 appels a `date`, aucune lecture de disque.
+_dst_now=$(TZ=Europe/Paris date -d "@$T_DEBUT" +%z 2>/dev/null)
+if [ -n "$_dst_now" ]; then
+  for _j in $(seq 1 30); do
+    _dst_j=$(TZ=Europe/Paris date -d "@$(( T_DEBUT + _j * 86400 ))" +%z)
+    if [ "$_dst_j" != "$_dst_now" ]; then
+      printf '  🟠 CHANGEMENT D HEURE dans %d j (Paris %s → %s, le %s) : les heureUtc d `ordonnancement`\n' \
+        "$_j" "$_dst_now" "$_dst_j" "$(TZ=Europe/Paris date -d "@$(( T_DEBUT + _j * 86400 ))" +%d/%m)"
+      printf '     sont ecrites pour l heure actuelle : les reecrire LE JOUR MEME, sinon les collisions sont fausses (VPS-M132).\n'
+      break
+    fi
+  done
+else
+  echo "  ⚠️ zone Europe/Paris introuvable : changement d heure NON VERIFIE (VPS-M132)"
+fi
+printf '  charge 1 min : %s au DEBUT →  %s a la FIN   (limite imposee : 2.0 sur 2 coeurs)\n' \
        "$CHARGE_DEBUT" "$CHARGE_FIN"
 # VPS-M113 : qui portait la charge de DEPART (photo prise avant la 1re commande de la collecte)
 printf '  ── au DEPART (VPS-M113) : %s ; processus nes dans les 5 min avant moi (hors ma session) :\n' "${DEPART_RD:-NON MESURE}"

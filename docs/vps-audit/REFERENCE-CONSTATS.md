@@ -6708,7 +6708,10 @@ confondre les deux ferait accuser le mauvais coupable.
 
 ## VPS-048 — Un site client est entré en production sans annonce, et sa dernière version n'existe que sur le VPS
 
-- **Domaine** : périmètre / sauvegardes · **Gravité** : 3 · **Statut** : `A_TRAITER`
+- **Domaine** : périmètre / sauvegardes · **Gravité** : 3 · **Statut** : `APPLIQUE` (volet principal, 2026-10-01 — tâche **V38** faite le 30/09)
+- ✅ **Vu : 2026-10-01 — RÉSOLU.** `D:\www\vizyo-agency\cdef31-vizyoagency` est un dépôt git : 1ᵉʳ commit `564147f` *« état en production au
+  30/09/2026 (rapatrié du VPS : /opt/cdef31-vizyoagency, fiche V38) »* le 30/09 à 20:13 Paris, puis quatre commits jusqu'à `c85c63d` (21:34).
+  Le flux est inversé : le poste est la source, le VPS la copie. **Reste** (volet secondaire, VPS-005) : `cdef31-site` `memlimit=0`, sans sonde.
 - 🟠 **Vu : 2026-09-28 — J+5, RIEN N'A BOUGÉ.** `Test-Path D:\www\vizyo-agency\cdef31-vizyoagency` = False ; `/opt/cdef31-vizyoagency` 20 Mo.
 - 🟠 **Vu : 2026-09-27 — J+4, RIEN N'A BOUGÉ.** `Test-Path D:wwwizyo-agencycdef31-vizyoagency` = False ; `cdef31-site` `memlimit=0`, sans sonde ; `/opt/cdef31-vizyoagency` 20 Mo.
 - 🟠 **Vu : 2026-09-25 — J+2, RIEN N'A BOUGÉ.** Aucun dossier `cdef31*` sous `D:\www\vizyo-agency\` ; `cdef31-site` `memlimit=0`, sans
@@ -6909,11 +6912,75 @@ confondre les deux ferait accuser le mauvais coupable.
   commit (« passages épargnés », « déployé 17:06 sur ordre du propriétaire »).
 - **Seuil de réescalade** : **gravité 1** à la première reprise manquée ou tardive (> 10 min) pendant un déploiement forcé ; `APPLIQUE` quand
   7 jours de journal T33 ne portent plus aucun `force=true` dans la fenêtre du matin, ou quand V44 est déployée.
+- **Re-mesure du 2026-10-01** — **en progrès, jour 1/7** : le 30/09 compte **6 déploiements, 0 `force=true`**, dont 4 par `--attendre`
+  (`f77754d0`, `ba041c2d`, `e788fcf8`, `a3c99795` la nuit d'avant) ; le centre d'alerte du 01/10 : *« 7 déploiements, 0 `--force`, 0 passage
+  tué »*. Le dernier `force=true` du matin date du 29/09 08:12 Paris. V44 n'est pas codée.
+
+---
+
+## VPS-053 — Une commande de diagnostic a fait paniquer dockerd en production, et le collecteur a lu le redémarrage comme une baisse de consommation
+
+- **Domaine** : docker · **Gravité** : 2 · **Statut** : `SURVEILLANCE` — règle déjà posée (commit `b2f4e204`, `CLAUDE.md`) ; collecteur corrigé (**VPS-M131**)
+- **Vu** : 2026-10-01, pour un événement du **30/09 à 18:23:04 UTC**. **Mesure** (lecture seule) :
+
+  | Grandeur | Valeur | Source |
+  |---|---|---|
+  | panique | `panic: runtime error: invalid memory address or nil pointer dereference` (dockerd pid 942) | `journalctl -u docker` |
+  | relance | `Main process exited, status=2` → `Scheduled restart` 18:23:07 → `Started` 18:23:11 | idem |
+  | compteur | `NRestarts=1`, `ExecMainStartTimestamp=Wed 2026-09-30 18:23:07 UTC` | `systemctl show docker` |
+  | déclencheur | session SSH root du poste ouverte à 18:23:03 ; commande nommée par la session qui l'a lancée : `timeout 20 docker buildx history ls` → `llbsolver.filterHistoryEvents` (BuildKit v0.26.2, Docker 29.1.3) | `auth.log` ; doc `fiabilite-coupe-circuit-2026-09/39-…` § 7 |
+  | ce qui a tenu | `live-restore` : 38 conteneurs gardés, `tracky-api` non redémarré, 36 boîtiers restés connectés | doc 39 § 7 |
+  | ce qui est reparti de zéro | `docker-proxy` :80 né à **18:23:07**, :443 à **18:23:08** ; cumul CPU de dockerd **5,7 → 0,2 h** ; mémoire **1 299 → 695 Mo** | `ps -o lstart` ; collectes des 30/09 et 01/10 |
+
+- **QUOI — la cause** : un enregistrement de l'historique BuildKit du VPS fait planter le **tri de la liste côté serveur**. C'est le **démon**
+  qui meurt, pas le client : le `timeout 20` de la règle V34 n'y peut rien. L'enregistrement est **toujours là** — la prochaine commande
+  `buildx history` (ls, inspect, logs, open) refera tomber dockerd.
+- **`pourquoiInvisible`** : `live-restore` a tout amorti (aucun conteneur arrêté, aucune alerte), et les deux grandeurs qui gardaient la trace
+  du redémarrage ont **baissé** — un cumul CPU et une mémoire qui descendent se lisent comme une amélioration. Le collecteur rapportait le cumul
+  du démon à l'uptime de la **machine**, sans jamais dire quand le **démon** avait démarré (**VPS-M131**). C'est la famille de VPS-016 : une
+  commande de diagnostic tapée depuis le poste qui abîme `dockerd` — mais par une autre porte, que la règle V34 ne ferme pas.
+- **QUOI FAIRE** : (1) ✅ règle écrite — `CLAUDE.md` (*« jamais `docker buildx history` sur le VPS »*, `b2f4e204`) et la mémoire des agents ;
+  (2) ✅ le collecteur dit désormais si `dockerd` / `containerd` ont redémarré depuis le boot, combien de paniques en 48 h, et l'âge des
+  `docker-proxy` ; (3) **à décider, hors audit** : nettoyer l'historique BuildKit fautif, ou monter Docker au prochain arrêt programmé (V39).
+  Aucun des deux n'est sans risque ; aucun n'est urgent tant que la règle tient.
+- **`aNePasFaire`** : ❌ ne pas lancer `docker buildx history`, même sous `timeout`, « pour vérifier que c'est réparé ». ❌ ne pas retirer
+  `live-restore` : c'est lui qui a évité l'arrêt des 38 conteneurs. ❌ ne pas lire « `docker-proxy` re-né » comme une coupure des clients : le
+  trafic externe passe par le NAT du noyau (doc 39 § 7) ; pendant ~7 s, ce sont l'API Docker et le DNS embarqué (127.0.0.11) qui manquaient.
+- **Seuil de réescalade** : **gravité 1** à la prochaine panique de dockerd (bloc VPS-M131 : *« paniques (48 h) ≥ 1 »*) ; `APPLIQUE` quand
+  Docker aura été monté ou l'historique nettoyé, **et** qu'un `buildx history` aura été rejoué sans panique sur une machine de test.
 
 ---
 
 
 ## Constats de méthode (sur l'audit lui-même)
+
+### VPS-M132 — Les heures UTC du catalogue d'ordonnancement allaient glisser d'une heure au 25/10 sans qu'aucune ligne ne le dise
+
+- **Domaine** : méthode · **Gravité** : 4 · **Statut** : `APPLIQUE` (2026-10-01 — bloc BUDGET, banc sur le VPS)
+- **Vu** : 2026-10-01 — **angle mort n° 7, 7 reports**. Les `heureUtc` d'`ordonnancement` sont écrites pour l'heure d'été ; les tâches du
+  poste, le cron du centre d'alerte et la garde du matin de `deploy.sh` vivent en heure de Paris. Au 25/10 elles glissent toutes d'une heure, et
+  les collisions se calculent sur ces heures-là.
+- **`pourquoiInvisible`** : l'échéance n'existait que dans la liste des angles morts, recopiée d'un rapport à l'autre — un rappel qu'on lit,
+  pas une mesure qui s'allume.
+- **Correctif** : 31 appels à `date` (`TZ=Europe/Paris … +%z`) ; 🟠 *« CHANGEMENT D'HEURE dans N j »* chaque matin pendant les 30 jours qui
+  précèdent. **Banc** (VPS) : *« dans 24 j (Paris +0200 → +0100, le 25/10) »* ; témoin au 01/08 : aucune ligne. `bash -n` OK.
+- **`aNePasFaire`** : ❌ ne pas réécrire les `heureUtc` **avant** le 25/10 : elles seraient fausses jusque-là.
+
+### VPS-M131 — Le redémarrage de dockerd n'était signalé nulle part : le cumul et la mémoire du démon ont baissé sans explication
+
+- **Domaine** : méthode · **Gravité** : 2 · **Statut** : `APPLIQUE` (2026-10-01 — bloc « Démons », banc sur le VPS)
+- **Vu** : 2026-10-01. **Mesure** : *« dockerd cumul 0,2 h CPU / 250,2 h uptime »* (5,7 h la veille) et levier 7 *« mémoire de dockerd
+  695 Mo »* (1 299) — aucune ligne ne disait que dockerd avait paniqué le 30/09 à 18:23 (**VPS-053**).
+- **QUOI** : le bloc rapportait le cumul CPU du démon à l'uptime de la **machine**. Après un redémarrage du démon, le cumul repart de zéro et
+  le ratio s'effondre : il se lit *« calme »*. Ni `NRestarts`, ni `ExecMainStartTimestamp`, ni le journal de l'unité n'étaient lus.
+- **`pourquoiInvisible`** : ce défaut ne produit que des chiffres **rassurants** — la direction que personne ne questionne (VPS-M21).
+- **Correctif** : sous-bloc *« Démons : ont-ils REDÉMARRÉ depuis le boot ? »* — `systemctl show` (`NRestarts`, `ExecMainStartTimestamp`)
+  pour `docker` et `containerd`, 🔴 si le démarrage est postérieur de plus de 10 min au boot, nombre de `panic:` dans `journalctl -u <unité>`
+  sur 48 h (`timeout 10`), les trois dernières lignes utiles, et l'heure de naissance des `docker-proxy` 80/443/5023 comme témoin
+  indépendant de systemd. **Banc** (VPS, 1 s) : *« docker 🔴 REDÉMARRÉ 242,1 h après le boot : Wed 2026-09-30 18:23:07 UTC (NRestarts=1) —
+  paniques (48 h) : 1 »*, containerd ✅. `bash -n` OK.
+- **`aNePasFaire`** : ❌ ne pas présenter un `docker-proxy` re-né comme une coupure : le premier jet du correctif l'écrivait, le doc 39 § 7
+  l'a démenti (NAT du noyau) — corrigé avant la première collecte.
 
 ### VPS-M130 — Le journal des déploiements imprimait `force=true` sans dire quelle garde avait été franchie
 
