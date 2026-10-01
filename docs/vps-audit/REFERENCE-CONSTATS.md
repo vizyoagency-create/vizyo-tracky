@@ -3107,7 +3107,7 @@ que les noms ne sont pas séparés. C'est exactement la commande que Compose pro
 **Quoi.**
 
 ```
-docker ps --format '{{.Names}}\t{{.Ports}}' | grep -E ':80->|:443->'
+timeout 20 docker ps --format '{{.Names}}\t{{.Ports}}' | grep -E ':80->|:443->'
 foodsqan-traefik   0.0.0.0:80->80/tcp, [::]:80->80/tcp, 0.0.0.0:443->443/tcp, [::]:443->443/tcp
 ```
 
@@ -5005,7 +5005,7 @@ Contrepartie : les correctifs de sécurité de Traefik demandent désormais un g
 c'est le but, mais il faut que quelqu'un le fasse.
 
 ```bash
-docker inspect foodsqan-traefik --format '{{.Image}}'   # relever le digest ACTUEL avant tout
+timeout 20 docker inspect foodsqan-traefik --format '{{.Image}}'   # relever le digest ACTUEL avant tout
 ```
 
 **La seconde moitié n'est PAS gratuite, et il faut le dire.** Le correctif de manuel est un
@@ -8660,7 +8660,7 @@ VPS-M55 (une attribution écrite une fois est ensuite republiée sans être rée
 2. **Sur le VPS, à décider** — exempter du ménage **une seule** image de repli par service :
 
 ```bash
-docker image prune -af --filter "until=24h" --filter "label!=repli=1"   # exige d'ETIQUETER les images de repli au build
+timeout 600 docker image prune -af --filter "until=24h" --filter "label!=repli=1"   # exige d'ETIQUETER les images de repli au build
 ```
 
 **`aNePasFaire`.** ⚠️ **Ne pas exempter sans borne.** Toute image soustraite au ménage revient

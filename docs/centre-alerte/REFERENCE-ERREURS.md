@@ -5102,12 +5102,12 @@ Un `grep` vide peut vouloir dire « absent » ou « mauvais chemin ». Chaque ma
 une chaîne dont on sait qu'elle **doit** être là :
 
 ```bash
-docker exec tracky-web sh -c 'grep -rl consecutiveTransportFailures /usr/share/nginx/html/'   # TRK-002
-docker exec tracky-web sh -c 'grep -rl "Rafraichissement de session" /usr/share/nginx/html/'  # témoin
-docker exec tracky-api sh -c 'grep -rl reminderIntervalMs /app/apps/api/dist'                 # TRK-001
-docker exec tracky-api sh -c 'grep -rl "ANORMALEMENT LONG" /app/apps/api/dist'                # témoin
-docker exec tracky-api sh -c 'grep -rl episodeOpenedAt /app/apps/api/dist'                    # TRK-017
-docker exec tracky-api sh -c 'grep -rl armAckListener /app/apps/api/dist'                     # TRK-014
+timeout 20 docker exec tracky-web sh -c 'grep -rl consecutiveTransportFailures /usr/share/nginx/html/'   # TRK-002
+timeout 20 docker exec tracky-web sh -c 'grep -rl "Rafraichissement de session" /usr/share/nginx/html/'  # témoin
+timeout 20 docker exec tracky-api sh -c 'grep -rl reminderIntervalMs /app/apps/api/dist'                 # TRK-001
+timeout 20 docker exec tracky-api sh -c 'grep -rl "ANORMALEMENT LONG" /app/apps/api/dist'                # témoin
+timeout 20 docker exec tracky-api sh -c 'grep -rl episodeOpenedAt /app/apps/api/dist'                    # TRK-017
+timeout 20 docker exec tracky-api sh -c 'grep -rl armAckListener /app/apps/api/dist'                     # TRK-014
 ```
 
 🗓️ **Test daté au 2026-08-12, ~09:25 UTC.** Sous le code restauré (dédup 24 h), une ligne

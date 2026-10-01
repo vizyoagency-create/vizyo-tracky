@@ -106,8 +106,9 @@ colonnes, aucune donnée touchée, aucun `DROP`) :
 - Maestroo : `20260722131500_tracky_link_degraded_counters`
 
 ```bash
-# Sur chaque app, apres deploiement du code
-docker compose exec api npx prisma migrate deploy
+# Sur chaque app, apres deploiement du code — borné (règle V34 de CLAUDE.md).
+# Tracky : c'est deploy.sh qui migre, avant la recréation (décision D1) ; cette ligne ne vaut que pour Maestroo.
+timeout 600 docker compose exec api npx prisma migrate deploy
 ```
 
 > ⚠️ **Vérifier `prisma migrate status` AVANT.** L'historique de migrations Tracky a une
@@ -126,8 +127,13 @@ docker compose exec api npx prisma migrate deploy
 Modifier le cron de sauvegarde Maestroo pour **exclure la quarantaine** :
 
 ```bash
-0 3 * * * docker exec maestroo-postgres pg_dump -U maestroo --exclude-table=tracky_mirror maestroo | gzip > /opt/backups/maestroo-$(date +\%Y\%m\%d).sql.gz
+0 3 * * * timeout 3600 docker exec maestroo-postgres pg_dump -U maestroo --exclude-table=tracky_mirror maestroo | gzip > /opt/backups/maestroo-$(date +\%Y\%m\%d).sql.gz
 ```
+
+> ⚠️ (01/10/2026) Borné, mais ce motif garde encore un piège : un dump interrompu laisse un `.sql.gz`
+> gzip-valide d'un SQL **tronqué**, qui passe pour une sauvegarde. Tracky l'a corrigé dans
+> `deploy/vps/backup-db.sh` (fichier `.partiel`, renommé seulement quand le dump est complet) :
+> reprendre ce schéma côté Maestroo.
 
 Sans cette exclusion, restaurer un dump antérieur à une révocation ressusciterait des
 données qu'on n'a plus le droit de détenir. L'API repurge au démarrage (second garde-fou),
@@ -141,7 +147,7 @@ mais les deux sont nécessaires — cf. spec §5.5.
 
 ```bash
 # 1. Les modules annoncent leur etat au demarrage
-docker compose logs api | grep -i "Intégration"
+timeout 20 docker compose logs --tail 2000 api | grep -i "Intégration"
 #   Tracky   attendu : « Intégration Maestroo INACTIVE — PARTNER_MAESTROO_ENABLED=false »
 #   Maestroo attendu : « Intégration Tracky INACTIVE — TRACKY_INTEGRATION_ENABLED=false »
 

@@ -5,6 +5,10 @@
 > décider par le propriétaire) décrit l'installation *from scratch* du VPS. La procédure
 > de déploiement **courante** est `docs/DEPLOYMENT-VPS.md`. Conserver : il contient les
 > Dockerfiles/compose et le contexte que l'autre n'a pas.
+>
+> 🛑 *(01/10/2026)* Ses commandes `docker` datent d'**avant la règle V34** de `CLAUDE.md` : ni
+> `timeout`, ni `--tail`. Ne pas les rejouer telles quelles sur le VPS — un client `docker` sans
+> borne peut survivre à la session SSH et faire tourner dockerd à 100 % pendant des jours.
 
 > **Contexte** : VPS Ubuntu 24.04, Docker 29.1.3, Traefik v3.6.6 déjà en place (container `foodsqan-traefik`, réseau `foodsqan-public`, cert resolver `letsencrypt`). Pas de staging, pas de backup pour le moment. Repo Tracky à `/opt/vizyo-tracky`.
 >
