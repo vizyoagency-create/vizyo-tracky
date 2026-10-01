@@ -314,9 +314,29 @@ automatiquement. Un lien public permet à un client de choisir lui-même son cr�
 
   {
     key: 'agenda',
-    titre: 'Agenda, maintenance et réservations',
-    motsCles: ['agenda', 'calendrier', 'reservation', 'reserver', 'maintenance', 'entretien', 'vidange', 'controle technique', 'incident', 'immobilise', 'proposition'],
-    contenu: `L'agenda regroupe trois types d'événements : maintenance, incident et réservation. Un
+    titre: 'Agenda : calendrier, missions, parc et assistant',
+    motsCles: ['agenda', 'calendrier', 'reservation', 'reserver', 'maintenance', 'entretien', 'vidange', 'controle technique', 'incident', 'immobilise', 'proposition', 'mission', 'missions', 'trajet planifie', 'course', 'depart', 'arrivee', 'parc', 'reorganiser', 'assistant'],
+    contenu: `L'agenda a quatre vues, accessibles par les onglets en haut de l'écran :
+
+- « Calendrier » : tout ce qui est planifié sur la période, véhicule par véhicule.
+- « Missions » : les déplacements planifiés (voir plus bas).
+- « Parc » : la vue par véhicule — ce que chacun a de prévu, et ce qui l'immobilise.
+- « Assistant IA » : les propositions de placement automatique, quand l'option est activée pour
+  la société. Sans elle, l'onglet n'apparaît pas.
+
+Les onglets visibles dépendent des droits du compte, et ce découpage surprend : le calendrier, les
+réservations et les entretiens relèvent de la permission « agenda », tandis que les missions ont
+leur propre permission « missions ». Un gestionnaire de flotte a les missions sans avoir forcément
+le calendrier. Un onglet absent n'est donc pas une panne : c'est un droit que l'administrateur de la
+société peut accorder.
+
+Une MISSION est un déplacement planifié : un véhicule, un créneau, un point de départ et un point
+d'arrivée, éventuellement un conducteur, et des étapes intermédiaires. Elle porte une référence et
+un état (planifiée, en cours, terminée, annulée). Elle occupe le véhicule sur son créneau, donc
+elle compte dans les disponibilités comme une réservation. C'est l'objet à utiliser quand on sait
+d'où à où va le véhicule ; la réservation, elle, réserve le véhicule sans décrire le trajet.
+
+L'agenda regroupe par ailleurs trois types d'événements : maintenance, incident et réservation. Un
 événement peut immobiliser le véhicule, qui devient alors indisponible à la réservation.
 
 Des plans de maintenance récurrents gèrent les échéances du type "tous les X mois" ou "tous les X
