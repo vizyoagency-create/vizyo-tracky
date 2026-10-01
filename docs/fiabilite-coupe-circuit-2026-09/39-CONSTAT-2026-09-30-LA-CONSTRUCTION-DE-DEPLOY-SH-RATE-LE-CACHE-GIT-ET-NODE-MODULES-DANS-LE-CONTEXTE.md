@@ -1,11 +1,14 @@
 # Constat du 30/09/2026 — la construction de `deploy.sh` rate le cache : `.git` et le `node_modules` de l'hôte sont dans le contexte
 
 > **Statut** : cause **prouvée par expérience sur le VPS** (constructions seules, aucun conteneur
-> recréé) ; correctif écrit et **validé sur une copie du dépôt** ; **NON déployé**.
+> recréé) ; correctif validé sur une copie du dépôt ; ✅ **EN PRODUCTION depuis le 01/10/2026 à
+> 00:09 UTC** (commit `98f05329`, déployé avec la migration Node 24 du document 40).
 >
-> ⚠️ **Le correctif change le bundle web servi** — Angular 20.3.18 → 20.3.27, la version que
-> `pnpm-lock.yaml` réclame depuis des semaines sans qu'elle soit jamais arrivée en production
-> (§ 4.1). **Preview sur la démo avant `deploy.sh`.**
+> **Mesuré au déploiement** : après une pré-construction, la construction de `deploy.sh` a pris
+> **2 s** (00:08:31 → 00:08:33) — contre ~4 min le 30/09 à 13:38 dans la même situation. Le bundle
+> servi est passé à Angular **20.3.27** (vérifié dans le conteneur et dans le navigateur,
+> `ng-version`), d'abord sur la démo, puis en production. Le `node_modules` de l'hôte a été rangé
+> dans `/root/archives/vizyo-tracky-node_modules-hote-20260513/` (§ 9).
 
 ## En une phrase
 
@@ -214,11 +217,14 @@ lui), et aucune rafale de déconnexions dans le journal de l'API : une seule soc
 
 ## 9. Suites
 
-- **Déployer le correctif** selon le § 6 (démo d'abord).
-- **Règle à porter dans `CLAUDE.md`**, à côté de V34 : jamais `docker buildx history` sur le VPS
-  (§ 7) — décision du propriétaire.
-- Une fois le correctif en production, le `node_modules` de l'hôte (`/opt/vizyo-tracky/node_modules`,
-  960 Mo du 13/05) ne sert plus à aucune image. Le supprimer libère la place et ôte un piège — après
-  avoir vérifié que rien sur l'hôte ne l'utilise.
-- Hors sujet ici, vu en passant : les trois images reposent sur `node:20-alpine`, et **Node 20 est
-  en fin de vie depuis le 30/04/2026**.
+- ✅ **Correctif déployé** le 01/10/2026 à 00:09 UTC, démo d'abord (§ 6), sans `--force`, à un
+  moment sans aucune activité client ni commande moteur.
+- ✅ **Règle portée dans `CLAUDE.md`** (commit `b2f4e204`) : jamais `docker buildx history` sur le VPS.
+- ✅ **`node_modules` de l'hôte** (961 Mo du 13/05) : aucun processus, aucune tâche de l'hôte ne le
+  lisait. **Déplacé**, pas supprimé, dans `/root/archives/vizyo-tracky-node_modules-hote-20260513/`
+  (le `LISEZMOI.txt` dit comment le remettre) ; supprimable après le 15/10/2026.
+- ✅ **Node 20 en fin de vie** : les images sont passées à Node 24.21.0 (document 40), même déploiement.
+- Proposition, non faite : un commit de documentation reconstruit encore l'étape builder, car
+  `docs/` est dans le contexte (l'image API embarque `docs/centre-alerte` et `docs/vps-audit`).
+  Copier ces deux dossiers dans l'étape runtime directement, et restreindre le `COPY . .` de l'étape
+  builder au code, l'éviterait — un remaniement des Dockerfile à valider à part.

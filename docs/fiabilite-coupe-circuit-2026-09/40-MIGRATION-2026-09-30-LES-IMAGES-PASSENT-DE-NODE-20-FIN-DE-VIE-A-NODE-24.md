@@ -1,10 +1,17 @@
 # Migration du 30/09/2026 — les images Tracky passent de Node 20 (fin de vie) à Node 24 LTS
 
-> **Statut** : préparée et **validée en local** (constructions, artefacts comparés, tests et démarrage
-> réel sous Node 24, dans le Docker du poste) ; **NON déployée**.
+> **Statut** : validée en local (constructions, artefacts comparés, tests et démarrage réel sous
+> Node 24) ; ✅ **EN PRODUCTION depuis le 01/10/2026 à 00:09 UTC** (commit `5ba42241`), avec le
+> `.dockerignore` du document 39.
 >
-> ⚠️ À prévisualiser sur la démo **en même temps** que le `.dockerignore` du document 39 (les deux
-> changent le contenu des images), puis `deploy.sh`. § 6.
+> **Comment, et ce qui a été vérifié** (§ 6) : sauvegarde d'abord (184 Mo, 36 s, par l'unité systemd —
+> premier passage réel du nouveau `backup-db.sh`) ; pré-construction en 6 min 10 s, rien recréé ;
+> **démo d'abord** — saine en 15 s, Node v24.21.0 dans le conteneur, Angular 20.3.27 au bundle et à
+> l'exécution, 0 `DeprecationWarning` ; puis la production par `deploy.sh`, sans `--force`, à 02:08
+> heure de Paris, après avoir relu qu'aucun client n'était actif (0 en 60 min), qu'aucune commande
+> moteur n'était en cours et qu'aucun passage ne tournait. Après : `node --version` = **v24.21.0** dans
+> `tracky-api`, API saine en 11 s sans redémarrage, **35 boîtiers sur 35 reconnectés**, 0 erreur au
+> journal et au centre d'alerte. Repli possible : `deploy.sh --repli avant-20261001-0008-b2f4e204`.
 
 ## En une phrase
 
