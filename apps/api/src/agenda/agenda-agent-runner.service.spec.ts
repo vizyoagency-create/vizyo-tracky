@@ -1682,30 +1682,43 @@ describe('AgendaAgentRunnerService.ecarterEnLot — Réorganiser écarte les pro
 });
 
 describe('AgendaAgentRunnerService.runForFleet — pas deux propositions qui se chevauchent pour un véhicule (relecture du 29/09)', () => {
-  const DAY = 24 * 60 * 60 * 1000;
-  /** Les lundis (jour du motif PATTERN) de l'horizon de 14 jours, en clés de date Paris. */
-  const lundis = (): string[] => {
-    const fmt = fleetTzFormatter();
-    const vus = new Set<string>();
-    for (let t = Date.now(); t < Date.now() + 14 * DAY; t += 12 * 60 * 60 * 1000) {
-      const p = localParts(fmt, t);
-      if (p.dow === 1) vus.add(p.dateKey);
-    }
-    return [...vus].filter((k) => localWallToUtc(k, 9 * 60).getTime() > Date.now() + 60 * 60 * 1000);
+  /**
+   * ⚠️ HORLOGE FIGÉE, ATTENDU ÉCRIT (05/10/2026).
+   *
+   * Ces tests calculaient l'attendu avec un helper `lundis()` qui relisait `Date.now()` À CHAQUE TOUR
+   * de sa boucle. Dès qu'une milliseconde s'écoulait pendant la boucle, il comptait aussi l'instant
+   * « maintenant + 14 j » — un LUNDI quand on est lundi —, que le service exclut (`horizonEnd` est
+   * fixé une fois). Rouges le lundi entre 08:00 et 12:00 sur une machine chargée (`pnpm verify` du
+   * 05/10 à 10:22 : 2 lundis attendus, 1 proposé), verts le reste du temps — et impossibles à
+   * reproduire avec une horloge simulée, qui ne s'écoule pas pendant la boucle.
+   *
+   * Désormais l'instant est ÉCRIT, et l'attendu aussi : la règle du service se lit dans les dates
+   * (le jour du motif dans [maintenant, maintenant + 14 j), départ à plus d'une heure).
+   */
+  const figer = (iso: string): void => {
+    jest.spyOn(Date, 'now').mockReturnValue(Date.parse(iso));
   };
+  afterEach(() => jest.restoreAllMocks());
+
+  /** Un mercredi midi (Paris) : les lundis de l'horizon sont le 12 et le 19/10, sans aucun bord. */
+  const MERCREDI_MIDI = '2026-10-07T10:00:00Z';
+  /** Le départ à 09:00 (Paris) d'un lundi donné, en UTC — tel que le service l'écrit. */
+  const lundi9h = (jour: string): string => localWallToUtc(jour, 9 * 60).toISOString();
+  const departs = (prisma: PrismaMock): string[] =>
+    proposalsOf(prisma).create.mock.calls.map((c) => (c[0].data.startAt as Date).toISOString());
+  const MOINS_SUR: RecurringPattern = { ...PATTERN, startMinutes: 10 * 60, endMinutes: 11 * 60, confidence: 0.6, destinationLabel: 'Narbonne' };
   const reglages = makeSettings({ autonomy: 'suggest' });
 
   it('une proposition ÉCARTÉE décalée de 2 min (le motif a dérivé) : la même occurrence n’est pas recréée', async () => {
+    figer(MERCREDI_MIDI);
     const { svc, prisma } = monter({ settings: reglages, patterns: [PATTERN] });
-    const jours = lundis();
     // Ce que la base connaît déjà : chaque lundi, 09:02–12:00 (écartées ou en attente, peu importe).
     proposalsOf(prisma).findMany.mockResolvedValueOnce(
-      jours.map((k) => ({ vehicleId: 'v1', startAt: localWallToUtc(k, 9 * 60 + 2), endAt: localWallToUtc(k, 12 * 60) })),
+      ['2026-10-12', '2026-10-19'].map((k) => ({ vehicleId: 'v1', startAt: localWallToUtc(k, 9 * 60 + 2), endAt: localWallToUtc(k, 12 * 60) })),
     );
 
     const r = await svc.runForFleet('f1', 'scheduled');
 
-    expect(jours.length).toBeGreaterThan(0);
     expect(proposalsOf(prisma).create).not.toHaveBeenCalled();
     expect(r.proposed).toBe(0);
     // La lecture préalable : toute la société, sur l'horizon, TOUS statuts.
@@ -1716,28 +1729,74 @@ describe('AgendaAgentRunnerService.runForFleet — pas deux propositions qui se 
   });
 
   it('deux motifs du même véhicule qui se chevauchent : seul le premier (le plus confiant) est proposé', async () => {
-    const MOINS_SUR: RecurringPattern = { ...PATTERN, startMinutes: 10 * 60, endMinutes: 11 * 60, confidence: 0.6, destinationLabel: 'Narbonne' };
+    figer(MERCREDI_MIDI);
     const { svc, prisma } = monter({ settings: reglages, patterns: [PATTERN, MOINS_SUR] });
 
     const r = await svc.runForFleet('f1', 'scheduled');
 
-    const jours = lundis();
-    expect(proposalsOf(prisma).create).toHaveBeenCalledTimes(jours.length);
+    expect(departs(prisma)).toEqual([lundi9h('2026-10-12'), lundi9h('2026-10-19')]);
     for (const appel of proposalsOf(prisma).create.mock.calls) {
       expect(appel[0].data.destinationLabel).toBe(PATTERN.destinationLabel);
     }
-    expect(r.proposed).toBe(jours.length);
+    expect(r.proposed).toBe(2);
   });
 
   it('un motif d’un AUTRE véhicule au même créneau reste proposé', async () => {
+    figer(MERCREDI_MIDI);
     const AUTRE: RecurringPattern = { ...PATTERN, vehicleId: 'v9', vehiclePlate: 'ZZ-9' };
     const { svc, prisma } = monter({ settings: reglages, patterns: [PATTERN, AUTRE] });
 
     await svc.runForFleet('f1', 'scheduled');
 
     const vehicules = proposalsOf(prisma).create.mock.calls.map((c) => c[0].data.vehicleId);
-    expect(vehicules.filter((v) => v === 'v1')).toHaveLength(lundis().length);
-    expect(vehicules.filter((v) => v === 'v9')).toHaveLength(lundis().length);
+    expect(vehicules.filter((v) => v === 'v1')).toHaveLength(2);
+    expect(vehicules.filter((v) => v === 'v9')).toHaveLength(2);
+  });
+
+  // ─── Les bords de l'horizon, écrits — ceux que l'ancien helper rendait aléatoires ─────────────
+  const BORDS: Array<[string, string, string[]]> = [
+    // [instant UTC, ce que c'est à Paris, lundis attendus]
+    ['2026-10-04T20:00:00Z', 'dimanche soir 22:00', ['2026-10-05', '2026-10-12']],
+    ['2026-10-05T05:30:00Z', 'lundi 07:30 — le départ de 09:00 est à plus d’une heure', ['2026-10-05', '2026-10-12']],
+    ['2026-10-05T06:30:00Z', 'lundi 08:30 — le départ de 09:00 est dans l’heure : trop tard', ['2026-10-12']],
+    ['2026-10-05T08:22:00Z', 'lundi 10:22 — l’instant de l’échec du 05/10', ['2026-10-12']],
+    ['2026-10-05T10:30:00Z', 'lundi 12:30 — le lundi J+14 entre dans l’horizon', ['2026-10-12', '2026-10-19']],
+  ];
+  it.each(BORDS)('horizon à %s (%s) : %j', async (instant, _quand, lundisAttendus) => {
+    figer(instant);
+    const { svc, prisma } = monter({ settings: reglages, patterns: [PATTERN] });
+
+    await svc.runForFleet('f1', 'scheduled');
+
+    expect(departs(prisma)).toEqual(lundisAttendus.map(lundi9h));
+  });
+
+  // ─── Le plus sûr garde son créneau même quand il n'est plus proposable (correctif du 05/10) ───
+  it('🔴 un motif sûr dont le créneau est IMMINENT le garde : le moins sûr qui le chevauche ne passe pas à sa place', async () => {
+    // Lundi 08:30 : « Carcassonne 09:00–12:00 » (90 %) n'est plus proposable aujourd'hui (moins d'une
+    // heure). Avant le correctif, « Narbonne 10:00–11:00 » (60 %) était proposé à sa place pour CE
+    // matin — alors que le véhicule part, selon toute vraisemblance, à Carcassonne.
+    figer('2026-10-05T06:30:00Z');
+    const { svc, prisma } = monter({ settings: reglages, patterns: [PATTERN, MOINS_SUR] });
+
+    await svc.runForFleet('f1', 'scheduled');
+
+    const crees = proposalsOf(prisma).create.mock.calls.map((c) => [(c[0].data.startAt as Date).toISOString(), c[0].data.destinationLabel]);
+    expect(crees).toEqual([[lundi9h('2026-10-12'), 'Carcassonne']]);
+  });
+
+  it('un créneau sûr EN COURS protège aussi la suite de la matinée', async () => {
+    // Lundi 10:30 : Carcassonne (09:00–12:00) est en cours. Un motif moins sûr à 11:45 (au-delà de
+    // l'heure de préavis, donc proposable en soi) le chevauche : il ne doit pas être proposé.
+    figer('2026-10-05T08:30:00Z');
+    const TARD: RecurringPattern = { ...MOINS_SUR, startMinutes: 11 * 60 + 45, endMinutes: 12 * 60 + 30, destinationLabel: 'Limoux' };
+    const { svc, prisma } = monter({ settings: reglages, patterns: [PATTERN, TARD] });
+
+    await svc.runForFleet('f1', 'scheduled');
+
+    const crees = proposalsOf(prisma).create.mock.calls.map((c) => c[0].data.destinationLabel);
+    expect(crees).not.toContain('Limoux');
+    expect(departs(prisma)).toEqual([lundi9h('2026-10-12')]);
   });
 });
 

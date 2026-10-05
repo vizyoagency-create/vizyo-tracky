@@ -421,7 +421,19 @@ export class AgendaAgentRunnerService {
         for (const dateKey of this.occurrences(p.dayOfWeek, now, horizonEnd, fmt)) {
           const start = localWallToUtc(dateKey, p.startMinutes);
           const end = localWallToUtc(dateKey, p.endMinutes);
-          if (start.getTime() <= now + LEAD_MS || end.getTime() <= start.getTime()) continue;
+          if (end.getTime() <= start.getTime()) continue;
+          /*
+           * Imminent ou déjà passé : trop tard pour le PROPOSER — mais le créneau reste celui du motif
+           * le plus sûr (relecture du 05/10). Sans `occuper` ici, un motif moins sûr du même véhicule
+           * s'y glissait : un lundi à 08:30, « Carcassonne 09:00–12:00 » (90 %) n'est plus proposable,
+           * et « Narbonne 10:00–11:00 » (60 %) passait à sa place — alors que le véhicule part, selon
+           * toute vraisemblance, à Carcassonne. C'est la règle plus haut (« le plus sûr passe
+           * d'abord ») qui se perdait dès que le plus sûr n'était plus proposable.
+           */
+          if (start.getTime() <= now + LEAD_MS) {
+            occuper(p.vehicleId, start.getTime(), end.getTime());
+            continue;
+          }
 
           // Chevauche une proposition connue du même véhicule (voir plus haut) : déjà traitée ou déjà là.
           if (chevaucheUneConnue(p.vehicleId, start.getTime(), end.getTime())) {
