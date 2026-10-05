@@ -1848,6 +1848,22 @@ Au passage, `pnpm verify` a révélé un test de l'agent de l'agenda qui dépend
 (`agenda-agent-runner.service.spec.ts`, « lundis() » : rouge un lundi après 09:00, relancé seul compris) —
 sans rapport avec ce lot ; une tâche distincte a été proposée.
 
+### 🚀 Le même jour à 12:57 — l'agent : tests indépendants de l'heure, et le motif le plus sûr garde un créneau imminent (`64649f90`, `--force`)
+
+Deux causes à l'échec du matin, trouvées en balayant la semaine par pas de 5 min avec le vrai service.
+(1) Le helper du test relisait `Date.now()` à CHAQUE tour de boucle : 1 ms écoulée suffisait à compter
+« maintenant + 14 j » — un lundi quand on est lundi — que le service exclut ; rouge le lundi 08:00–12:00
+sous charge, introuvable sous horloge simulée. Instant et attendu sont désormais ÉCRITS, bords testés.
+(2) Un vrai défaut : le créneau imminent (moins d'une heure) ou en cours du motif le plus sûr n'était plus
+OCCUPÉ, et un motif moins sûr du même véhicule passait à sa place (lundi 08:30 : Narbonne 10:00 proposé,
+Carcassonne 09:00 dominant). Corrigé ; effet surtout sur les passages de JOUR (manuel, déclencheurs).
+
+Déployé sur l'ordre du propriétaire, `--force` : le passage de 12:45 (12 min) INTERROMPU — alerte critique
+attendue, rattrapé par celui de 13:45. API saine en 10 s, 0 redémarrage, démo saine ; le correctif est
+DANS le code servi (2 occupations contre 1, API et démo) ; 0 erreur hors l'alerte attendue ; 0 403
+`alerts_view`. GPS : 39 boîtiers avant, 39 après sur 605 s — 5 des 8 retardataires revenus en 65–95 s, les
+3 autres (contact coupé, à l'arrêt : HD-964-XY, GA-490-SJ, FR-428-DQ) en ~6 min 30.
+
 ### Le tuto « Assistance » (hors dépôt : `cdef31-vizyoagency`, `e002229` puis `1ec9c96`)
 
 **🌐 En ligne le 05/10** : https://cdef31.vizyoagency.com/assistance/ et une 3ᵉ carte sur l'accueil. Ce qu'il
