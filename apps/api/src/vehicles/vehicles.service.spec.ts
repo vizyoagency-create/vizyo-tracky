@@ -173,6 +173,26 @@ describe('VehiclesService', () => {
     );
   });
 
+  // 5 bis. 05/10/2026 — le web enchaîne les pages par curseur pour obtenir le parc ENTIER : il lui
+  // faut un ordre TOTAL. Sur la seule date de création, six véhicules nés à la même milliseconde
+  // (23/09) pouvaient sauter ou se répéter d'une page à l'autre.
+  it('findAll trie par date de création PUIS par id, et repart du curseur sans le répéter', async () => {
+    await service.findAll(superAdmin, { cursor: VEHICLE_ID, limit: 50 });
+    expect(prisma.vehicle.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        take: 50,
+        skip: 1,
+        cursor: { id: VEHICLE_ID },
+      }),
+    );
+  });
+
+  it('findAll plafonne à 50 lignes par page, même si on en demande plus — d’où la pagination du client', async () => {
+    await service.findAll(superAdmin, { limit: 500 });
+    expect(prisma.vehicle.findMany).toHaveBeenCalledWith(expect.objectContaining({ take: 50 }));
+  });
+
   // 6. findOne cross-fleet → NotFoundException
   // V1.10 (Sprint 6) — le service integre fleetId dans le where via findFirst.
   // Si le vehicule n'appartient pas a la flotte du caller, findFirst renvoie null

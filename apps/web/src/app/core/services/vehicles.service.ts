@@ -8,7 +8,12 @@ import type {
   VehicleInstallationSourceDto,
   VehicleSyncableField,
 } from '@vizyo/tracky-shared';
-import { Observable } from 'rxjs';
+import { defer, firstValueFrom, from, Observable } from 'rxjs';
+
+/** Taille de page de GET /vehicles : l'API plafonne à 50 lignes par appel (`VehiclesService.findAll`). */
+export const PAGE_VEHICULES = 50;
+/** Garde-fou : 40 pages, soit 2 000 véhicules — jamais de boucle sans fin si l'API répondait mal. */
+const PAGES_MAX = 40;
 
 /**
  * Pourquoi un vehicule est hors service. Aligne sur l'enum Prisma : toute valeur ajoutee
@@ -112,8 +117,41 @@ export class VehiclesApiService {
     return this.http.post<VehicleDetailDto>('/api/vehicles', data);
   }
 
+  /**
+   * Le parc ENTIER, page après page.
+   *
+   * ⚠️ GET /vehicles plafonne à 50 lignes par appel (curseur `cursor` = id du dernier véhicule reçu).
+   * Un seul appel — ce que faisaient la page Véhicules, la carte, les groupes, les rapports, les
+   * utilisateurs, le tableau de bord et les écrans d'admin — laissait dehors les véhicules les plus
+   * anciens dès que le parc visible dépassait 50 : le 05/10/2026, un super-admin (53 véhicules) ne
+   * voyait plus EP-047-TY, FV-941-LZ ni FL-787-KV, trois camions de mh cars — « 10 véhicules » au
+   * tableau de bord, 7 sur la page et sur la carte. L'agenda avait sa propre boucle depuis le 29/09 ;
+   * elle vit désormais ici, pour tous.
+   *
+   * Dédoublonné par id : l'ordre de l'API est stable (createdAt puis id), mais un véhicule créé entre
+   * deux pages ne doit jamais apparaître deux fois.
+   */
   list(params?: Record<string, string>): Observable<VehicleDetailDto[]> {
+    return defer(() => from(this.toutesLesPages(params)));
+  }
+
+  /** UNE page de GET /vehicles — pour qui gère lui-même `limit` et `cursor`. */
+  page(params?: Record<string, string>): Observable<VehicleDetailDto[]> {
     return this.http.get<VehicleDetailDto[]>('/api/vehicles', { params });
+  }
+
+  private async toutesLesPages(params?: Record<string, string>): Promise<VehicleDetailDto[]> {
+    const parId = new Map<string, VehicleDetailDto>();
+    let curseur: string | undefined;
+    for (let n = 0; n < PAGES_MAX; n++) {
+      const lot = await firstValueFrom(
+        this.page({ ...params, limit: String(PAGE_VEHICULES), ...(curseur ? { cursor: curseur } : {}) }),
+      );
+      for (const v of lot) if (!parId.has(v.id)) parId.set(v.id, v);
+      if (lot.length < PAGE_VEHICULES) break;
+      curseur = lot[lot.length - 1].id;
+    }
+    return [...parId.values()];
   }
 
   update(id: string, data: Record<string, unknown>): Observable<VehicleDetailDto> {

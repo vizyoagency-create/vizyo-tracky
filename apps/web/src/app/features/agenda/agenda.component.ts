@@ -3023,21 +3023,14 @@ export class AgendaComponent implements OnInit {
   }
 
   /**
-   * Le parc ENTIER, page après page (revue du 29/09). GET /vehicles plafonne à 50 lignes par appel ;
-   * un seul appel laissait hors de la page les véhicules les plus anciens dès qu'un super-admin voyait
-   * plusieurs sociétés (51 véhicules le 24/09) : absents des sélecteurs Réserver et Événement, du
-   * panneau du jour et des groupes. Borné à 40 pages (2 000 véhicules) pour ne jamais boucler.
+   * Le parc ENTIER (revue du 29/09). GET /vehicles plafonne à 50 lignes par appel ; un seul appel
+   * laissait hors de la page les véhicules les plus anciens dès qu'un super-admin voyait plusieurs
+   * sociétés (51 véhicules le 24/09) : absents des sélecteurs Réserver et Événement, du panneau du
+   * jour et des groupes. La boucle qui vivait ici est montée dans `VehiclesApiService.list()` le
+   * 05/10, pour que toutes les pages en profitent.
    */
   private async chargerParc(): Promise<VehicleDetailDto[]> {
-    const tous: VehicleDetailDto[] = [];
-    let curseur: string | undefined;
-    for (let page = 0; page < 40; page++) {
-      const lot = await firstValueFrom(this.vehiclesApi.list({ limit: '50', ...(curseur ? { cursor: curseur } : {}) }));
-      tous.push(...lot);
-      if (lot.length < 50) break;
-      curseur = lot[lot.length - 1].id;
-    }
-    return tous;
+    return firstValueFrom(this.vehiclesApi.list());
   }
 
   private async loadVehicles(): Promise<void> {

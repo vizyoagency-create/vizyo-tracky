@@ -386,7 +386,13 @@ export class VehiclesService {
         // Sprint 1 (Fondation Groupes) — groupe (single) pour le badge + la vue groupée.
         ...VehiclesService.GROUP_INCLUDE,
       },
-      orderBy: { createdAt: 'desc' },
+      /**
+       * ⚠️ `id` en second critère : la pagination par curseur exige un ordre TOTAL. Trié sur la seule
+       * date de création, deux véhicules nés à la même milliseconde (six créés en lot le 23/09/2026 à
+       * 08:02:48.772, mesuré le 05/10) pouvaient sauter ou se répéter d'une page à l'autre — or le web
+       * enchaîne désormais les pages pour obtenir le parc entier (`VehiclesApiService.list`).
+       */
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       take: limit,
       ...(filters?.cursor ? { skip: 1, cursor: { id: filters.cursor } } : {}),
     });
