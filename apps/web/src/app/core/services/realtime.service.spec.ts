@@ -7,6 +7,7 @@ import { signal } from '@angular/core';
 import { AuthService } from './auth.service';
 import { FleetFilterService } from './fleet-filter.service';
 import { NotificationsApiService } from './notifications.service';
+import { PermissionsService } from './permissions.service';
 import { PreferencesService } from './preferences.service';
 import { VisibilityService } from './visibility.service';
 import { ToastService } from '../../shared/ui/toast/toast.service';
@@ -114,7 +115,7 @@ class RealtimeServiceTestable extends RealtimeService {
 
 describe('TRK-050 — câblage : le vrai handler connect_error', () => {
   let service: RealtimeServiceTestable;
-  let auth: { tryRefresh: jasmine.Spy; refreshUnavailable: jasmine.Spy; logout: jasmine.Spy; token: string | null };
+  let auth: { tryRefresh: jasmine.Spy; refreshUnavailable: jasmine.Spy; logout: jasmine.Spy; user: () => null; token: string | null };
   let router: { navigate: jasmine.Spy; url: string };
 
   beforeEach(() => {
@@ -123,6 +124,7 @@ describe('TRK-050 — câblage : le vrai handler connect_error', () => {
       tryRefresh: jasmine.createSpy('tryRefresh').and.resolveTo(null),
       refreshUnavailable: jasmine.createSpy('refreshUnavailable').and.returnValue(false),
       logout: jasmine.createSpy('logout'),
+      user: () => null, // personne de connu : ces scénarios ne portent que sur la connexion
       token: 'jeton-de-test',
     };
     router = { navigate: jasmine.createSpy('navigate').and.resolveTo(true), url: '/dashboard' };
@@ -140,6 +142,8 @@ describe('TRK-050 — câblage : le vrai handler connect_error', () => {
         { provide: PreferencesService, useValue: { prefs: signal({ notifications: {} }) } },
         { provide: VisibilityService, useValue: { isVisible: signal(true), isUserActive: signal(true), lastHiddenDurationMs: () => null } },
         { provide: ToastService, useValue: { error: () => undefined, success: () => undefined, info: () => undefined } },
+        // 05/10 — le service lit `alerts_view` ; ces scénarios ne l'exercent pas (voir le bloc dédié).
+        { provide: PermissionsService, useValue: { can: () => true } },
         RealtimeServiceTestable,
       ],
     });
@@ -268,6 +272,8 @@ describe('Incident du 17/09 — seedCutState réaligne l’overlay coupe sur la 
         { provide: PreferencesService, useValue: { prefs: signal({ notifications: {} }) } },
         { provide: VisibilityService, useValue: { isVisible: signal(true), isUserActive: signal(true), lastHiddenDurationMs: () => null } },
         { provide: ToastService, useValue: { error: () => undefined, success: () => undefined, info: () => undefined } },
+        // 05/10 — le service lit `alerts_view` ; ces scénarios ne l'exercent pas (voir le bloc dédié).
+        { provide: PermissionsService, useValue: { can: () => true } },
         RealtimeServiceTestable,
       ],
     });
@@ -335,6 +341,9 @@ describe('C2 — incident CDEF31 : la reconnexion re-hydrate', () => {
             refreshUnavailable: () => false,
             logout: () => undefined,
             isDepot: () => false,
+            // Sans lui, chaque ouverture de socket levait « this.auth.user is not a function » dans
+            // `loadInitialAlerts` — avalé par la promesse, mais imprimé en ERROR à chaque passage.
+            user: () => null,
             token: 'jeton-de-test',
           },
         },
@@ -344,6 +353,8 @@ describe('C2 — incident CDEF31 : la reconnexion re-hydrate', () => {
         { provide: PreferencesService, useValue: { prefs: signal({ notifications: {} }) } },
         { provide: VisibilityService, useValue: { isVisible: signal(true), isUserActive: signal(true), lastHiddenDurationMs: () => null } },
         { provide: ToastService, useValue: { error: () => undefined, success: () => undefined, info: () => undefined } },
+        // 05/10 — le service lit `alerts_view` ; ces scénarios ne l'exercent pas (voir le bloc dédié).
+        { provide: PermissionsService, useValue: { can: () => true } },
         RealtimeServiceTestable,
       ],
     });
@@ -385,5 +396,176 @@ describe('C2 — incident CDEF31 : la reconnexion re-hydrate', () => {
       await service.faux.declencher('connect');
       expect(lecturesDuSnapshot()).toBe(1);
     }
+  });
+});
+
+/**
+ * ══ 05/10/2026 — ON NE DEMANDE PAS AU SERVEUR CE QU'IL REFUSERAIT ════════════════════════════
+ *
+ * Juste après un redéploiement, l'API a journalisé des 403 « Permission requise : alerts_view »
+ * pour un gestionnaire de flotte : le temps réel chargeait les alertes à CHAQUE (re)connexion, en
+ * ne gardant que le rôle dépôt. Le veilleur de nuit (qui n'a jamais ce droit), un conducteur, un
+ * gestionnaire restreint : tous payaient un 403 par reconnexion — et un redéploiement les
+ * reconnecte tous à la fois.
+ *
+ * Ces tests montent le VRAI `PermissionsService` : c'est SA règle qui doit décider (droits du
+ * compte, union des portées par véhicule, administrateurs toujours autorisés — comme le serveur).
+ * Un bouchon `can: () => false` prouverait seulement que le bouchon dit non.
+ */
+describe('alerts_view — le temps réel ne demande pas les alertes à qui ne peut pas les lire', () => {
+  let service: RealtimeServiceTestable;
+  let httpMock: HttpTestingController;
+  type Compte = { sub: string; email: string; role: string; fleetId: string | null; permissions: Record<string, boolean> };
+  const user = signal<Compte | null>(null);
+
+  const compte = (role: string, alertsView: boolean): Compte => ({
+    sub: 'u-1', email: 'compte@exemple.fr', role, fleetId: 'f-1', permissions: { alerts_view: alertsView },
+  });
+  /** Une portée « tout le parc » qui ACCORDE le droit — union des portées, comme au serveur. */
+  const porteeQuiAccorde = {
+    id: 'acc-1', accessType: 'ALL', groupId: null, vehicleId: null, permissions: { alerts_view: true },
+    createdAt: '2026-10-05T00:00:00Z', updatedAt: '2026-10-05T00:00:00Z', group: null, vehicle: null,
+  };
+
+  beforeEach(() => {
+    user.set(null);
+    TestBed.configureTestingModule({
+      providers: [
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        {
+          provide: AuthService,
+          useValue: {
+            user,
+            isDepot: () => user()?.role === 'DEPOT',
+            tryRefresh: async () => null,
+            refreshUnavailable: () => false,
+            logout: () => undefined,
+            token: 'jeton-de-test',
+          },
+        },
+        { provide: Router, useValue: { navigate: async () => true, navigateByUrl: async () => true, url: '/vehicles' } },
+        { provide: FleetFilterService, useValue: { matches: () => true, isActive: signal(false), selectedFleetId: signal(null) } },
+        { provide: NotificationsApiService, useValue: { clearAppBadge: () => undefined, setAppBadge: () => undefined } },
+        { provide: PreferencesService, useValue: { prefs: signal({ notifications: {} }) } },
+        { provide: VisibilityService, useValue: { isVisible: signal(true), isUserActive: signal(true), lastHiddenDurationMs: () => null } },
+        {
+          provide: ToastService,
+          useValue: { error: () => undefined, success: () => undefined, info: () => undefined, show: () => undefined, critical: () => undefined },
+        },
+        // PermissionsService : PAS de bouchon — le vrai, fourni à la racine.
+        RealtimeServiceTestable,
+      ],
+    });
+    service = TestBed.inject(RealtimeServiceTestable);
+    httpMock = TestBed.inject(HttpTestingController);
+  });
+
+  afterEach(() => service.disconnect());
+
+  /** Laisse tourner les effets ET les promesses (le service des droits lit ses portées en `toPromise`). */
+  const stabiliser = async (): Promise<void> => {
+    for (let i = 0; i < 3; i++) {
+      TestBed.tick();
+      await Promise.resolve();
+      await Promise.resolve();
+    }
+  };
+  /** Répond aux lectures des portées par véhicule, que le vrai service lance dès qu'un compte est connu. */
+  const repondreAcces = async (entries: unknown[]): Promise<void> => {
+    await stabiliser();
+    for (const r of httpMock.match((q) => q.url.includes('/api/users/me/access'))) r.flush({ entries });
+    await stabiliser();
+  };
+  /** Les demandes d'alertes depuis le dernier appel (`match` retire celles qu'il a vues). */
+  const demandesAlertes = (): number => httpMock.match((r) => r.url === '/api/alerts').length;
+  const ouvrirSocket = async (): Promise<void> => {
+    await service.faux.declencher('connect');
+    await stabiliser();
+  };
+
+  it('🔴 un gestionnaire SANS alerts_view : aucune demande — ni à la connexion, ni aux reconnexions', async () => {
+    user.set(compte('FLEET_MANAGER', false));
+    await repondreAcces([]);
+    service.connect('jeton-de-test');
+    await ouvrirSocket();
+    expect(demandesAlertes()).toBe(0);
+
+    // Un redéploiement : la socket tombe et revient — c'est là que les 403 pleuvaient.
+    for (const _ of [1, 2, 3]) {
+      await service.faux.declencher('disconnect', 'transport close');
+      await ouvrirSocket();
+    }
+    expect(demandesAlertes()).withContext('sous l’ancien code : une demande refusée par reconnexion').toBe(0);
+  });
+
+  it('🔴 le veilleur de nuit (jamais alerts_view) : aucune demande', async () => {
+    user.set(compte('NIGHT_WATCHMAN', false));
+    await repondreAcces([]);
+    service.connect('jeton-de-test');
+    await ouvrirSocket();
+    expect(demandesAlertes()).toBe(0);
+  });
+
+  it('un gestionnaire AVEC alerts_view : les alertes sont bien chargées', async () => {
+    user.set(compte('FLEET_MANAGER', true));
+    await repondreAcces([]);
+    service.connect('jeton-de-test');
+    await ouvrirSocket();
+    expect(demandesAlertes()).toBeGreaterThan(0);
+  });
+
+  it('un administrateur de flotte est toujours autorisé — la même règle que le serveur', async () => {
+    // Côté serveur, FLEET_ADMIN figure dans ADMIN_ROLES : `canGlobally` dit oui sans lire ses droits.
+    user.set(compte('FLEET_ADMIN', false));
+    await repondreAcces([]);
+    service.connect('jeton-de-test');
+    await ouvrirSocket();
+    expect(demandesAlertes()).toBeGreaterThan(0);
+  });
+
+  it('🔴 une portée chargée APRÈS la connexion qui accorde le droit déclenche le chargement', async () => {
+    // Sinon le correctif troquerait un défaut bruyant (403) contre un défaut silencieux : une
+    // liste d'alertes vide pour quelqu'un qui a le droit de la voir.
+    user.set(compte('FLEET_MANAGER', false));
+    service.connect('jeton-de-test');
+    await ouvrirSocket();
+    expect(demandesAlertes()).withContext('portées pas encore lues : on s’en tient aux droits du compte').toBe(0);
+
+    await repondreAcces([porteeQuiAccorde]);
+    expect(demandesAlertes()).withContext('la portée accorde alerts_view : l’effet doit rejouer l’appel').toBeGreaterThan(0);
+  });
+
+  it('🔴 relire les MÊMES portées (retour de l’onglet au premier plan) ne redemande PAS les alertes', async () => {
+    // `PermissionsService` relit ses portées à chaque retour au premier plan et pose un NOUVEAU
+    // tableau. Un effet qui lirait `can()` en direct se rejouerait à chaque fois : un
+    // `GET /api/alerts` par retour d'onglet, pour un droit qui n'a pas bougé.
+    user.set(compte('FLEET_MANAGER', true));
+    await repondreAcces([]);
+    service.connect('jeton-de-test');
+    await ouvrirSocket();
+    expect(demandesAlertes()).toBeGreaterThan(0); // le chargement normal — et la purge du compteur
+
+    const relecture = TestBed.inject(PermissionsService).refreshAccessEntries();
+    await repondreAcces([]);
+    await relecture;
+    await stabiliser();
+    expect(demandesAlertes()).withContext('droit inchangé : rien à redemander').toBe(0);
+  });
+
+  it('un droit retiré en cours de session vide la liste au lieu de la laisser figée', async () => {
+    user.set(compte('FLEET_MANAGER', true));
+    await repondreAcces([]);
+    service.connect('jeton-de-test');
+    await ouvrirSocket();
+    for (const r of httpMock.match((q) => q.url === '/api/alerts')) {
+      r.flush({ items: [{ id: 'al-1', fleetId: 'f-1' }] });
+    }
+    await stabiliser();
+    expect(service.alerts().length).toBe(1);
+
+    user.set(compte('FLEET_MANAGER', false));
+    await repondreAcces([]);
+    expect(service.alerts()).toEqual([]);
   });
 });

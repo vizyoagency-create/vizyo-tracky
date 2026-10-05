@@ -11,6 +11,7 @@ import { retourSur } from '../auth/retour-interne';
 import { AuthService } from './auth.service';
 import { FleetFilterService } from './fleet-filter.service';
 import { NotificationsApiService } from './notifications.service';
+import { PermissionsService } from './permissions.service';
 import { PreferencesService } from './preferences.service';
 import { VisibilityService } from './visibility.service';
 
@@ -157,6 +158,18 @@ export class RealtimeService {
   private static readonly INCIDENT_REPEAT_MS = 30 * 60_000;
   private readonly toast = inject(ToastService);
   private readonly auth = inject(AuthService);
+  /**
+   * Le droit de LIRE les alertes, tranché comme le fait le serveur : `GET /api/alerts` exige
+   * `alerts_view` en résolution GLOBALE — d'où `can('alerts_view')` sans véhicule.
+   */
+  private readonly perms = inject(PermissionsService);
+  /**
+   * Un `computed`, et pas `perms.can()` lu tel quel dans l'effet : `PermissionsService` relit les
+   * portées à CHAQUE retour de l'onglet au premier plan et pose un nouveau tableau. L'effet qui
+   * lirait `can()` directement se rejouerait à chaque fois — un `GET /api/alerts` par retour
+   * d'onglet, droit inchangé. Le `computed` ne notifie que si la RÉPONSE change.
+   */
+  private readonly peutLireAlertes = computed(() => this.perms.can('alerts_view'));
 
   /**
    * Rattrape le chargement des alertes quand la socket s'est connectée AVANT que
@@ -166,10 +179,19 @@ export class RealtimeService {
    * 403 en une liste d'alertes vide au premier chargement — on aurait troqué un
    * défaut bruyant contre un défaut silencieux, ce qui est pire. L'appel est
    * idempotent : il remplace la liste, il ne l'accumule pas.
+   *
+   * Le droit `alerts_view` est lu ICI, dans l'effet, et pas seulement dans la méthode : l'effet
+   * se rejoue ainsi quand les droits changent — portées par véhicule chargées après coup (elles
+   * peuvent ACCORDER le droit), ou droit retiré en cours de session (la liste se vide).
    */
   private readonly alertesDesQueUtilisateurConnu = effect(() => {
     const u = this.auth.user();
-    if (u && u.role !== 'DEPOT' && this.connected()) void this.loadInitialAlerts();
+    if (!u || u.role === 'DEPOT') return;
+    if (!this.peutLireAlertes()) {
+      this._alerts.set([]);
+      return;
+    }
+    if (this.connected()) void this.loadInitialAlerts();
   });
   private readonly preferences = inject(PreferencesService);
   private readonly http = inject(HttpClient);
@@ -954,6 +976,13 @@ export class RealtimeService {
     // compte légitime dont la socket se serait connectée trop tôt.
     const utilisateur = this.auth.user();
     if (!utilisateur || utilisateur.role === 'DEPOT') return;
+    // ⚠️ ET LE DROIT LUI-MÊME (05/10/2026). La garde ci-dessus ne connaissait que le RÔLE dépôt ;
+    // or `alerts_view` manque aussi au veilleur de nuit (jamais accordé), au conducteur, et à un
+    // gestionnaire qu'on a restreint. Chacun recevait un 403 « Permission requise : alerts_view »
+    // à CHAQUE (re)connexion du temps réel — relevé en production juste après un redéploiement,
+    // qui reconnecte tout le monde à la fois. Le refus est juste ; c'est l'appel qui ne l'est
+    // pas, exactement comme pour le dépôt. L'effet plus haut rejoue l'appel si le droit apparaît.
+    if (!this.peutLireAlertes()) return;
     try {
       const res = await firstValueFrom(
         this.http.get<{ items: AlertEvent[] }>('/api/alerts', {

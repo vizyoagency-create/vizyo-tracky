@@ -1049,15 +1049,25 @@ export class DashboardComponent implements OnInit {
   private static readonly ALERTES_VIDES: { items: AlertEvent[]; nextCursor: string | null } = {
     items: [], nextCursor: null,
   };
+  /**
+   * ⚠️ LE WIDGET ÉTAIT MASQUÉ, LA REQUÊTE NON (05/10/2026). Sans `alerts_view`, `isWidgetEnabled`
+   * cache bien « Alertes récentes » — mais le chargement partait quand même, et chaque visite du
+   * tableau de bord coûtait un 403 invisible. La requête suit désormais le même droit que le
+   * widget, et le suit EN DIRECT : des portées par véhicule chargées après coup peuvent accorder
+   * le droit, et le chargement part alors.
+   */
+  private readonly peutVoirAlertes = computed(() => this.perms.can('alerts_view'));
   private readonly fetchedAlerts = toSignal(
-    toObservable(this.relanceAlertes).pipe(
-      switchMap(() =>
-        this.alertsApi.list({ limit: '3', acknowledged: 'false' }).pipe(
-          tap(() => this.alertesEnEchec.set(false)),
-          // Le catchError est INTERNE : sans cela, l'erreur terminerait le flux
-          // extérieur et la relance n'aurait plus rien à relancer.
-          catchError(() => { this.alertesEnEchec.set(true); return of(DashboardComponent.ALERTES_VIDES); }),
-        ),
+    toObservable(computed(() => ({ relance: this.relanceAlertes(), permis: this.peutVoirAlertes() }))).pipe(
+      switchMap(({ permis }) =>
+        !permis
+          ? of(DashboardComponent.ALERTES_VIDES)
+          : this.alertsApi.list({ limit: '3', acknowledged: 'false' }).pipe(
+              tap(() => this.alertesEnEchec.set(false)),
+              // Le catchError est INTERNE : sans cela, l'erreur terminerait le flux
+              // extérieur et la relance n'aurait plus rien à relancer.
+              catchError(() => { this.alertesEnEchec.set(true); return of(DashboardComponent.ALERTES_VIDES); }),
+            ),
       ),
     ),
     { initialValue: DashboardComponent.ALERTES_VIDES },

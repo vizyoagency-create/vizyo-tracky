@@ -2128,6 +2128,10 @@ export class VehicleDetailComponent implements OnInit {
   private lastAlertCount = -1;
   private alertRefreshEffect = effect(() => {
     if (this.isWatchman()) return; // Sprint 3 — veilleur : pas d'accès aux alertes (403)
+    // 05/10/2026 — le RÔLE ne suffit pas : un gestionnaire restreint n'a pas non plus `alerts_view`
+    // (l'onglet « Alertes » le lui cache déjà). Sans ce garde, chaque alerte reçue en direct
+    // relançait ici un `GET /api/alerts` refusé.
+    if (!this.perms.can('alerts_view')) return;
     const wsAlerts = this.realtime.alerts();
     if (wsAlerts.length !== this.lastAlertCount) {
       this.lastAlertCount = wsAlerts.length;
@@ -2705,7 +2709,10 @@ export class VehicleDetailComponent implements OnInit {
         trackerId
           ? firstValueFrom(this.positionsApi.list({ trackerId, limit: '500', ...dateParams }))
           : { items: [] },
-        firstValueFrom(this.alertsApi.list({ vehicleId: v.id, limit: '20' })).catch(() => ({ items: [] })),
+        // Sans `alerts_view`, rien à demander : l'onglet est masqué, et le serveur refuserait (403).
+        this.perms.can('alerts_view')
+          ? firstValueFrom(this.alertsApi.list({ vehicleId: v.id, limit: '20' })).catch(() => ({ items: [] }))
+          : { items: [] },
         trackerId ? firstValueFrom(this.engineControlApi.listCommands(trackerId, 20)).catch(() => []) : [],
         firstValueFrom(this.tripsApi.list({ vehicleId: v.id, limit: '100', ...dateParams })).catch(() => ({ items: [] })),
       ]);
