@@ -133,6 +133,14 @@ describe('construireLignesFlotte', () => {
       expect(l.etat).toBe('arret');
     });
 
+    it('un accidenté est marqué accidenté, pas immobilisé, et garde l’état mesuré', () => {
+      const [l] = construireLignesFlotte([vehicule({ plate: 'KSR-370', outOfServiceReason: 'ACCIDENT' })], () => 0, MAINTENANT);
+      expect(l.accidente).toBeTrue();
+      expect(l.immobilise).toBeFalse();
+      expect(l.debranche).toBeFalse();
+      expect(l.etat).toBe('arret');
+    });
+
     it('n’est pas marqué immobilisé quand il est débranché (une seule déclaration)', () => {
       const [l] = construireLignesFlotte([vehicule({ outOfServiceReason: 'TRACKER_UNPLUGGED' })], () => 0, MAINTENANT);
       expect(l.debranche).toBeTrue();

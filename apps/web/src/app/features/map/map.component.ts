@@ -79,6 +79,7 @@ import {
   buildVehicleMarkerEl,
   markerInk,
   speedColor,
+  ACCIDENT_MARKER_COLOR,
   IMMOBILIZED_MARKER_COLOR,
   UNPLUGGED_MARKER_COLOR,
   updateVehicleMarkerEl,
@@ -86,9 +87,11 @@ import {
 } from '../../shared/utils/maplibre-markers';
 import { COULEURS_CARTE } from '../../shared/utils/couleurs-carte';
 import {
+  estAccidente,
   estDebranche,
   estImmobilise,
   motifHorsService,
+  nbAccidentesSurLaCarte,
   nbDebranchesSurLaCarte,
   nbImmobilisesSurLaCarte,
 } from '../../shared/utils/hors-service';
@@ -181,6 +184,7 @@ interface BaanoolCardData {
   group?: { id: string; name: string } | null;
   /** États DÉCLARÉS sur la fiche (boîtier débranché, immobilisé), et depuis quand (ISO) — badges de la card. */
   debranche?: boolean;
+  accidente?: boolean;
   immobilise?: boolean;
   horsServiceDepuis?: string | null;
 }
@@ -507,7 +511,7 @@ const RESYNC_RADIUS_M = 150;
             @for (v of flotteVisibles(); track v.vehicleId) {
               <li>
                 <button type="button" class="fl-ligne" (click)="ouvrirDepuisFlotte(v)">
-                  <span class="fl-pastille" [class]="'fl-pastille--' + (v.debranche ? 'debranche' : v.immobilise ? 'immobilise' : v.etat)"></span>
+                  <span class="fl-pastille" [class]="'fl-pastille--' + (v.debranche ? 'debranche' : v.accidente ? 'accidente' : v.immobilise ? 'immobilise' : v.etat)"></span>
                   <span class="fl-ligne-texte">
                     <span class="fl-plaque">{{ v.plate }}</span>
                     <span class="fl-modele">{{ v.modele }}</span>
@@ -1045,13 +1049,19 @@ const RESYNC_RADIUS_M = 150;
           <p class="tracky-sheet-title">Légende vitesse</p>
           <!-- Générée depuis BANDES_VITESSE : la même table que les marqueurs et les tracés. -->
           <app-legende-vitesse disposition="grille" style="--lv-taille: 12px"></app-legende-vitesse>
-          @if (nbDebranches() > 0 || nbImmobilises() > 0) {
+          @if (nbDebranches() > 0 || nbAccidentes() > 0 || nbImmobilises() > 0) {
             <p class="tracky-sheet-title" style="margin-top:10px">Véhicules</p>
             <div class="tracky-sheet-legend">
               @if (nbDebranches() > 0) {
                 <div class="tracky-sheet-legend-item">
                   <ng-container [ngTemplateOutlet]="cleDebranche"></ng-container>
                   <span>Boîtier débranché ({{ nbDebranches() }})</span>
+                </div>
+              }
+              @if (nbAccidentes() > 0) {
+                <div class="tracky-sheet-legend-item">
+                  <ng-container [ngTemplateOutlet]="cleAccident"></ng-container>
+                  <span>Accidenté ({{ nbAccidentes() }})</span>
                 </div>
               }
               @if (nbImmobilises() > 0) {
@@ -1135,6 +1145,14 @@ const RESYNC_RADIUS_M = 150;
         </svg>
       </span>
     </ng-template>
+    <!-- La clé « Accidenté » : la pastille grisée, son anneau et son triangle magenta. -->
+    <ng-template #cleAccident>
+      <svg class="mp-cle-debranche" viewBox="0 0 56 56" width="12" height="12" aria-hidden="true" focusable="false">
+        <circle cx="28" cy="28" r="15" [attr.fill]="COULEUR_ACCIDENT_COEUR" fill-opacity="0.55" />
+        <circle cx="28" cy="28" r="23" fill="none" [attr.stroke]="COULEUR_ACCIDENT" stroke-width="6" />
+        <path d="M40 22 L56 50 L24 50 Z" [attr.fill]="COULEUR_ACCIDENT" />
+      </svg>
+    </ng-template>
     <!-- La clé « Immobilisé » : la pastille grisée, son anneau et son badge « clé » ambre. -->
     <ng-template #cleImmobilise>
       <svg class="mp-cle-debranche" viewBox="0 0 56 56" width="12" height="12" aria-hidden="true" focusable="false">
@@ -1165,7 +1183,7 @@ const RESYNC_RADIUS_M = 150;
         <p class="text-[10px] font-semibold text-fg-secondary mb-1.5 uppercase tracking-wider">Vitesse</p>
         <!-- Générée depuis BANDES_VITESSE : la même table que les marqueurs et les tracés. -->
         <app-legende-vitesse></app-legende-vitesse>
-        @if (nbDebranches() > 0 || nbImmobilises() > 0) {
+        @if (nbDebranches() > 0 || nbAccidentes() > 0 || nbImmobilises() > 0) {
           <hr class="my-2 border-border-subtle" />
           <p class="text-[10px] font-semibold text-fg-secondary mb-1.5 uppercase tracking-wider">Véhicules</p>
           <div class="flex flex-col gap-1">
@@ -1173,6 +1191,12 @@ const RESYNC_RADIUS_M = 150;
               <div class="flex items-center gap-2">
                 <ng-container [ngTemplateOutlet]="cleDebranche"></ng-container>
                 <span class="text-[10px] text-fg-tertiary">Boîtier débranché ({{ nbDebranches() }})</span>
+              </div>
+            }
+            @if (nbAccidentes() > 0) {
+              <div class="flex items-center gap-2">
+                <ng-container [ngTemplateOutlet]="cleAccident"></ng-container>
+                <span class="text-[10px] text-fg-tertiary">Accidenté ({{ nbAccidentes() }})</span>
               </div>
             }
             @if (nbImmobilises() > 0) {
@@ -1473,6 +1497,12 @@ const RESYNC_RADIUS_M = 150;
                 <span class="bn-vcard-badge bn-vcard-badge--alerte" [attr.title]="titreDebranche(baanoolCard()!)">
                   <span class="bn-vcard-badge-dot"></span>
                   Boîtier débranché
+                </span>
+              } @else if (baanoolCard()!.accidente) {
+                <!-- Accidenté (06/10/2026) : le triangle « ! » du marqueur, dit en mots. -->
+                <span class="bn-vcard-badge bn-vcard-badge--alerte" [attr.title]="titreAccidente(baanoolCard()!)">
+                  <span class="bn-vcard-badge-dot"></span>
+                  Accidenté
                 </span>
               } @else if (baanoolCard()!.immobilise) {
                 <!-- Immobilisé (06/10/2026) : le badge « clé » du marqueur, dit en mots. Le badge
@@ -1845,6 +1875,13 @@ const RESYNC_RADIUS_M = 150;
     .fl-pastille--debranche {
       background:
         linear-gradient(45deg, transparent calc(50% - 1px), var(--texte-alerte) calc(50% - 1px) calc(50% + 1px), transparent calc(50% + 1px)),
+        color-mix(in srgb, var(--texte-inactif) 55%, transparent);
+      box-shadow: inset 0 0 0 1.5px var(--texte-alerte);
+    }
+    /* Accidenté : la même pastille grisée, cerclée de rouge « alerte », avec le point du triangle. */
+    .fl-pastille--accidente {
+      background:
+        radial-gradient(circle at 76% 76%, var(--texte-alerte) 0 27%, transparent 29%),
         color-mix(in srgb, var(--texte-inactif) 55%, transparent);
       box-shadow: inset 0 0 0 1.5px var(--texte-alerte);
     }
@@ -2978,6 +3015,8 @@ export class MapComponent implements AfterViewInit, OnDestroy {
   protected readonly COULEUR_DEBRANCHE_COEUR = UNPLUGGED_MARKER_COLOR;
   protected readonly COULEUR_IMMOBILISE = COULEURS_CARTE.immobilise;
   protected readonly COULEUR_IMMOBILISE_COEUR = IMMOBILIZED_MARKER_COLOR;
+  protected readonly COULEUR_ACCIDENT = COULEURS_CARTE.accidente;
+  protected readonly COULEUR_ACCIDENT_COEUR = ACCIDENT_MARKER_COLOR;
   /** L'émeraude des stations de la flotte — celle de `fleetPlaceStyle('FUEL_STATION')`. */
   protected readonly COULEUR_POMPE = fleetPlaceStyle('FUEL_STATION').color;
 
@@ -3482,10 +3521,13 @@ export class MapComponent implements AfterViewInit, OnDestroy {
   protected readonly nbDebranches = computed(() => nbDebranchesSurLaCarte(this.scopedSnapshot()));
   /** Même règle pour les immobilisés (badge « clé ») — 06/10/2026. */
   protected readonly nbImmobilises = computed(() => nbImmobilisesSurLaCarte(this.scopedSnapshot()));
+  /** Même règle pour les accidentés (triangle « ! ») — 06/10/2026. */
+  protected readonly nbAccidentes = computed(() => nbAccidentesSurLaCarte(this.scopedSnapshot()));
 
   /** Libellé d'état d'une ligne — ce qu'on affiche à droite de la plaque. */
   protected ligneEtatLabel(v: LigneFlotte): string {
     if (v.debranche) return 'Boîtier débranché';
+    if (v.accidente) return 'Accidenté';
     if (v.immobilise) return 'Immobilisé';
     if (v.etat === 'route') return `${v.vitesse} km/h`;
     if (v.etat === 'arret') return 'À l’arrêt';
@@ -6073,6 +6115,7 @@ export class MapComponent implements AfterViewInit, OnDestroy {
         // États DÉCLARÉS sur la fiche : débranché (marqueur barré) et immobilisé (badge clé),
         // prioritaires sur tout le reste. L'instantané fait foi (il suit une remise en service).
         unplugged: estDebranche(motifHorsService(snap, meta)),
+        accident: estAccidente(motifHorsService(snap, meta)),
         immobilized: estImmobilise(motifHorsService(snap, meta)),
       };
 
@@ -6534,6 +6577,7 @@ export class MapComponent implements AfterViewInit, OnDestroy {
       lastNoFixAt: snap?.lastNoFixAt ?? null,
       group: meta.group ?? null,
       debranche: estDebranche(motifHorsService(snap, meta)),
+      accidente: estAccidente(motifHorsService(snap, meta)),
       immobilise: estImmobilise(motifHorsService(snap, meta)),
       horsServiceDepuis: snap?.outOfServiceSince ?? null,
     });
@@ -6555,6 +6599,11 @@ export class MapComponent implements AfterViewInit, OnDestroy {
   /** Infobulle du badge « Boîtier débranché » : qui l'a dit, depuis quand, et ce que vaut la position. */
   protected titreDebranche(card: BaanoolCardData): string {
     return `Déclaré débranché sur la fiche du véhicule${this.declareLe(card)} — la position affichée est la dernière reçue avant.`;
+  }
+
+  /** Infobulle du badge « Accidenté » : ce que l'état coupe (cf. bandeau de la fiche). */
+  protected titreAccidente(card: BaanoolCardData): string {
+    return `Déclaré accidenté sur la fiche du véhicule${this.declareLe(card)} — hors service : ni réservation, ni alertes, ni analyse de trajets.`;
   }
 
   /** Infobulle du badge « Immobilisé » : ce que l'état coupe (cf. bandeau de la fiche). */

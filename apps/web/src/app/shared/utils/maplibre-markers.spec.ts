@@ -4,6 +4,7 @@ import {
   OFFLINE_MARKER_COLOR,
   GPS_LOST_MARKER_COLOR,
   speedColor,
+  ACCIDENT_MARKER_COLOR,
   IMMOBILIZED_MARKER_COLOR,
   UNPLUGGED_MARKER_COLOR,
   updateVehicleMarkerEl,
@@ -540,6 +541,112 @@ describe('marqueur — véhicule immobilisé déclaré', () => {
     it('ne montre AUCUNE clé sur un marqueur ordinaire', () => {
       const el = poser(data({ speedKmh: 30, ignition: true }));
       expect(style(el, '.tracky-marker__cle').display).toBe('none');
+    });
+  });
+});
+
+/**
+ * Véhicule ACCIDENTÉ déclaré sur la fiche — demande du propriétaire du 06/10/2026 : « fais pareil
+ * pour accidenté ». Les trois motifs de la fiche ont désormais chacun leur habillage.
+ */
+describe('marqueur — véhicule accidenté déclaré', () => {
+  function data(over: Partial<VehicleMarkerData> = {}): VehicleMarkerData {
+    return {
+      trackerId: 't-370',
+      vehicleId: 'v-370',
+      type: 'CAR',
+      plate: 'KSR-370',
+      speedKmh: 0,
+      heading: 0,
+      ignition: false,
+      ...over,
+    } as VehicleMarkerData;
+  }
+  const labelOf = (el: HTMLElement) => el.querySelector('.tracky-marker__plate')!.textContent;
+  const couleurOf = (el: HTMLElement) => el.style.getPropertyValue('--tracky-color').toLowerCase();
+
+  it('se dessine grisé avec sa classe, sans l’habillage hors ligne, et le dit', () => {
+    const el = buildVehicleMarkerEl(data({ accident: true, offline: true }));
+    expect(el.classList).toContain('tracky-marker--accidente');
+    expect(el.classList).not.toContain('tracky-marker--offline');
+    expect(couleurOf(el)).toBe(ACCIDENT_MARKER_COLOR.toLowerCase());
+    expect(labelOf(el)).toBe('KSR-370 · accidenté');
+    expect(el.getAttribute('aria-label')).toBe('Vehicule KSR-370, accidenté');
+  });
+
+  it('🔴 une seule déclaration habille la pastille : débranché, puis accidenté, puis immobilisé', () => {
+    const tous = buildVehicleMarkerEl(data({ unplugged: true, accident: true, immobilized: true }));
+    expect(tous.classList).toContain('tracky-marker--debranche');
+    expect(tous.classList).not.toContain('tracky-marker--accidente');
+    expect(tous.classList).not.toContain('tracky-marker--immobilise');
+
+    const deux = buildVehicleMarkerEl(data({ accident: true, immobilized: true }));
+    expect(deux.classList).toContain('tracky-marker--accidente');
+    expect(deux.classList).not.toContain('tracky-marker--immobilise');
+    expect(labelOf(deux)).toBe('KSR-370 · accidenté');
+  });
+
+  it('se pose puis se lève EN DIRECT, sans reconstruire la pastille', () => {
+    const el = buildVehicleMarkerEl(data({ speedKmh: 25, ignition: true }));
+    const svg = el.querySelector('svg');
+    updateVehicleMarkerEl(el, data({ speedKmh: 25, ignition: true, accident: true }));
+    expect(el.classList).toContain('tracky-marker--accidente');
+    expect(labelOf(el)).toBe('KSR-370 · accidenté');
+
+    updateVehicleMarkerEl(el, data({ speedKmh: 25, ignition: true }));
+    expect(el.classList).not.toContain('tracky-marker--accidente');
+    expect(labelOf(el)).toBe('KSR-370 · 25');
+    expect(el.querySelector('svg')).toBe(svg);
+  });
+
+  it('porte le triangle dès la création, sur TOUS les marqueurs, et la couleur de la palette', () => {
+    for (const accident of [true, false]) {
+      const el = buildVehicleMarkerEl(data({ accident }));
+      for (const sel of ['.tracky-marker__accident', '.tracky-marker__accident-anneau', '.tracky-marker__accident-triangle', '.tracky-marker__accident-signe']) {
+        expect(el.querySelector(sel)).withContext(`${sel} (accident=${accident})`).not.toBeNull();
+      }
+      expect(el.style.getPropertyValue('--tracky-accident').toUpperCase()).toBe(COULEURS_CARTE.accidente);
+    }
+  });
+
+  describe('rendu par la feuille globale', () => {
+    const rgb = (hex: string) => {
+      const n = hex.replace('#', '');
+      return `rgb(${parseInt(n.slice(0, 2), 16)}, ${parseInt(n.slice(2, 4), 16)}, ${parseInt(n.slice(4, 6), 16)})`;
+    };
+    const style = (el: HTMLElement, sel: string) => getComputedStyle(el.querySelector(sel)!);
+    let poses: HTMLElement[] = [];
+    const poser = (d: VehicleMarkerData) => {
+      const el = buildVehicleMarkerEl(d);
+      document.body.appendChild(el);
+      poses.push(el);
+      return el;
+    };
+    afterEach(() => { poses.forEach((el) => el.remove()); poses = []; });
+
+    it('montre l’anneau et le triangle MAGENTA, le « ! » blanc, et ni barre ni clé', () => {
+      const el = poser(data({ accident: true }));
+      expect(style(el, '.tracky-marker__accident').display).not.toBe('none');
+      expect(style(el, '.tracky-marker__accident-anneau').stroke).toBe(rgb(COULEURS_CARTE.accidente));
+      expect(style(el, '.tracky-marker__accident-triangle').fill).toBe(rgb(COULEURS_CARTE.accidente));
+      expect(style(el, '.tracky-marker__accident-signe').stroke).toBe('rgb(255, 255, 255)');
+      expect(style(el, '.tracky-marker__barre').display).toBe('none');
+      expect(style(el, '.tracky-marker__cle').display).toBe('none');
+    });
+
+    it('masque la flèche, le contact, le halo et le logo ; estompe le cœur', () => {
+      const el = poser(data({ accident: true, brand: 'Dacia', active: true, ignition: true }));
+      for (const sel of ['.tracky-marker__cap', '.tracky-marker__acc', '.tracky-marker__pulse']) {
+        expect(style(el, sel).display).withContext(sel).toBe('none');
+      }
+      const logo = el.querySelector('.tracky-marker__brand');
+      if (logo) expect(getComputedStyle(logo).display).toBe('none');
+      expect(Number(style(el, '.tracky-marker__coeur').fillOpacity)).toBeCloseTo(0.55, 2);
+    });
+
+    it('ne montre AUCUN triangle sur un marqueur ordinaire', () => {
+      const el = poser(data({ speedKmh: 30, ignition: true }));
+      expect(style(el, '.tracky-marker__accident').display).toBe('none');
     });
   });
 });

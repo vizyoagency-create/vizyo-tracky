@@ -14,7 +14,7 @@ import {
   // Boîtier débranché déclaré (05/10/2026) — bandeau au-dessus de la mini-carte.
   Unplug,
 } from 'lucide-angular';
-import { estDebranche, estImmobilise } from '../../shared/utils/hors-service';
+import { estAccidente, estDebranche, estImmobilise } from '../../shared/utils/hors-service';
 
 /** Espace dépôt (2026-08) — la mission en cours affichée en bandeau (A2 § 9). */
 interface MissionEnCours {
@@ -668,6 +668,14 @@ import { VehicleQrDialogComponent } from './vehicle-qr-dialog.component';
                   affichée est la dernière reçue avant.
                 </span>
               </p>
+            } @else if (accidente()) {
+              <p class="vd-carte-accidente" role="note">
+                <lucide-icon [img]="AlertTriangle" [size]="14"></lucide-icon>
+                <span>
+                  <strong>Accidenté</strong>{{ depuisHorsService() }} &mdash; hors service : ni
+                  réservation, ni alertes, ni analyse de trajets.
+                </span>
+              </p>
             } @else if (immobilise()) {
               <p class="vd-carte-immobilise" role="note">
                 <lucide-icon [img]="WrenchIcon" [size]="14"></lucide-icon>
@@ -687,6 +695,7 @@ import { VehicleQrDialogComponent } from './vehicle-qr-dialog.component';
               [ignition]="pos.ignition"
               [unplugged]="debranche()"
               [immobilized]="immobilise()"
+              [accident]="accidente()"
               [interactive]="!isWatchman()"
               height="500px"
             />
@@ -1311,6 +1320,22 @@ import { VehicleQrDialogComponent } from './vehicle-qr-dialog.component';
     }
     .vd-carte-debranche strong { color: var(--texte-alerte); font-weight: 700; }
     .vd-carte-debranche lucide-icon { color: var(--texte-alerte); flex-shrink: 0; margin-top: 2px; }
+    /* Accidenté : le même bandeau que le débranché, rouge « alerte » (jetons du thème). */
+    .vd-carte-accidente {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      margin: 0 0 10px;
+      padding: 8px 12px;
+      background: color-mix(in srgb, var(--danger) 10%, var(--bg-secondary));
+      border: 1px solid color-mix(in srgb, var(--danger) 35%, var(--border-subtle));
+      border-radius: 10px;
+      color: var(--fg-secondary);
+      font-size: 12.5px;
+      line-height: 1.45;
+    }
+    .vd-carte-accidente strong { color: var(--texte-alerte); font-weight: 700; }
+    .vd-carte-accidente lucide-icon { color: var(--texte-alerte); flex-shrink: 0; margin-top: 2px; }
     /* Immobilisé : le même bandeau, dans l'ambre « attente » (jetons du thème). */
     .vd-carte-immobilise {
       display: flex;
@@ -2516,6 +2541,9 @@ export class VehicleDetailComponent implements OnInit {
 
   /** Immobilisé DÉCLARÉ sur la fiche (06/10/2026) : pastille à badge « clé » et bandeau, à tous les profils. */
   protected readonly immobilise = computed(() => estImmobilise(this.vehicle()?.outOfServiceReason));
+
+  /** Accidenté DÉCLARÉ sur la fiche (06/10/2026) : pastille à triangle « ! » et bandeau, à tous les profils. */
+  protected readonly accidente = computed(() => estAccidente(this.vehicle()?.outOfServiceReason));
 
   /** « depuis le 31 août 2026 » — rien du tout plutôt que « depuis le une date inconnue ». */
   protected readonly depuisHorsService = computed(() => {

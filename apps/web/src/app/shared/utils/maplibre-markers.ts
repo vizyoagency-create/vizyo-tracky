@@ -70,6 +70,11 @@ export const UNPLUGGED_MARKER_COLOR = OFFLINE_MARKER_COLOR;
  * n'est pas disponible. L'ambre est porté par l'anneau et le badge « clé » (`--tracky-cle`).
  */
 export const IMMOBILIZED_MARKER_COLOR = OFFLINE_MARKER_COLOR;
+/**
+ * Cœur d'un marqueur « accidenté » : grisé aussi. Le magenta est porté par l'anneau et le
+ * triangle « ! » (`--tracky-accident`).
+ */
+export const ACCIDENT_MARKER_COLOR = OFFLINE_MARKER_COLOR;
 
 /**
  * La barre d'« interdit » va d'un bord à l'autre de l'anneau (r = 23, centre 28) sur la
@@ -90,12 +95,20 @@ const CLE_LUCIDE =
   'a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z';
 
 /**
- * L'état DÉCLARÉ sur la fiche, s'il habille le marqueur — une seule règle de priorité pour
- * toute la fabrique : débranché, puis immobilisé (un véhicule n'a qu'un motif, mais une donnée
- * incohérente ne doit pas faire porter deux habillages à la même pastille).
+ * Le triangle « ! » d'un véhicule accidenté : un triangle plein posé en bas à droite (la place de
+ * la pastille de contact, masquée), pointe en haut — la forme du panneau de danger, distincte du
+ * badge ROND de la clé. Le « ! » est un trait et un point, tracés à part.
  */
-function etatDeclare(data: VehicleMarkerData): 'debranche' | 'immobilise' | null {
+const TRIANGLE_ACCIDENT = 'M42 31.5 L52 49 L32 49 Z';
+
+/**
+ * L'état DÉCLARÉ sur la fiche, s'il habille le marqueur — une seule règle de priorité pour
+ * toute la fabrique : débranché, puis accidenté, puis immobilisé (un véhicule n'a qu'un motif,
+ * mais une donnée incohérente ne doit pas faire porter deux habillages à la même pastille).
+ */
+function etatDeclare(data: VehicleMarkerData): 'debranche' | 'accidente' | 'immobilise' | null {
   if (data.unplugged) return 'debranche';
+  if (data.accident) return 'accidente';
   if (data.immobilized) return 'immobilise';
   return null;
 }
@@ -137,6 +150,7 @@ function nomAccessible(data: VehicleMarkerData): string {
   const base = data.plate ? `Vehicule ${data.plate}` : 'Vehicule';
   switch (etatDeclare(data)) {
     case 'debranche': return `${base}, boîtier débranché`;
+    case 'accidente': return `${base}, accidenté`;
     case 'immobilise': return `${base}, immobilisé`;
     default: return base;
   }
@@ -176,6 +190,7 @@ function markerColor(data: VehicleMarkerData): string {
   // immobilisé non plus : il est au garage, et le dire vert « en route » serait faux.
   const declare = etatDeclare(data);
   if (declare === 'debranche') return UNPLUGGED_MARKER_COLOR;
+  if (declare === 'accidente') return ACCIDENT_MARKER_COLOR;
   if (declare === 'immobilise') return IMMOBILIZED_MARKER_COLOR;
   if (data.parkedDeadZone) return OFFLINE_MARKER_COLOR;
   if (data.gpsLost) return GPS_LOST_MARKER_COLOR;
@@ -228,6 +243,13 @@ export interface VehicleMarkerData {
    */
   immobilized?: boolean;
   /**
+   * Véhicule ACCIDENTÉ, déclaré sur la fiche. Demande du propriétaire du 06/10/2026 : « fais
+   * pareil pour accidenté ». Cœur gris estompé, anneau magenta et triangle « ! » en bas à droite ;
+   * ni cap, ni contact, ni logo ; étiquette « · accidenté ». Priorité : après le débranché,
+   * avant l'immobilisé (`etatDeclare`).
+   */
+  accident?: boolean;
+  /**
    * Vitesse (km/h) a utiliser pour la COULEUR uniquement. Permet d'afficher une
    * couleur de mouvement (vert/orange) basee sur la vitesse robuste derivee du
    * deplacement, meme quand le boitier rapporte `speedKmh = 0` en roulant
@@ -249,6 +271,7 @@ export function plateLabel(data: VehicleMarkerData): string {
   // Et un véhicule immobilisé n'a pas de vitesse à afficher, même si son boîtier émet encore.
   const declare = etatDeclare(data);
   if (declare === 'debranche') return `${data.plate} · débranché`;
+  if (declare === 'accidente') return `${data.plate} · accidenté`;
   if (declare === 'immobilise') return `${data.plate} · immobilisé`;
   if (isStale(data)) return `${data.plate} · hors ligne`;
   // ⚠️ LA MÊME vitesse que celle qui donne la COULEUR — cf. `vitesseAffichee`.
@@ -317,6 +340,7 @@ export function buildVehicleMarkerEl(data: VehicleMarkerData): HTMLElement {
   // clés de la légende.
   el.style.setProperty('--tracky-barre', COULEURS_CARTE.debranche);
   el.style.setProperty('--tracky-cle', COULEURS_CARTE.immobilise);
+  el.style.setProperty('--tracky-accident', COULEURS_CARTE.accidente);
   el.innerHTML = `
     <svg class="tracky-marker__pastille" viewBox="0 0 56 56" width="56" height="56"
          aria-hidden="true" focusable="false">
@@ -341,6 +365,12 @@ export function buildVehicleMarkerEl(data: VehicleMarkerData): HTMLElement {
         <g transform="translate(35.5 35.5) scale(0.54)">
           <path class="tracky-marker__cle-trait" d="${CLE_LUCIDE}" />
         </g>
+      </g>
+      <g class="tracky-marker__accident">
+        <circle class="tracky-marker__accident-anneau" cx="28" cy="28" r="23" />
+        <path class="tracky-marker__accident-triangle" d="${TRIANGLE_ACCIDENT}" />
+        <line class="tracky-marker__accident-signe" x1="42" y1="37.6" x2="42" y2="42.4" />
+        <line class="tracky-marker__accident-signe" x1="42" y1="45.6" x2="42" y2="45.7" />
       </g>
       <circle class="tracky-marker__acc ${ignClass}" cx="40.5" cy="40.5" r="5" />
     </svg>
@@ -434,6 +464,7 @@ export function updateVehicleMarkerEl(el: HTMLElement, data: VehicleMarkerData):
   // fiche ne fait que basculer ces classes au prochain rendu.
   const declare = etatDeclare(data);
   el.classList.toggle('tracky-marker--debranche', declare === 'debranche');
+  el.classList.toggle('tracky-marker--accidente', declare === 'accidente');
   el.classList.toggle('tracky-marker--immobilise', declare === 'immobilise');
 }
 

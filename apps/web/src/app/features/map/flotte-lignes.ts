@@ -3,7 +3,7 @@ import {
   getVehicleConnectivityState,
   type VehicleConnectivityState,
 } from '@vizyo/tracky-shared';
-import { estDebranche, estImmobilise } from '../../shared/utils/hors-service';
+import { estAccidente, estDebranche, estImmobilise } from '../../shared/utils/hors-service';
 
 /** Les quatre puces de la feuille flotte (planche « Carte + flotte »). */
 export type FiltreFlotte = 'tous' | 'route' | 'arret' | 'hors-ligne';
@@ -28,6 +28,8 @@ export interface LigneFlotte {
    * libellé change, pas le rangement.
    */
   immobilise: boolean;
+  /** Accidenté DÉCLARÉ sur la fiche (06/10/2026) — la ligne dit « Accidenté » ; rangement inchangé. */
+  accidente: boolean;
 }
 
 /** Ce dont la ligne a besoin, et rien de plus — sous-ensemble de `VehicleSnapshotDto`. */
@@ -107,6 +109,7 @@ export function construireLignesFlotte(
         silence: formatSilenceLabel(v.lastSeenAt, maintenant),
         debranche,
         immobilise: !debranche && estImmobilise(v.outOfServiceReason),
+        accidente: !debranche && estAccidente(v.outOfServiceReason),
       };
     })
     .sort((a, b) => RANG[a.etat] - RANG[b.etat] || a.plate.localeCompare(b.plate));

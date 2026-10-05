@@ -1,9 +1,12 @@
 import {
+  estAccidente,
   estDebranche,
   estImmobilise,
   motifHorsService,
+  MOTIF_ACCIDENT,
   MOTIF_DEBRANCHE,
   MOTIF_IMMOBILISE,
+  nbAccidentesSurLaCarte,
   nbDebranchesSurLaCarte,
   nbImmobilisesSurLaCarte,
 } from './hors-service';
@@ -95,5 +98,25 @@ describe('estImmobilise et nbImmobilisesSurLaCarte', () => {
       { trackerId: 't', lastLat: null, lastLng: null, outOfServiceReason: MOTIF_IMMOBILISE },
       { ...position, outOfServiceReason: MOTIF_DEBRANCHE },
     ])).toBe(2);
+  });
+});
+
+/** Accidenté (06/10/2026) : même règle, troisième motif. */
+describe('estAccidente et nbAccidentesSurLaCarte', () => {
+  const position = { trackerId: 't', lastLat: 43.6, lastLng: 1.44 };
+
+  it('ne reconnaît que le motif « accidenté »', () => {
+    expect(estAccidente(MOTIF_ACCIDENT)).toBeTrue();
+    expect(estAccidente(MOTIF_IMMOBILISE)).toBeFalse();
+    expect(estAccidente(MOTIF_DEBRANCHE)).toBeFalse();
+    expect(estAccidente(null)).toBeFalse();
+  });
+
+  it('compte les accidentés qui ont une position, et eux seuls', () => {
+    expect(nbAccidentesSurLaCarte([
+      { ...position, outOfServiceReason: MOTIF_ACCIDENT },
+      { trackerId: null, lastLat: null, lastLng: null, outOfServiceReason: MOTIF_ACCIDENT },
+      { ...position, outOfServiceReason: MOTIF_IMMOBILISE },
+    ])).toBe(1);
   });
 });

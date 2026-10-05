@@ -62,6 +62,16 @@ export const COULEURS_CARTE = {
    * CŒUR d'un véhicule en mouvement, jamais un anneau.
    */
   immobilise: '#B45309',
+  /**
+   * L'anneau et le triangle « ! » d'un véhicule ACCIDENTÉ (déclaré sur la fiche, 06/10/2026).
+   *
+   * Magenta : la seule teinte encore libre sur la carte. Mesuré au validateur de palette (vision
+   * normale / deutéranopie, ΔE OKLab) : 25,5 / 25,5 contre le rouge du débranché, 28,9 / 25,7
+   * contre l'ambre de l'immobilisé, 18,4 / 11,3 contre le violet des stations détectées — tous
+   * au-dessus des planchers de 15 et 8. Contraste : 3,8:1 (fond clair), 3,4:1 (sombre), 4,7:1 au
+   * « ! » blanc. Le triangle, et non un rond, le sépare aussi par la FORME du badge « clé ».
+   */
+  accidente: '#C026D3',
 } as const;
 
 /**

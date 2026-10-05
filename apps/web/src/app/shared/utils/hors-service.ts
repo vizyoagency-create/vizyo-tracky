@@ -3,13 +3,14 @@
  *
  * Demande du propriétaire du 05/10/2026 : un véhicule marqué « Boîtier débranché » sur sa
  * fiche doit se voir BARRÉ — sur la page Carte (marqueur, liste flotte, card, légende) et sur
- * la mini-carte de sa fiche. Le 06/10 : « pareil pour immobilisé, avec la clé ». Seul
- * « accidenté » garde le marqueur ordinaire.
+ * la mini-carte de sa fiche. Le 06/10 : « pareil pour immobilisé, avec la clé », puis « pareil
+ * pour accidenté » — les trois motifs de la fiche ont maintenant leur marqueur.
  */
 
 /** Les motifs posés par le sélecteur « État d'exploitation » de la fiche. */
 export const MOTIF_DEBRANCHE = 'TRACKER_UNPLUGGED';
 export const MOTIF_IMMOBILISE = 'IMMOBILIZED';
+export const MOTIF_ACCIDENT = 'ACCIDENT';
 
 interface PorteMotif {
   outOfServiceReason?: string | null;
@@ -38,6 +39,11 @@ export function estDebranche(motif: string | null | undefined): boolean {
   return motif === MOTIF_DEBRANCHE;
 }
 
+/** Accidenté — 06/10/2026 : marqueur grisé à triangle « ! » magenta. */
+export function estAccidente(motif: string | null | undefined): boolean {
+  return motif === MOTIF_ACCIDENT;
+}
+
 /** Immobilisé (au garage, à l'atelier) — 06/10/2026 : marqueur grisé à badge « clé ». */
 export function estImmobilise(motif: string | null | undefined): boolean {
   return motif === MOTIF_IMMOBILISE;
@@ -59,6 +65,11 @@ interface LigneInstantane extends PorteMotif {
  */
 export function nbDebranchesSurLaCarte(vehicules: readonly LigneInstantane[]): number {
   return nbSurLaCarte(vehicules, MOTIF_DEBRANCHE);
+}
+
+/** Même règle pour la clé « Accidenté (n) » de la légende. */
+export function nbAccidentesSurLaCarte(vehicules: readonly LigneInstantane[]): number {
+  return nbSurLaCarte(vehicules, MOTIF_ACCIDENT);
 }
 
 /** Même règle pour la clé « Immobilisé (n) » de la légende. */

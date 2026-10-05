@@ -758,6 +758,8 @@ button, a, [role="button"], input[type="button"], input[type="submit"], label {
   --tracky-barre: #dc2626;
   /* Ambre de la clé d'un véhicule immobilisé — même discipline (`COULEURS_CARTE.immobilise`). */
   --tracky-cle: #b45309;
+  /* Magenta du triangle d'un véhicule accidenté — même discipline (`COULEURS_CARTE.accidente`). */
+  --tracky-accident: #c026d3;
   /* La couleur est portée UNE FOIS ici ; toutes les formes la reprennent en
      currentColor (décision de la planche : un seul point de vérité). */
   color: var(--tracky-color);
@@ -1090,23 +1092,55 @@ textarea:focus-visible,
   stroke-linejoin: round;
 }
 
-/* Habillage COMMUN aux deux états déclarés. L'anneau blanc d'origine devient le liseré de
+/* Véhicule ACCIDENTÉ — déclaré sur la fiche. Demande du propriétaire du 06/10/2026 : « fais
+   pareil pour accidenté ». Même habillage grisé ; anneau et TRIANGLE « ! » magenta
+   (`--tracky-accident`, depuis `COULEURS_CARTE.accidente`). Le triangle — la forme du panneau de
+   danger — le sépare du badge ROND de la clé, et le magenta du rouge et de l'ambre (mesuré au
+   validateur de palette). Choisi sur prototype parmi quatre formes. */
+.tracky-marker__accident { display: none; }
+.tracky-marker--accidente .tracky-marker__accident { display: inline; }
+.tracky-marker__accident-anneau {
+  fill: none;
+  stroke: var(--tracky-accident);
+  stroke-width: 3;
+}
+.tracky-marker__accident-triangle {
+  fill: var(--tracky-accident);
+  stroke: #fff;
+  stroke-width: 2;
+  stroke-linejoin: round;
+}
+.tracky-marker__accident-signe {
+  stroke: #fff;
+  stroke-width: 2.4;
+  stroke-linecap: round;
+}
+
+/* Habillage COMMUN aux trois états déclarés. L'anneau blanc d'origine devient le liseré de
    l'anneau de couleur. */
 .tracky-marker--debranche .tracky-marker__anneau,
+.tracky-marker--accidente .tracky-marker__anneau,
 .tracky-marker--immobilise .tracky-marker__anneau { stroke: #fff; stroke-width: 6; }
 .tracky-marker--debranche .tracky-marker__coeur,
+.tracky-marker--accidente .tracky-marker__coeur,
 .tracky-marker--immobilise .tracky-marker__coeur { fill-opacity: 0.55; }
 .tracky-marker--debranche .tracky-marker__icone,
+.tracky-marker--accidente .tracky-marker__icone,
 .tracky-marker--immobilise .tracky-marker__icone { opacity: 0.75; }
 .tracky-marker--debranche .tracky-marker__cap,
 .tracky-marker--debranche .tracky-marker__pulse,
 .tracky-marker--debranche .tracky-marker__acc,
 .tracky-marker--debranche .tracky-marker__brand,
+.tracky-marker--accidente .tracky-marker__cap,
+.tracky-marker--accidente .tracky-marker__pulse,
+.tracky-marker--accidente .tracky-marker__acc,
+.tracky-marker--accidente .tracky-marker__brand,
 .tracky-marker--immobilise .tracky-marker__cap,
 .tracky-marker--immobilise .tracky-marker__pulse,
 .tracky-marker--immobilise .tracky-marker__acc,
 .tracky-marker--immobilise .tracky-marker__brand { display: none; }
 .tracky-marker--debranche .tracky-marker__plate { border-color: rgba(220, 38, 38, 0.7); }
+.tracky-marker--accidente .tracky-marker__plate { border-color: rgba(192, 38, 211, 0.75); }
 .tracky-marker--immobilise .tracky-marker__plate { border-color: rgba(180, 83, 9, 0.8); }
 
 /* ════════════════════════════════════════════════════════════
