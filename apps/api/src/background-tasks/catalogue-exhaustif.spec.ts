@@ -1,5 +1,7 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
+import type { BackgroundTasksResponse } from '@vizyo/tracky-shared';
+import { BackgroundTasksService } from './background-tasks.service';
 
 /**
  * ── LE TEST QUI EMPÊCHE UN TRAITEMENT DE TOURNER EN SILENCE ──────────────────────────
@@ -15,9 +17,10 @@ import { join, relative, sep } from 'node:path';
  * LES TRAITEMENTS SILENCIEUX. Le point aveugle le plus coûteux possible : si elle s'arrêtait,
  * plus rien ne signalait aucun arrêt, y compris le sien.
  *
- * Le test parcourt donc les sources, relève chaque fichier portant un `@Cron`, et exige que le
- * catalogue le revendique via son champ `source`. Ajouter un cron sans l'inscrire fait échouer
- * la construction — l'oubli devient impossible, il ne dépend plus de la vigilance.
+ * Le test parcourt donc les sources, relève chaque `@Cron` et chaque `@Interval`, et exige que le
+ * catalogue en porte AUTANT d'entrées pour ce fichier, via son champ `source`. Ajouter un cron sans
+ * l'inscrire fait échouer la construction — l'oubli devient impossible, il ne dépend plus de la
+ * vigilance. (Jusqu'au 2026-10-05, il comptait les FICHIERS : voir `decorateursParFichier`.)
  */
 const RACINE = join(__dirname, '..');
 const CATALOGUE = join(__dirname, 'background-tasks.service.ts');
@@ -66,6 +69,65 @@ function sourcesCataloguees(): Set<string> {
   const out = new Set<string>();
   for (const m of texte.matchAll(/source:\s*'([^']+)'/g)) out.add(m[1]!);
   return out;
+}
+
+type Genre = 'cron' | 'interval';
+
+/**
+ * Les DÉCORATEURS réels de chaque fichier — `@Cron(` et `@Interval(` hors commentaires, comptés
+ * un par un.
+ *
+ * ⚠️ TROISIÈME TROU DU MÊME GARDE (2026-10-05). Raisonner par fichier (`fichiersPlanifies`) voit un
+ *    fichier oublié, jamais un SECOND traitement dans un fichier déjà revendiqué. Deux crons du
+ *    coupe-circuit sont passés ainsi : `drainAutomaticCutQueue` (schedule-cron, toutes les 10 s) et
+ *    `processPendingRestores` (engine-control, toutes les 15 s) — le filet des reprises moteur.
+ *    L'écran affichait le bon diagnostic, « 51 crons au runtime, 49 au catalogue », sans que rien ne
+ *    dise lesquels. Le même trou avait déjà caché le second cron de sms-heartbeat (2026-08-21).
+ */
+function decorateursParFichier(): Map<string, Record<Genre, number>> {
+  const out = new Map<string, Record<Genre, number>>();
+  for (const f of sourcesTs(RACINE)) {
+    if (f === CATALOGUE) continue;
+    const n: Record<Genre, number> = { cron: 0, interval: 0 };
+    for (const l of readFileSync(f, 'utf8').split('\n')) {
+      const t = l.trim();
+      if (t.startsWith('//') || t.startsWith('*') || t.startsWith('/*')) continue;
+      n.cron += t.split('@Cron(').length - 1;
+      n.interval += t.split('@Interval(').length - 1;
+    }
+    if (n.cron + n.interval > 0) out.set(relative(RACINE, f).split(sep).join('/'), n);
+  }
+  return out;
+}
+
+function totalDecorateurs(): Record<Genre, number> {
+  const total: Record<Genre, number> = { cron: 0, interval: 0 };
+  for (const n of decorateursParFichier().values()) {
+    total.cron += n.cron;
+    total.interval += n.interval;
+  }
+  return total;
+}
+
+/**
+ * Les entrées du catalogue, lues dans son TEXTE comme le reste de ce garde : une par objet de
+ * premier niveau du tableau `CATALOG` — toutes s'ouvrent par « { » seul, indenté de deux espaces.
+ */
+function entreesCataloguees(): { id: string; source: string | null; kind: string; externe: boolean }[] {
+  const texte = readFileSync(CATALOGUE, 'utf8');
+  const debut = texte.indexOf('const CATALOG: CatalogEntry[] = [');
+  const fin = texte.indexOf('\n];', debut);
+  if (debut < 0 || fin < 0) throw new Error('tableau CATALOG introuvable dans background-tasks.service.ts');
+  return texte
+    .slice(debut, fin)
+    .split(/\n {2}\{\r?\n/)
+    .slice(1)
+    .map((bloc) => ({
+      id: /\bid:\s*'([^']+)'/.exec(bloc)?.[1] ?? '?',
+      source: /\bsource:\s*'([^']+)'/.exec(bloc)?.[1] ?? null,
+      kind: /\bkind:\s*'([^']+)'/.exec(bloc)?.[1] ?? '?',
+      externe: /\bexterne:\s*'/.test(bloc),
+    }));
 }
 
 describe('Catalogue des traitements de fond — exhaustif par construction', () => {
@@ -159,5 +221,54 @@ describe('Catalogue des traitements de fond — exhaustif par construction', () 
     // Second trou du 2026-08-19 : un traitement METIER, toutes les minutes, invisible. Sans lui
     // une mission resterait « planifiee » alors que le vehicule est deja parti.
     expect(sourcesCataloguees()).toContain('missions/mission-status.service.ts');
+  });
+
+  it('le parseur du catalogue lit toutes les entrées — il ne s’est pas vidé en silence', () => {
+    // Même rôle que le garde « nombre plausible » plus haut : si la lecture du tableau cassait,
+    // les tests par décorateur ci-dessous passeraient en ne comparant plus rien.
+    const entrees = entreesCataloguees();
+    expect(entrees.length).toBeGreaterThanOrEqual(60);
+    expect(entrees.filter((e) => e.id === '?' || e.kind === '?')).toEqual([]);
+  });
+
+  it('⚠️ CHAQUE @Cron et CHAQUE @Interval a SA PROPRE entrée — un fichier revendiqué ne couvre plus son second traitement', () => {
+    const code = decorateursParFichier();
+    const entrees = entreesCataloguees().filter((e) => !e.externe && e.source !== null);
+    const fichiers = new Set([...code.keys(), ...entrees.map((e) => e.source!)]);
+    const ecarts: string[] = [];
+    for (const f of [...fichiers].sort()) {
+      for (const genre of ['cron', 'interval'] as const) {
+        const dansLeCode = code.get(f)?.[genre] ?? 0;
+        const auCatalogue = entrees.filter((e) => e.source === f && e.kind === genre).length;
+        if (dansLeCode !== auCatalogue) {
+          ecarts.push(`${f} : ${dansLeCode} @${genre === 'cron' ? 'Cron' : 'Interval'} dans le code, ${auCatalogue} au catalogue`);
+        }
+      }
+    }
+    expect(ecarts).toEqual([]);
+    // Si ce test tombe : un traitement planifié n'a pas sa ligne dans /admin/background-tasks — ou
+    // une ligne décrit un traitement qui n'existe plus. Une entrée PAR décorateur, pas par fichier.
+  });
+
+  it('⚠️ l’écran compare le runtime à CE décompte : code = catalogue → plus de bandeau « écart »', () => {
+    // Au runtime, chaque décorateur devient un job du registre NestJS : c'est ce que `buildHealth`
+    // compare au catalogue, et l'écran affiche « écart » dès que les deux diffèrent.
+    const reels = totalDecorateurs();
+    const registry = {
+      getCronJobs: () => new Map(Array.from({ length: reels.cron }, (_, i): [string, object] => [`cron_${i}`, {}])),
+      getIntervals: () => Array.from({ length: reels.interval }, (_, i) => `interval_${i}`),
+    };
+    const svc = new BackgroundTasksService({} as never, registry as never, {} as never);
+    const sante = (svc as unknown as { buildHealth(): BackgroundTasksResponse['health'] }).buildHealth();
+
+    expect(sante.catalogCronCount).toBe(reels.cron);
+    expect(sante.catalogIntervalCount).toBe(reels.interval);
+    expect(sante.registeredCronCount).toBe(sante.catalogCronCount);
+    expect(sante.uncataloguedJobs).toEqual([]);
+  });
+
+  it('⚠️ les deux crons du coupe-circuit que le garde par fichier masquait sont catalogués', () => {
+    const ids = entreesCataloguees().map((e) => e.id);
+    expect(ids).toEqual(expect.arrayContaining(['vehicle-schedules-cut-drain', 'engine-restore-reliability']));
   });
 });

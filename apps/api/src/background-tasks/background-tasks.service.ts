@@ -128,6 +128,24 @@ const CATALOG: CatalogEntry[] = [
     periodic: { everyMs: 60_000, offsetMs: 0 },
   },
   {
+    /**
+     * Inscrit le 2026-10-05 — ce @Cron tournait en production depuis le chantier du coupe-circuit
+     * sans figurer ici. C'est le SECOND @Cron d'un fichier déjà revendiqué par l'entrée
+     * précédente : le garde d'exhaustivité raisonnait PAR FICHIER et l'a laissé passer. Avec
+     * « engine-restore-reliability », il expliquait le bandeau permanent « 51 crons au runtime,
+     * 49 au catalogue » relevé en production le 05/10. Le garde compte désormais les décorateurs.
+     *
+     * Prochain passage : la période de 10 s inclut la seconde 00, qui appartient au passage
+     * complet ci-dessus — lequel vide aussi la file. Le compte à rebours reste donc juste du point
+     * de vue de ce qu'il annonce : le prochain instant où une coupe en file peut partir.
+     */
+    id: 'vehicle-schedules-cut-drain',
+    source: 'vehicle-schedules/schedule-cron.service.ts', label: 'Vidage de la file des coupes automatiques', category: 'Sécurité & moteur',
+    kind: 'cron', scheduleHuman: 'toutes les 10 s (secondes 10 à 50 — la seconde 00 est le passage complet)', criticality: 'haute', antiOverlap: true,
+    purpose: "Fait partir les coupes moteur programmées entre deux évaluations de la minute, au rythme anti-rafale de la file : sans lui, des coupes dues à la même heure ne s'écouleraient qu'une par passage complet. Ne réévalue rien d'autre et ne retente jamais les reprises plus souvent qu'avant — elles restent au passage de la minute, toujours servies en premier. Partage la garde anti-chevauchement du passage complet.",
+    periodic: { everyMs: 10_000, offsetMs: 0 },
+  },
+  {
     id: 'audio-auto-disarm',
     source: 'audio-monitoring/audio-auto-disarm.service.ts', label: 'Auto-désarmement écoute audio', category: 'Sécurité & moteur',
     kind: 'cron', scheduleHuman: 'chaque minute', criticality: 'haute', antiOverlap: true,
@@ -171,6 +189,19 @@ const CATALOG: CatalogEntry[] = [
     kind: 'cron', scheduleHuman: 'toutes les 10 min', criticality: 'moyenne', antiOverlap: false,
     purpose: "Solde les coupures moteur restées « envoyées » sans accusé au-delà de 30 min, et les rétablissements sans preuve au-delà de 4 h (ENGINE_RESTORE_EXPIRY_MIN) : ils passent en « envoyée, non confirmée » et libèrent leur clé d'unicité. Sans lui, la file ne se vide jamais (313 commandes ouvertes mesurées le 24/08), l'écran ne distingue plus « a échoué » de « nul ne sait », et une RESTORE d'hier avalerait celle du lendemain (P0-1, contre-expertise du 13/09).",
     periodic: { everyMs: 600_000, offsetMs: 0 },
+  },
+  {
+    /**
+     * Inscrit le 2026-10-05, pour la même raison que « vehicle-schedules-cut-drain » : SECOND
+     * @Cron d'un fichier déjà revendiqué (par « engine-command-expiry »), donc invisible pour un
+     * garde qui raisonnait par fichier. C'est pourtant le filet des REPRISES moteur — celui dont
+     * l'arrêt laisserait des véhicules coupés au réveil sans qu'aucun écran ne le montre.
+     */
+    id: 'engine-restore-reliability',
+    source: 'engine-control/engine-control.service.ts', label: 'Relance des reprises moteur non confirmées', category: 'Sécurité & moteur',
+    kind: 'cron', scheduleHuman: 'toutes les 15 s', criticality: 'haute', antiOverlap: true,
+    purpose: "Reprend chaque reprise moteur (RESTORE) non confirmée dont l'heure d'essai est venue — 25 au plus par passage, les plus anciennes d'abord, chacune sous bail pour qu'aucun autre passage ne la double : envoi, relance TCP, SMS tant que le budget le permet puis TCP seul, et jamais après une coupure plus récente (T42). Tout est en base : interrompu, le passage suivant reprend sans perdre l'intention. S'il s'arrête, une reprise ratée au premier essai n'est plus retentée et le véhicule reste coupé.",
+    periodic: { everyMs: 15_000, offsetMs: 0 },
   },
   {
     // TRK-062 / T5 (2026-09-13) — jumeau de « engine-command-expiry » pour les commandes de
