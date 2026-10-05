@@ -424,7 +424,7 @@ const FENETRE_MS = FENETRE_JOURS * 24 * 60 * 60 * 1000;
               (reessayer)="reloadActive()">
               <ul class="fa-feed">
                 @for (f of feed(); track f.id) {
-                  <li>
+                  <li [class.fa-feed-urgence]="f.type === 'URGENCE_WHATSAPP'">
                     <span class="fa-feed-when">{{ f.at | date:'dd/MM HH:mm' }}</span>
                     <span class="fa-feed-user">{{ f.userName }}</span>
                     <span class="fa-feed-type">{{ typeLabel(f.type) }}</span>
@@ -705,6 +705,9 @@ const FENETRE_MS = FENETRE_JOURS * 24 * 60 * 60 * 1000;
     .fa-feed-user { font-weight: 700; color: var(--text-primary); }
     .fa-feed-type { font-size: 11px; text-transform: uppercase; color: var(--text-secondary); }
     .fa-feed-target { color: var(--text-secondary); min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+    /* Un appui sur la ligne d'urgence ne se lit pas comme un clic de plus (01/10/2026). */
+    .fa-feed li.fa-feed-urgence { background: color-mix(in srgb, var(--texte-danger, #f87171) 8%, transparent); }
+    .fa-feed-urgence .fa-feed-type, .fa-feed-urgence .fa-feed-target { color: var(--texte-danger, #f87171); font-weight: 600; }
   `],
 })
 export class FleetActivityComponent implements OnInit, OnDestroy {
@@ -1381,6 +1384,9 @@ export class FleetActivityComponent implements OnInit, OnDestroy {
       case 'SESSION_RESUME': return 'Reprise de session';
       case 'IDLE': return 'Inactif';
       case 'AWAY': return 'Absent';
+      // 01/10 — écrits par le serveur, jamais par le navigateur.
+      case 'ASSISTANCE': return 'Assistance';
+      case 'URGENCE_WHATSAPP': return 'Urgence WhatsApp';
       default: return t;
     }
   }
@@ -1390,6 +1396,10 @@ export class FleetActivityComponent implements OnInit, OnDestroy {
    * code (`manual`, `tab_close`, `auto`) : l'afficher tel quel ecrivait « tab_close » a l'ecran.
    */
   protected cibleFeed(f: ActivityFeedItemDto): string {
+    // Les gestes d'aide portent leur PHRASE dans `target` (« WhatsApp d’astreinte ouvert —
+    // GS-187-NY ») : la page seule (« Véhicules ») cacherait justement ce qui s'est passé. Jamais le
+    // contenu d'une question — le serveur ne l'écrit pas dans ce fil.
+    if (f.type === 'ASSISTANCE' || f.type === 'URGENCE_WHATSAPP') return f.target ?? f.routeLabel ?? '';
     if (f.type === 'SESSION_END') {
       switch (f.target) {
         case 'manual': return 'volontaire';

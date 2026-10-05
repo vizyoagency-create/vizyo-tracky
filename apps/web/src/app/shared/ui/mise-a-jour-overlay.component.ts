@@ -1,5 +1,7 @@
-import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, effect, inject, untracked } from '@angular/core';
 import { URGENCE_TEL_AFFICHE, urgenceWhatsappLien } from '../../core/config/assistance-urgence';
+import { AssistanceApiService } from '../../core/services/assistance.service';
+import { AuthService } from '../../core/services/auth.service';
 import { MiseAJourEnCoursService } from '../../core/services/mise-a-jour-en-cours.service';
 
 /**
@@ -52,7 +54,13 @@ import { MiseAJourEnCoursService } from '../../core/services/mise-a-jour-en-cour
             est parti en production avec un numéro INVENTÉ, proche du vrai : un numéro codé en
             dur se relit comme du décor, personne ne le vérifie.
           -->
-          <a class="maj-secours" [href]="lienWhatsapp" target="_blank" rel="noopener">
+          <!--
+            L'appui est signalé (01/10/2026) — et comme l'API est justement à terre ici, il est
+            RETENU puis retransmis à son retour, avec son heure réelle. data-no-track : la trace
+            vient du serveur, la capture automatique des clics la doublerait.
+          -->
+          <a class="maj-secours" [href]="lienWhatsapp" target="_blank" rel="noopener"
+             data-no-track (click)="signaler()">
             Véhicule bloqué pendant ce temps&nbsp;?
             <strong>WhatsApp {{ telAffiche }}</strong> — 24&nbsp;h/24
           </a>
@@ -115,4 +123,21 @@ export class MiseAJourOverlayComponent {
   protected readonly service = inject(MiseAJourEnCoursService);
   protected readonly telAffiche = URGENCE_TEL_AFFICHE;
   protected readonly lienWhatsapp = urgenceWhatsappLien();
+
+  private readonly assistance = inject(AssistanceApiService);
+  private readonly auth = inject(AuthService);
+
+  constructor() {
+    // Un appui fait sur cet écran n'a pas pu partir — l'API ne répondait plus. Il repart dès
+    // qu'une session existe : au rechargement que cet écran déclenche lui-même au retour de
+    // l'API, ou à la connexion suivante si la session s'était perdue entre-temps.
+    effect(() => {
+      if (this.auth.isAuthenticated()) untracked(() => this.assistance.retransmettreAppuiRetenu());
+    });
+  }
+
+  /** Signale l'appui, sans retenir le clic : WhatsApp s'ouvre dans le même geste. */
+  protected signaler(): void {
+    this.assistance.signalerUrgenceWhatsapp('mise-a-jour');
+  }
 }

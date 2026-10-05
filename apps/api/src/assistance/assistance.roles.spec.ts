@@ -26,7 +26,9 @@ describe('Assistance — la frontière entre poser une question et y répondre',
   };
 
   const ROUTES_ADMIN = ['adminListe', 'adminDetail', 'relire', 'repondre'] as const;
-  const ROUTES_UTILISATEUR = ['disponible', 'ask', 'mesConversations', 'maConversation', 'rappel'] as const;
+  // `signalerWhatsapp` (01/10/2026) : le premier à appuyer sur la ligne d'urgence est le VEILLEUR
+  // DE NUIT — lui fermer la route rendrait muet le seul appui qui compte.
+  const ROUTES_UTILISATEUR = ['disponible', 'ask', 'mesConversations', 'maConversation', 'rappel', 'signalerWhatsapp'] as const;
 
   it('🔴 les quatre routes d’administration sont réservées au SUPER-ADMIN', () => {
     for (const m of ROUTES_ADMIN) {

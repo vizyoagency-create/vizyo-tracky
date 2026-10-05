@@ -25,7 +25,9 @@ export type SystemActivityCategory =
   /** 29/09 — gestes sur les réservations (demande, création, validation, refus, modification, réaffectation, réorganisation). */
   | 'RESERVATION'
   /** 29/09 — gestes d'agenda hors réservation (maintenance, incident, clôture, propositions de l'agent, parc, réglages). */
-  | 'AGENDA';
+  | 'AGENDA'
+  /** 01/10 — appels à l'aide : escalade du chat, rappel urgent, ligne d'urgence WhatsApp ouverte. */
+  | 'ASSISTANCE';
 
 export type SystemActivityStatus = 'SUCCESS' | 'FAILURE' | 'SKIPPED';
 
@@ -66,6 +68,9 @@ export const SYSTEM_ACTIVITY_CATEGORY_LABELS: Record<string, string> = {
   AI: 'Appel IA',
   AUDIO: 'Écoute audio',
   INTERNAL: 'Provisioning interne',
+  // Escalades, rappels urgents et appuis sur la ligne d'urgence WhatsApp. Jusqu'au 01/10/2026 les
+  // escalades s'écrivaient en INTERNAL — affichées « Provisioning interne », ce qu'elles ne sont pas.
+  ASSISTANCE: 'Assistance',
   MUTATION: 'Action métier (API)',
   RESERVATION: 'Réservation',
   AGENDA: 'Agenda',

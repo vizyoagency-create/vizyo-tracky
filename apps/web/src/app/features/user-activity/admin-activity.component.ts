@@ -19,6 +19,8 @@ import {
   ArrowRight,
   CircleAlert,
   Ear,
+  LifeBuoy,
+  Siren,
   LogIn,
   LogOut,
   LucideAngularModule,
@@ -213,11 +215,12 @@ type Period = '24h' | '7d' | '30d';
             <div class="text-sm font-medium text-fg-secondary mb-3">Flux en direct</div>
             <div class="flex flex-col gap-1 max-h-[420px] overflow-y-auto">
               @for (a of visibleFeed(); track a.id) {
-                <div class="flex items-center gap-2 text-xs py-1 px-1.5 rounded-md hover:bg-bg-tertiary/40">
+                <div class="flex items-center gap-2 text-xs py-1 px-1.5 rounded-md hover:bg-bg-tertiary/40"
+                     [class.act-urgence]="a.type === 'URGENCE_WHATSAPP'" [class.act-assistance]="a.type === 'ASSISTANCE'">
                   <span class="text-fg-tertiary tabular-nums shrink-0 font-mono">{{ a.at | date: 'HH:mm:ss' }}</span>
-                  <lucide-icon [img]="typeIcon(a.type)" [size]="13" class="text-fg-tertiary shrink-0"></lucide-icon>
+                  <lucide-icon [img]="typeIcon(a.type)" [size]="13" class="act-ico text-fg-tertiary shrink-0"></lucide-icon>
                   <span class="font-medium text-fg-secondary shrink-0">{{ a.userName }}</span>
-                  <span class="text-fg-tertiary truncate">{{ describe(a) }}</span>
+                  <span class="act-desc text-fg-tertiary truncate" [attr.title]="describe(a)">{{ describe(a) }}</span>
                 </div>
               } @empty {
                 <p class="text-sm text-fg-tertiary text-center py-6">Aucune activité pour l'instant.</p>
@@ -254,17 +257,22 @@ type Period = '24h' | '7d' | '30d';
               <option value="SESSION_RESUME">Reprises de session</option>
               <option value="AWAY">Absences</option>
               <option value="IDLE">Inactivités</option>
+              <!-- Écrits par le SERVEUR (01/10/2026), jamais par le navigateur : un lot client ne
+                   peut pas les forger. « Qui a eu besoin d'aide cette nuit ? » se lit ici. -->
+              <option value="URGENCE_WHATSAPP">Urgences WhatsApp</option>
+              <option value="ASSISTANCE">Assistance (questions, rappels)</option>
             </select>
           </div>
         </div>
         <div class="bg-bg-secondary border border-border-subtle rounded-[--radius-card] p-4">
           <div class="flex flex-col">
             @for (a of visibleHistory(); track a.id) {
-              <div class="flex items-center gap-2 text-xs py-1.5 px-1.5 rounded-md border-b border-border-subtle/30 hover:bg-bg-tertiary/40">
+              <div class="flex items-center gap-2 text-xs py-1.5 px-1.5 rounded-md border-b border-border-subtle/30 hover:bg-bg-tertiary/40"
+                   [class.act-urgence]="a.type === 'URGENCE_WHATSAPP'" [class.act-assistance]="a.type === 'ASSISTANCE'">
                 <span class="text-fg-tertiary tabular-nums shrink-0 w-[112px] font-mono">{{ a.at | date: 'dd/MM HH:mm:ss' }}</span>
-                <lucide-icon [img]="typeIcon(a.type)" [size]="13" class="text-fg-tertiary shrink-0"></lucide-icon>
+                <lucide-icon [img]="typeIcon(a.type)" [size]="13" class="act-ico text-fg-tertiary shrink-0"></lucide-icon>
                 <span class="font-medium text-fg-secondary shrink-0">{{ a.userName }}</span>
-                <span class="text-fg-tertiary truncate">{{ describe(a) }}</span>
+                <span class="act-desc text-fg-tertiary truncate" [attr.title]="describe(a)">{{ describe(a) }}</span>
               </div>
             } @empty {
               @if (erreurSource(); as msg) {
@@ -608,7 +616,7 @@ type Period = '24h' | '7d' | '30d';
                     @if (a.triggeredByName) {
                       <!-- Un geste d'agenda EST l'acte de cette personne : « par », pas « déclenché par »
                            (qui décrit un envoi automatique découlant d'un acte). -->
-                      <span class="text-[10px] font-medium px-1.5 py-0.5 rounded-md bg-sky-500/15 text-sky-400">{{ estGeste(a.category) ? 'par' : 'déclenché par' }} {{ a.triggeredByName }}</span>
+                      <span class="text-[10px] font-medium px-1.5 py-0.5 rounded-md bg-sky-500/15 text-sky-400">{{ estActePersonnel(a.category) ? 'par' : 'déclenché par' }} {{ a.triggeredByName }}</span>
                     } @else if (a.triggeredByUserId) {
                       <!-- Un auteur connu dont le compte n'existe plus : le dire, plutôt qu'afficher « utilisateur ». -->
                       <span class="text-[10px] font-medium px-1.5 py-0.5 rounded-md bg-bg-tertiary text-fg-tertiary">par un compte introuvable</span>
@@ -775,6 +783,17 @@ type Period = '24h' | '7d' | '30d';
       }
     </div>
   `,
+  // Les gestes d'AIDE ressortent du flux (01/10/2026). Au milieu de deux cents clics, un appui sur
+  // la ligne d'urgence ne doit pas se lire comme un clic de plus : c'est la ligne qu'un
+  // super-admin cherche d'abord, le lendemain d'une nuit agitée.
+  styles: [
+    `
+    .act-urgence { background: color-mix(in srgb, var(--texte-danger, #f87171) 9%, transparent); }
+    .act-urgence .act-ico, .act-urgence .act-desc { color: var(--texte-danger, #f87171); }
+    .act-urgence .act-desc { font-weight: 600; }
+    .act-assistance .act-ico, .act-assistance .act-desc { color: var(--texte-succes, #34d399); }
+    `,
+  ],
 })
 export class AdminActivityComponent implements OnInit, OnDestroy {
   private readonly api = inject(UserActivityApiService);
@@ -808,6 +827,8 @@ export class AdminActivityComponent implements OnInit, OnDestroy {
     // 29/09 — les gestes d'agenda, en tête : c'est ce qu'on vient y chercher (« qui a validé ? »).
     { id: 'RESERVATION', label: 'Réservations' },
     { id: 'AGENDA', label: 'Agenda' },
+    // 01/10 — les appels à l'aide : ligne WhatsApp ouverte, rappel urgent, reprise par un humain.
+    { id: 'ASSISTANCE', label: 'Assistance' },
     { id: 'MUTATION', label: 'Actions API' },
     { id: 'EMAIL', label: 'E-mails' },
     { id: 'SMS', label: 'SMS' },
@@ -1305,6 +1326,8 @@ export class AdminActivityComponent implements OnInit, OnDestroy {
       case 'SESSION_RESUME': return 'Reprises';
       case 'IDLE': return 'Inactifs';
       case 'AWAY': return 'Absents';
+      case 'ASSISTANCE': return 'Assistance';
+      case 'URGENCE_WHATSAPP': return 'Urgences WhatsApp';
       default: return t;
     }
   }
@@ -1320,6 +1343,8 @@ export class AdminActivityComponent implements OnInit, OnDestroy {
       case 'SESSION_RESUME': return RotateCcw;
       case 'IDLE': return Moon;
       case 'AWAY': return CircleAlert;
+      case 'ASSISTANCE': return LifeBuoy;
+      case 'URGENCE_WHATSAPP': return Siren;
       default: return Activity;
     }
   }
@@ -1346,6 +1371,7 @@ export class AdminActivityComponent implements OnInit, OnDestroy {
       case 'MUTATION': return Pencil;
       case 'RESERVATION': return CalendarCheck;
       case 'AGENDA': return CalendarDays;
+      case 'ASSISTANCE': return LifeBuoy;
       default: return Server;
     }
   }
@@ -1369,6 +1395,7 @@ export class AdminActivityComponent implements OnInit, OnDestroy {
       case 'MUTATION': return 'bg-lime-500/15 text-lime-400';
       case 'RESERVATION': return 'bg-blue-500/15 text-blue-400';
       case 'AGENDA': return 'bg-yellow-500/15 text-yellow-400';
+      case 'ASSISTANCE': return 'bg-rose-500/15 text-rose-400';
       default: return 'bg-bg-tertiary text-fg-tertiary';
     }
   }
@@ -1376,6 +1403,15 @@ export class AdminActivityComponent implements OnInit, OnDestroy {
   /** Catégories dont chaque ligne est l'ACTE d'une personne (pas un envoi qui en découle). */
   protected estGeste(category: string): boolean {
     return category === 'RESERVATION' || category === 'AGENDA';
+  }
+
+  /**
+   * Un appel à l'aide est l'acte de la personne — « par », pas « déclenché par ». Gardé À PART de
+   * `estGeste`, qui porte aussi les statuts propres à l'agenda (`statutActionAgenda`) : y verser
+   * l'assistance lui prêterait des mots qui ne sont pas les siens.
+   */
+  protected estActePersonnel(category: string): boolean {
+    return this.estGeste(category) || category === 'ASSISTANCE';
   }
 
   /**
@@ -1431,6 +1467,11 @@ export class AdminActivityComponent implements OnInit, OnDestroy {
       // ordinaires, alors qu'un numero qui entre ou sort est un evenement d'acces.
       case 'allowlist_synced': return { label: 'Allowlist', cls: 'bg-violet-500/15 text-violet-400' };
       case 'tracker_sim_recalee': return { label: 'SIM recalée', cls: 'bg-amber-500/15 text-amber-400' };
+      // Les appels à l'aide (01/10/2026) : la catégorie dit « Assistance », le badge dit LEQUEL —
+      // une ligne WhatsApp ouverte la nuit et une escalade de chat n'appellent pas la même réaction.
+      case 'assistance_urgence_whatsapp': return { label: 'Urgence WhatsApp', cls: 'bg-rose-500/15 text-rose-400' };
+      case 'assistance_rappel_urgent': return { label: 'Rappel urgent', cls: 'bg-rose-500/15 text-rose-400' };
+      case 'assistance_escalade': return { label: 'Escalade', cls: 'bg-amber-500/15 text-amber-400' };
       default: {
         // 29/09 — gestes d'agenda : la catégorie seule (« Réservation ») ne dit pas CE qui a
         // été fait ; le badge porte l'acte (« Réservation validée », « Incident signalé »…).
@@ -1566,6 +1607,14 @@ export class AdminActivityComponent implements OnInit, OnDestroy {
       case 'SESSION_RESUME': return 'session reprise';
       case 'IDLE': return 'inactif';
       case 'AWAY': return 'absent';
+      // Écrits par le serveur : `target` est déjà une phrase, et ne porte JAMAIS le contenu d'une
+      // question — un admin de flotte lit aussi ce flux, la question n'est pas pour lui.
+      case 'ASSISTANCE':
+        return a.target ?? 'assistance';
+      case 'URGENCE_WHATSAPP': {
+        const page = a.routeLabel ?? a.route;
+        return `${a.target ?? 'WhatsApp d’astreinte ouvert'}${page ? ` — depuis ${page}` : ''}`;
+      }
       default: return a.type;
     }
   }

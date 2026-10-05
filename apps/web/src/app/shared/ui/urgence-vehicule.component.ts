@@ -1,7 +1,8 @@
-import { ChangeDetectionStrategy, Component, input } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject, input } from '@angular/core';
 import { AlertTriangle, FileText, LucideAngularModule, MessageSquare } from 'lucide-angular';
-import { CONTACT_EMAIL } from '@vizyo/tracky-shared';
+import { CONTACT_EMAIL, type UrgenceWhatsappEcran } from '@vizyo/tracky-shared';
 import { URGENCE_TEL_AFFICHE, urgenceWhatsappLien } from '../../core/config/assistance-urgence';
+import { AssistanceApiService } from '../../core/services/assistance.service';
 
 /**
  * ══ LA LIGNE D'URGENCE VÉHICULE ══════════════════════════════════════════════════════════════
@@ -33,9 +34,14 @@ import { URGENCE_TEL_AFFICHE, urgenceWhatsappLien } from '../../core/config/assi
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [LucideAngularModule],
+  // `data-no-track` sur les deux liens WhatsApp (01/10/2026) : l'appui est TRACÉ par le serveur
+  // (type URGENCE_WHATSAPP, écrit par l'API, impossible à forger depuis un lot du navigateur) et
+  // pousse une notification aux super-admins. Laisser aussi la capture automatique des clics
+  // l'écrire donnerait deux lignes pour un seul geste — dont une, CLICK, noyée dans le bruit.
   template: `
     @if (variante() === 'bandeau') {
-      <a [href]="lienWhatsapp" target="_blank" rel="noopener" class="urg-bandeau">
+      <a [href]="lienWhatsapp" target="_blank" rel="noopener" class="urg-bandeau"
+         data-no-track (click)="signaler('vehicules')">
         <lucide-icon [img]="AlertTriangle" [size]="15" class="shrink-0" />
         <span class="urg-bandeau-t">
           Véhicule bloqué&nbsp;? <strong>WhatsApp {{ tel }}</strong>
@@ -64,7 +70,8 @@ import { URGENCE_TEL_AFFICHE, urgenceWhatsappLien } from '../../core/config/assi
           WhatsApp laisse en plus une trace écrite, horodatée, avec la plaque : au téléphone,
           à 3 h du matin, la plaque se perd.
         -->
-        <a [href]="lienWhatsapp" target="_blank" rel="noopener" class="urg-btn urg-btn-1">
+        <a [href]="lienWhatsapp" target="_blank" rel="noopener" class="urg-btn urg-btn-1"
+           data-no-track (click)="signaler('assistance')">
           <lucide-icon [img]="MessageSquare" [size]="16" />
           Écrire sur WhatsApp — {{ tel }}
         </a>
@@ -183,5 +190,16 @@ export class UrgenceVehiculeComponent {
   protected readonly lienEmail = `mailto:${CONTACT_EMAIL}?subject=${encodeURIComponent('Question sur Tracky')}`;
   protected get lienWhatsapp(): string {
     return urgenceWhatsappLien(this.plaque());
+  }
+
+  private readonly assistance = inject(AssistanceApiService);
+
+  /**
+   * Prévient le serveur qu'on ouvre la ligne d'urgence. Ne retient PAS le clic : pas de
+   * `preventDefault`, pas d'attente — WhatsApp s'ouvre dans le même geste, que l'API réponde ou
+   * non. Le signalement est un témoin, jamais une étape à franchir avant d'être aidé.
+   */
+  protected signaler(ecran: UrgenceWhatsappEcran): void {
+    this.assistance.signalerUrgenceWhatsapp(ecran, this.plaque());
   }
 }

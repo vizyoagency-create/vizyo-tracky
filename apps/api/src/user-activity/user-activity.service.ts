@@ -3,12 +3,13 @@ import { Cron } from '@nestjs/schedule';
 import type {
   ActivityFeedItemDto,
   ActivityStatsDto,
+  ActivityTypeServeur,
   EngineCommandAuditDto,
   FleetAgendaActivityDto,
   OnlineUserDto,
   PresenceStatus,
 } from '@vizyo/tracky-shared';
-import { AGENDA_ACTIVITY_ACTION_LABELS, labelForRoute } from '@vizyo/tracky-shared';
+import { ACTIVITY_TYPES_SERVEUR, AGENDA_ACTIVITY_ACTION_LABELS, labelForRoute } from '@vizyo/tracky-shared';
 import { Prisma, UserRole } from '@prisma/client';
 import type { AuthUser } from '../auth/types/auth-user';
 import { OwnerVisibilityService } from '../common/owner-visibility.service';
@@ -54,6 +55,15 @@ const VALID_TYPES = new Set([
   'AWAY',
   'HEARTBEAT',
 ]);
+/**
+ * Types que le SERVEUR écrit lui-même (question à l'assistance, appui sur la ligne d'urgence) —
+ * jamais acceptés d'un lot du navigateur : `VALID_TYPES` ci-dessus ne les contient pas, et
+ * `ingestBatch` filtre sur `VALID_TYPES`. Un client ne peut donc ni les fabriquer ni s'en servir
+ * pour faire croire à une urgence.
+ */
+const SERVER_TYPES = new Set<string>(ACTIVITY_TYPES_SERVEUR);
+/** Ce que le fil sait FILTRER : les gestes du navigateur et ceux du serveur. */
+const FEED_TYPES = new Set<string>([...VALID_TYPES, ...SERVER_TYPES]);
 const VALID_STATUS = new Set(['ACTIVE', 'IDLE', 'AWAY']);
 
 /** Identifiant de ligne ou de société : une colonne `@db.Uuid` refuse toute autre forme (erreur 500). */
@@ -95,32 +105,13 @@ export class UserActivityService {
     batch: { events: ActivityEventLike[]; deviceType?: string },
     meta: { userAgent?: string } = {},
   ): Promise<void> {
+    // `VALID_TYPES`, pas `FEED_TYPES` : les types serveur (assistance, urgence) sont écartés ici.
     const events = (batch.events ?? []).filter((e) => VALID_TYPES.has(e.type));
     if (events.length === 0) return;
 
     const now = new Date();
     const fleetId = user.fleetId ?? null;
-
-    // Résolution de session : réutilise la session ouverte récente, sinon en crée une.
-    let session = await this.prisma.userSession.findFirst({
-      where: {
-        userId: user.id,
-        endedAt: null,
-        lastSeenAt: { gte: new Date(now.getTime() - SESSION_GAP_MS) },
-      },
-      orderBy: { lastSeenAt: 'desc' },
-    });
-    if (!session) {
-      session = await this.prisma.userSession.create({
-        data: {
-          userId: user.id,
-          fleetId,
-          status: 'ACTIVE',
-          userAgent: meta.userAgent?.slice(0, 300) ?? null,
-          deviceType: batch.deviceType?.slice(0, 20) ?? null,
-        },
-      });
-    }
+    const session = await this.sessionOuverte(user, now, { userAgent: meta.userAgent, deviceType: batch.deviceType });
 
     let latestStatus: string | null = null;
     let latestRoute: string | null = session.currentRoute;
@@ -158,6 +149,69 @@ export class UserActivityService {
         ...(ended ? { endedAt: now } : {}),
       },
     });
+  }
+
+  /** Réutilise la session ouverte récente de l'utilisateur, sinon en crée une. */
+  private async sessionOuverte(
+    user: AuthUser,
+    now: Date,
+    meta: { userAgent?: string; deviceType?: string } = {},
+  ) {
+    const session = await this.prisma.userSession.findFirst({
+      where: {
+        userId: user.id,
+        endedAt: null,
+        lastSeenAt: { gte: new Date(now.getTime() - SESSION_GAP_MS) },
+      },
+      orderBy: { lastSeenAt: 'desc' },
+    });
+    if (session) return session;
+    return this.prisma.userSession.create({
+      data: {
+        userId: user.id,
+        fleetId: user.fleetId ?? null,
+        status: 'ACTIVE',
+        userAgent: meta.userAgent?.slice(0, 300) ?? null,
+        deviceType: meta.deviceType?.slice(0, 20) ?? null,
+      },
+    });
+  }
+
+  /**
+   * Écrit au fil un geste constaté PAR LE SERVEUR : une question à l'assistance, un appui sur la
+   * ligne d'urgence WhatsApp (01/10/2026). Il rejoint la session courante de la personne — le fil
+   * reste chronologique, groupé par session, au milieu de ses pages et de ses clics.
+   *
+   * Seul `lastSeenAt` bouge (la personne vient d'agir) ; ni le statut ni la page courante, que
+   * seul le navigateur connaît. Best-effort : une trace manquée ne doit JAMAIS faire échouer la
+   * demande d'aide qui l'a produite — l'appel ne lève pas.
+   */
+  async recordServerEvent(
+    user: AuthUser,
+    event: { type: ActivityTypeServeur; target: string; route?: string | null; routeLabel?: string | null },
+  ): Promise<void> {
+    if (!SERVER_TYPES.has(event.type)) return;
+    try {
+      const now = new Date();
+      const session = await this.sessionOuverte(user, now);
+      await this.prisma.userActivity.createMany({
+        data: [
+          {
+            sessionId: session.id,
+            userId: user.id,
+            fleetId: user.fleetId ?? null,
+            type: event.type,
+            route: event.route?.slice(0, 300) ?? null,
+            routeLabel: event.routeLabel?.slice(0, 120) ?? null,
+            target: event.target.slice(0, 120),
+            durationMs: null,
+          },
+        ],
+      });
+      await this.prisma.userSession.update({ where: { id: session.id }, data: { lastSeenAt: now } });
+    } catch (e) {
+      this.logger.warn(`trace ${event.type} non écrite : ${e instanceof Error ? e.message : String(e)}`);
+    }
   }
 
   /**
@@ -249,7 +303,7 @@ export class UserActivityService {
       and.push({ fleetId: scope.fleetId });
       and.push({ userId: { notIn: await this.getElevatedUserIds() } });
     }
-    if (filters.type && VALID_TYPES.has(filters.type)) and.push({ type: filters.type });
+    if (filters.type && FEED_TYPES.has(filters.type)) and.push({ type: filters.type });
     if (filters.from) {
       const d = new Date(filters.from);
       if (!Number.isNaN(d.getTime())) and.push({ createdAt: { gte: d } });

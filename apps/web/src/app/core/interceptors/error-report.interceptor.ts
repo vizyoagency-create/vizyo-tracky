@@ -21,7 +21,10 @@ import { MiseAJourEnCoursService } from '../services/mise-a-jour-en-cours.servic
  */
 
 const REPORTABLE = new Set([0, 502, 504]);
-const EXCLUDED = ['/api/activity/', '/api/realtime/incident', '/api/observability/'];
+// `/api/assistance/urgence/` (01/10/2026) : le signalement d'un appui sur la ligne WhatsApp part
+// au moment où le téléphone bascule vers WhatsApp — un appel coupé là n'est pas une panne, et il
+// ne doit ni alerter ni afficher « mise à jour en cours » au retour de la personne.
+const EXCLUDED = ['/api/activity/', '/api/realtime/incident', '/api/observability/', '/api/assistance/urgence/'];
 /** On ne signale une API injoignable que si ça dure au-delà de ce délai (couvre un déploiement api+web). */
 const OUTAGE_REPORT_MS = 45_000;
 

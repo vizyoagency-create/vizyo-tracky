@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Query, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import type {
   AssistanceAdminDetailDto,
@@ -19,6 +19,7 @@ import {
   AskAssistanceBodyDto,
   RappelUrgentBodyDto,
   ReviewAssistanceBodyDto,
+  SignalUrgenceWhatsappBodyDto,
 } from './dto/assistance.dto';
 
 /**
@@ -89,6 +90,23 @@ export class AssistanceController {
     @Body() dto: RappelUrgentBodyDto,
   ): Promise<AssistanceConversationDto> {
     return this.assistance.rappelUrgent(req.user, id, dto.motif);
+  }
+
+  /**
+   * Quelqu'un vient d'ouvrir la ligne d'urgence WhatsApp (01/10/2026).
+   *
+   * Appelée par le navigateur AU MOMENT de l'appui, sans attendre la réponse : WhatsApp s'ouvre
+   * quoi qu'il arrive ici — jamais une urgence ne dépend de ce signalement. Il écrit le geste au
+   * centre d'activité et prévient les super-admins (push, anti-spam du socle).
+   *
+   * AUCUN rôle exigé, et c'est voulu : le premier utilisateur de ce bouton est le VEILLEUR DE
+   * NUIT, dont l'écran des véhicules porte le bandeau d'urgence. Lui fermer cette route, c'est
+   * rendre muet le seul appui qui compte. Le dépôt reste écarté par `DepotScopeGuard`.
+   */
+  @Post('urgence/whatsapp')
+  @HttpCode(204)
+  signalerWhatsapp(@Req() req: AuthenticatedRequest, @Body() dto: SignalUrgenceWhatsappBodyDto): Promise<void> {
+    return this.assistance.signalerUrgenceWhatsapp(req.user, dto);
   }
 
   // ─── Espace admin — archive, relecture, reprise ────────────────────────────

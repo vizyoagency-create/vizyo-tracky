@@ -125,3 +125,61 @@ export interface ReviewAssistanceDto {
 export interface AssistanceAdminReplyDto {
   message: string;
 }
+
+// ─── Ligne d'urgence WhatsApp — le signalement d'un appui ────────────────────
+
+/**
+ * L'écran d'où l'on a appuyé sur « WhatsApp » (ligne d'astreinte véhicule, 24 h/24).
+ *
+ * Liste FERMÉE : le serveur refuse toute autre valeur. Un libellé libre envoyé par le navigateur
+ * finirait affiché tel quel dans le centre d'activité et dans une notification — une entrée non
+ * fiable n'a pas à choisir les mots qu'un super-admin lira à 3 h du matin.
+ */
+export type UrgenceWhatsappEcran = 'assistance' | 'vehicules' | 'mise-a-jour';
+
+export const URGENCE_WHATSAPP_ECRANS: readonly UrgenceWhatsappEcran[] = ['assistance', 'vehicules', 'mise-a-jour'];
+
+/**
+ * Où l'on était — dit en clair, ARTICLE COMPRIS : la phrase est « depuis {libellé} », et une
+ * élision (« l’ ») ne va pas devant tous les mots (« depuis l’liste des véhicules »).
+ */
+export const URGENCE_WHATSAPP_ECRAN_LABELS: Record<UrgenceWhatsappEcran, string> = {
+  assistance: 'l’écran Assistance',
+  vehicules: 'la liste des véhicules',
+  'mise-a-jour': 'l’écran « mise à jour en cours »',
+};
+
+/** Le nom court de l'écran — colonne « page » du centre d'activité, comme les autres gestes. */
+export const URGENCE_WHATSAPP_ECRAN_PAGES: Record<UrgenceWhatsappEcran, string> = {
+  assistance: 'Assistance',
+  vehicules: 'Véhicules',
+  'mise-a-jour': 'Mise à jour en cours',
+};
+
+/**
+ * Corps de `POST /api/assistance/urgence/whatsapp` — envoyé au moment où quelqu'un ouvre la ligne
+ * d'astreinte. Il ne prouve pas qu'un message a été ENVOYÉ (WhatsApp est hors de l'application) :
+ * il dit que quelqu'un, devant un véhicule, a eu besoin de la ligne. C'est exactement ce qu'un
+ * super-admin doit savoir tout de suite.
+ */
+export interface SignalUrgenceWhatsappDto {
+  ecran: UrgenceWhatsappEcran;
+  /** Plaque, quand l'écran la connaît (pré-remplie dans le message WhatsApp). */
+  plaque?: string;
+  /**
+   * Âge de l'appui, en secondes, quand il n'a PAS pu partir sur le moment et qu'il est retransmis
+   * plus tard. Absent : l'appui vient d'avoir lieu.
+   *
+   * Le cas qu'il couvre est le plus important des trois écrans : « mise à jour en cours » s'affiche
+   * précisément quand l'API ne répond plus — un signalement envoyé à cet instant se perdait à coup
+   * sûr. Une DURÉE et pas une heure : elle se mesure sur une seule horloge, celle du téléphone, et
+   * reste juste même quand cette horloge est fausse.
+   */
+  retardS?: number;
+}
+
+/**
+ * Au-delà, un appui retenu n'est plus retransmis : deux heures couvrent la panne la plus longue
+ * vécue (56 min, le 17/09/2026) — plus tard, l'alerte n'aurait plus de sens, seulement du bruit.
+ */
+export const URGENCE_WHATSAPP_RETARD_MAX_S = 2 * 60 * 60;

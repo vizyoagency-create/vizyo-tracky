@@ -1,5 +1,6 @@
 import { TestBed, type ComponentFixture } from '@angular/core/testing';
 import { CONTACT_TEL_AFFICHE, CONTACT_TEL_E164 } from '@vizyo/tracky-shared';
+import { AssistanceApiService } from '../../core/services/assistance.service';
 import { UrgenceVehiculeComponent } from './urgence-vehicule.component';
 
 /**
@@ -17,9 +18,14 @@ import { UrgenceVehiculeComponent } from './urgence-vehicule.component';
  */
 describe('UrgenceVehiculeComponent — la ligne d’astreinte véhicule', () => {
   let fixture: ComponentFixture<UrgenceVehiculeComponent>;
+  let assistance: jasmine.SpyObj<Pick<AssistanceApiService, 'signalerUrgenceWhatsapp'>>;
 
   const creer = (variante: 'complet' | 'bandeau', plaque?: string): void => {
-    TestBed.configureTestingModule({ imports: [UrgenceVehiculeComponent] });
+    assistance = jasmine.createSpyObj('AssistanceApiService', ['signalerUrgenceWhatsapp']);
+    TestBed.configureTestingModule({
+      imports: [UrgenceVehiculeComponent],
+      providers: [{ provide: AssistanceApiService, useValue: assistance }],
+    });
     fixture = TestBed.createComponent(UrgenceVehiculeComponent);
     fixture.componentRef.setInput('variante', variante);
     if (plaque) fixture.componentRef.setInput('plaque', plaque);
@@ -107,5 +113,67 @@ describe('UrgenceVehiculeComponent — la ligne d’astreinte véhicule', () => 
     const externes = liens().filter((a) => (a.getAttribute('href') ?? '').startsWith('http'));
     expect(externes.length).toBeGreaterThan(0);
     for (const a of externes) expect(a.getAttribute('rel')).toContain('noopener');
+  });
+
+  // ─── L'appui est signalé (01/10/2026) — sans jamais retenir le geste ────────────────────────
+
+  const lienWhatsapp = (): HTMLAnchorElement => {
+    const a = liens().find((l) => (l.getAttribute('href') ?? '').includes('wa.me'));
+    if (!a) throw new Error('lien WhatsApp absent');
+    return a;
+  };
+
+  /**
+   * Clique comme un doigt, mais sans quitter la page du test : un écouteur posé sur `document`
+   * passe APRÈS celui du composant, lit si le composant a empêché la navigation, puis l'empêche
+   * lui-même. Renvoie `true` si le COMPOSANT a retenu le clic.
+   */
+  const cliquer = (a: HTMLAnchorElement): boolean => {
+    let retenuParLeComposant = true;
+    const garde = (ev: Event): void => {
+      retenuParLeComposant = ev.defaultPrevented;
+      ev.preventDefault();
+    };
+    document.addEventListener('click', garde);
+    try {
+      a.click();
+    } finally {
+      document.removeEventListener('click', garde);
+    }
+    return retenuParLeComposant;
+  };
+
+  it('🔴 l’appui sur le bandeau du veilleur est signalé, depuis la liste des véhicules', () => {
+    creer('bandeau');
+    cliquer(lienWhatsapp());
+    expect(assistance.signalerUrgenceWhatsapp).toHaveBeenCalledOnceWith('vehicules', undefined);
+  });
+
+  it('l’appui sur la carte est signalé avec la plaque que l’écran connaît', () => {
+    creer('complet', 'GS-187-NY');
+    cliquer(lienWhatsapp());
+    expect(assistance.signalerUrgenceWhatsapp).toHaveBeenCalledOnceWith('assistance', 'GS-187-NY');
+  });
+
+  it('🔴 le signalement ne RETIENT jamais le clic : WhatsApp s’ouvre dans le même geste', () => {
+    for (const variante of ['bandeau', 'complet'] as const) {
+      creer(variante);
+      expect(cliquer(lienWhatsapp())).withContext(variante).toBeFalse();
+      TestBed.resetTestingModule();
+    }
+  });
+
+  it('les liens WhatsApp échappent à la capture automatique — la trace vient du serveur, pas en double', () => {
+    for (const variante of ['bandeau', 'complet'] as const) {
+      creer(variante);
+      expect(lienWhatsapp().hasAttribute('data-no-track')).withContext(variante).toBeTrue();
+      TestBed.resetTestingModule();
+    }
+  });
+
+  it('les autres liens (fiche, courriel) ne déclenchent aucun signalement', () => {
+    creer('complet');
+    for (const a of liens().filter((l) => !(l.getAttribute('href') ?? '').includes('wa.me'))) cliquer(a);
+    expect(assistance.signalerUrgenceWhatsapp).not.toHaveBeenCalled();
   });
 });

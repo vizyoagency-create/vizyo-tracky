@@ -9,7 +9,10 @@ import type {
   AssistanceRole,
   AssistanceStatus,
   ReviewAssistanceDto,
+  SignalUrgenceWhatsappDto,
+  UrgenceWhatsappEcran,
 } from '@vizyo/tracky-shared';
+import { URGENCE_WHATSAPP_ECRAN_LABELS, URGENCE_WHATSAPP_ECRAN_PAGES } from '@vizyo/tracky-shared';
 import { AiUsageService } from '../ai-usage/ai-usage.service';
 import type { AuthUser } from '../auth/types/auth-user';
 import { resolveTenantScope } from '../common/tenant-scope';
@@ -17,6 +20,7 @@ import { NotificationDispatchService } from '../notifications/notification-dispa
 import { ErrorLogger } from '../observability/error-logger.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { SystemActivityService } from '../system-activity/system-activity.service';
+import { UserActivityService } from '../user-activity/user-activity.service';
 import {
   AssistanceAiService,
   type AssistanceMessageEntree,
@@ -40,6 +44,21 @@ const MSG_QUOTA_JOUR =
   'Vous avez atteint le nombre de réponses automatiques pour aujourd\'hui. Votre message est ' +
   'enregistré ; demandez un rappel si c\'est urgent.';
 
+/** Où se trouve l'écran d'où l'on a ouvert la ligne d'urgence — `null` : l'écran de mise à jour couvre toutes les pages. */
+const ROUTE_PAR_ECRAN: Record<UrgenceWhatsappEcran, string | null> = {
+  assistance: '/assistance',
+  vehicules: '/vehicles',
+  'mise-a-jour': null,
+};
+/**
+ * Sous une minute, un appui retransmis est dit « maintenant » : c'est le temps d'un aller-retour
+ * vers WhatsApp, pas une panne — l'annoncer en retard ferait croire à un incident qui n'a pas eu lieu.
+ */
+const RETARD_SIGNIFICATIF_S = 60;
+const FMT_HEURE_PARIS = new Intl.DateTimeFormat('fr-FR', {
+  timeZone: 'Europe/Paris', hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+});
+
 /**
  * Assistance IA — conversations, plafonds et archive.
  *
@@ -62,6 +81,7 @@ export class AssistanceService {
     private readonly systemActivity: SystemActivityService,
     private readonly errorLogger: ErrorLogger,
     private readonly notifications: NotificationDispatchService,
+    private readonly userActivity: UserActivityService,
   ) {}
 
   // ─── Poser une question ────────────────────────────────────────────────────
@@ -93,6 +113,40 @@ export class AssistanceService {
     // qu'un exploitant a besoin de savoir, c'est qu'une demande existe.
     if (!conversationId) await this.prevenirAdmins(user, conv.id, texte);
 
+    // Le geste au centre d'activité des utilisateurs — sans le CONTENU, qui reste à son auteur
+    // (les admins de la société lisent aussi ce fil).
+    await this.userActivity.recordServerEvent(user, {
+      type: 'ASSISTANCE',
+      target: conversationId ? 'Question — suite de la conversation' : 'Nouvelle question à l’assistance',
+      route: '/assistance',
+      routeLabel: 'Assistance',
+    });
+
+    // Les super-admins — c'est Vizyo qui répond (30/09). Lancé MAINTENANT, attendu à la fin : la
+    // notification part pendant que l'IA rédige, et ne retarde pas la réponse. Elle ne rejette
+    // jamais (best-effort), le `finally` ne peut donc pas masquer une vraie erreur.
+    const avertissement = this.prevenirSuperAdmins(user, {
+      kind: 'conversation',
+      // UN tiroir d'anti-spam par conversation : la première question prévient, les suivantes
+      // dans le quart d'heure se regroupent, la conversation qui reprend plus tard prévient à nouveau.
+      subjectKey: conv.id,
+      title: conversationId ? 'Assistance — nouveau message' : 'Nouvelle demande d’assistance',
+      corps: (qui) => `${qui} : ${texte.slice(0, 120)}`,
+      url: '/admin/assistance',
+    });
+    try {
+      return await this.repondre(user, conv, texte);
+    } finally {
+      await avertissement;
+    }
+  }
+
+  /** La suite de `poser` : plafonds, appel IA, enregistrement de la réponse, escalade. */
+  private async repondre(
+    user: AuthUser,
+    conv: { id: string; severity: string | null; escalatedAt: Date | null },
+    texte: string,
+  ): Promise<AssistanceConversationDto> {
     const [dejaRepondu, aujourdHui] = await Promise.all([
       this.prisma.assistanceMessage.count({ where: { conversationId: conv.id, role: 'assistant' } }),
       this.compterReponsesDuJour(user.id),
@@ -197,6 +251,12 @@ export class AssistanceService {
     await this.prisma.assistanceMessage.create({
       data: { conversationId: conv.id, role: 'user', content: `[Rappel urgent] ${raison}` },
     });
+    await this.userActivity.recordServerEvent(user, {
+      type: 'ASSISTANCE',
+      target: 'Rappel urgent demandé',
+      route: '/assistance',
+      routeLabel: 'Assistance',
+    });
     await this.signalerReprise(user, conv.id, raison, 'HIGH', true);
     return this.toDto(conv.id, user);
   }
@@ -245,7 +305,8 @@ export class AssistanceService {
         /* une alerte qui échoue ne doit pas faire échouer la demande d'aide */
       });
     this.systemActivity.record({
-      category: 'INTERNAL',
+      // ASSISTANCE depuis le 01/10/2026 : en INTERNAL, la ligne s'affichait « Provisioning interne ».
+      category: 'ASSISTANCE',
       action: urgent ? 'assistance_rappel_urgent' : 'assistance_escalade',
       status: urgent ? 'FAILURE' : 'SUCCESS',
       actor: 'utilisateur',
@@ -254,6 +315,16 @@ export class AssistanceService {
       fleetId: user.fleetId ?? null,
       triggeredByUserId: user.id,
       meta: { conversationId, gravite, urgent },
+    });
+    // Le centre d'alerte n'envoie AUCUN push : sans ceci, un rappel urgent attendait que quelqu'un
+    // ouvre l'écran. Tiroir d'anti-spam DISTINCT de celui des questions — un rappel qui suit de
+    // près une question déjà notifiée est un autre signal, il ne doit pas se regrouper avec elle.
+    await this.prevenirSuperAdmins(user, {
+      kind: urgent ? 'rappel-urgent' : 'escalade',
+      subjectKey: conversationId,
+      title: urgent ? 'RAPPEL URGENT demandé' : 'Assistance — un humain doit reprendre',
+      corps: (qui) => `${qui} : ${(motif ?? 'sans motif').slice(0, 120)}`,
+      url: '/admin/assistance',
     });
   }
 
@@ -437,6 +508,110 @@ export class AssistanceService {
     } catch (e) {
       this.logger.warn(`Notification d'ouverture non envoyée : ${(e as Error)?.message ?? e}`);
     }
+  }
+
+  // ─── Ligne d'urgence WhatsApp ──────────────────────────────────────────────
+
+  /**
+   * Quelqu'un vient d'ouvrir la ligne d'urgence WhatsApp — le plus souvent un veilleur, la nuit,
+   * devant un véhicule qui ne démarre pas.
+   *
+   * Trois traces, et chacune a son lecteur :
+   *   - le CENTRE D'ACTIVITÉ des utilisateurs (`URGENCE_WHATSAPP`) : qui, quand, depuis quel écran,
+   *     au milieu de ce que la personne faisait juste avant ;
+   *   - le JOURNAL SYSTÈME (`ASSISTANCE`) : la preuve durable, filtrable avec les escalades ;
+   *   - un PUSH aux super-admins : la personne d'astreinte apprend qu'un message arrive, avant
+   *     même de regarder WhatsApp. Anti-spam par PERSONNE (15 min) : appuyer trois fois parce
+   *     que WhatsApp tarde à s'ouvrir ne doit pas réveiller trois fois.
+   *
+   * Ne prouve pas qu'un message a été ENVOYÉ — WhatsApp est hors de l'application. D'où les mots :
+   * « a ouvert WhatsApp », jamais « a écrit ».
+   *
+   * Un appui fait pendant une PANNE (écran « mise à jour en cours ») arrive en différé, avec son
+   * âge (`retardS`) : chaque trace dit alors l'heure RÉELLE de l'appui, et qu'il a attendu le
+   * retour de l'API. Sans cette mention, un super-admin lirait « maintenant » un appel à l'aide
+   * vieux d'une demi-heure — et chercherait la personne au mauvais moment.
+   */
+  async signalerUrgenceWhatsapp(user: AuthUser, dto: SignalUrgenceWhatsappDto): Promise<void> {
+    const plaque = dto.plaque?.trim().toUpperCase() || null;
+    const depuis = URGENCE_WHATSAPP_ECRAN_LABELS[dto.ecran] ?? dto.ecran;
+    const retardS = dto.retardS && dto.retardS >= RETARD_SIGNIFICATIF_S ? dto.retardS : 0;
+    const appuiA = retardS ? FMT_HEURE_PARIS.format(new Date(Date.now() - retardS * 1000)) : null;
+    const differe = appuiA ? ` (appui à ${appuiA}, transmis au retour de l’API)` : '';
+    await this.userActivity.recordServerEvent(user, {
+      type: 'URGENCE_WHATSAPP',
+      target: `WhatsApp d’astreinte ouvert${plaque ? ` — ${plaque}` : ''}${differe}`,
+      route: ROUTE_PAR_ECRAN[dto.ecran] ?? null,
+      routeLabel: URGENCE_WHATSAPP_ECRAN_PAGES[dto.ecran] ?? null,
+    });
+    this.systemActivity.record({
+      category: 'ASSISTANCE',
+      action: 'assistance_urgence_whatsapp',
+      status: 'SUCCESS',
+      actor: 'utilisateur',
+      target: user.email,
+      detail: `Ligne d’urgence WhatsApp ouverte depuis ${depuis}${plaque ? ` — véhicule ${plaque}` : ''}${differe}`,
+      fleetId: user.fleetId ?? null,
+      triggeredByUserId: user.id,
+      meta: { ecran: dto.ecran, plaque, ...(retardS ? { retardS } : {}) },
+    });
+    await this.prevenirSuperAdmins(user, {
+      kind: 'urgence-whatsapp',
+      subjectKey: `whatsapp:${user.id}`,
+      title: 'Urgence véhicule — WhatsApp ouvert',
+      corps: (qui) =>
+        `${qui}${plaque ? ` · véhicule ${plaque}` : ''} · depuis ${depuis}${appuiA ? ` · appui à ${appuiA}` : ''}`,
+      // Le centre d'activité : le geste y est en tête, avec ce que la personne faisait avant.
+      url: '/admin/activity',
+    });
+  }
+
+  /**
+   * Prévient les SUPER-ADMINS — c'est Vizyo qui répond aux demandes d'assistance et tient la
+   * ligne d'urgence (30/09/2026). Best-effort : ne rejette jamais.
+   *
+   * ⚠️ `fleetId: null`, et pas la société du demandeur : un super-admin n'a pas de société, et le
+   * garde-fou anti cross-tenant de l'envoi (`WebPushService.sendToUser`) rejetterait EN SILENCE
+   * tout push adressé à un compte dont la société diffère — exactement le piège qui a rendu le
+   * push d'alerte muet en juillet (« un SUPER_ADMIN ne pouvait jamais être destinataire »).
+   *
+   * Ce que fait l'équipe elle-même (super-admin, propriétaire) ne prévient personne : un essai
+   * de l'équipe s'écrit au journal, il n'a pas à sonner dans la poche des collègues.
+   */
+  private async prevenirSuperAdmins(
+    user: AuthUser,
+    n: { kind: string; subjectKey: string; title: string; corps: (qui: string) => string; url: string },
+  ): Promise<void> {
+    try {
+      if (user.role === UserRole.SUPER_ADMIN || user.isOwner) return;
+      const admins = await this.prisma.user.findMany({
+        where: { role: UserRole.SUPER_ADMIN, isActive: true, id: { not: user.id } },
+        select: { id: true },
+      });
+      if (admins.length === 0) return;
+      await this.notifications.notifyUsers({
+        userIds: admins.map((a) => a.id),
+        category: 'ASSISTANCE',
+        kind: n.kind,
+        subjectKey: n.subjectKey,
+        title: n.title,
+        body: n.corps(await this.quiEtSociete(user)),
+        url: n.url,
+        fleetId: null,
+      });
+    } catch (e) {
+      this.logger.warn(`Notification super-admin (${n.kind}) non envoyée : ${(e as Error)?.message ?? e}`);
+    }
+  }
+
+  /** « Prénom Nom (Société) » — ce qu'un super-admin doit lire en premier, sur un écran verrouillé. */
+  private async quiEtSociete(user: AuthUser): Promise<string> {
+    const nom = [user.firstName, user.lastName].filter(Boolean).join(' ') || user.email;
+    if (!user.fleetId) return nom;
+    const fleet = await this.prisma.fleet
+      .findUnique({ where: { id: user.fleetId }, select: { name: true } })
+      .catch(() => null);
+    return fleet?.name ? `${nom} (${fleet.name})` : nom;
   }
 
   /**

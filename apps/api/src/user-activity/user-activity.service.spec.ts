@@ -92,6 +92,46 @@ describe('UserActivityService', () => {
     expect(prisma.userActivity.createMany).not.toHaveBeenCalled();
   });
 
+  // ─── 01/10/2026 — gestes écrits par le SERVEUR (assistance, ligne d'urgence) ─────────────
+
+  it('🔴 un lot du navigateur ne peut PAS fabriquer une urgence ni une question à l’assistance', async () => {
+    const prisma = makePrisma();
+    const svc = new UserActivityService(prisma as any, { record: jest.fn() } as any, OWNER_VIS);
+    await svc.ingestBatch(USER, { events: [{ type: 'URGENCE_WHATSAPP', target: 'faux' }, { type: 'ASSISTANCE', target: 'faux' }] });
+    expect(prisma.userActivity.createMany).not.toHaveBeenCalled();
+  });
+
+  it('recordServerEvent écrit le geste dans la session OUVERTE, sans toucher à la présence', async () => {
+    const prisma = makePrisma();
+    prisma.userSession.findFirst.mockResolvedValue({
+      id: 'sess-existing', currentRoute: '/vehicles', status: 'IDLE', startedAt: new Date(), lastSeenAt: new Date(),
+    });
+    const svc = new UserActivityService(prisma as any, { record: jest.fn() } as any, OWNER_VIS);
+    await svc.recordServerEvent(USER, {
+      type: 'URGENCE_WHATSAPP', target: 'WhatsApp d’astreinte ouvert — GS-187-NY', route: '/vehicles', routeLabel: 'Véhicules',
+    });
+    expect(prisma._activitiesCreated[0][0]).toMatchObject({
+      sessionId: 'sess-existing', userId: 'u1', fleetId: 'f1', type: 'URGENCE_WHATSAPP',
+      target: 'WhatsApp d’astreinte ouvert — GS-187-NY', route: '/vehicles', routeLabel: 'Véhicules',
+    });
+    // Ni statut ni page courante : seul le navigateur les connaît.
+    expect(Object.keys(prisma._sessionUpdates[0])).toEqual(['lastSeenAt']);
+  });
+
+  it('recordServerEvent ne lève JAMAIS — une trace manquée ne casse pas une demande d’aide', async () => {
+    const prisma = makePrisma();
+    prisma.userActivity.createMany.mockRejectedValue(new Error('base indisponible'));
+    const svc = new UserActivityService(prisma as any, { record: jest.fn() } as any, OWNER_VIS);
+    await expect(svc.recordServerEvent(USER, { type: 'ASSISTANCE', target: 'Nouvelle question à l’assistance' })).resolves.toBeUndefined();
+  });
+
+  it('recordServerEvent refuse un type navigateur (pas de porte dérobée vers le fil)', async () => {
+    const prisma = makePrisma();
+    const svc = new UserActivityService(prisma as any, { record: jest.fn() } as any, OWNER_VIS);
+    await svc.recordServerEvent(USER, { type: 'CLICK' as never, target: 'x' });
+    expect(prisma.userActivity.createMany).not.toHaveBeenCalled();
+  });
+
   it('réutilise une session ouverte récente au lieu d\'en créer une', async () => {
     const prisma = makePrisma();
     prisma.userSession.findFirst.mockResolvedValue({

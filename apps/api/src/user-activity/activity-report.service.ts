@@ -13,7 +13,7 @@ import type {
   GenerateActivityReportDto,
   SetActivityReportScheduleDto,
 } from '@vizyo/tracky-shared';
-import { labelForRoute, ROUTE_LABELS } from '@vizyo/tracky-shared';
+import { ACTIVITY_TYPES_SERVEUR, labelForRoute, ROUTE_LABELS } from '@vizyo/tracky-shared';
 import { AiUsageService } from '../ai-usage/ai-usage.service';
 import { classerEchecIa } from '../ai/ai-client.types';
 import { AiRouter } from '../ai/ai-router.service';
@@ -473,7 +473,7 @@ export class ActivityReportService {
           }),
           // VRAI volume (non plafonné) — le parcours est un échantillon, pas le total.
           this.prisma.userActivity.count({
-            where: { userId: u.id, type: { in: ['PAGE_VIEW', 'CLICK', 'FORM_SUBMIT', 'SESSION_START', 'SESSION_END'] }, createdAt: inWindow },
+            where: { userId: u.id, type: { in: ['PAGE_VIEW', 'CLICK', 'FORM_SUBMIT', 'SESSION_START', 'SESSION_END', ...ACTIVITY_TYPES_SERVEUR] }, createdAt: inWindow },
           }),
           // Erreurs RÉELLEMENT subies (front + 5xx serveur) = frictions avérées.
           this.prisma.errorLog.count({
@@ -487,7 +487,7 @@ export class ActivityReportService {
           }),
           // Parcours brut, biais RÉCENCE (les derniers events), fusionné/sessionné ensuite.
           this.prisma.userActivity.findMany({
-            where: { userId: u.id, type: { in: ['PAGE_VIEW', 'CLICK', 'FORM_SUBMIT', 'SESSION_END'] }, createdAt: inWindow },
+            where: { userId: u.id, type: { in: ['PAGE_VIEW', 'CLICK', 'FORM_SUBMIT', 'SESSION_END', ...ACTIVITY_TYPES_SERVEUR] }, createdAt: inWindow },
             orderBy: { createdAt: 'desc' },
             take: JOURNEY_RAW_FETCH,
             select: { type: true, route: true, routeLabel: true, target: true, durationMs: true, createdAt: true, sessionId: true },
@@ -612,6 +612,11 @@ export class ActivityReportService {
         lines.push(`${time} · envoi:${cur.label}`);
       } else if (cur.type === 'SESSION_END') {
         lines.push(`${time} · session:fin (${cur.label})`);
+      } else if (cur.type === 'ASSISTANCE') {
+        // 01/10 — écrits par le serveur ; le libellé est une phrase, jamais le contenu d'une question.
+        lines.push(`${time} · aide:${cur.label}`);
+      } else if (cur.type === 'URGENCE_WHATSAPP') {
+        lines.push(`${time} · URGENCE:${cur.label}`);
       }
       cur = null;
     };

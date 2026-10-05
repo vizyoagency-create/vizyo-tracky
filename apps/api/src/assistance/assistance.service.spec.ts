@@ -21,6 +21,10 @@ describe('AssistanceService', () => {
     ia?: Record<string, unknown>;
     role?: UserRole;
     fleetId?: string | null;
+    /** Admins de la SOCIÉTÉ (destinataires de l'ouverture). */
+    fleetAdmins?: { id: string }[];
+    /** SUPER-ADMINS actifs (destinataires de tout usage de l'assistance, et de la ligne d'urgence). */
+    superAdmins?: { id: string }[];
   } = {}) {
     const conv = opts.conv === null ? null : {
       id: 'c1', userId: MOI, fleetId: 'f1', title: 'Titre', status: 'open',
@@ -44,8 +48,11 @@ describe('AssistanceService', () => {
       },
       user: {
         findUnique: jest.fn().mockResolvedValue({ email: 'x@y.fr', role: 'VIEWER' }),
-        // Destinataires de la notification d'ouverture : les admins de la société.
-        findMany: jest.fn().mockResolvedValue([]),
+        // Deux lectures distinctes, reconnues à leur rôle : les admins de la SOCIÉTÉ (ouverture)
+        // et les SUPER-ADMINS (tout usage, ligne d'urgence).
+        findMany: jest.fn(async (args: { where?: { role?: UserRole } }) =>
+          args?.where?.role === UserRole.SUPER_ADMIN ? (opts.superAdmins ?? []) : (opts.fleetAdmins ?? []),
+        ),
       },
       fleet: { findUnique: jest.fn().mockResolvedValue({ name: 'Flotte' }), findMany: jest.fn().mockResolvedValue([]) },
     };
@@ -61,16 +68,22 @@ describe('AssistanceService', () => {
     const systemActivity = { record: jest.fn() };
     const errorLogger = { record: jest.fn().mockResolvedValue('id') };
     const notifications = { notifyUsers: jest.fn().mockResolvedValue(1) };
+    const userActivity = { recordServerEvent: jest.fn().mockResolvedValue(undefined) };
     const svc = new AssistanceService(
       prisma as never, ia as never, aiUsage as never, systemActivity as never,
-      errorLogger as never, notifications as never,
+      errorLogger as never, notifications as never, userActivity as never,
     );
     const user: AuthUser = {
       id: MOI, authUserId: 'a', email: 'moi@x.fr', firstName: null, lastName: null,
       role: opts.role ?? UserRole.FLEET_MANAGER, isOwner: false,
       fleetId: opts.fleetId === undefined ? 'f1' : opts.fleetId, isActive: true, permissions: null,
     };
-    return { svc, prisma, ia, systemActivity, errorLogger, notifications, user };
+    /** Les appels de notification adressés à un public donné (société / super-admins). */
+    const appelsVers = (ids: string[]) =>
+      notifications.notifyUsers.mock.calls
+        .map((c) => c[0] as Record<string, unknown> & { userIds: string[] })
+        .filter((a) => JSON.stringify(a.userIds) === JSON.stringify(ids));
+    return { svc, prisma, ia, systemActivity, errorLogger, notifications, userActivity, user, appelsVers };
   }
 
   // ─── Propriété : la demande n'est jamais perdue ────────────────────────────
@@ -242,40 +255,126 @@ describe('AssistanceService', () => {
 
   describe('notifications', () => {
     it('prévient les admins de la société à l’OUVERTURE, pas à chaque message', async () => {
-      const { svc, prisma, notifications, user } = build();
-      prisma.user.findMany = jest.fn().mockResolvedValue([{ id: 'admin-1' }, { id: 'admin-2' }]);
+      const { svc, user, appelsVers } = build({ fleetAdmins: [{ id: 'admin-1' }, { id: 'admin-2' }] });
 
       await svc.poser(user, 'premiere question');
-      expect(notifications.notifyUsers).toHaveBeenCalledTimes(1);
-      expect(notifications.notifyUsers.mock.calls[0][0]).toMatchObject({
-        userIds: ['admin-1', 'admin-2'], category: 'ASSISTANCE', kind: 'nouvelle', fleetId: 'f1',
+      expect(appelsVers(['admin-1', 'admin-2'])).toHaveLength(1);
+      expect(appelsVers(['admin-1', 'admin-2'])[0]).toMatchObject({
+        category: 'ASSISTANCE', kind: 'nouvelle', fleetId: 'f1',
       });
 
-      notifications.notifyUsers.mockClear();
       await svc.poser(user, 'question de suite', 'c1');
-      // Une conversation de dix échanges ne doit pas produire dix notifications.
-      expect(notifications.notifyUsers).not.toHaveBeenCalled();
+      // Une conversation de dix échanges ne doit pas produire dix notifications À LA SOCIÉTÉ.
+      expect(appelsVers(['admin-1', 'admin-2'])).toHaveLength(1);
     });
 
     it('n’avertit jamais l’auteur de sa propre demande', async () => {
       const { svc, prisma, user } = build();
-      prisma.user.findMany = jest.fn().mockResolvedValue([]);
       await svc.poser(user, 'question');
-      expect(prisma.user.findMany.mock.calls[0][0].where).toMatchObject({ id: { not: MOI } });
+      // Les deux lectures de destinataires — société et super-admins — excluent l'auteur.
+      for (const [args] of prisma.user.findMany.mock.calls) {
+        expect(args.where).toMatchObject({ id: { not: MOI } });
+      }
+      expect(prisma.user.findMany).toHaveBeenCalledTimes(2);
     });
 
-    it('sans société, ne prévient PERSONNE (prévenir tous les admins serait une fuite)', async () => {
-      const { svc, notifications, user } = build({ fleetId: null });
+    it('sans société, ne prévient AUCUN admin de société (prévenir tous les admins serait une fuite)', async () => {
+      const { svc, prisma, user } = build({ fleetId: null, fleetAdmins: [{ id: 'admin-x' }] });
       await svc.poser(user, 'question');
-      expect(notifications.notifyUsers).not.toHaveBeenCalled();
+      const lectures = prisma.user.findMany.mock.calls.map(([a]: [{ where: { role?: UserRole } }]) => a.where.role);
+      expect(lectures).not.toContain(UserRole.FLEET_ADMIN);
     });
 
     it('l’anti-spam est cloisonné par conversation', async () => {
-      const { svc, prisma, notifications, user } = build();
-      prisma.user.findMany = jest.fn().mockResolvedValue([{ id: 'admin-1' }]);
+      const { svc, user, appelsVers } = build({ fleetAdmins: [{ id: 'admin-1' }] });
       await svc.poser(user, 'question');
       // Deux demandes différentes le même jour doivent produire deux notifications.
-      expect(notifications.notifyUsers.mock.calls[0][0].subjectKey).toBe('c1');
+      expect(appelsVers(['admin-1'])[0].subjectKey).toBe('c1');
+    });
+
+    // ─── 01/10/2026 — les SUPER-ADMINS sont prévenus de tout usage de l'assistance ───────────
+    //
+    // Le push n'est ouvert qu'aux super-admins (`PUSH_ROLLOUT`), et l'ouverture ne prévenait que
+    // les admins de la société : en pratique, PERSONNE n'apprenait qu'une demande existait.
+
+    it('🔴 une question prévient les super-admins — hors société, sans quoi l’envoi meurt en silence', async () => {
+      const { svc, user, appelsVers } = build({ superAdmins: [{ id: 'sa-1' }, { id: 'sa-2' }] });
+      await svc.poser(user, 'Le véhicule GS-187-NY ne démarre pas');
+      const [appel] = appelsVers(['sa-1', 'sa-2']);
+      expect(appel).toMatchObject({
+        category: 'ASSISTANCE', kind: 'conversation', subjectKey: 'c1', title: 'Nouvelle demande d’assistance',
+        url: '/admin/assistance',
+        // `fleetId: null` : un super-admin n'a pas de société ; avec celle du demandeur, le garde-fou
+        // anti cross-tenant de l'envoi rejetterait le push sans rien dire.
+        fleetId: null,
+      });
+      expect(appel.body).toContain('moi@x.fr (Flotte)');
+      expect(appel.body).toContain('ne démarre pas');
+    });
+
+    it('la suite d’une conversation prévient aussi — dans le MÊME tiroir d’anti-spam', async () => {
+      const { svc, user, appelsVers } = build({ superAdmins: [{ id: 'sa-1' }] });
+      await svc.poser(user, 'question de suite', 'c1');
+      // Même `kind`, même `subjectKey` : les messages d'une conversation se regroupent dans le quart
+      // d'heure (socle) au lieu de sonner un par un.
+      expect(appelsVers(['sa-1'])[0]).toMatchObject({ kind: 'conversation', subjectKey: 'c1', title: 'Assistance — nouveau message' });
+    });
+
+    it('ce que fait l’équipe elle-même ne sonne pas chez les collègues', async () => {
+      const { svc, user, appelsVers, userActivity } = build({ role: UserRole.SUPER_ADMIN, fleetId: null, superAdmins: [{ id: 'sa-2' }] });
+      await svc.poser(user, 'essai');
+      expect(appelsVers(['sa-2'])).toHaveLength(0);
+      // …mais le geste reste écrit au centre d'activité.
+      expect(userActivity.recordServerEvent).toHaveBeenCalled();
+    });
+
+    it('le push part PENDANT la réponse, et il est parti quand la réponse revient', async () => {
+      const { svc, ia, notifications, user } = build({ superAdmins: [{ id: 'sa-1' }] });
+      const ordre: string[] = [];
+      let iaAppelee!: () => void;
+      const iaPassee = new Promise<void>((r) => { iaAppelee = r; });
+      // Le push ne se termine qu'APRÈS l'appel IA : s'il était attendu AVANT l'IA, ce test se
+      // bloquerait ; s'il n'était pas attendu du tout, « push-fini » manquerait au retour.
+      notifications.notifyUsers.mockImplementation(async () => { await iaPassee; ordre.push('push-fini'); return 1; });
+      ia.repondre.mockImplementation(async () => {
+        ordre.push('ia');
+        iaAppelee();
+        return { reponse: 'ok', escalade: false, motifEscalade: null, gravite: 'LOW', titre: 't', sujets: [], contextUsed: [], model: 'm', costUsd: 0, latencyMs: 1, sansIa: false };
+      });
+      await svc.poser(user, 'question');
+      expect(ordre).toEqual(['ia', 'push-fini']);
+    });
+
+    it('un rappel urgent prévient les super-admins dans un tiroir À PART', async () => {
+      const { svc, user, appelsVers } = build({ superAdmins: [{ id: 'sa-1' }] });
+      await svc.rappelUrgent(user, 'c1', 'camion bloqué au dépôt');
+      // Un tiroir distinct de « conversation » : un rappel qui suit de près une question déjà
+      // notifiée est un autre signal, il ne doit pas être regroupé — donc tu — avec elle.
+      expect(appelsVers(['sa-1'])[0]).toMatchObject({ kind: 'rappel-urgent', subjectKey: 'c1', title: 'RAPPEL URGENT demandé' });
+    });
+
+    it('une escalade de l’agent prévient les super-admins', async () => {
+      const { svc, user, appelsVers } = build({ superAdmins: [{ id: 'sa-1' }], ia: { escalade: true, motifEscalade: 'hors connaissance' } });
+      await svc.poser(user, 'question');
+      const kinds = appelsVers(['sa-1']).map((a) => a.kind);
+      expect(kinds).toEqual(expect.arrayContaining(['conversation', 'escalade']));
+    });
+
+    it('le centre d’activité reçoit le GESTE, jamais le CONTENU de la question', async () => {
+      const { svc, user, userActivity } = build();
+      await svc.poser(user, 'Mon collègue a oublié les clés du GS-187-NY');
+      const [, evt] = userActivity.recordServerEvent.mock.calls[0];
+      expect(evt).toMatchObject({ type: 'ASSISTANCE', route: '/assistance' });
+      // Les admins de la société lisent aussi ce fil : la question reste à son auteur.
+      expect(JSON.stringify(evt)).not.toContain('clés');
+    });
+
+    it('le rappel urgent est écrit au centre d’activité, et l’escalade au journal sous ASSISTANCE', async () => {
+      const { svc, user, userActivity, systemActivity } = build();
+      await svc.rappelUrgent(user, 'c1', 'camion vole');
+      expect(userActivity.recordServerEvent.mock.calls[0][1]).toMatchObject({ type: 'ASSISTANCE', target: 'Rappel urgent demandé' });
+      // Jusqu'au 01/10 : `INTERNAL`, affiché « Provisioning interne ».
+      expect(systemActivity.record.mock.calls[0][0].category).toBe('ASSISTANCE');
     });
 
     it('quand un humain répond, c’est l’AUTEUR qui est prévenu — pas la flotte', async () => {
@@ -292,6 +391,85 @@ describe('AssistanceService', () => {
       notifications.notifyUsers.mockRejectedValue(new Error('push casse'));
       // Best-effort de bout en bout : le canal d'aide ne dépend pas du canal d'avertissement.
       await expect(svc.poser(user, 'question')).resolves.toBeDefined();
+    });
+  });
+
+  // ─── Ligne d'urgence WhatsApp (01/10/2026) ─────────────────────────────────
+
+  describe('ligne d’urgence WhatsApp', () => {
+    it('🔴 écrit le geste au centre d’activité, au journal, et prévient les super-admins', async () => {
+      const { svc, user, userActivity, systemActivity, appelsVers } = build({
+        role: UserRole.NIGHT_WATCHMAN, superAdmins: [{ id: 'sa-1' }],
+      });
+      await svc.signalerUrgenceWhatsapp(user, { ecran: 'vehicules', plaque: 'gs-187-ny' });
+
+      expect(userActivity.recordServerEvent.mock.calls[0][1]).toMatchObject({
+        type: 'URGENCE_WHATSAPP', target: 'WhatsApp d’astreinte ouvert — GS-187-NY', route: '/vehicles', routeLabel: 'Véhicules',
+      });
+      expect(systemActivity.record.mock.calls[0][0]).toMatchObject({
+        category: 'ASSISTANCE', action: 'assistance_urgence_whatsapp',
+        detail: 'Ligne d’urgence WhatsApp ouverte depuis la liste des véhicules — véhicule GS-187-NY',
+      });
+      const [push] = appelsVers(['sa-1']);
+      expect(push).toMatchObject({
+        category: 'ASSISTANCE', kind: 'urgence-whatsapp', title: 'Urgence véhicule — WhatsApp ouvert',
+        url: '/admin/activity', fleetId: null,
+      });
+      expect(push.body).toBe('moi@x.fr (Flotte) · véhicule GS-187-NY · depuis la liste des véhicules');
+    });
+
+    it('l’anti-spam est par PERSONNE : trois appuis impatients ne réveillent pas trois fois', async () => {
+      const { svc, user, appelsVers } = build({ superAdmins: [{ id: 'sa-1' }] });
+      await svc.signalerUrgenceWhatsapp(user, { ecran: 'assistance' });
+      // Le socle regroupe tout ce qui partage `kind` + `subjectKey` dans le quart d'heure.
+      expect(appelsVers(['sa-1'])[0].subjectKey).toBe(`whatsapp:${MOI}`);
+    });
+
+    it('sans plaque, la phrase reste juste', async () => {
+      const { svc, user, appelsVers, userActivity } = build({ superAdmins: [{ id: 'sa-1' }] });
+      await svc.signalerUrgenceWhatsapp(user, { ecran: 'mise-a-jour' });
+      expect(userActivity.recordServerEvent.mock.calls[0][1]).toMatchObject({ target: 'WhatsApp d’astreinte ouvert', route: null });
+      expect(appelsVers(['sa-1'])[0].body).toBe('moi@x.fr (Flotte) · depuis l’écran « mise à jour en cours »');
+    });
+
+    it('un push en échec ne fait pas échouer le signalement', async () => {
+      const { svc, user, notifications } = build({ superAdmins: [{ id: 'sa-1' }] });
+      notifications.notifyUsers.mockRejectedValue(new Error('push casse'));
+      await expect(svc.signalerUrgenceWhatsapp(user, { ecran: 'vehicules' })).resolves.toBeUndefined();
+    });
+
+    /**
+     * 🔴 L'écran « mise à jour en cours » s'affiche quand l'API ne répond plus : l'appui fait là
+     * ne peut partir qu'APRÈS. Le lire comme « maintenant » ferait chercher la personne au
+     * mauvais moment — chaque trace doit dire l'heure réelle, et qu'elle a attendu.
+     */
+    it('🔴 un appui retenu pendant une panne arrive avec son heure RÉELLE, partout', async () => {
+      // 04:30 UTC = 06:30 à Paris (heure d'été) ; l'appui date de 30 min.
+      const horloge = jest.spyOn(Date, 'now').mockReturnValue(Date.parse('2026-10-01T04:30:00Z'));
+      try {
+        const { svc, user, userActivity, systemActivity, appelsVers } = build({ superAdmins: [{ id: 'sa-1' }] });
+        await svc.signalerUrgenceWhatsapp(user, { ecran: 'mise-a-jour', plaque: 'HM-787-GA', retardS: 1800 });
+
+        expect(userActivity.recordServerEvent.mock.calls[0][1].target)
+          .toBe('WhatsApp d’astreinte ouvert — HM-787-GA (appui à 06:00, transmis au retour de l’API)');
+        expect(systemActivity.record.mock.calls[0][0]).toMatchObject({
+          detail: 'Ligne d’urgence WhatsApp ouverte depuis l’écran « mise à jour en cours » — véhicule HM-787-GA'
+            + ' (appui à 06:00, transmis au retour de l’API)',
+          meta: { ecran: 'mise-a-jour', plaque: 'HM-787-GA', retardS: 1800 },
+        });
+        expect(appelsVers(['sa-1'])[0].body)
+          .toBe('moi@x.fr (Flotte) · véhicule HM-787-GA · depuis l’écran « mise à jour en cours » · appui à 06:00');
+      } finally {
+        horloge.mockRestore();
+      }
+    });
+
+    it('moins d’une minute de retard n’est pas une panne : rien n’est annoncé', async () => {
+      const { svc, user, userActivity, systemActivity, appelsVers } = build({ superAdmins: [{ id: 'sa-1' }] });
+      await svc.signalerUrgenceWhatsapp(user, { ecran: 'vehicules', retardS: 40 });
+      expect(userActivity.recordServerEvent.mock.calls[0][1].target).toBe('WhatsApp d’astreinte ouvert');
+      expect(systemActivity.record.mock.calls[0][0].meta).toEqual({ ecran: 'vehicules', plaque: null });
+      expect(appelsVers(['sa-1'])[0].body).not.toContain('appui à');
     });
   });
 

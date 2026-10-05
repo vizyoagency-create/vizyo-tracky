@@ -17,13 +17,33 @@ export type ActivityType =
   | 'SESSION_RESUME'
   | 'IDLE'
   | 'AWAY'
-  | 'HEARTBEAT';
+  | 'HEARTBEAT'
+  | ActivityTypeServeur;
+
+/**
+ * Gestes que le SERVEUR écrit lui-même au fil d'activité — jamais acceptés d'un lot envoyé par
+ * le navigateur (`POST /api/activity/batch` les écarte).
+ *
+ * Pourquoi pas un simple CLICK : un appui sur la ligne d'urgence ou une question à l'assistance
+ * se perdait parmi des centaines de clics (« cliqué « Véhicule bloqué ? WhatsApp… » »). Ces deux
+ * gestes disent qu'une personne a besoin d'aide : ils ont leur type, leur icône, leur filtre — et
+ * c'est le serveur qui les écrit, au moment où il traite la demande, pour qu'un navigateur ne
+ * puisse ni les fabriquer ni les perdre dans un lot jamais envoyé.
+ */
+export type ActivityTypeServeur =
+  /** Une question posée à l'assistance (le CONTENU n'est jamais écrit ici — il reste à son auteur). */
+  | 'ASSISTANCE'
+  /** Un appui sur « WhatsApp » — la ligne d'astreinte des véhicules immobilisés. */
+  | 'URGENCE_WHATSAPP';
+
+export const ACTIVITY_TYPES_SERVEUR: readonly ActivityTypeServeur[] = ['ASSISTANCE', 'URGENCE_WHATSAPP'];
 
 export type PresenceStatus = 'ACTIVE' | 'IDLE' | 'AWAY' | 'OFFLINE';
 
 /** Un event envoyé par le client dans un batch. */
 export interface ActivityEventInput {
-  type: ActivityType;
+  /** Jamais un type serveur : le compilateur l'interdit ici, et l'API l'écarte de toute façon. */
+  type: Exclude<ActivityType, ActivityTypeServeur>;
   route?: string;
   routeLabel?: string;
   target?: string;
