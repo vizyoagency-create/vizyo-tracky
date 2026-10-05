@@ -3679,6 +3679,20 @@ export class MapComponent implements AfterViewInit, OnDestroy {
     });
   });
 
+  /**
+   * Les lieux dépendent du droit `places_view` (`canViewPlaces`). Au chargement à froid, la carte
+   * peut finir de charger AVANT que l'utilisateur et ses droits n'arrivent : l'appel du `load`
+   * voyait alors le droit à faux, renonçait — et plus rien ne le relançait. Relevé en production
+   * le 06/10/2026 à 01:36 : 0 repère sur 21, et aucun appel à `/api/fleet-places` de toute la
+   * session, alors que l'API répondait. On suit donc le droit : dès qu'il passe à vrai, on charge.
+   */
+  private lieuxDroitEffect = effect(() => {
+    if (!this.canViewPlaces()) return;
+    untracked(() => {
+      if (this.map) this.loadFleetPlaces().catch(() => { /* silent */ });
+    });
+  });
+
   // Reagir aux events ENGINE_COMMAND_UPDATED (CUT/RESTORE via SMS, scheduler, etc.)
   // pour rafraichir la bottom card ouverte et mettre a jour l'etat ignition affiche.
   private engineCommandEffect = effect(() => {
