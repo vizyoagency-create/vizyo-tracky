@@ -87,6 +87,16 @@ export interface VehicleSnapshotDto {
    * d'alimentation. `null`/absent sinon. Dérivé serveur au read-time, jamais persisté.
    */
   presumedParkedZone?: string | null;
+
+  /**
+   * Hors service DÉCLARÉ par un super-admin sur la fiche (accident, boîtier débranché,
+   * immobilisé), `null` = en service. La carte en tire le marqueur barré d'un boîtier
+   * débranché (demande du propriétaire, 05/10/2026) : l'instantané le porte pour que le
+   * marqueur soit juste dès le premier affichage, sans attendre la liste des véhicules.
+   */
+  outOfServiceReason?: 'ACCIDENT' | 'TRACKER_UNPLUGGED' | 'IMMOBILIZED' | null;
+  /** ISO — depuis quand le véhicule est hors service (null si en service). */
+  outOfServiceSince?: string | null;
 }
 
 export interface FleetSnapshotResponse {

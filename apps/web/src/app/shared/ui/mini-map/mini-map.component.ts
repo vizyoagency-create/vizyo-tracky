@@ -63,6 +63,11 @@ export class MiniMapComponent implements AfterViewInit, OnDestroy {
   readonly vehicleType = input<string>('OTHER');
   readonly plate = input<string>('');
   readonly ignition = input(true);
+  /**
+   * Boîtier débranché DÉCLARÉ sur la fiche : la pastille est barrée, comme sur la page Carte
+   * (même fabrique `buildVehicleMarkerEl`, même habillage).
+   */
+  readonly unplugged = input(false);
   readonly zoom = input(15);
   readonly height = input('300px');
   /** Sprint 3 — false = carte figée (pan/zoom/rotation désactivés), pour le veilleur de nuit. */
@@ -95,6 +100,7 @@ export class MiniMapComponent implements AfterViewInit, OnDestroy {
     const ign = this.ignition();
     const type = this.vehicleType();
     const plate = this.plate();
+    const unplugged = this.unplugged();
     const ready = this.mapReady(); // tracké par l'effect
 
     if (!this.map || !c || !ready) return;
@@ -108,6 +114,7 @@ export class MiniMapComponent implements AfterViewInit, OnDestroy {
       heading,
       ignition: ign,
       active: false,
+      unplugged,
     };
 
     if (this.marker && this.markerEl) {

@@ -86,6 +86,43 @@ describe('construireLignesFlotte', () => {
     expect(lignes.map((l) => l.plate)).toEqual(['AA-111-AA', 'BB-222-BB', 'CC-333-CC']);
     expect(lignes.map((l) => l.etat)).toEqual(['arret', 'arret', 'hors-ligne']);
   });
+
+  /**
+   * Boîtier DÉBRANCHÉ déclaré sur la fiche (05/10/2026) : la ligne le dit, comme le marqueur
+   * barré de la carte — et la déclaration prime sur une trame qui arriverait encore.
+   */
+  describe('boîtier débranché déclaré', () => {
+    it('est rangé hors ligne et le dit (DZ-034-CA, muet depuis août)', () => {
+      const [l] = construireLignesFlotte(
+        [vehicule({ plate: 'DZ-034-CA', outOfServiceReason: 'TRACKER_UNPLUGGED', lastSeenAt: ilYA(45 * JOUR), lastPositionAt: ilYA(45 * JOUR) })],
+        () => 0,
+        MAINTENANT,
+      );
+      expect(l.debranche).toBeTrue();
+      expect(l.etat).toBe('hors-ligne');
+      expect(l.vitesse).toBeNull();
+    });
+
+    it('🔴 n’affiche pas de vitesse même si le boîtier émet encore (fiche pas remise à jour)', () => {
+      const [l] = construireLignesFlotte([vehicule({ outOfServiceReason: 'TRACKER_UNPLUGGED' })], () => 72, MAINTENANT);
+      expect(l.debranche).toBeTrue();
+      expect(l.etat).toBe('hors-ligne');
+      expect(l.vitesse).toBeNull();
+    });
+
+    it('ne touche pas aux autres motifs de hors service ni aux véhicules en service', () => {
+      const lignes = construireLignesFlotte(
+        [
+          vehicule({ vehicleId: 'a', plate: 'AA-111-AA', outOfServiceReason: 'IMMOBILIZED' }),
+          vehicule({ vehicleId: 'b', plate: 'BB-222-BB', outOfServiceReason: null }),
+        ],
+        () => 30,
+        MAINTENANT,
+      );
+      expect(lignes.map((l) => l.debranche)).toEqual([false, false]);
+      expect(lignes.map((l) => l.etat)).toEqual(['route', 'route']);
+    });
+  });
 });
 
 describe('compteursFlotte et filtrerFlotte', () => {

@@ -2,7 +2,7 @@ import * as maplibregl from 'maplibre-gl';
 import type { Map as MlMap, Marker as MlMarker } from 'maplibre-gl';
 import { getVehicleSvg } from './vehicle-icons';
 import { findBrand } from './vehicle-brands';
-import { couleurVitesse } from './couleurs-carte';
+import { COULEURS_CARTE, couleurVitesse } from './couleurs-carte';
 
 /**
  * L'entrée historique des marqueurs, de la mini-carte et des traînées. Elle ne décide plus
@@ -59,22 +59,58 @@ export const OFFLINE_MARKER_COLOR = '#9ca3af';
 /** Incident FS-253 — couleur « GPS perdu » (boîtier vivant mais sans position fraîche). Rouge
  *  = à traiter, distinct du gris hors-ligne ET du vert-vitesse (on ne le montre PAS comme actif). */
 export const GPS_LOST_MARKER_COLOR = '#ef4444';
+/**
+ * Cœur d'un marqueur « boîtier débranché » : le gris du hors-ligne — le véhicule est GRISÉ.
+ * Le rouge n'est pas ici : il est porté par l'anneau et la barre d'« interdit », dessinés
+ * en SVG et colorés par la feuille globale (`.tracky-marker--debranche`).
+ */
+export const UNPLUGGED_MARKER_COLOR = OFFLINE_MARKER_COLOR;
+
+/**
+ * La barre d'« interdit » va d'un bord à l'autre de l'anneau (r = 23, centre 28) sur la
+ * diagonale haut-gauche → bas-droite, celle des icônes « désactivé » : 28 ∓ 23/√2.
+ * Elle est TOUJOURS dans le SVG et seulement montrée par `.tracky-marker--debranche` —
+ * la mise à jour en direct bascule une classe, elle ne reconstruit pas la pastille.
+ */
+const BARRE_DEBUT = 11.74;
+const BARRE_FIN = 44.26;
 
 /**
  * Couleur de fond du cœur du marqueur :
- * parking souterrain confirmé (gris « à l'arrêt ») > GPS perdu réel (rouge) > hors-ligne (gris) > couleur-vitesse.
+ * boîtier débranché déclaré (gris) > parking souterrain confirmé (gris « à l'arrêt ») > GPS perdu réel (rouge)
+ * > hors-ligne (gris) > couleur-vitesse.
  * Le parking souterrain confirmé PRIME sur le rouge : c'est une perte GPS NORMALE (véhicule garé sous terre),
  * on ne l'affiche donc PAS en rouge alarmant mais en gris « éteint », comme demandé.
  */
 /**
- * La télémétrie de ce véhicule est-elle PÉRIMÉE ? (hors-ligne, GPS perdu, garé sous terre)
+ * La télémétrie de ce véhicule est-elle PÉRIMÉE ? (débranché, hors-ligne, GPS perdu, garé sous terre)
  *
- * Dans ces trois cas la dernière trame peut dater de plusieurs jours : sa vitesse ET son état de
+ * Dans ces cas la dernière trame peut dater de plusieurs jours : sa vitesse ET son état de
  * contact sont des souvenirs, pas un état courant. On ne doit donc RIEN en affirmer — cf.
  * `accState()`.
  */
 function isStale(data: VehicleMarkerData): boolean {
-  return !!(data.offline || data.gpsLost || data.parkedDeadZone);
+  return !!(data.unplugged || data.offline || data.gpsLost || data.parkedDeadZone);
+}
+
+/**
+ * Le marqueur doit-il porter l'habillage « hors ligne » (cœur estompé, plaque pâlie) ?
+ *
+ * Pas pour un boîtier DÉBRANCHÉ : il a son propre habillage, et cumuler les deux estompait
+ * le cœur deux fois (0,5 × 0,55) et pâlissait l'étiquette « débranché » qu'on veut lire.
+ */
+function porteHabillageHorsLigne(data: VehicleMarkerData): boolean {
+  return !data.unplugged && !!(data.offline || data.gpsLost || data.parkedDeadZone);
+}
+
+/**
+ * Nom accessible du marqueur. Il ne suit PAS la vitesse (sinon un lecteur d'écran réannonce
+ * le marqueur à chaque trame), mais il dit un boîtier débranché : c'est un état, il change
+ * rarement, et c'est ce que la barre rouge montre aux voyants.
+ */
+function nomAccessible(data: VehicleMarkerData): string {
+  const base = data.plate ? `Vehicule ${data.plate}` : 'Vehicule';
+  return data.unplugged ? `${base}, boîtier débranché` : base;
 }
 
 /**
@@ -106,6 +142,9 @@ function vitesseAffichee(data: VehicleMarkerData): number {
 }
 
 function markerColor(data: VehicleMarkerData): string {
+  // Une déclaration humaine prime sur toute mesure : un boîtier débranché n'est ni « garé
+  // sous terre » ni « GPS perdu », et sa dernière vitesse n'a plus de sens.
+  if (data.unplugged) return UNPLUGGED_MARKER_COLOR;
   if (data.parkedDeadZone) return OFFLINE_MARKER_COLOR;
   if (data.gpsLost) return GPS_LOST_MARKER_COLOR;
   return data.offline ? OFFLINE_MARKER_COLOR : speedColor(vitesseAffichee(data));
@@ -142,6 +181,14 @@ export interface VehicleMarkerData {
    */
   parkedDeadZone?: boolean;
   /**
+   * Boîtier DÉBRANCHÉ, déclaré à la main sur la fiche (hors service « Boîtier débranché »).
+   * Demande du propriétaire du 05/10/2026 : « l'icône barrée, grisée et rouge », sur la carte
+   * ET sur la mini-carte de la fiche. Prime sur tous les autres états : cœur gris estompé,
+   * anneau + barre d'« interdit » rouges, ni flèche de cap, ni contact, ni logo de marque,
+   * et l'étiquette dit « débranché » au lieu d'une vitesse.
+   */
+  unplugged?: boolean;
+  /**
    * Vitesse (km/h) a utiliser pour la COULEUR uniquement. Permet d'afficher une
    * couleur de mouvement (vert/orange) basee sur la vitesse robuste derivee du
    * deplacement, meme quand le boitier rapporte `speedKmh = 0` en roulant
@@ -159,6 +206,8 @@ export interface VehicleMarkerData {
  */
 export function plateLabel(data: VehicleMarkerData): string {
   if (!data.plate) return '';
+  // Avant « hors ligne » : le boîtier ne se TAIT pas, il a été débranché — on dit pourquoi.
+  if (data.unplugged) return `${data.plate} · débranché`;
   if (isStale(data)) return `${data.plate} · hors ligne`;
   // ⚠️ LA MÊME vitesse que celle qui donne la COULEUR — cf. `vitesseAffichee`.
   // Relevé au navigateur le 2026-08-12 : une pastille ROUGE portait « TE002ST · 18 »
@@ -196,7 +245,8 @@ export function buildVehicleMarkerEl(data: VehicleMarkerData): HTMLElement {
   const ignClass = `tracky-acc--${accState(data)}`;
   const activeClass = data.active ? 'tracky-marker--active' : '';
   const hydClass = data.hydrated ? 'tracky-marker--hydrated' : '';
-  const offlineClass = data.offline || data.gpsLost || data.parkedDeadZone ? 'tracky-marker--offline' : '';
+  const offlineClass = porteHabillageHorsLigne(data) ? 'tracky-marker--offline' : '';
+  const debrancheClass = data.unplugged ? 'tracky-marker--debranche' : '';
   const isArrow = data.type === 'OTHER';
   const headingDeg = Math.round(data.heading || 0);
   const svgContent = getVehicleSvg(data.type);
@@ -209,9 +259,9 @@ export function buildVehicleMarkerEl(data: VehicleMarkerData): HTMLElement {
   const iconRotate = isArrow ? `rotate(${headingDeg} 12 12)` : '';
 
   const el = document.createElement('div');
-  el.className = `tracky-marker ${activeClass} ${hydClass} ${offlineClass}`.replace(/\s+/g, ' ').trim();
+  el.className = `tracky-marker ${activeClass} ${hydClass} ${offlineClass} ${debrancheClass}`.replace(/\s+/g, ' ').trim();
   el.setAttribute('role', 'button');
-  el.setAttribute('aria-label', data.plate ? `Vehicule ${data.plate}` : 'Vehicule');
+  el.setAttribute('aria-label', nomAccessible(data));
   el.setAttribute('data-tracker-id', data.trackerId);
   el.setAttribute('data-vehicle-id', data.vehicleId);
   // Type RENDU (≠ type courant) : permet à updateVehicleMarkerEl de détecter qu'il doit
@@ -220,6 +270,8 @@ export function buildVehicleMarkerEl(data: VehicleMarkerData): HTMLElement {
   el.style.setProperty('--tracky-color', color);
   el.style.setProperty('--tracky-ink', markerInk(color));
   el.style.setProperty('--tracky-heading', `${headingDeg}deg`);
+  // Le rouge de l'« interdit » vient de la palette de carte, comme la clé de la légende.
+  el.style.setProperty('--tracky-barre', COULEURS_CARTE.debranche);
   el.innerHTML = `
     <svg class="tracky-marker__pastille" viewBox="0 0 56 56" width="56" height="56"
          aria-hidden="true" focusable="false">
@@ -232,6 +284,11 @@ export function buildVehicleMarkerEl(data: VehicleMarkerData): HTMLElement {
       <g class="tracky-marker__icone" transform="translate(18 18) scale(0.8333)">
         <g transform="${iconRotate}" fill="none" stroke-width="1.8"
            stroke-linecap="round" stroke-linejoin="round">${svgContent}</g>
+      </g>
+      <g class="tracky-marker__barre">
+        <circle class="tracky-marker__barre-anneau" cx="28" cy="28" r="23" />
+        <line class="tracky-marker__barre-fond" x1="${BARRE_DEBUT}" y1="${BARRE_DEBUT}" x2="${BARRE_FIN}" y2="${BARRE_FIN}" />
+        <line class="tracky-marker__barre-trait" x1="${BARRE_DEBUT}" y1="${BARRE_DEBUT}" x2="${BARRE_FIN}" y2="${BARRE_FIN}" />
       </g>
       <circle class="tracky-marker__acc ${ignClass}" cx="40.5" cy="40.5" r="5" />
     </svg>
@@ -303,8 +360,10 @@ export function updateVehicleMarkerEl(el: HTMLElement, data: VehicleMarkerData):
     }
     // L'étiquette porte la vitesse, qui change à chaque trame ; le nom accessible ne
     // doit PAS la suivre, sinon un lecteur d'écran réannonce le marqueur en boucle.
-    if (el.getAttribute('aria-label') !== `Vehicule ${data.plate}`) {
-      el.setAttribute('aria-label', `Vehicule ${data.plate}`);
+    // Il suit en revanche l'état débranché, qui change rarement.
+    const nom = nomAccessible(data);
+    if (el.getAttribute('aria-label') !== nom) {
+      el.setAttribute('aria-label', nom);
     }
   }
 
@@ -318,7 +377,10 @@ export function updateVehicleMarkerEl(el: HTMLElement, data: VehicleMarkerData):
 
   el.classList.toggle('tracky-marker--active', !!data.active);
   el.classList.toggle('tracky-marker--hydrated', !!data.hydrated);
-  el.classList.toggle('tracky-marker--offline', !!(data.offline || data.gpsLost || data.parkedDeadZone));
+  el.classList.toggle('tracky-marker--offline', porteHabillageHorsLigne(data));
+  // La barre d'« interdit » est déjà dans le SVG : déclarer ou lever « débranché » sur la
+  // fiche ne fait que basculer cette classe au prochain rendu.
+  el.classList.toggle('tracky-marker--debranche', !!data.unplugged);
 }
 
 /**

@@ -4,10 +4,11 @@ import {
   OFFLINE_MARKER_COLOR,
   GPS_LOST_MARKER_COLOR,
   speedColor,
+  UNPLUGGED_MARKER_COLOR,
   updateVehicleMarkerEl,
   type VehicleMarkerData,
 } from './maplibre-markers';
-import { BANDES_VITESSE } from './couleurs-carte';
+import { BANDES_VITESSE, COULEURS_CARTE } from './couleurs-carte';
 import { getVehicleSvg } from './vehicle-icons';
 
 /**
@@ -290,3 +291,145 @@ describe('updateVehicleMarkerEl — icône du véhicule', () => {
     }
   });
 });
+
+/**
+ * Boîtier DÉBRANCHÉ déclaré sur la fiche — demande du propriétaire du 05/10/2026 : « l'icône
+ * barrée, grisée et rouge », sur la page Carte ET sur la mini-carte de la fiche. Une seule
+ * fabrique dessine les deux : ces tests la tiennent pour les deux écrans.
+ */
+describe('marqueur — boîtier débranché déclaré', () => {
+  function data(over: Partial<VehicleMarkerData> = {}): VehicleMarkerData {
+    return {
+      trackerId: 't-34',
+      vehicleId: 'v-34',
+      type: 'VAN',
+      plate: 'DZ-034-CA',
+      speedKmh: 0,
+      heading: 0,
+      ignition: false,
+      ...over,
+    } as VehicleMarkerData;
+  }
+  const labelOf = (el: HTMLElement) => el.querySelector('.tracky-marker__plate')!.textContent;
+  const couleurOf = (el: HTMLElement) => el.style.getPropertyValue('--tracky-color').toLowerCase();
+  const accClasses = (el: HTMLElement) => Array.from(el.querySelector('.tracky-marker__acc')!.classList);
+
+  it('se dessine grisé, avec sa classe, et SANS l’habillage hors ligne (pas de double estompage)', () => {
+    // Cas réel : DZ-034-CA, débranché le 31/08, muet depuis le 21/08 → aussi « hors ligne ».
+    const el = buildVehicleMarkerEl(data({ offline: true, unplugged: true }));
+    expect(el.classList).toContain('tracky-marker--debranche');
+    expect(el.classList).not.toContain('tracky-marker--offline');
+    expect(couleurOf(el)).toBe(UNPLUGGED_MARKER_COLOR.toLowerCase());
+  });
+
+  it('dit « débranché » à la place d’une vitesse ou de « hors ligne »', () => {
+    expect(labelOf(buildVehicleMarkerEl(data({ unplugged: true, speedKmh: 88 })))).toBe('DZ-034-CA · débranché');
+    expect(labelOf(buildVehicleMarkerEl(data({ unplugged: true, offline: true })))).toBe('DZ-034-CA · débranché');
+  });
+
+  it('prime sur « GPS perdu », sur « garé sous terre » et sur une vitesse fraîche', () => {
+    for (const autre of [{ gpsLost: true }, { parkedDeadZone: true, gpsLost: true }, { speedKmh: 72, ignition: true }]) {
+      const el = buildVehicleMarkerEl(data({ unplugged: true, ...autre }));
+      expect(couleurOf(el)).withContext(JSON.stringify(autre)).toBe(UNPLUGGED_MARKER_COLOR.toLowerCase());
+      expect(labelOf(el)).withContext(JSON.stringify(autre)).toBe('DZ-034-CA · débranché');
+      // Le contact n'est plus une mesure : ni vert, ni gris plein.
+      expect(accClasses(el)).withContext(JSON.stringify(autre)).toContain('tracky-acc--unknown');
+    }
+  });
+
+  it('le nom accessible dit le boîtier débranché (sans suivre la vitesse)', () => {
+    expect(buildVehicleMarkerEl(data({ unplugged: true })).getAttribute('aria-label'))
+      .toBe('Vehicule DZ-034-CA, boîtier débranché');
+    expect(buildVehicleMarkerEl(data({ speedKmh: 40 })).getAttribute('aria-label')).toBe('Vehicule DZ-034-CA');
+  });
+
+  it('se pose puis se lève EN DIRECT, sans reconstruire la pastille', () => {
+    const el = buildVehicleMarkerEl(data({ speedKmh: 42, ignition: true }));
+    const svg = el.querySelector('svg');
+    expect(el.classList).not.toContain('tracky-marker--debranche');
+    expect(labelOf(el)).toBe('DZ-034-CA · 42');
+
+    // Le super-admin déclare « Boîtier débranché » sur la fiche.
+    updateVehicleMarkerEl(el, data({ speedKmh: 42, ignition: true, unplugged: true }));
+    expect(el.classList).toContain('tracky-marker--debranche');
+    expect(labelOf(el)).toBe('DZ-034-CA · débranché');
+    expect(el.getAttribute('aria-label')).toBe('Vehicule DZ-034-CA, boîtier débranché');
+
+    // …puis le remet « En service » : tout redevient ordinaire.
+    updateVehicleMarkerEl(el, data({ speedKmh: 42, ignition: true }));
+    expect(el.classList).not.toContain('tracky-marker--debranche');
+    expect(labelOf(el)).toBe('DZ-034-CA · 42');
+    expect(el.getAttribute('aria-label')).toBe('Vehicule DZ-034-CA');
+    expect(couleurOf(el)).toBe(speedColor(42).toLowerCase());
+    expect(el.querySelector('svg')).toBe(svg); // même pastille, pas de recréation
+  });
+
+  it('remis en service mais toujours muet, il retrouve l’habillage hors ligne', () => {
+    const el = buildVehicleMarkerEl(data({ unplugged: true, offline: true }));
+    updateVehicleMarkerEl(el, data({ offline: true }));
+    expect(el.classList).toContain('tracky-marker--offline');
+    expect(labelOf(el)).toBe('DZ-034-CA · hors ligne');
+  });
+
+  it('porte les formes de l’« interdit » dès la création, sur TOUS les marqueurs', () => {
+    // La mise à jour ne fait que basculer une classe : les formes doivent déjà être là.
+    for (const unplugged of [true, false]) {
+      const el = buildVehicleMarkerEl(data({ unplugged }));
+      for (const sel of ['.tracky-marker__barre', '.tracky-marker__barre-anneau', '.tracky-marker__barre-fond', '.tracky-marker__barre-trait']) {
+        expect(el.querySelector(sel)).withContext(`${sel} (unplugged=${unplugged})`).not.toBeNull();
+      }
+      expect(el.style.getPropertyValue('--tracky-barre').toUpperCase()).toBe(COULEURS_CARTE.debranche);
+    }
+  });
+
+  /**
+   * Le RENDU, avec la feuille globale que Karma charge (`styles.css`, cf. angular.json) : les
+   * marqueurs vivent hors d'Angular, c'est la seule feuille qui les atteint. Sans ces tests,
+   * une classe renommée d'un côté seulement laisserait la barre invisible sans rien casser.
+   */
+  describe('rendu par la feuille globale', () => {
+    const rgb = (hex: string) => {
+      const n = hex.replace('#', '');
+      return `rgb(${parseInt(n.slice(0, 2), 16)}, ${parseInt(n.slice(2, 4), 16)}, ${parseInt(n.slice(4, 6), 16)})`;
+    };
+    const style = (el: HTMLElement, sel: string) => getComputedStyle(el.querySelector(sel)!);
+    let poses: HTMLElement[] = [];
+    const poser = (d: VehicleMarkerData) => {
+      const el = buildVehicleMarkerEl(d);
+      document.body.appendChild(el);
+      poses.push(el);
+      return el;
+    };
+    afterEach(() => { poses.forEach((el) => el.remove()); poses = []; });
+
+    it('montre l’anneau et la barre ROUGES de la palette de carte', () => {
+      const el = poser(data({ unplugged: true, brand: 'Dacia' }));
+      expect(style(el, '.tracky-marker__barre').display).not.toBe('none');
+      expect(style(el, '.tracky-marker__barre-trait').stroke).toBe(rgb(COULEURS_CARTE.debranche));
+      expect(style(el, '.tracky-marker__barre-anneau').stroke).toBe(rgb(COULEURS_CARTE.debranche));
+      // Le liseré blanc sous la barre : c'est lui qui la détache d'un fond satellite.
+      expect(style(el, '.tracky-marker__barre-fond').stroke).toBe('rgb(255, 255, 255)');
+    });
+
+    it('masque la flèche de cap, le contact, le halo et le logo de marque', () => {
+      const el = poser(data({ unplugged: true, brand: 'Dacia', active: true }));
+      for (const sel of ['.tracky-marker__cap', '.tracky-marker__acc', '.tracky-marker__pulse']) {
+        expect(style(el, sel).display).withContext(sel).toBe('none');
+      }
+      const logo = el.querySelector('.tracky-marker__brand');
+      if (logo) expect(getComputedStyle(logo).display).toBe('none');
+    });
+
+    it('estompe le cœur (grisé) sans pâlir l’étiquette', () => {
+      const el = poser(data({ unplugged: true, offline: true }));
+      expect(Number(style(el, '.tracky-marker__coeur').fillOpacity)).toBeCloseTo(0.55, 2);
+      expect(Number(style(el, '.tracky-marker__plate').opacity)).toBe(1);
+    });
+
+    it('ne montre AUCUNE barre sur un marqueur ordinaire', () => {
+      const el = poser(data({ speedKmh: 30, ignition: true }));
+      expect(style(el, '.tracky-marker__barre').display).toBe('none');
+    });
+  });
+});
+

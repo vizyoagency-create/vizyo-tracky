@@ -41,6 +41,17 @@ export const COULEURS_CARTE = {
   pointe: '#F59E0B',
   /** Le contour blanc qui détache les pastilles du fond, quel qu'il soit. */
   contour: '#FFFFFF',
+  /**
+   * L'anneau et la barre d'« interdit » d'un boîtier DÉBRANCHÉ (déclaré sur la fiche).
+   *
+   * Un rouge plus soutenu que `exces` (`#EF4444`), parce qu'il est posé en TRAIT FIN : calculé
+   * sur un fond de carte clair (`#ECE7DF`), 3,9:1 contre 3,1:1 — l'exigence d'un élément
+   * graphique est 3:1, l'autre la frôlait. Sur le fond sombre (`#1D2126`) il donne 3,4:1, et
+   * le liseré blanc détache la forme partout (prototype du 05/10/2026). La pastille le reçoit
+   * en `--tracky-barre` (`buildVehicleMarkerEl`), la légende le lit ici — une seule valeur,
+   * sinon la clé ment.
+   */
+  debranche: '#DC2626',
 } as const;
 
 /**

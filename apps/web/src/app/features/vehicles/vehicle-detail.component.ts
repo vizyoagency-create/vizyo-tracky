@@ -11,7 +11,10 @@ import {
   UserRound, UserPlus, Copy, Play, Layers, Wrench, QrCode, SatelliteDish, ParkingSquare,
   // Espace dépôt (2026-08) — « un tiers regarde ce camion » sur le bandeau de mission.
   Eye,
+  // Boîtier débranché déclaré (05/10/2026) — bandeau au-dessus de la mini-carte.
+  Unplug,
 } from 'lucide-angular';
+import { estDebranche } from '../../shared/utils/hors-service';
 
 /** Espace dépôt (2026-08) — la mission en cours affichée en bandeau (A2 § 9). */
 interface MissionEnCours {
@@ -657,6 +660,15 @@ import { VehicleQrDialogComponent } from './vehicle-qr-dialog.component';
         <!-- Tab content -->
         @if (activeTab() === 'map') {
           @if (currentPosition(); as pos) {
+            @if (debranche()) {
+              <p class="vd-carte-debranche" role="note">
+                <lucide-icon [img]="UnplugIcon" [size]="14"></lucide-icon>
+                <span>
+                  <strong>Boîtier débranché</strong>{{ depuisDebranche() }} &mdash; la position
+                  affichée est la dernière reçue avant.
+                </span>
+              </p>
+            }
             <app-mini-map
               [center]="{ lat: pos.lat, lng: pos.lng }"
               [trail]="trail()"
@@ -665,6 +677,7 @@ import { VehicleQrDialogComponent } from './vehicle-qr-dialog.component';
               [vehicleType]="vehicle()?.type ?? 'OTHER'"
               [plate]="vehicle()?.plate ?? ''"
               [ignition]="pos.ignition"
+              [unplugged]="debranche()"
               [interactive]="!isWatchman()"
               height="500px"
             />
@@ -1271,6 +1284,24 @@ import { VehicleQrDialogComponent } from './vehicle-qr-dialog.component';
     .vd-admin-warning lucide-icon {
       flex-shrink: 0;
     }
+
+    /* Boîtier débranché déclaré : le bandeau au-dessus de la mini-carte barrée. Jetons du
+       thème (c'est une surface de l'application, pas le fond de carte). */
+    .vd-carte-debranche {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      margin: 0 0 10px;
+      padding: 8px 12px;
+      background: color-mix(in srgb, var(--danger) 10%, var(--bg-secondary));
+      border: 1px solid color-mix(in srgb, var(--danger) 35%, var(--border-subtle));
+      border-radius: 10px;
+      color: var(--fg-secondary);
+      font-size: 12.5px;
+      line-height: 1.45;
+    }
+    .vd-carte-debranche strong { color: var(--texte-alerte); font-weight: 700; }
+    .vd-carte-debranche lucide-icon { color: var(--texte-alerte); flex-shrink: 0; margin-top: 2px; }
 
     /* Zones mortes GPS (suivi FS-253) */
     .vd-dz-card { display: flex; flex-direction: column; gap: 10px; padding: 12px 14px; background: color-mix(in srgb, #0ea5e9 6%, var(--bg-secondary)); border: 1px solid color-mix(in srgb, #0ea5e9 22%, var(--border-subtle)); border-radius: 12px; }
@@ -1973,6 +2004,7 @@ export class VehicleDetailComponent implements OnInit {
   protected readonly ShieldCheck = ShieldCheck;
   protected readonly SatelliteDish = SatelliteDish;
   protected readonly ParkingSquare = ParkingSquare;
+  protected readonly UnplugIcon = Unplug;
   protected readonly MessageSquareIcon = MessageSquare;
   protected readonly PencilIcon = Pencil;
   protected readonly XIcon = X;
@@ -2447,6 +2479,20 @@ export class VehicleDetailComponent implements OnInit {
       }),
       v?.presumedParkedZone,
     );
+  });
+
+  /**
+   * Boîtier débranché DÉCLARÉ sur la fiche (sélecteur « État d'exploitation »). La mini-carte
+   * barre alors la pastille, comme la page Carte — et un bandeau dit pourquoi à TOUS les
+   * profils : le sélecteur et sa note ne s'affichent qu'au super-admin.
+   */
+  protected readonly debranche = computed(() => estDebranche(this.vehicle()?.outOfServiceReason));
+
+  /** « depuis le 31 août 2026 » — rien du tout plutôt que « depuis le une date inconnue ». */
+  protected readonly depuisDebranche = computed(() => {
+    const iso = this.vehicle()?.outOfServiceSince;
+    const d = iso ? new Date(iso) : null;
+    return d && !Number.isNaN(d.getTime()) ? ` depuis le ${this.dateHorsService(iso)}` : '';
   });
 
   /** Le boîtier parlait puis s'est tu depuis plus d'une semaine. */

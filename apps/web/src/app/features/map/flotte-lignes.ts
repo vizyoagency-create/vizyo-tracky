@@ -3,6 +3,7 @@ import {
   getVehicleConnectivityState,
   type VehicleConnectivityState,
 } from '@vizyo/tracky-shared';
+import { estDebranche } from '../../shared/utils/hors-service';
 
 /** Les quatre puces de la feuille flotte (planche « Carte + flotte »). */
 export type FiltreFlotte = 'tous' | 'route' | 'arret' | 'hors-ligne';
@@ -19,6 +20,8 @@ export interface LigneFlotte {
   vitesse: number | null;
   connectivite: VehicleConnectivityState;
   silence: string | null;
+  /** Boîtier débranché DÉCLARÉ sur la fiche — la ligne le dit au lieu de « Hors ligne · 45 j ». */
+  debranche: boolean;
 }
 
 /** Ce dont la ligne a besoin, et rien de plus — sous-ensemble de `VehicleSnapshotDto`. */
@@ -33,6 +36,7 @@ export interface EntreeFlotte {
   lastNoFixAt?: string | null;
   lastIgnition?: boolean | null;
   lastSpeedKmh?: number | null;
+  outOfServiceReason?: string | null;
 }
 
 const RANG: Record<EtatFlotte, number> = { route: 0, arret: 1, 'hors-ligne': 2 };
@@ -71,12 +75,15 @@ export function construireLignesFlotte(
         },
         maintenant,
       );
-      const enDirect = connectivite === 'ONLINE';
+      // Débranché DÉCLARÉ : rangé « hors ligne », sans vitesse — comme son marqueur barré, la
+      // déclaration prime sur une trame qui arriverait encore (boîtier rebranché, fiche pas à jour).
+      const debranche = estDebranche(v.outOfServiceReason);
+      const enDirect = connectivite === 'ONLINE' && !debranche;
       const vitesse = enDirect
         ? Math.round((v.trackerId ? vitesseEnDirect(v.trackerId) : undefined) ?? v.lastSpeedKmh ?? 0)
         : null;
       const etat: EtatFlotte =
-        enDirect || connectivite === 'PARKED'
+        !debranche && (enDirect || connectivite === 'PARKED')
           ? (vitesse ?? 0) > 0
             ? 'route'
             : 'arret'
@@ -92,6 +99,7 @@ export function construireLignesFlotte(
         vitesse,
         connectivite,
         silence: formatSilenceLabel(v.lastSeenAt, maintenant),
+        debranche,
       };
     })
     .sort((a, b) => RANG[a.etat] - RANG[b.etat] || a.plate.localeCompare(b.plate));

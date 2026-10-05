@@ -1029,6 +1029,45 @@ textarea:focus-visible,
   opacity: 0.6;
 }
 
+/* Boîtier DÉBRANCHÉ — déclaré à la main sur la fiche (hors service « Boîtier débranché »).
+   Demande du propriétaire du 05/10/2026 : « l'icône barrée, grisée et rouge », sur la carte
+   et sur la mini-carte de la fiche.
+   · grisée : le cœur s'estompe comme celui d'un hors-ligne — la position est un souvenir ;
+   · barrée et rouge : un anneau et une barre d'« interdit » VIFS, liserés de blanc pour rester
+     lisibles sur la carte claire, la sombre et le satellite.
+   Choisie sur prototype parmi cinq formes : c'est la seule qui se lit encore en mode discret
+   (échelle 0,32) et qui ne se confond pas avec « GPS perdu » (pastille rouge estompée). Le logo
+   de marque est retiré : posé en haut à gauche, il coupait le départ de la barre.
+   `buildVehicleMarkerEl` ne pose jamais `--offline` en même temps : pas de double estompage.
+   Le rouge est `--tracky-barre`, posé par `buildVehicleMarkerEl` depuis `COULEURS_CARTE`
+   (sans repli, comme `--tracky-ink` : la légende lit la même valeur). */
+.tracky-marker__barre { display: none; }
+.tracky-marker--debranche .tracky-marker__barre { display: inline; }
+.tracky-marker__barre-anneau {
+  fill: none;
+  stroke: var(--tracky-barre);
+  stroke-width: 3;
+}
+.tracky-marker__barre-fond {
+  stroke: #fff;
+  stroke-width: 7;
+  stroke-linecap: round;
+}
+.tracky-marker__barre-trait {
+  stroke: var(--tracky-barre);
+  stroke-width: 3.5;
+  stroke-linecap: round;
+}
+/* L'anneau blanc d'origine devient le liseré de l'anneau rouge. */
+.tracky-marker--debranche .tracky-marker__anneau { stroke: #fff; stroke-width: 6; }
+.tracky-marker--debranche .tracky-marker__coeur { fill-opacity: 0.55; }
+.tracky-marker--debranche .tracky-marker__icone { opacity: 0.75; }
+.tracky-marker--debranche .tracky-marker__cap,
+.tracky-marker--debranche .tracky-marker__pulse,
+.tracky-marker--debranche .tracky-marker__acc,
+.tracky-marker--debranche .tracky-marker__brand { display: none; }
+.tracky-marker--debranche .tracky-marker__plate { border-color: rgba(220, 38, 38, 0.7); }
+
 /* ════════════════════════════════════════════════════════════
    Popover marker (info card véhicule) — design tracky cohérent
    theme-aware (light/dark) avec fond glassy + boutons stylés.

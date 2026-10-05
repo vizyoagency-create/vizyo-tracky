@@ -1222,6 +1222,9 @@ export class VehiclesService {
         model: true,
         privacyModeEnabled: true,
         privacyModeSince: true,
+        // Hors service déclaré : la carte barre le marqueur d'un boîtier débranché.
+        outOfServiceReason: true,
+        outOfServiceSince: true,
         tracker: {
           select: {
             id: true,
@@ -1291,6 +1294,8 @@ export class VehiclesService {
           t as TrackerPourPresomption | null,
           zonesParkingSnapshot.get(v.id) ?? [],
         ),
+        outOfServiceReason: v.outOfServiceReason ?? null,
+        outOfServiceSince: v.outOfServiceSince ? v.outOfServiceSince.toISOString() : null,
       };
     });
 

@@ -373,6 +373,31 @@ describe('VehiclesService', () => {
     expect(byTracker.get(C)?.engineCutActive).toBe(true);
   });
 
+  /**
+   * 05/10/2026 — la carte barre le marqueur d'un boîtier DÉBRANCHÉ (déclaré sur la fiche).
+   * L'instantané doit donc porter le motif et sa date : sans eux, le marqueur naît « normal »
+   * et ne se corrige qu'à l'arrivée de la liste des véhicules — ou jamais, si elle échoue.
+   */
+  it('snapshot porte le hors-service déclaré (motif + date), et null pour un véhicule en service', async () => {
+    const depuis = new Date('2026-08-31T12:06:00.000Z');
+    prisma.vehicle.findMany.mockResolvedValue([
+      { ...vehicleRecord({ id: 'v-debranche', type: 'VAN' }), outOfServiceReason: 'TRACKER_UNPLUGGED', outOfServiceSince: depuis, schedule: null, groups: [] },
+      { ...vehicleRecord({ id: 'v-en-service', type: 'VAN' }), outOfServiceReason: null, outOfServiceSince: null, schedule: null, groups: [] },
+    ]);
+
+    const snap = await service.snapshot(fleetAdmin);
+    const byVehicle = new Map(snap.map((s) => [s.vehicleId, s]));
+
+    expect(byVehicle.get('v-debranche')?.outOfServiceReason).toBe('TRACKER_UNPLUGGED');
+    expect(byVehicle.get('v-debranche')?.outOfServiceSince).toBe('2026-08-31T12:06:00.000Z');
+    expect(byVehicle.get('v-en-service')?.outOfServiceReason).toBeNull();
+    expect(byVehicle.get('v-en-service')?.outOfServiceSince).toBeNull();
+    // Et la requête les demande bien : un select oublié rendrait `undefined` → `null` partout.
+    const select = prisma.vehicle.findMany.mock.calls.at(-1)[0].select;
+    expect(select.outOfServiceReason).toBe(true);
+    expect(select.outOfServiceSince).toBe(true);
+  });
+
   // --- Sprint 10 (Synchro véhicule ↔ planning d'installation) ---
 
   const taskRecord = (overrides: Record<string, unknown> = {}) => ({

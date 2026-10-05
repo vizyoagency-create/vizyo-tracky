@@ -79,10 +79,12 @@ import {
   buildVehicleMarkerEl,
   markerInk,
   speedColor,
+  UNPLUGGED_MARKER_COLOR,
   updateVehicleMarkerEl,
   type VehicleMarkerData,
 } from '../../shared/utils/maplibre-markers';
 import { COULEURS_CARTE } from '../../shared/utils/couleurs-carte';
+import { estDebranche, motifHorsService } from '../../shared/utils/hors-service';
 import { catmullRom, lerpHeading } from '../../shared/utils/spline';
 import {
   compteursFlotte,
@@ -141,6 +143,8 @@ interface VehicleMeta {
   lastSeenAt?: string | null;
   /** Sprint 1 (Fondation Groupes) — groupe (single) du véhicule pour le popup carte. */
   group?: { id: string; name: string } | null;
+  /** Hors service déclaré sur la fiche (repli quand l'instantané ne le porte pas). */
+  outOfServiceReason?: string | null;
 }
 
 /** Donnees affichees dans la bottom card Baanool au clic sur un marker. */
@@ -167,6 +171,9 @@ interface BaanoolCardData {
   lastNoFixAt?: string | null;
   /** Sprint 1 (Fondation Groupes) — groupe (single) du véhicule. */
   group?: { id: string; name: string } | null;
+  /** Boîtier débranché déclaré sur la fiche, et depuis quand (ISO) — badge de la card. */
+  debranche?: boolean;
+  debrancheDepuis?: string | null;
 }
 
 /**
@@ -477,7 +484,7 @@ const RESYNC_RADIUS_M = 150;
             @for (v of flotteVisibles(); track v.vehicleId) {
               <li>
                 <button type="button" class="fl-ligne" (click)="ouvrirDepuisFlotte(v)">
-                  <span class="fl-pastille" [class]="'fl-pastille--' + v.etat"></span>
+                  <span class="fl-pastille" [class]="'fl-pastille--' + (v.debranche ? 'debranche' : v.etat)"></span>
                   <span class="fl-ligne-texte">
                     <span class="fl-plaque">{{ v.plate }}</span>
                     <span class="fl-modele">{{ v.modele }}</span>
@@ -1015,6 +1022,15 @@ const RESYNC_RADIUS_M = 150;
           <p class="tracky-sheet-title">Légende vitesse</p>
           <!-- Générée depuis BANDES_VITESSE : la même table que les marqueurs et les tracés. -->
           <app-legende-vitesse disposition="grille" style="--lv-taille: 12px"></app-legende-vitesse>
+          @if (nbDebranches() > 0) {
+            <p class="tracky-sheet-title" style="margin-top:10px">Véhicules</p>
+            <div class="tracky-sheet-legend">
+              <div class="tracky-sheet-legend-item">
+                <ng-container [ngTemplateOutlet]="cleDebranche"></ng-container>
+                <span>Boîtier débranché ({{ nbDebranches() }})</span>
+              </div>
+            </div>
+          }
           @if (showFuelStations() || showDeadZones() || placesLayerVisible()) {
             <p class="tracky-sheet-title" style="margin-top:10px">Repères carte</p>
             <div class="tracky-sheet-legend">
@@ -1065,6 +1081,18 @@ const RESYNC_RADIUS_M = 150;
       </button>
     }
 
+    <!-- La clé « Boîtier débranché », rendue dans les DEUX légendes (feuille mobile + panneau
+         bureau) : le marqueur barré en miniature, mêmes formes et mêmes valeurs que la pastille
+         (anneau r 23, barre 11,74 → 44,26, cœur estompé à 0,55). -->
+    <ng-template #cleDebranche>
+      <svg class="mp-cle-debranche" viewBox="0 0 56 56" width="12" height="12" aria-hidden="true" focusable="false">
+        <circle cx="28" cy="28" r="15" [attr.fill]="COULEUR_DEBRANCHE_COEUR" fill-opacity="0.55" />
+        <circle cx="28" cy="28" r="23" fill="none" [attr.stroke]="COULEUR_DEBRANCHE" stroke-width="6" />
+        <line x1="11.74" y1="11.74" x2="44.26" y2="44.26" [attr.stroke]="COULEUR_DEBRANCHE"
+              stroke-width="7" stroke-linecap="round" />
+      </svg>
+    </ng-template>
+
     <!-- Légende vitesse - DESKTOP ONLY (mobile : dans la sheet) -->
     <!-- ══ LA LÉGENDE SE REPLIE, ET RESTE REPLIÉE ══
          Cinq bandes de vitesse et jusqu'à sept repères, en permanence à l'écran : c'est de la
@@ -1086,6 +1114,14 @@ const RESYNC_RADIUS_M = 150;
         <p class="text-[10px] font-semibold text-fg-secondary mb-1.5 uppercase tracking-wider">Vitesse</p>
         <!-- Générée depuis BANDES_VITESSE : la même table que les marqueurs et les tracés. -->
         <app-legende-vitesse></app-legende-vitesse>
+        @if (nbDebranches() > 0) {
+          <hr class="my-2 border-border-subtle" />
+          <p class="text-[10px] font-semibold text-fg-secondary mb-1.5 uppercase tracking-wider">Véhicules</p>
+          <div class="flex items-center gap-2">
+            <ng-container [ngTemplateOutlet]="cleDebranche"></ng-container>
+            <span class="text-[10px] text-fg-tertiary">Boîtier débranché ({{ nbDebranches() }})</span>
+          </div>
+        }
         @if (showFuelStations() || showDeadZones() || placesLayerVisible()) {
           <hr class="my-2 border-border-subtle" />
           <p class="text-[10px] font-semibold text-fg-secondary mb-1.5 uppercase tracking-wider">Repères</p>
@@ -1347,14 +1383,23 @@ const RESYNC_RADIUS_M = 150;
                   Dernière position {{ ago }}
                 </span>
               }
+              <!-- Boîtier débranché DÉCLARÉ sur la fiche (05/10/2026) : c'est la raison du
+                   silence, on la dit — le marqueur est barré pour la même raison. -->
+              @if (baanoolCard()!.debranche) {
+                <span class="bn-vcard-badge bn-vcard-badge--alerte" [attr.title]="titreDebranche(baanoolCard()!)">
+                  <span class="bn-vcard-badge-dot"></span>
+                  Boîtier débranché
+                </span>
+              }
               <!-- V1.15 — Badge Fleet (visible SA only). -->
               <app-sa-fleet-badge [fleetId]="baanoolCard()!.fleetId" />
               <!-- Sprint 1 — Groupe du véhicule. -->
               @if (baanoolCard()!.group; as g) { <app-group-badge [group]="g" /> }
               <!-- Connectivité : flague un boîtier GPS perdu / hors-ligne / non configuré.
                    Masquée si on affiche déjà « à l'arrêt · parking souterrain » (zone confirmée),
-                   pour ne pas alarmer avec « GPS perdu » là où c'est normal. -->
-              @if (!deadZoneHint()?.benign) {
+                   pour ne pas alarmer avec « GPS perdu » là où c'est normal — et pour un boîtier
+                   débranché : « Hors ligne » à côté de « Boîtier débranché » répéterait la cause. -->
+              @if (!deadZoneHint()?.benign && !baanoolCard()!.debranche) {
                 <app-connectivity-badge [state]="cardConnectivity()" [hideWhenOnline]="true" />
               }
               <!-- Zone morte GPS connue (suivi FS-253) : GPS perdu à un endroit habituel → ton calme. -->
@@ -1492,6 +1537,7 @@ const RESYNC_RADIUS_M = 150;
     .mp-legende-b:hover { background: color-mix(in srgb, var(--fg-primary) 6%, transparent); }
     .mp-legende-chevron { font-size: 11px; line-height: 1; color: var(--fg-tertiary); }
     .mp-legende-contenu { margin-top: 6px; }
+    .mp-cle-debranche { flex-shrink: 0; display: block; overflow: visible; }
 
     /* Cibles tactiles au doigt — critère de recette « iPhone 390 px : cibles ≥ 44 px ».
        Mesuré à 375 px : les pastilles de la feuille (10 par écran), sa croix de
@@ -1699,6 +1745,14 @@ const RESYNC_RADIUS_M = 150;
     .fl-pastille--arret { background: var(--fg-secondary); }
     .fl-pastille--hors-ligne { background: var(--texte-alerte); }
     .fl-pastille--lieu { background: var(--texte-violet); }
+    /* Boîtier débranché : la pastille barrée du marqueur, en petit — gris estompé, cerclée et
+       barrée de rouge (diagonale haut-gauche → bas-droite, comme sur la carte). */
+    .fl-pastille--debranche {
+      background:
+        linear-gradient(45deg, transparent calc(50% - 1px), var(--texte-alerte) calc(50% - 1px) calc(50% + 1px), transparent calc(50% + 1px)),
+        color-mix(in srgb, var(--texte-inactif) 55%, transparent);
+      box-shadow: inset 0 0 0 1.5px var(--texte-alerte);
+    }
     .fl-ligne-texte {
       display: flex;
       flex-direction: column;
@@ -2814,6 +2868,12 @@ export class MapComponent implements AfterViewInit, OnDestroy {
   protected readonly COULEUR_PARKING = '#0ea5e9';
   protected readonly COULEUR_ZONE_SUSPECTE = '#ef4444';
   protected encreMarqueur(couleur: string): string { return markerInk(couleur); }
+  /**
+   * La clé « Boîtier débranché » de la légende : le marqueur barré en miniature, peint avec
+   * les MÊMES valeurs que la pastille (palette de carte), pas avec des jetons du thème.
+   */
+  protected readonly COULEUR_DEBRANCHE = COULEURS_CARTE.debranche;
+  protected readonly COULEUR_DEBRANCHE_COEUR = UNPLUGGED_MARKER_COLOR;
 
   protected readonly realtime = inject(RealtimeService);
   /** Filtre société global (sélecteur super-admin). matches() = true pour un non-super. */
@@ -3303,8 +3363,17 @@ export class MapComponent implements AfterViewInit, OnDestroy {
     return this.flotteLignes().length === 0 ? 'vide' : 'rempli';
   });
 
+  /**
+   * Combien de véhicules de la société affichée sont DÉCLARÉS débranchés. La légende ne nomme
+   * le marqueur barré que s'il peut apparaître : une légende décrit ce que la carte montre.
+   */
+  protected readonly nbDebranches = computed(
+    () => this.scopedSnapshot().filter((v) => estDebranche(v.outOfServiceReason)).length,
+  );
+
   /** Libellé d'état d'une ligne — ce qu'on affiche à droite de la plaque. */
   protected ligneEtatLabel(v: LigneFlotte): string {
+    if (v.debranche) return 'Boîtier débranché';
     if (v.etat === 'route') return `${v.vitesse} km/h`;
     if (v.etat === 'arret') return 'À l’arrêt';
     switch (v.connectivite) {
@@ -3590,6 +3659,7 @@ export class MapComponent implements AfterViewInit, OnDestroy {
         imei: snapMeta.trackerImei ?? null,
         lastSeenAt: snapMeta.lastSeenAt ?? null,
         group: snapMeta.group ?? null,
+        outOfServiceReason: v.outOfServiceReason ?? null,
       });
     }
 
@@ -3606,6 +3676,7 @@ export class MapComponent implements AfterViewInit, OnDestroy {
           imei: v.tracker?.imei ?? null,
           lastSeenAt: v.tracker?.lastSeenAt ?? null,
           group: v.group ?? null,
+          outOfServiceReason: v.outOfServiceReason ?? null,
         });
       });
       // Re-render apres MAJ meta
@@ -5848,6 +5919,9 @@ export class MapComponent implements AfterViewInit, OnDestroy {
         offline: !live,
         gpsLost,
         parkedDeadZone,
+        // Boîtier débranché DÉCLARÉ sur la fiche : marqueur barré, prioritaire sur tout le
+        // reste. L'instantané fait foi (il suit une remise en service sans recharger la page).
+        unplugged: estDebranche(motifHorsService(snap, meta)),
       };
 
       // GPS sanity (live) : rejette les fixes `valid: false` (broadcastes par le
@@ -6307,6 +6381,8 @@ export class MapComponent implements AfterViewInit, OnDestroy {
       lastPositionAt: snap?.lastPositionAt ?? pos.timestamp ?? null,
       lastNoFixAt: snap?.lastNoFixAt ?? null,
       group: meta.group ?? null,
+      debranche: estDebranche(motifHorsService(snap, meta)),
+      debrancheDepuis: snap?.outOfServiceSince ?? null,
     });
     this.activePopupTrackerId = trackerId;
     this.activePopupVehicleId = pos.vehicleId;
@@ -6321,6 +6397,15 @@ export class MapComponent implements AfterViewInit, OnDestroy {
       const z = matchDeadZone(zonesForVehicle, pos.lat, pos.lng);
       if (z) this.deadZoneHint.set({ label: deadZoneNatureLabel(z), benign: z.status === 'CONFIRMED_BENIGN' });
     }
+  }
+
+  /** Infobulle du badge « Boîtier débranché » : qui l'a dit, depuis quand, et ce que vaut la position. */
+  protected titreDebranche(card: BaanoolCardData): string {
+    const depuis = card.debrancheDepuis ? new Date(card.debrancheDepuis) : null;
+    const quand = depuis && !Number.isNaN(depuis.getTime())
+      ? ` le ${depuis.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' })}`
+      : '';
+    return `Déclaré débranché sur la fiche du véhicule${quand} — la position affichée est la dernière reçue avant.`;
   }
 
   private closePopup(): void {
