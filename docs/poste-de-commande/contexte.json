@@ -1,7 +1,7 @@
 {
   "_comment": "Ce que le POSTE DE COMMANDE montre en plus des tâches. Les tâches, elles, viennent de docs/centre-alerte/app/taches.json et ne se recopient JAMAIS ici — voir generer.mjs. Ce fichier ne porte que ce qu'aucune tâche ne décrit : les mesures de tête, les mécaniques qui tournent seules, les décisions posées au propriétaire, et ce qui est prouvé.",
   "version": 1,
-  "releve": "1er octobre 2026, 03h14 Paris",
+  "releve": "5 octobre 2026, 08h47 Paris",
   "machines": [
     {
       "nom": "Rattrapage du recalage des tracés",
@@ -20,23 +20,23 @@
       "pied2": "s’éteint seule"
     },
     {
-      "nom": "Coupe-circuit automatique — 16 nuits sur le chantier : nuit 30→01 à l’heure ; le doublon de SIM est effacé",
-      "texte": "Nuit propre : 29 coupes à l’heure (MH Cars à 20:00, CDEF31 de 22:00 à 22:06), toutes acquittées (une par SMS) ; 29 reprises mercredi matin, toutes acquittées ; preuve SMS 3 sur 3, le téléphone ne s’est pas tu, aucune coupe retenue, sept déploiements sans en gêner aucune. Comme prévu hier, la reprise de HM-787-GA est partie par SMS à 07:00 : le boîtier a répondu « Resume engine Succeed », la réponse a été écartée, une alerte critique et une notification sont parties pour rien, et la connexion TCP l’a prouvée 2 min 47 s plus tard. Le numéro de SIM du boîtier de stock a été effacé à 12:04 — il n’y a plus de doublon ; reste à faire parler le code la prochaine fois.",
+      "nom": "Coupe-circuit automatique — 20 nuits sur le chantier : 3 propres, 1 retardée de 53 min depuis le 01/10",
+      "texte": "Du 01 au 05/10 : preuve SMS 3 sur 3 chaque jour, toutes les reprises acquittées (33 ce matin), aucun déploiement depuis le 01/10. Samedi 03/10 le téléphone passerelle (S21) s’est tu 6 h 40 (13:59 → ~20:40 Paris) : les 6 coupes MH Cars de 20:00 Paris ont été retenues par l’interlock puis sont parties à 20:52–20:54 ; CDEF31 (22:00 Paris) n’a rien subi — 26 coupes à l’heure. La garde a tenu, mais c’est le plus long silence de la série.",
       "fait": null,
       "total": null,
-      "pied": "31 plannings actifs sur 37 mesurés (26 CDEF31 + 5 MH Cars) — 16 nuits : 13 probantes, 1 retenue par l’interlock (15/09), 2 retardées par le téléphone (22/09, 24/09) ; 2 reprises perdues pour HM-787-GA (26 et 27/09, coupe veilleur) ; 8 silences du téléphone en 16 jours",
-      "pied2": "T85 côté code (dire l’abstention, refuser un numéro déjà porté) ; T78 (la course du worker RESTORE crie aussi sans charge) ; ne plus déployer pendant les vagues de 20:00, 22:00 et 05:00 (T86) ; le téléphone (T55) ; T84 ; T82 + T79 + T76 ensemble ; T80 côté code ; décider l’élargissement (T38)"
+      "pied": "9 silences du téléphone en 18 jours (le dernier : 6 h 40, le plus long) — 26 alertes critiques pour un seul épisode (T76) ; 2 reprises par SMS le 02/10, accusées sans erreur (T85, volet donnée exercé)",
+      "pied2": "T55 (second téléphone) + T76 (une alerte par épisode) ; T85 côté code ; T78 ; T86 ; T84 ; T80 ; T38 ; 🆕 T87 (accès CLI Claude des agents du poste) et T88 (acharnement = essais de pose)"
     }
   ],
   "chiffres": [
     {
       "v": "0",
-      "t": "numéro de SIM en double — effacé mercredi à 12:04 (T85, ton geste, vérifié en base) ; la veille au matin, la reprise par SMS de HM-787-GA avait été écartée comme prévu puis prouvée par TCP à 2 min 47 s ; nuit 30→01 propre : 29 coupes, 29 reprises acquittées, preuve 3/3, téléphone présent toute la journée ; 158 CRITICAL actives (+2 : deux remises en route réussies déclarées non confirmées), 0 signature nouvelle",
-      "alerte": false
+      "t": "reprise non prouvée sur 5 matins (33 reprises ce matin, toutes acquittées) ; preuve SMS 3 sur 3 ; samedi 03/10 le téléphone passerelle s’est tu 6 h 40 — 6 coupes MH Cars retenues 53 min, CDEF31 intact ; 208 CRITICAL actives (+50 en 4 jours) ; 2 signatures nouvelles : agents du poste à l’arrêt depuis le 01/10 (aucun récit de trajet n’est plus écrit) et « acharnement » = tes essais de pose",
+      "alerte": true
     },
     {
-      "v": "475/475",
-      "t": "trajets des 27, 28 et 29/09 recalés — trois journées figées (T28) ; le 30/09 est à 224/224, fenêtre encore ouverte"
+      "v": "659/660",
+      "t": "trajets des 01, 02 et 03/10 recalés — trois journées figées (T28), 1 trajet sans recalage le 03/10 (non instruit) ; le 04/10 est à 86/86, fenêtre encore ouverte"
     },
     {
       "v": "auto",

@@ -14,7 +14,7 @@
 
 - Procédure d'audit : [`PROCEDURE-AUDIT.md`](./PROCEDURE-AUDIT.md)
 - Rapports quotidiens : [`rapports/`](./rapports/)
-- Dernière mise à jour : **2026-10-01 01:40 UTC** *(🟢 **QUINZIÈME NUIT PROPRE** : preuve 3 / 3, 0 silence du S21, 29 coupes à l'heure, 29 / 29 reprises. 📏 [TRK-100](#trk-100) — **prédiction vérifiée** : la reprise de HM-787-GA (30/09 05:01:06, par SMS) a été écartée, `CRITICAL` + push faux, prouvée par TCP à 05:02:55 ; **doublon de SIM effacé à 10:04:52** (T85 volet donnée). 📏 [TRK-091](#trk-091) +1 sur un VPS au repos. 0 signature nouvelle)*
+- Dernière mise à jour : **2026-10-05 06:52 UTC** *(🔴 **S21 muet 6 h 40 le 03/10** — 6 coupes MH Cars retenues 53 min, CDEF31 intact ; 🆕 [TRK-102](#trk-102) agents du poste à l'arrêt depuis le 01/10, 🆕 [TRK-101](#trk-101) acharnement = essais de pose ; passage de rattrapage après 4 jours sans audit.)* — précédente : **2026-10-01 01:40 UTC** *(🟢 **QUINZIÈME NUIT PROPRE** : preuve 3 / 3, 0 silence du S21, 29 coupes à l'heure, 29 / 29 reprises. 📏 [TRK-100](#trk-100) — **prédiction vérifiée** : la reprise de HM-787-GA (30/09 05:01:06, par SMS) a été écartée, `CRITICAL` + push faux, prouvée par TCP à 05:02:55 ; **doublon de SIM effacé à 10:04:52** (T85 volet donnée). 📏 [TRK-091](#trk-091) +1 sur un VPS au repos. 0 signature nouvelle)*
   🆕 [TRK-046](#trk-046) gravité 1, [TRK-047](#trk-047), [TRK-048](#trk-048) ; **5 statuts d'index
   périmés rectifiés** — TRK-015, TRK-018, TRK-025, TRK-026, TRK-045)*
 
@@ -1258,6 +1258,8 @@ n'est pas corrigé *et vérifié*. Le centre d'alerte n'est pas une boîte de r�
 
 | ID | Source | Signature courte | Statut | Vu la 1ʳᵉ fois | Dernière |
 |---|---|---|---|---|---|
+| [TRK-102](#trk-102) | `agents-locaux` | **Les agents du poste (récits IA, rattrapage, courrier) sont à l'arrêt depuis le 01/10 08:00 Paris** — plafond hebdomadaire de la CLI Claude, puis, depuis le 04/10 12:00, « Your organization has disabled Claude subscription access » | 🔵 **TERRAIN** · **gravité 2** · famille **dépendance externe** *(réglage de l'organisation Claude, pas du code : l'agent s'arrête et le dit — 13 `CRITICAL` actives, une cause commune, un bouton « Reprendre maintenant ». 👉 **T87** : rendre l'accès, puis reprendre. L'API Anthropic étant à sec depuis le 03/09 ([TRK-071](#trk-071)), **plus aucun chemin n'écrit de récit de trajet**)* | 2026-10-01 | 2026-10-05 |
+| [TRK-101](#trk-101) | `engine-control-acharnement` | **Le détecteur d'« acharnement » crie `CRITICAL` (et pousse aux super-admins) sur les essais de coupe/rallumage de l'installateur juste après la pose d'un boîtier** — 4 lignes du 01 au 04/10, toutes admin@vizyoagency.com, 4 véhicules MH Cars | 🟠 **CORRECTIF PROPOSÉ** · **gravité 3** · famille **faux positif** *(`signalerAcharnement`, `engine-control.service.ts:1830` : tout geste `MANUAL` d'un même utilisateur sur un même boîtier, seuil 4 en 10 min ; ne distingue pas un opérateur en difficulté d'un essai de pose. 👉 **T88** : ne pas déclarer quand un SMS de provisionnement a été envoyé à ce boîtier dans les 30 min — `DEGRADATION` au lieu de `CRITICAL`, seuil et alternance conservés)* | 2026-10-01 | 2026-10-04 |
 | [TRK-100](#trk-100) | `engine-control` *(aucune ligne — c'est le défaut)* | **Deux boîtiers portent le même numéro de SIM : tout accusé SMS de l'un est abandonné en silence** — HM-787-GA (`…56102`) et un boîtier de stock muet depuis le 01/07 (`…56292`) ; « Stop engine Succeed » reçu le 29/09 20:06:42, coupe restée `SENT_UNCONFIRMED` | 🔴 **NON CORRIGÉ** · **gravité 2** · famille **silence structurel** *(`onAccuseSmsMoteur`, `engine-control.service.ts:571-581`, s'abstient si le suffixe à 9 chiffres désigne plus d'un boîtier, sans rien écrire. Seul doublon du parc. 👉 **T85** : effacer le numéro du boîtier de stock après vérification ; une ligne `DEGRADATION` à l'abstention ; refuser un numéro déjà porté)* · 📏 **01/10** : **2ᵉ occurrence, prédiction vérifiée** — `RESTORE` de HM-787-GA le 30/09 : TCP `UNAVAILABLE` 05:00:08, SMS 05:00:45, « Resume engine Succeed » **05:01:06 écarté**, `CRITICAL` 05:01:15 + push `restore-non-prouvee`, `ACKNOWLEDGED` par TCP à 05:02:55 (2 min 47 s). ✅ **Volet donnée fait** : `simPhoneNumber` du boîtier `…56292` vide depuis le 30/09 10:04:52, **0 doublon** au parc ; non encore exercé (coupe du soir par TCP). Volet code ouvert. ❓ « pwd fail » + second « Succeed » à 05:03 sans SMS sortant (1 point) | 2026-09-29 | 2026-09-30 |
 | [TRK-099](#trk-099) | `realtime-client` | **Une éjection par le serveur hors de tout déploiement coûte 45 s de carte figée, et la ligne ne dit pas quelle porte l'a ouverte** — `Connexion temps réel interrompue (<N>s sans live) — reason=io server disconnect, transport=websocket, flaps=<N>` ×1 le 25/09 20:07 (super-admin, `/map`, `everConnected`), API non redémarrée | 🔴 **NON CORRIGÉ** · **gravité 4** · famille **à lire, pas à notifier** *(deux portes serveur possibles dans `realtime.gateway.ts` : jeton du handshake expiré (`:342`, reconnexion gérée par `scheduleReconnectAfterServerKick`) ou changement d'empreinte de périmètre (`scopeKey`, coupure voulue). Correctif à instruire au 2ᵉ point : un motif stable émis avant `disconnect()`, pas de ligne si la reconnexion réussit)* | 2026-09-25 | 2026-09-25 |
 | [TRK-098](#trk-098) | *planificateur* *(aucune ligne)* | **Une coupe du veilleur tient sans échéance : le véhicule manque sa reprise du matin et reste coupé toute la journée, sans une ligne** — HM-787-GA : « rallumer puis recouper » par le `NIGHT_WATCHMAN` le 25/09 21:38 → `overrideUntil = 9999-12-31` → **aucune `RESTORE` le 26/09 à 07:00 Paris** (24 / 25) → coupé ~23 h, toute sa plage du samedi ; même geste le 26/09 20:44, override toujours infini le 27/09 01:15 | 🔴 **NON CORRIGÉ** · **gravité 2** · famille **silence structurel** *(voulu : `WATCHMAN_HOLD_UNTIL`, `engine-control.service.ts:61–66, 1058–1066`, Sprint 3 option A ; le planificateur saute tout override actif, `schedule-cron.service.ts:276`. Le geste du veilleur convertit une coupe planifiée en coupe sans reprise. Correctif : une `DEGRADATION` par véhicule et par jour quand une reprise est sautée pour ce motif, l'afficher sur `/fleet-schedules`, et question produit sur l'échéance d'une coupe veilleur posée sur un véhicule déjà coupé. 👉 **T84**)* · 📏 **28/09** : prédiction vérifiée — pas de `RESTORE` le 27/09 à 07:00, ~20 h 52 coupé, rallumé par un `SUPER_ADMIN` à 17:36 ; veilleur sans recoupe le soir, 0 override infini · 📏 **29/09** : HM-787-GA reprise le 28/09 05:01 (25 / 25 CDEF31) — épisode du week-end clos (~44 h hors plage sur deux jours) ; nuit 28→29 sans « rallumer puis recouper » (HD-603-XY rallumé par le veilleur avec échéance ordinaire 05:00) | 2026-09-26 | 2026-09-27 |
@@ -11462,6 +11464,57 @@ définition inchangée. Premier relevé de cette série ; les suivants la rendro
 
 ---
 
+## TRK-102
+
+**Signature** — `agents-locaux | CRITICAL | Passage manqué : <AGENT> attendu le <DATE> à <HH:MM> (Paris) … en pause (plafond-hebdo | echecs-consecutifs) …`, `agents-locaux | CRITICAL | Dernier passage en échec : <AGENT> … echec de la CLI : Your organization has disabled Claude subscription access for Claude Code`, et `agents-locaux | DEGRADATION | Cause commune aux agents du poste : …`.
+**Statut : 🔵 TERRAIN** · **gravité 2** · famille **dépendance externe** · 13 `CRITICAL` actives + 2 `DEGRADATION` · 2026-10-01 · 👉 **T87**
+
+### Les agents du poste sont à l'arrêt depuis quatre jours — plafond hebdomadaire, puis refus d'organisation
+
+### Ce qui a été mesuré
+
+| Paris | Fait |
+|---|---|
+| 01/10 08:00 | `DEGRADATION` « Plafond hebdomadaire de la CLI Claude atteint sur le poste — remise à zéro annoncée : Oct 4, 12pm » ; pause de tous les agents |
+| 01/10 → 04/10 | `CRITICAL` « Passage manqué … en pause (plafond-hebdo) … (aucun appel) » à chaque créneau |
+| **04/10 12:00** | reprise : « echec de la CLI : **Your organization has disabled Claude subscription access for Claude Code** » ; `rattrapage-recits` « 4 lots ratés d'affilée — arrêt après 0 récit » |
+| 04/10 14:30 | `courrier-ia` : même refus |
+| 04/10 17:50 | pause automatique (échecs consécutifs) — reprise manuelle seulement |
+| 05/10 05:00 | `agent-qualite-gps` : passage manqué (cause non lue) |
+
+**Cause racine :** la CLI Claude du poste n'a plus le droit d'utiliser l'abonnement. Réglage de l'organisation (ou compte sorti de l'organisation), **pas du code**. L'agent applique la décision D5 du 05/09 (s'arrêter, prévenir, offrir un bouton de reprise) — **et le fait bien**.
+
+**Conséquence :** [TRK-071](#trk-071) (API Anthropic à sec depuis le 03/09) + cette fiche = **aucun chemin d'écriture des récits de trajet**. Décision D3 du propriétaire : ne pas basculer sur une clé API.
+
+**Correctif (humain) :** réactiver l'accès à l'abonnement Claude pour l'organisation, puis `Reprendre maintenant` sur `/admin/background-tasks`. **Rien à coder.**
+
+**Vérification :** les `CRITICAL` se referment au premier passage réussi ; **double condition** : le compteur `agents-locaux | CRITICAL` actives tombe à 0 **ET** un récit est écrit. Si seul le compteur tombe, on a éteint l'instrument.
+
+**À ne pas faire :** ne pas archiver les 13 lignes pour « faire propre » (elles se referment seules) ; ne pas passer les agents sur une clé API sans la décision du propriétaire.
+
+---
+
+## TRK-101
+
+**Signature** — `engine-control-acharnement | CRITICAL | Acharnement sur le coupe-circuit de <PLAQUE> : <N> commandes en <N> min dont <N> changements de sens (coupe ↔ rallumage), par le même utilisateur. …`
+**Statut : 🟠 CORRECTIF PROPOSÉ** · **gravité 3** · famille **faux positif** · 4 occurrences (01/10 09:25, 10:13 ; 04/10 15:59, 18:26) · 2026-10-01 · 👉 **T88**
+
+### Le détecteur d'acharnement crie sur les essais d'installation du super-admin
+
+### Ce qui a été mesuré
+
+`engine_control_commands` `source = MANUAL`, utilisateur admin@vizyoagency.com (SUPER_ADMIN), véhicules MH Cars FL-926-TV, FN-644-CL, FG-669-DQ, FN-192-JP : **CUT → RESTORE → CUT → RESTORE en 15 à 40 s, toutes `ACKNOWLEDGED` par TCP**. Pour FL-926-TV, FN-644-CL et FN-192-JP, la séquence SMS de provisionnement (`begin123456` … `fix ok`) précède l'essai de quelques secondes ; FG-669-DQ a répondu le 04/10 après 28 jours de silence.
+
+**Cause racine :** `signalerAcharnement` (`engine-control.service.ts:1830`) compte les gestes `MANUAL` d'un même utilisateur sur un même boîtier (seuil 4 en 10 min) sans distinguer un opérateur qui lutte avec un bouton faux d'un installateur qui teste un boîtier neuf — les deux écrivent la même trace.
+
+**Correctif proposé (T88) :** ne pas déclarer d'acharnement quand un SMS de provisionnement a été envoyé à ce boîtier dans les 30 min (ou que le boîtier a moins de N heures de trames) ; écrire alors une ligne `DEGRADATION` « essais de pose ». **Garder le seuil, la fenêtre et l'alternance** : ils ont rendu visible l'incident CDEF31 du 24/09.
+
+**Vérification :** le prochain essai de pose produit 0 `CRITICAL` et une `DEGRADATION` ; un acharnement sans provisionnement récent produit toujours la `CRITICAL`. **Double condition :** si les deux cessent, on a supprimé le détecteur.
+
+**À ne pas faire :** ne pas relever le seuil ni exempter les SUPER_ADMIN : l'incident du 24/09 était un opérateur humain.
+
+---
+
 ## TRK-100
 **Signature** — *aucune — c'est le défaut.* Ce qui existe : une `engine_control_commands` `CUT` (ou `RESTORE`) partie par `SMS`, un SMS
 entrant « Stop engine Succeed » (ou « Resume … ») **depuis la SIM du véhicule** dans les secondes qui suivent, et la commande qui passe
@@ -13477,6 +13530,7 @@ lieu de la calibrer.
 
 | Date | Lignes `error_logs` | Signatures connues | Nouvelles | Ajoutées par |
 |---|---|---|---|---|
+| 2026-10-05 *(passage de rattrapage : 4 jours sans audit, 02–04/10)* | **665 actives** — 433 défauts + 232 `DEGRADATION` (+111 en 4 j ; 17 actives sur 24 h, 10 défauts) ; **208 `CRITICAL`** (158 → 208) dont 93 `engine-control-interlock` (+7), 70 `sms-gateway-watchdog` (+26), **13 `agents-locaux`**, 13 `engine-control-restore`, 5 `TRIP_AUTOMATION`, **4 `engine-control-acharnement`**, 4 `sms-gateway-status`, 4 `sms-daily-proof`, 2 `http` ; 135 archivées *(+7)* ; disparitions 1 (04/09), témoin 4/4, écart 13 250 (32ᵉ point) | 28 revues ; **S21 muet 6 h 40 le 03/10** (9ᵉ silence en 18 j, 26 `CRITICAL` pour un épisode, 6 coupes MH Cars retenues 53 min, CDEF31 intact) ; 0 reprise non prouvée sur 5 matins ; TRK-100 volet donnée exercé (2 `RESTORE` SMS accusées) ; TRK-086 silencieux depuis le 02/10 | 2 (TRK-101, TRK-102) | agent d'audit |
 | 2026-10-01 | **554 actives** — 354 défauts + 200 `DEGRADATION` (**11** nées en 24 h, **9 actives**, 3 défauts — **2 `engine-control-restore` `CRITICAL`** ; **158 `CRITICAL`** (156 → 158) dont 86 `engine-control-interlock`, 44 `sms-gateway-watchdog`, **13 `engine-control-restore`**, 5 `TRIP_AUTOMATION`, 4 `sms-gateway-status`, 4 `sms-daily-proof`, 2 `http`), 128 archivées *(+2, `agents-locaux` refermées seules)* ; disparitions 1 (04/09), témoin 4/4, écart 13 250 (31ᵉ point) | 30 revues ; 🚀 **7 déploiements, 0 `--force`, 0 passage tué** ; nuit 15 propre (preuve 3 / 3, 0 silence du S21, 29 coupes, 29 / 29 reprises, T65 7 OK) ; 📏 [TRK-100](#trk-100) **prédiction vérifiée** (reprise HM-787-GA écartée 05:01:06, prouvée TCP 05:02:55) et **doublon de SIM effacé 10:04:52** ; 📏 [TRK-091](#trk-091) +1 sans charge ; 📏 [TRK-095](#trk-095) 8 ; 📏 [TRK-069](#trk-069) +2 | 0 | agent (tâche planifiée) |
 | 2026-09-30 | **545 actives** — 351 défauts + 194 `DEGRADATION` (**8** nées en 24 h, **8 actives**, 3 défauts — **3 `TRIP_AUTOMATION` `CRITICAL`** ; **156 `CRITICAL`** (153 → 156) dont 86 `engine-control-interlock`, 44 `sms-gateway-watchdog`, 11 `engine-control-restore`, **5 `TRIP_AUTOMATION`**, 4 `sms-gateway-status`, 4 `sms-daily-proof`, 2 `http`), 126 archivées *(=)* ; disparitions 1 (04/09), témoin 4/4, écart 13 250 (30ᵉ point) | 30 revues ; 🚀 **5 déploiements** le 29/09 dont **3 `--force`** → 3 passages tués ([TRK-077](#trk-077) +3, témoin armé) ; nuit 14 propre (preuve 3 / 3, 0 silence du S21, 29 coupes, 28 / 28 reprises) ; FT-596-CV installé et en ligne | 🆕 **1** — [TRK-100](#trk-100) : SIM en double HM-787-GA / boîtier de stock → accusé SMS du 29/09 20:06:42 abandonné en silence, `CUT` `SENT_UNCONFIRMED` | agent (tâche planifiée) |
 | 2026-09-29 | **537 actives** — 348 défauts + 189 `DEGRADATION` (**18** nées en 24 h, **17 actives**, 13 défauts — 7 `TRIP_AUTOMATION`, **6 `sms-gateway-watchdog`** ; **153 `CRITICAL`** (147 → 153) dont 86 `engine-control-interlock`, **44 `sms-gateway-watchdog`**, 11 `engine-control-restore`, 4 `sms-gateway-status`, 4 `sms-daily-proof`, 2 `TRIP_AUTOMATION`, 2 `http`), 126 archivées *(+1, résolution automatique)* ; disparitions 1 (04/09), témoin 4/4, écart 13 250 (29ᵉ point) | 30 revues ; 🚀 **2 déploiements** (`436d9ffe` 15:42, `ee134038` 19:14, `deploy.sh`, 0 passage interrompu) ; 🟢 **nuit 13 : preuve 3 / 3, 0 interlock, 28 coupes à l'heure (3 SMS), 29 / 29 reprises acquittées dont HM-787-GA** — T65 : 6 OK · 1 rouge (S21) ; 📏 [TRK-089](#trk-089) 7ᵉ et 8ᵉ silences du S21 (en journée, T69 exercé) ; ✅ [TRK-094](#trk-094) remise du `weekly_report` cdef31 **prouvée** (T80 volet humain) ; 📏 [TRK-095](#trk-095) 8 passages > 45 min ; 📏 [TRK-086](#trk-086) silence (fix retrouvé 2 h 25) ; [TRK-098](#trk-098) épisode clos | 0 | agent d'audit (tâche planifiée, collecte 01:14 UTC) |

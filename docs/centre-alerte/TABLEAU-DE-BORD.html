@@ -82,7 +82,7 @@
 
 <header>
   <h1>Tableau de bord des corrections — Tracky</h1>
-  <p class="sous">Genere le <b>2026-10-01</b> depuis <code>app/taches.json</code>.
+  <p class="sous">Genere le <b>2026-10-05</b> depuis <code>app/taches.json</code>.
   Le detail, le pourquoi et les pieges vivent dans <b>ROADMAP-CORRECTIFS.md</b> —
   ce tableau ne dit que <b>l'etat</b>.</p>
 </header>
@@ -90,17 +90,17 @@
 <div class="kpis">
   <div class="k ok"><div class="n">72</div><div class="l">faites et verifiees</div></div>
   <div class="k warn"><div class="n">16</div><div class="l">deployees, preuve attendue</div></div>
-  <div class="k"><div class="n">42</div><div class="l">ouvertes sur 130</div></div>
+  <div class="k"><div class="n">44</div><div class="l">ouvertes sur 132</div></div>
   <div class="k dgr"><div class="n">3</div><div class="l">ouvertes en gravite 1</div></div>
   <div class="k dgr"><div class="n">0</div><div class="l">au-dela de 7 jours</div></div>
-  <div class="k info"><div class="n">16</div><div class="l">attendent un humain</div></div>
+  <div class="k info"><div class="n">17</div><div class="l">attendent un humain</div></div>
 </div>
 
-<div class="barre" role="img" aria-label="Avancement : 72 faites, 16 deployees, 42 ouvertes sur 130">
+<div class="barre" role="img" aria-label="Avancement : 72 faites, 16 deployees, 44 ouvertes sur 132">
   <span class="s-FAIT" style="width:55%"></span>
   <span class="s-DEPLOYE" style="width:12%"></span>
   <span class="s-COMMITE" style="width:0%"></span>
-  <span class="s-OUVERT" style="width:32%"></span>
+  <span class="s-OUVERT" style="width:33%"></span>
 </div>
 <p class="leg">
   <i><b>✓</b> faite ET verifiee</i>
@@ -111,17 +111,17 @@
 </p>
 
 <div class="filtres" id="f">
-  <button data-f="tout" aria-pressed="true">Tout (130)</button>
-  <button data-f="ouvert" aria-pressed="false">Ouvertes (42)</button>
+  <button data-f="tout" aria-pressed="true">Tout (132)</button>
+  <button data-f="ouvert" aria-pressed="false">Ouvertes (44)</button>
   <button data-f="g1" aria-pressed="false">Gravite 1 (3)</button>
-  <button data-f="humain" aria-pressed="false">Attendent un humain (16)</button>
-  <button data-f="code" aria-pressed="false">A faire soi-meme (25)</button>
+  <button data-f="humain" aria-pressed="false">Attendent un humain (17)</button>
+  <button data-f="code" aria-pressed="false">A faire soi-meme (26)</button>
   <button data-f="centre-alerte" aria-pressed="false">Centre d'alerte</button>
   <button data-f="vps" aria-pressed="false">VPS</button>
   <button data-f="fait" aria-pressed="false">Closes (88)</button>
 </div>
 
-<h2 class="sec">Les 130 taches — ouvertes et graves d'abord</h2>
+<h2 class="sec">Les 132 taches — ouvertes et graves d'abord</h2>
 <div id="liste">
 <article class="t etat-OUVERT g1" data-etat="OUVERT" data-partie="centre-alerte" data-classe="HUMAIN" data-g="1">
   <div class="t-h">
@@ -130,7 +130,7 @@
     <span class="fiche">TRK-066</span>
     <span class="classe">🤝 Decision ou geste humain</span>
     <span class="grav" title="gravite 1">G1</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-13">18 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-13">22 j</span>
     
   </div>
   <h3>Remettre en service les plannings du coupe-circuit — 2e nuit : PROBANTE (preuve 21:30 OK, 0 refus, 28 coupes dont 4 MH Cars, 27 acquittées, 4 reprises MH Cars ≤ 4 s) ; 22 reprises CDEF31 à lire à 07:10 ; GR-898-HY « non confirmé » = TRK-083</h3>
@@ -145,7 +145,7 @@
     <span class="fiche">TRK-084</span>
     <span class="classe">🔧 A coder</span>
     <span class="grav" title="gravite 1">G1</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-18">13 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-18">17 j</span>
     
   </div>
   <h3>Le retard d une reprise doit exister quelque part : scheduledAt sur les RESTORE, une ligne CRITICAL au demarrage pour les transitions en retard, un temoin de l API HORS de l API — l incident du 17/09 n a laisse aucune ligne</h3>
@@ -160,7 +160,7 @@
     <span class="fiche">TRK-083</span>
     <span class="classe">🔧 A coder</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-17">14 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-17">18 j</span>
     
   </div>
   <h3>Armer le guetteur d ACK TCP AVANT l écriture socket (ou mémoire de 30 s dans AckWaiter) — un boîtier qui répond plus vite que la base est déclaré « non confirmé »</h3>
@@ -175,12 +175,27 @@
     <span class="fiche">TRK-090 · TRK-066 · TRK-018 · T45 · T65</span>
     <span class="classe">🔧 A coder</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-21">10 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-21">14 j</span>
     
   </div>
   <h3>Preuve SMS quotidienne : un delai client de 10 s n est pas un refus (sortant « queued », pas « failed »), et l echo entrant prouve la remise quel que soit le statut du sortant — l instrument a dit « chaine cassee » deux fois avec la preuve du contraire en base</h3>
   <p class="detail">TROUVE LE 21/09 en lisant la nuit du 19 au 20 (VPS-045, VM a 10 pour cent de son CPU) : a 02h30m01 et 04h30m00 UTC, le POST de la preuve quotidienne vers vizyo-texto a depasse AbortSignal.timeout(10_000) (sms-gateway.service.ts:967) ; le sortant est ecrit « failed » et une CRITICAL dit « REFUSEE a la soumission — la passerelle a rejete le message ». Mais le relais avait recu la demande : le S21 a envoye le SMS et Tracky l a RECU EN ENTRANT a 02h30m49 (3 echos) et 04h30m46 (2 echos), corps identique au caractere pres. A +15 min, verifyHeartbeat (sms-heartbeat.service.ts:405-427) relit sortants ET echos dans la meme requete mais ne rapproche l echo que d un sortant « accepted » (ligne 413) ; « failed &gt; 0 » prime (ligne 427) → verdict ECHEC « la chaine SMS est cassee », CRITICAL, e-mail « 3 erreurs critiques » a 03h00, push preuve-sms ECHEC a 04h45 et 06h45 Paris. Deux fois. Et un sortant « failed » n est pas une remise terminale pour l interlock : a 18h00, lastTerminalSuccessAt valait 05h02m57 — un SMS de secours PAYANT (FR-428-DQ, TRK-083) que rien n avait prevu ; sans lui, la preuve du 19/09 19h30 aurait eu 22 h 30 a 18h00 et 24 h 30 a 20h00 : 26 coupes CDEF31 retenues sur une chaine qui livrait en 38 s. C est l inverse exact de TRK-018 (dire « remis » sans preuve) : dire « casse » avec la preuve du contraire en main. GESTE, sans toucher au delai de 10 s (dernier recours d une RESTORE, TRK-066) ni a l interlock : (1) sendViaVizyoTexto : un AbortError / delai = sortant « queued » avec errorMessage « delai client 10 s — issue inconnue », providerId NUL, pour que le statut pousse par le relais (T45) ou l echo puissent le requalifier ; un refus HTTP explicite (4xx/5xx) reste « failed » ; (2) verifyHeartbeat : rapprocher l echo quel que soit le statut du sortant — corps revenu en entrant = remise prouvee par reception : sortant « received », delivered++, verdict OK, et resolvedAt sur la ligne « REFUSEE » de la meme preuve ; (3) le message « la passerelle a rejete » seulement sur un refus explicite ; sur un delai : « la passerelle n a pas repondu en 10 s — issue inconnue, verification a +15 min » en ERROR ; (4) verifier que l interlock lit un sortant requalifie « received » comme remise terminale. QUESTION OUVERTE COTE RELAIS (vizyo-texto) : 3 echos pour 1 preuve, 17 « Resume engine Succeed » pour 3 resume123456 — Tracky n a soumis qu une fois ; si le relais reemet quand le client HTTP coupe, chaque etranglement coute des SMS en double.</p>
   <p class="attendue"><b>Preuve attendue</b> — Au prochain delai client sur une preuve (02h30 / 04h30 / 19h30 UTC) : 0 CRITICAL si l echo revient dans les 15 min, sortant « received », lastTerminalSuccessAt avance ; ET une preuve jamais revenue produit toujours INDETERMINEE (+15 min) puis ECHEC a la preuve suivante. Ne pas archiver les 4 lignes du 20/09 a la main.</p>
+  <div class="badges"><span class="b b-phare">⭐ le plus rentable</span></div>
+</article>
+<article class="t etat-OUVERT g2" data-etat="OUVERT" data-partie="centre-alerte" data-classe="HUMAIN" data-g="2">
+  <div class="t-h">
+    <span class="marque" title="Ouvert">☐</span>
+    <span class="id">T87</span>
+    <span class="fiche">TRK-102 · TRK-071 · TRK-069</span>
+    <span class="classe">🤝 Decision ou geste humain</span>
+    <span class="grav" title="gravite 2">G2</span>
+    <span class="depuis" title="ouverte depuis le 2026-10-05">0 j</span>
+    
+  </div>
+  <h3>Rendre l'acces de la CLI Claude aux agents du poste (organisation Claude) puis cliquer Reprendre maintenant : plus aucun recit de trajet n'est ecrit depuis le 01/10</h3>
+  <p class="detail">TROUVE LE 05/10. Le 01/10 08:00 Paris les agents du poste passent en pause (plafond hebdomadaire de la CLI Claude, remise a zero annoncee le 04/10 12:00). Le 04/10 12:00 Paris la reprise echoue : Your organization has disabled Claude subscription access for Claude Code ; rattrapage-recits (4 lots rates d'affilee, 0 recit), courrier-ia 14:30 ; pause automatique a 17:50 (echecs consecutifs), reprise MANUELLE seulement. 05/10 05:00 : agent-qualite-gps passage manque. 13 CRITICAL agents-locaux actives, une cause commune, un bouton de reprise sur /admin/background-tasks : la decision D5 du 05/09 est appliquee et fonctionne. Avec l'API Anthropic a sec depuis le 03/09 (T1), AUCUN chemin n'ecrit de recit de trajet ; le proprietaire voulait le recit de TOUS les trajets (decision D4). HUMAIN : verifier / reactiver l'acces a l'abonnement Claude pour l'organisation du poste (ou rattacher le compte), puis Reprendre maintenant. CODE : rien. NE PAS archiver les 13 lignes ; NE PAS passer sur une cle API sans la decision du proprietaire (D3).</p>
+  <p class="attendue"><b>Preuve attendue</b> — Le compteur agents-locaux CRITICAL actives tombe a 0 ET le prochain passage de rattrapage-recits ecrit au moins un recit. Si seul le compteur tombe, l'instrument est eteint, pas le defaut.</p>
   <div class="badges"><span class="b b-phare">⭐ le plus rentable</span></div>
 </article>
 <article class="t etat-OUVERT g3" data-etat="OUVERT" data-partie="centre-alerte" data-classe="HUMAIN" data-g="3">
@@ -190,7 +205,7 @@
     <span class="fiche">TRK-066 · S21 · doc 10 test B/C</span>
     <span class="classe">🤝 Decision ou geste humain</span>
     <span class="grav" title="gravite 3">G3</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-14">17 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-14">21 j</span>
     
   </div>
   <h3>Deux SIM de boîtiers (HD-584-BF, BP-434-RD) restent INJOIGNABLES par SMS depuis le S21 après remise en état ; les huit autres sont revenues — test depuis un autre opérateur ou ticket WhereverSIM</h3>
@@ -205,7 +220,7 @@
     <span class="fiche">TRK-035</span>
     <span class="classe">🤝 Decision ou geste humain</span>
     <span class="grav" title="gravite 1">G1</span>
-    <span class="depuis" title="ouverte depuis le 2026-08-20">42 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-08-20">46 j</span>
     
   </div>
   <h3>Ouvrir la fenetre de maintenance du role non-superutilisateur</h3>
@@ -220,11 +235,11 @@
     <span class="fiche">—</span>
     <span class="classe">🔵 Action materielle</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-03">28 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-03">32 j</span>
     
   </div>
   <h3>Boîtiers muets, antennes et déclarations — UNE fiche terrain : lever la déclaration des trois HM-… qui roulent alertes coupées ; déclarer ou dépanner GLA•KC•31, FG-669-DQ, FS-253-HR, FS-808-CE, FZ-862-VY, DZ-034-CA, HD-292-SH, KSR•370 ; porter les 6 IMEI muets à l'exploitant ou les sortir du parc (statut, pas DELETE)</h3>
-  <p class="detail">Muets depuis 248 h (GLA•KC•31, depuis le 03/09 01:53) et 164 h (FG-669-DQ, depuis le 06/09 14:18) au 13/09, et NON declares : ils sortent du filtre gps_sans_fix par le bas. 🆕 ET L INVERSE LE 13/09 : trois vehicules DECLARES « boitier debranche » le 31/08 — FR-629-AD, FW-298-WV, FZ-731-YF (Retour LLD) — sont revenus le 11/09 et roulent (1 809 et 3 889 positions) avec TOUTES leurs alertes coupees, parce que la declaration n a pas ete levee. Un vol de FZ-731-YF aujourd hui ne produirait rien. Geste d ecran : lever la declaration sur les trois. 🔴 14/09 : LES TROIS VEHICULES DECLARES ONT ETE RENOMMES LE 13/09 ENTRE 11h34 ET 11h37 UTC — FR-629-AD devient HM-733-GA, FW-298-WV devient HM-769-GA, FZ-731-YF devient HM-779-GA (plaques neuves, serie HM 2026) — ET LA DECLARATION boitier debranche / Retour LLD A SURVECU A L EDITION. Trois vehicules neufs, en service (1 208 et 592 positions depuis le 11/09 ; HM-769-GA vivant sans fix depuis 57 h), roulent avec toutes leurs alertes coupees. Lever les trois declarations depuis leur fiche. GLA•KC•31 : 263 h ; FG-669-DQ : 179 h. 🔴 15/09 : HM-733-GA et HM-779-GA (declares « Retour de LLD ») ont ete COUPES par le planificateur le 14/09 a 22h00 et HM-733-GA rallume a la main a 23h13 ; HM-769-GA a retrouve un fix le 14/09 a 14h23 puis l a reperdu (coupe differee « hors champ GPS »). Les trois roulent, declares debranches, coupes le soir. GLA•KC•31 : 287 h ; FG-669-DQ : 203 h. 🧹 15/09 : T8 (antennes intermittentes FS-253-HR, FZ-862-VY, KSR•370 — les fix se reperdent après chaque épisode), V1 (porter les 6 IMEI muets à l'exploitant ; …6714 s'annonce et mesure par intermittence, à porter à part) et V2 (sortir du parc les 6 boîtiers muets &gt; 7 j, dont 3 sans véhicule : 7,3 · 66,8 · 92,7 jours — un STATUT, pas un DELETE) sont fusionnées ici, ainsi que T14 (la déclaration « boîtier débranché » coupe TOUTES les alertes et survit au renommage : lever celles de HM-733-GA, HM-769-GA, HM-779-GA est le vrai geste). Au 15/09 les cinq CDEF31 muets depuis 13 à 25 j (FS-253-HR, FS-808-CE, FZ-862-VY, DZ-034-CA, HD-292-SH) sont ignorés par le planificateur (dormance &gt; 72 h) : ni coupés ni remis en route tant qu'ils ne reparlent pas. 🔴 16/09 : HM-733-GA, HM-769-GA et HM-779-GA figurent dans la liste des 25 coupes REFUSEES par l interlock cette nuit — le premier soir ou l interlock sera vert, ils seront coupes. alertes_depuis_declaration = 7 (11e point). GLA•KC•31 : 311 h ; FG-669-DQ : 227 h. ✅ 16/09, PROPRIÉTAIRE : FS-253-HR, FS-808-CE, FZ-862-VY désinstallés, DZ-034-CA débranché, HD-292-SH au garage — tous déclarés « débranché » dans la fiche véhicule ; ils ne sont PAS opérationnels et ne comptent pas. Reste : lever les déclarations de HM-733-GA / HM-769-GA / HM-779-GA (qui roulent), et qualifier le parking souterrain du Havre de HM-769-GA en « parking souterrain » dans ses zones GPS dès que la zone apparaît en apprentissage (aujourd'hui seule sa zone de Toulouse existe). ✅ 16/09 08h33 UTC : les trois declarations « boitier debranche » de HM-733-GA, HM-769-GA et HM-779-GA ont ete LEVEES par un humain (vehicle_back_in_service) — deux minutes plus tard HM-769-GA recevait son alerte GPS_LOST (17 h sans fix) : la chaine d alerte est revenue. alertes_depuis_declaration passe de 7 a 3 (retrait de lignes). RESTE au 17/09 : GLA•KC•31 (335 h) et FG-669-DQ (251 h, mh cars, planning enabled donc DORMANT) toujours NON declares ; HM-769-GA sans fix depuis le 16/09 15h28 (11,8 h), non coupe trois nuits de suite pour cette raison — antenne ; les 6 IMEI muets et les 3 boitiers sans vehicule inchanges. 📏 18/09 : HM-769-GA sans fix depuis 33,7 h (16/09 15h28), boitier vivant (878 trames no_fix en 24 h), non coupe pour la 4e nuit — et il fait desormais crier le recalcul horaire toutes les heures (TRK-086) : l antenne est le geste. HM-733-GA rallume a la main pour la 3e nuit sur 3 (17/09 23h30 Paris) et GR-294-VW (23h27) : plannings CDEF31 a ajuster. GLA•KC•31 359 h et FG-669-DQ 275 h (la sentinelle boitiers muets le redit chaque matin : 10,7 j) toujours non declares. 📏 20/09 : HM-769-GA a retrouve son fix le 18/09 vers 08h30 — coupe le 18 a 20h05 et remis en route le 19 a 05h00 (premiere fois en 5 nuits) ; HD-686-QX GPS perdu 2 h le 18/09 12h45 (zone morte no 1), revenu. GLA•KC•31 407 h et FG-669-DQ 323 h toujours non declares. La sentinelle hebdomadaire « boitiers muets » (19/09 06h30) liste HD-292-SH, DZ-034-CA, FS-253-HR, FS-808-CE — tous DECLARES hors service (jumeau de T14 / TRK-053). — 30/09 : FT-596-CV (cree le 24/09, jamais emis) a ete configure par SMS le 29/09 de 07h50 a 08h15 UTC puis essaye en coupe / reprise TCP a 08h15 (4,0 s / 0,3 s) : ONLINE a la collecte, sorti des hors ligne (11 → 10). GE-438-NX installe l apres-midi (essai 14h14). FG-669-DQ toujours muet (06/09) et NON declare.</p>
+  <p class="detail">Muets depuis 248 h (GLA•KC•31, depuis le 03/09 01:53) et 164 h (FG-669-DQ, depuis le 06/09 14:18) au 13/09, et NON declares : ils sortent du filtre gps_sans_fix par le bas. 🆕 ET L INVERSE LE 13/09 : trois vehicules DECLARES « boitier debranche » le 31/08 — FR-629-AD, FW-298-WV, FZ-731-YF (Retour LLD) — sont revenus le 11/09 et roulent (1 809 et 3 889 positions) avec TOUTES leurs alertes coupees, parce que la declaration n a pas ete levee. Un vol de FZ-731-YF aujourd hui ne produirait rien. Geste d ecran : lever la declaration sur les trois. 🔴 14/09 : LES TROIS VEHICULES DECLARES ONT ETE RENOMMES LE 13/09 ENTRE 11h34 ET 11h37 UTC — FR-629-AD devient HM-733-GA, FW-298-WV devient HM-769-GA, FZ-731-YF devient HM-779-GA (plaques neuves, serie HM 2026) — ET LA DECLARATION boitier debranche / Retour LLD A SURVECU A L EDITION. Trois vehicules neufs, en service (1 208 et 592 positions depuis le 11/09 ; HM-769-GA vivant sans fix depuis 57 h), roulent avec toutes leurs alertes coupees. Lever les trois declarations depuis leur fiche. GLA•KC•31 : 263 h ; FG-669-DQ : 179 h. 🔴 15/09 : HM-733-GA et HM-779-GA (declares « Retour de LLD ») ont ete COUPES par le planificateur le 14/09 a 22h00 et HM-733-GA rallume a la main a 23h13 ; HM-769-GA a retrouve un fix le 14/09 a 14h23 puis l a reperdu (coupe differee « hors champ GPS »). Les trois roulent, declares debranches, coupes le soir. GLA•KC•31 : 287 h ; FG-669-DQ : 203 h. 🧹 15/09 : T8 (antennes intermittentes FS-253-HR, FZ-862-VY, KSR•370 — les fix se reperdent après chaque épisode), V1 (porter les 6 IMEI muets à l'exploitant ; …6714 s'annonce et mesure par intermittence, à porter à part) et V2 (sortir du parc les 6 boîtiers muets &gt; 7 j, dont 3 sans véhicule : 7,3 · 66,8 · 92,7 jours — un STATUT, pas un DELETE) sont fusionnées ici, ainsi que T14 (la déclaration « boîtier débranché » coupe TOUTES les alertes et survit au renommage : lever celles de HM-733-GA, HM-769-GA, HM-779-GA est le vrai geste). Au 15/09 les cinq CDEF31 muets depuis 13 à 25 j (FS-253-HR, FS-808-CE, FZ-862-VY, DZ-034-CA, HD-292-SH) sont ignorés par le planificateur (dormance &gt; 72 h) : ni coupés ni remis en route tant qu'ils ne reparlent pas. 🔴 16/09 : HM-733-GA, HM-769-GA et HM-779-GA figurent dans la liste des 25 coupes REFUSEES par l interlock cette nuit — le premier soir ou l interlock sera vert, ils seront coupes. alertes_depuis_declaration = 7 (11e point). GLA•KC•31 : 311 h ; FG-669-DQ : 227 h. ✅ 16/09, PROPRIÉTAIRE : FS-253-HR, FS-808-CE, FZ-862-VY désinstallés, DZ-034-CA débranché, HD-292-SH au garage — tous déclarés « débranché » dans la fiche véhicule ; ils ne sont PAS opérationnels et ne comptent pas. Reste : lever les déclarations de HM-733-GA / HM-769-GA / HM-779-GA (qui roulent), et qualifier le parking souterrain du Havre de HM-769-GA en « parking souterrain » dans ses zones GPS dès que la zone apparaît en apprentissage (aujourd'hui seule sa zone de Toulouse existe). ✅ 16/09 08h33 UTC : les trois declarations « boitier debranche » de HM-733-GA, HM-769-GA et HM-779-GA ont ete LEVEES par un humain (vehicle_back_in_service) — deux minutes plus tard HM-769-GA recevait son alerte GPS_LOST (17 h sans fix) : la chaine d alerte est revenue. alertes_depuis_declaration passe de 7 a 3 (retrait de lignes). RESTE au 17/09 : GLA•KC•31 (335 h) et FG-669-DQ (251 h, mh cars, planning enabled donc DORMANT) toujours NON declares ; HM-769-GA sans fix depuis le 16/09 15h28 (11,8 h), non coupe trois nuits de suite pour cette raison — antenne ; les 6 IMEI muets et les 3 boitiers sans vehicule inchanges. 📏 18/09 : HM-769-GA sans fix depuis 33,7 h (16/09 15h28), boitier vivant (878 trames no_fix en 24 h), non coupe pour la 4e nuit — et il fait desormais crier le recalcul horaire toutes les heures (TRK-086) : l antenne est le geste. HM-733-GA rallume a la main pour la 3e nuit sur 3 (17/09 23h30 Paris) et GR-294-VW (23h27) : plannings CDEF31 a ajuster. GLA•KC•31 359 h et FG-669-DQ 275 h (la sentinelle boitiers muets le redit chaque matin : 10,7 j) toujours non declares. 📏 20/09 : HM-769-GA a retrouve son fix le 18/09 vers 08h30 — coupe le 18 a 20h05 et remis en route le 19 a 05h00 (premiere fois en 5 nuits) ; HD-686-QX GPS perdu 2 h le 18/09 12h45 (zone morte no 1), revenu. GLA•KC•31 407 h et FG-669-DQ 323 h toujours non declares. La sentinelle hebdomadaire « boitiers muets » (19/09 06h30) liste HD-292-SH, DZ-034-CA, FS-253-HR, FS-808-CE — tous DECLARES hors service (jumeau de T14 / TRK-053). — 30/09 : FT-596-CV (cree le 24/09, jamais emis) a ete configure par SMS le 29/09 de 07h50 a 08h15 UTC puis essaye en coupe / reprise TCP a 08h15 (4,0 s / 0,3 s) : ONLINE a la collecte, sorti des hors ligne (11 → 10). GE-438-NX installe l apres-midi (essai 14h14). FG-669-DQ toujours muet (06/09) et NON declare. - 05/10 : FG-669-DQ (MH Cars, muet depuis le 06/09, non declare) REPOND DE NOUVEAU depuis le 04/10 15:58 UTC (commande TCP acquittee, il n'est plus dans les hors ligne) ; HM-769-GA a retrouve son fix (plus de ligne Recalcul impossible depuis le 02/10 07:31). Restent les 4 boitiers declares hors service (HD-292-SH 44,8 j, DZ-034-CA 42,7 j, FS-253-HR, FS-808-CE).</p>
   
   <div class="badges"></div>
 </article>
@@ -235,11 +250,11 @@
     <span class="fiche">TRK-066 · doc 12 · doc 19 P2-8</span>
     <span class="classe">🤝 Decision ou geste humain</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-13">18 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-13">22 j</span>
     
   </div>
   <h3>Téléphone passerelle : le S21 branché EN PERMANENCE et déverrouillé (hors ligne 15:49→19:51 le 15/09), puis un second téléphone + seconde SIM (autre opérateur), jamais sous le même deviceId</h3>
-  <p class="detail">Aujourd'hui : un Android, une SIM (Free), un opérateur, un compte capcom6 — point de panne unique du secours SMS, sans preuve d'émission quotidienne (T45) ni secours. Pas bloquant pour lundi : c'est le logiciel qui bloque (T40 à T47). Fortement recommandé à court terme, mais SEULEMENT après T52 : tel qu'écrit, un second téléphone enregistré sous le même compte rendrait la santé « fraîche » même si le S21 est mort (le plus frais gagne). Procédure : doc 12 (inventaire, version SMSGate qualifiée, réglages, identité distincte, tests sur numéro neutre, trois cycles sur banc, bascule explicite par verdict, jamais de mise à jour simultanée). 🧹 15/09 : le reste vivant de T43 passe ici. Le 15/09 le S21 (téléphone personnel) s'est verrouillé à 15:49 et n'a repris le ping qu'à 19:51 après déblocage — la sentinelle T44 l'a dit en CRITICAL, l'interlock aurait retenu les coupes. Tant qu'il n'y a qu'un téléphone : secteur permanent, écran déverrouillable sans code pour SMSGate (ou téléphone dédié), application ouverte une fois après tout redémarrage. Le second téléphone est la vraie réponse (doc 12). 📏 16/09 : la sentinelle a ecrit sa ligne a 17h37 UTC (S21 hors ligne depuis 13h49m42, relayQueueDepth 390) et s est tue apres le deblocage ; ping releve a 01h16m22 puis 01h17m22 UTC — exactement 60 s, la nuit entiere. Le telephone est la seule chose qui a ete OK dans les six verdicts de la nuit. 📏 17/09 : ping releve a 03h28m44 puis 03h29m44 UTC — 60 s exactement, aucune ligne de la sentinelle en 24 h ; le telephone a tenu toute la nuit probante. Le second appareil reste la vraie reponse. 🔴 20/09 : LE S21 A DORMI 2 H 22 dans la nuit du 18 au 19 — dernier ping 02h23m55 UTC, retour a 04h46 ; 9 CRITICAL watchdog, preuves de 04h30 et 06h30 Paris remises a 04h46 quand il est revenu (interlock vert le soir, de justesse : la preuve precedente aurait eu 24 h 30 a 20h00). Deuxieme episode en 4 jours (15/09 15h49 → 19h51). Secteur, ecran, application — ou le second telephone. 📏 21/09 : le S21 a pingue toute la nuit du 19 au 20 (lastSeen avancant de 60 s, verifie 01h21 / 01h22 le 21/09) ; les 8 CRITICAL watchdog du 20/09 sont cote serveur (relais lent sous VPS-045), pas cote telephone. Rien de neuf pour T55. — 22/09 : 3e silence du S21 en 7 jours (56 min, 22h33m54 → ~23h30), cause jamais instruite cote telephone ; coincidence non instruite avec HM-779-GA hors ligne 20 s avant (pas de coupure reseau du VPS) ; 3 « Resume engine Succeed » entrants pour 2 resume sortants. — 23/09 : 4e silence du S21 en 8 jours, 2 h 09 a partir de 20h23 Paris — LE PREMIER PENDANT UNE PLAGE DE COUPE : les 24 coupes CDEF31 de 22h00 Paris retenues par l interlock puis parties 34 a 62 min en retard. Le telephone est desormais le premier maillon faible du coupe-circuit. — 24/09 : journee sans silence du S21 (0 ligne watchdog en 24 h ; ping 34 s puis 88 s a la lecture). La serie reste 4 silences en 8 jours ; le second telephone reste la vraie reponse. — 25/09 : 5e ET 6e SILENCES DU S21 LE MEME JOUR — 24/09 vers 02h07 (~15 min) puis 19h42m51 → ~20h59 (1 h 16, pings isoles a 20h21 et 20h45), 12 min apres la preuve de 21h30 Paris : les 25 coupes CDEF31 de 22h00 Paris retenues puis parties 22 a 88 min en retard. Serie : 6 silences en 10 jours, 2 dans la plage de coupe (22/09, 24/09). Le telephone est le premier maillon faible du coupe-circuit ; la preuve du soir ne protege que d un telephone mort AVANT elle. — 27/09 : deux jours pleins sans silence du S21 (0 ligne watchdog en 48 h ; ping 80 s puis 50 s a la lecture). La serie reste 6 silences en 10 jours ; le second telephone reste la vraie reponse. — 29/09 : 7e ET 8e SILENCES DU S21, le meme lundi en journee — dernier ping 28/09 11h11m26 UTC, retour entre 12h15 et 12h31 (~1 h 05 a 1 h 20), puis 15h04m06 → avant 15h26 ; 6 CRITICAL watchdog, 3 pushs passerelle-sms partis. Hors plage de coupe : aucun cout. Serie : 8 silences en 14 jours, 2 dans une plage de coupe. Le second telephone reste la vraie reponse ; savoir pourquoi il s est tu a 13h11 Paris serait la premiere donnee cote telephone.</p>
+  <p class="detail">Aujourd'hui : un Android, une SIM (Free), un opérateur, un compte capcom6 — point de panne unique du secours SMS, sans preuve d'émission quotidienne (T45) ni secours. Pas bloquant pour lundi : c'est le logiciel qui bloque (T40 à T47). Fortement recommandé à court terme, mais SEULEMENT après T52 : tel qu'écrit, un second téléphone enregistré sous le même compte rendrait la santé « fraîche » même si le S21 est mort (le plus frais gagne). Procédure : doc 12 (inventaire, version SMSGate qualifiée, réglages, identité distincte, tests sur numéro neutre, trois cycles sur banc, bascule explicite par verdict, jamais de mise à jour simultanée). 🧹 15/09 : le reste vivant de T43 passe ici. Le 15/09 le S21 (téléphone personnel) s'est verrouillé à 15:49 et n'a repris le ping qu'à 19:51 après déblocage — la sentinelle T44 l'a dit en CRITICAL, l'interlock aurait retenu les coupes. Tant qu'il n'y a qu'un téléphone : secteur permanent, écran déverrouillable sans code pour SMSGate (ou téléphone dédié), application ouverte une fois après tout redémarrage. Le second téléphone est la vraie réponse (doc 12). 📏 16/09 : la sentinelle a ecrit sa ligne a 17h37 UTC (S21 hors ligne depuis 13h49m42, relayQueueDepth 390) et s est tue apres le deblocage ; ping releve a 01h16m22 puis 01h17m22 UTC — exactement 60 s, la nuit entiere. Le telephone est la seule chose qui a ete OK dans les six verdicts de la nuit. 📏 17/09 : ping releve a 03h28m44 puis 03h29m44 UTC — 60 s exactement, aucune ligne de la sentinelle en 24 h ; le telephone a tenu toute la nuit probante. Le second appareil reste la vraie reponse. 🔴 20/09 : LE S21 A DORMI 2 H 22 dans la nuit du 18 au 19 — dernier ping 02h23m55 UTC, retour a 04h46 ; 9 CRITICAL watchdog, preuves de 04h30 et 06h30 Paris remises a 04h46 quand il est revenu (interlock vert le soir, de justesse : la preuve precedente aurait eu 24 h 30 a 20h00). Deuxieme episode en 4 jours (15/09 15h49 → 19h51). Secteur, ecran, application — ou le second telephone. 📏 21/09 : le S21 a pingue toute la nuit du 19 au 20 (lastSeen avancant de 60 s, verifie 01h21 / 01h22 le 21/09) ; les 8 CRITICAL watchdog du 20/09 sont cote serveur (relais lent sous VPS-045), pas cote telephone. Rien de neuf pour T55. — 22/09 : 3e silence du S21 en 7 jours (56 min, 22h33m54 → ~23h30), cause jamais instruite cote telephone ; coincidence non instruite avec HM-779-GA hors ligne 20 s avant (pas de coupure reseau du VPS) ; 3 « Resume engine Succeed » entrants pour 2 resume sortants. — 23/09 : 4e silence du S21 en 8 jours, 2 h 09 a partir de 20h23 Paris — LE PREMIER PENDANT UNE PLAGE DE COUPE : les 24 coupes CDEF31 de 22h00 Paris retenues par l interlock puis parties 34 a 62 min en retard. Le telephone est desormais le premier maillon faible du coupe-circuit. — 24/09 : journee sans silence du S21 (0 ligne watchdog en 24 h ; ping 34 s puis 88 s a la lecture). La serie reste 4 silences en 8 jours ; le second telephone reste la vraie reponse. — 25/09 : 5e ET 6e SILENCES DU S21 LE MEME JOUR — 24/09 vers 02h07 (~15 min) puis 19h42m51 → ~20h59 (1 h 16, pings isoles a 20h21 et 20h45), 12 min apres la preuve de 21h30 Paris : les 25 coupes CDEF31 de 22h00 Paris retenues puis parties 22 a 88 min en retard. Serie : 6 silences en 10 jours, 2 dans la plage de coupe (22/09, 24/09). Le telephone est le premier maillon faible du coupe-circuit ; la preuve du soir ne protege que d un telephone mort AVANT elle. — 27/09 : deux jours pleins sans silence du S21 (0 ligne watchdog en 48 h ; ping 80 s puis 50 s a la lecture). La serie reste 6 silences en 10 jours ; le second telephone reste la vraie reponse. — 29/09 : 7e ET 8e SILENCES DU S21, le meme lundi en journee — dernier ping 28/09 11h11m26 UTC, retour entre 12h15 et 12h31 (~1 h 05 a 1 h 20), puis 15h04m06 → avant 15h26 ; 6 CRITICAL watchdog, 3 pushs passerelle-sms partis. Hors plage de coupe : aucun cout. Serie : 8 silences en 14 jours, 2 dans une plage de coupe. Le second telephone reste la vraie reponse ; savoir pourquoi il s est tu a 13h11 Paris serait la premiere donnee cote telephone. - 05/10 : 9e SILENCE DU S21 ET LE PLUS LONG - samedi 03/10, dernier ping 11:59:30 UTC (13:59 Paris), retour vers 18:40 UTC (~6 h 40) ; 26 CRITICAL watchdog, 7 push passerelle-sms ; 6 coupes MH Cars de 18:00 retenues par l'interlock puis parties de 18:52 a 18:54 (53 min de retard), CDEF31 intact (26 coupes a 20:00). Preuve de 21:30 Paris OK (19:30 UTC, +13 s). Serie : 9 silences en 18 jours, 3 dans une plage de coupe. Le second telephone reste la vraie reponse ; la cause cote telephone n'est toujours pas instruite.</p>
   <p class="attendue"><b>Preuve attendue</b> — Un second appareil vu par /v1/texto/health sous son propre deviceId, une bascule explicite testée (S21 débranché → les RESTORE partent par le second), et un rollback signé.</p>
   <div class="badges"><span class="b b-bloque">⛔ prerequis</span></div>
 </article>
@@ -250,7 +265,7 @@
     <span class="fiche">TRK-077</span>
     <span class="classe">🔧 A coder</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-15">16 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-15">20 j</span>
     
   </div>
   <h3>deploy.sh journalise ses REFUS et ses abandons, et la sentinelle « deploiement » les dit — un refus qui ne s ecrit nulle part se lit comme un succes</h3>
@@ -265,7 +280,7 @@
     <span class="fiche">TRK-085 · TRK-088 · T51</span>
     <span class="classe">🔧 A coder</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-18">13 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-18">17 j</span>
     
   </div>
   <h3>L identite du vehicule dans le message des temoins par vehicule, et un compteur d anti-flood qui ne se perd jamais — 7 RESTORE non prouvees, 14 notifications, 1 ligne</h3>
@@ -280,7 +295,7 @@
     <span class="fiche">TRK-094 · TRK-092</span>
     <span class="classe">🤝 Decision ou geste humain</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-22">9 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-22">13 j</span>
     
   </div>
   <h3>Le rapport hebdomadaire de cdef31 n est jamais remis depuis le 27/07 : verifier l adresse avec le client, lever la suppression Resend — et un rebond ou un refus a l envoi doit ecrire une ligne au centre d alerte</h3>
@@ -295,7 +310,7 @@
     <span class="fiche">TRK-098 · TRK-066 · T38 · Sprint 3</span>
     <span class="classe">🔧 A coder</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-27">4 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-27">8 j</span>
     
   </div>
   <h3>Une coupe du veilleur posee sur un vehicule deja coupe par le planning ne doit pas lui retirer sa reprise du matin en silence — le dire (une DEGRADATION par vehicule et par jour), le montrer sur la page des horaires, et trancher son echeance</h3>
@@ -310,11 +325,11 @@
     <span class="fiche">TRK-100 · TRK-036 · TRK-018</span>
     <span class="classe">🔧 A coder</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-30">1 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-30">5 j</span>
     
   </div>
   <h3>Numero de SIM en double : effacer celui du boitier de stock 864035054756292 (HM-787-GA en depend), puis faire parler l abstention du rapprochement SMS et refuser un numero deja porte</h3>
-  <p class="detail">TROUVE LE 30/09. Le 29/09 a 20h06m30 UTC la coupe planifiee de HM-787-GA part par SMS (API recreee a 20h06m06, sockets tombees) ; « Stop engine Succeed » revient a 20h06m42 depuis sa SIM ; la commande passe SENT_UNCONFIRMED a 20h40, sans ligne. Cause mesuree : deux boitiers portent le meme numero de SIM (suffixe 9 chiffres identique, longueur 16) — 864035054756102 (HM-787-GA, ONLINE) et 864035054756292 (sans vehicule, OFFLINE depuis le 01/07). onAccuseSmsMoteur (engine-control.service.ts:565-629) et resoudreImeiParSim (sms-gateway.service.ts:1168) s abstiennent quand deux boitiers repondent — a juste titre — mais sans rien ecrire. Seul doublon du parc. Risque : une RESTORE de HM-787-GA partie par SMS ne serait jamais acquittee meme reussie (relances, rappels CRITICAL T51). HUMAIN : verifier quel boitier porte la SIM, effacer le numero du boitier de stock depuis sa fiche. CODE : (1) une ligne DEGRADATION par numero et par jour a l abstention, nommant les deux IMEI et la commande laissee non confirmee ; (2) refuser a la saisie un simPhoneNumber dont les 9 derniers chiffres sont deja portes ; (3) section « SIM en double » dans collecte.sql. OPTION (relecture humaine obligatoire, garde de securite) : departager par la seule commande SENT de l action accusee. NE PAS acquitter la commande du 29/09 a la main ; NE PAS supprimer le boitier de stock. — 01/10 : (a) PREDICTION VERIFIEE le 30/09 : la RESTORE de HM-787-GA part par SMS (socket absente a 05h00m08, sans deploiement), Resume engine Succeed revient a 05h01m06 depuis sa SIM et est ecarte, CRITICAL engine-control-restore a 05h01m15 et push restore-non-prouvee pour un vehicule deja rallume, preuve par TCP a 05h02m55 (2 min 47 s). (b) VOLET HUMAIN FAIT ET MESURE : la fiche du boitier 864035054756292 a ete modifiee le 30/09 a 10h04m52 UTC, simPhoneNumber vide ; regroupement du parc par suffixe a 9 chiffres le 01/10 01h25 = 0 doublon. La tache passe en A_CODER : reste la ligne DEGRADATION a l abstention et le refus d un numero deja porte. Non encore exerce : la coupe du 30/09 20h06m20 est partie par TCP. Observation : pwd fail puis un second Succeed depuis la meme SIM a 05h03, sans SMS sortant (1 point).</p>
+  <p class="detail">TROUVE LE 30/09. Le 29/09 a 20h06m30 UTC la coupe planifiee de HM-787-GA part par SMS (API recreee a 20h06m06, sockets tombees) ; « Stop engine Succeed » revient a 20h06m42 depuis sa SIM ; la commande passe SENT_UNCONFIRMED a 20h40, sans ligne. Cause mesuree : deux boitiers portent le meme numero de SIM (suffixe 9 chiffres identique, longueur 16) — 864035054756102 (HM-787-GA, ONLINE) et 864035054756292 (sans vehicule, OFFLINE depuis le 01/07). onAccuseSmsMoteur (engine-control.service.ts:565-629) et resoudreImeiParSim (sms-gateway.service.ts:1168) s abstiennent quand deux boitiers repondent — a juste titre — mais sans rien ecrire. Seul doublon du parc. Risque : une RESTORE de HM-787-GA partie par SMS ne serait jamais acquittee meme reussie (relances, rappels CRITICAL T51). HUMAIN : verifier quel boitier porte la SIM, effacer le numero du boitier de stock depuis sa fiche. CODE : (1) une ligne DEGRADATION par numero et par jour a l abstention, nommant les deux IMEI et la commande laissee non confirmee ; (2) refuser a la saisie un simPhoneNumber dont les 9 derniers chiffres sont deja portes ; (3) section « SIM en double » dans collecte.sql. OPTION (relecture humaine obligatoire, garde de securite) : departager par la seule commande SENT de l action accusee. NE PAS acquitter la commande du 29/09 a la main ; NE PAS supprimer le boitier de stock. — 01/10 : (a) PREDICTION VERIFIEE le 30/09 : la RESTORE de HM-787-GA part par SMS (socket absente a 05h00m08, sans deploiement), Resume engine Succeed revient a 05h01m06 depuis sa SIM et est ecarte, CRITICAL engine-control-restore a 05h01m15 et push restore-non-prouvee pour un vehicule deja rallume, preuve par TCP a 05h02m55 (2 min 47 s). (b) VOLET HUMAIN FAIT ET MESURE : la fiche du boitier 864035054756292 a ete modifiee le 30/09 a 10h04m52 UTC, simPhoneNumber vide ; regroupement du parc par suffixe a 9 chiffres le 01/10 01h25 = 0 doublon. La tache passe en A_CODER : reste la ligne DEGRADATION a l abstention et le refus d un numero deja porte. Non encore exerce : la coupe du 30/09 20h06m20 est partie par TCP. Observation : pwd fail puis un second Succeed depuis la meme SIM a 05h03, sans SMS sortant (1 point). - 05/10 : VOLET DONNEE EXERCE : 2 RESTORE par SMS le 02/10 05:00 (GS-138-LT accusee en 39 s, HD-964-XY en 50 s), 0 CRITICAL, 0 doublon de SIM ; pas de HM-787-GA par SMS depuis (4 CUT du soir par SMS, un par soir, tous acquittes). pwd fail : un seul point (30/09), pas revenu. Volet code toujours ouvert.</p>
   <p class="attendue"><b>Preuve attendue</b> — Volet donnee (fait, a confirmer) : le prochain accuse SMS de HM-787-GA fait passer sa commande en ACKNOWLEDGED. Volet code : un accuse venu d un numero ambigu (en recette) ne confirme toujours rien mais ecrit sa ligne DEGRADATION, et la saisie d un numero deja porte est refusee.</p>
   <div class="badges"></div>
 </article>
@@ -325,7 +340,7 @@
     <span class="fiche">VPS-036 · VPS-027</span>
     <span class="classe">🔵 Exploitant / equipe produit</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-08-28">34 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-08-28">38 j</span>
     
   </div>
   <h3>Un seul ticket hebergeur pour les deux ecritures root</h3>
@@ -340,7 +355,7 @@
     <span class="fiche">VPS-M56</span>
     <span class="classe">🟢 Agent, seul, avec preuve</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-08-04">58 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-08-04">62 j</span>
     
   </div>
   <h3>Arbitrer le budget de collecte</h3>
@@ -355,7 +370,7 @@
     <span class="fiche">VPS-005</span>
     <span class="classe">🤝 Decision ou geste humain</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-08-04">58 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-08-04">62 j</span>
     
   </div>
   <h3>Poser les limites memoire sur 30 conteneurs</h3>
@@ -370,7 +385,7 @@
     <span class="fiche">VPS-020</span>
     <span class="classe">🤝 Decision ou geste humain</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-08-08">54 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-08-08">58 j</span>
     
   </div>
   <h3>Separer les projets compose deploy</h3>
@@ -385,7 +400,7 @@
     <span class="fiche">VPS-012</span>
     <span class="classe">🟡 Commande ecrite, arbitrage humain</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-08-06">56 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-08-06">60 j</span>
     
   </div>
   <h3>Restreindre la cle CI github-actions-vizyo-auth</h3>
@@ -400,7 +415,7 @@
     <span class="fiche">VPS-015</span>
     <span class="classe">🟢 Agent, seul, avec preuve</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-08-05">57 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-08-05">61 j</span>
     
   </div>
   <h3>ExecStart par bash, et OnFailure sur tracky-backup</h3>
@@ -415,7 +430,7 @@
     <span class="fiche">VPS-034</span>
     <span class="classe">🤝 Decision ou geste humain</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-08-21">41 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-08-21">45 j</span>
     
   </div>
   <h3>Epingler Traefik par digest</h3>
@@ -430,7 +445,7 @@
     <span class="fiche">VPS-M73</span>
     <span class="classe">⛔ Bloque par un prerequis</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-01">30 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-01">34 j</span>
     
   </div>
   <h3>Afficher l'ecart en jours sur /admin → Audit VPS</h3>
@@ -445,7 +460,7 @@
     <span class="fiche">VPS-042</span>
     <span class="classe">🔵 Exploitant / equipe produit</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-13">18 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-13">22 j</span>
     
   </div>
   <h3>Reconnaitre le coffre Vaultwarden, les comptes vaultbk / conductorbk / dispocarbk, l adresse 179.198.198.199 et le role de depositaire de DEUX applications</h3>
@@ -460,7 +475,7 @@
     <span class="fiche">VPS-043 · VPS-037</span>
     <span class="classe">🟢 Agent, seul, avec preuve</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-15">16 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-15">20 j</span>
     
   </div>
   <h3>Reparer le copieur hors-site de Vizyo Verify : ne plus s arreter sur un manifeste orphelin (cote poste), purger par paire (cote VPS)</h3>
@@ -475,11 +490,11 @@
     <span class="fiche">TRK-071</span>
     <span class="classe">🤝 Decision ou geste humain</span>
     <span class="grav" title="gravite 3">G3</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-03">28 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-03">32 j</span>
     
   </div>
   <h3>Recharger au moins UN des deux comptes IA</h3>
-  <p class="detail">Anthropic ET OpenAI sont vides. Le repli claude vers gpt est deploye, correct, et sans effet tant que c est vrai. Au 13/09 : Anthropic a sec depuis le 03/09 00:13, soit 250 heures et un 11e jour, dernier appel API reussi le 03/09 00:01 ; OpenAI constate vide le 05/09. 🔴 ET LE TROISIEME CANAL S EST REVELE PLAFONNE A SON TOUR : la CLI Claude du poste (executor local), sur laquelle tout le reste s etait replie, a atteint son plafond hebdomadaire du 10/09 04h00 au 13/09 12h00 (Paris) — 80 heures sans AUCUN canal IA ouvert, 36 passages d agents en echec, 7 travaux IA morts, et les deux audits quotidiens arretes (meme CLI). Voir T32. RIEN D AUTRE NE DEBLOQUE QUOI QUE CE SOIT. — D3 TRANCHEE LE 13/09 (non) : les agents du poste ne basculeront JAMAIS sur l API ; recharger ne rend donc plus rien aux recits, au courrier ni aux audits. La question ne porte plus que sur l assistance et l optimiseur, seuls usages API restants depuis le 05/09 — et sur ton mot : « je n aurai plus d erreur de ce genre ». Plus rien en amont n en depend. — 14/09 : 265 heures, douzieme jour. 17/09 : 339 heures, quinzieme jour ; dernier appel ok du fournisseur claude le 05/09 16h03m29, zero tentative API en 48 h. 18/09 : 361 heures, seizieme jour ; la CLI du poste (troisieme canal) est a son tour morte depuis le 17/09 03h21 (session expiree, TRK-069 / T75) — 297 appels locaux ok en 48 h, le dernier le 16/09 22h04. 20/09 : 409 heures, dix-huitieme jour ; 0 appel IA en 72 h sur tous les canaux (agents en pause — T75). — 22/09 : 457 h, vingtieme jour ; 0 appel IA en 72 h. — 23/09 : 481 h, vingt-et-unieme jour ; 0 appel IA en 72 h. — 24/09 : 505 h, vingt-deuxieme jour. Les agents du poste consomment a nouveau (1 503 lignes ai_usage_logs en 72 h), l API Anthropic reste a sec. — 25/09 : 529 h, vingt-troisieme jour ; 464 lignes ai_usage_logs en 24 h (agents du poste).</p>
+  <p class="detail">Anthropic ET OpenAI sont vides. Le repli claude vers gpt est deploye, correct, et sans effet tant que c est vrai. Au 13/09 : Anthropic a sec depuis le 03/09 00:13, soit 250 heures et un 11e jour, dernier appel API reussi le 03/09 00:01 ; OpenAI constate vide le 05/09. 🔴 ET LE TROISIEME CANAL S EST REVELE PLAFONNE A SON TOUR : la CLI Claude du poste (executor local), sur laquelle tout le reste s etait replie, a atteint son plafond hebdomadaire du 10/09 04h00 au 13/09 12h00 (Paris) — 80 heures sans AUCUN canal IA ouvert, 36 passages d agents en echec, 7 travaux IA morts, et les deux audits quotidiens arretes (meme CLI). Voir T32. RIEN D AUTRE NE DEBLOQUE QUOI QUE CE SOIT. — D3 TRANCHEE LE 13/09 (non) : les agents du poste ne basculeront JAMAIS sur l API ; recharger ne rend donc plus rien aux recits, au courrier ni aux audits. La question ne porte plus que sur l assistance et l optimiseur, seuls usages API restants depuis le 05/09 — et sur ton mot : « je n aurai plus d erreur de ce genre ». Plus rien en amont n en depend. — 14/09 : 265 heures, douzieme jour. 17/09 : 339 heures, quinzieme jour ; dernier appel ok du fournisseur claude le 05/09 16h03m29, zero tentative API en 48 h. 18/09 : 361 heures, seizieme jour ; la CLI du poste (troisieme canal) est a son tour morte depuis le 17/09 03h21 (session expiree, TRK-069 / T75) — 297 appels locaux ok en 48 h, le dernier le 16/09 22h04. 20/09 : 409 heures, dix-huitieme jour ; 0 appel IA en 72 h sur tous les canaux (agents en pause — T75). — 22/09 : 457 h, vingtieme jour ; 0 appel IA en 72 h. — 23/09 : 481 h, vingt-et-unieme jour ; 0 appel IA en 72 h. — 24/09 : 505 h, vingt-deuxieme jour. Les agents du poste consomment a nouveau (1 503 lignes ai_usage_logs en 72 h), l API Anthropic reste a sec. — 25/09 : 529 h, vingt-troisieme jour ; 464 lignes ai_usage_logs en 24 h (agents du poste). - 05/10 : Anthropic a sec depuis le 03/09 00:13 UTC, ~774 h, 33e jour ; le chemin de remplacement (agents locaux) est lui aussi a l'arret depuis le 01/10 (TRK-102 / T87) : aucun recit de trajet n'est ecrit.</p>
   
   <div class="badges"></div>
 </article>
@@ -490,7 +505,7 @@
     <span class="fiche">TRK-071</span>
     <span class="classe">🤝 Decision ou geste humain</span>
     <span class="grav" title="gravite 3">G3</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-13">18 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-13">22 j</span>
     
   </div>
   <h3>Ouvrir un second abonnement reserve aux agents du poste — quand tu le decideras (D7)</h3>
@@ -505,7 +520,7 @@
     <span class="fiche">TRK-065</span>
     <span class="classe">🤝 Decision ou geste humain</span>
     <span class="grav" title="gravite 3">G3</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-13">18 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-13">22 j</span>
     
   </div>
   <h3>Rouvrir les notifications aux clients (PUSH_ROLLOUT=ALL) quand les tests seront finis</h3>
@@ -520,7 +535,7 @@
     <span class="fiche">TRK-081 · T49</span>
     <span class="classe">🔧 A coder</span>
     <span class="grav" title="gravite 3">G3</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-16">15 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-16">19 j</span>
     
   </div>
   <h3>L interlock rouge toute une nuit ne doit ecrire qu UN CRITICAL, des rappels DEGRADATION horaires et une ligne de cloture — pas un CRITICAL par quart d heure et un e-mail par heure</h3>
@@ -535,7 +550,7 @@
     <span class="fiche">TRK-082</span>
     <span class="classe">🔧 A coder</span>
     <span class="grav" title="gravite 3">G3</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-17">14 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-17">18 j</span>
     
   </div>
   <h3>La sentinelle « excès sans alerte » doit lire la même clé que T30 (l excès, pas le trajet) — 3 trajets recréés accusés à tort</h3>
@@ -550,7 +565,7 @@
     <span class="fiche">TRK-086 · TRK-047 · T13</span>
     <span class="classe">🔧 A coder</span>
     <span class="grav" title="gravite 3">G3</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-18">13 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-18">17 j</span>
     
   </div>
   <h3>Le recalcul horaire ne doit pas choisir un trajet brut qu il ne peut pas figer — HM-769-GA sans fix depuis 33 h fait crier TRIP_AUTOMATION toutes les heures</h3>
@@ -565,11 +580,11 @@
     <span class="fiche">TRK-089 · TRK-081 · TRK-090 · T68 · T45 · T69</span>
     <span class="classe">🔧 A coder</span>
     <span class="grav" title="gravite 3">G3</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-20">11 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-20">15 j</span>
     
   </div>
   <h3>Le watchdog du telephone ET du relais : UNE CRITICAL par episode, rappels DEGRADATION horaires, UNE ligne de sortie qui archive, un motif traduit — et la preuve quotidienne remise en retard doit refermer son verdict INDETERMINEE</h3>
-  <p class="detail">TROUVE LE 20/09 en lisant la nuit du 18 au 19 : le S21 a cesse de pinger a 02h23m55 UTC et est revenu a 04h46 (2 h 22, cause cote telephone — T55). sms-gateway-watchdog a ecrit 9 CRITICAL (02h29 STALE 305 s, puis OFFLINE a 02h45, 03h00, 03h16, 03h32, 03h48, 04h04, 04h20, 04h36 — 1 265 a 7 925 s), une par balayage de 16 min, et 3 e-mails « erreurs critiques » (02h30, 03h40, 04h40) ; aucune ligne de retour. Les preuves quotidiennes de 02h30 et 04h30 sont restees en file au relais ; la verification a +15 min a ecrit 2 ERROR sms-daily-proof « INDETERMINEE … l interlock refusera les coupes de ce soir » ; a 04h46m41 et 04h46m53 les deux SMS sont partis, remis, echo recu (statut pousse par le relais — T45) ; l interlock a lu lastTerminalSuccessAt = 04h46 et les 30 coupes de 18h00 et 20h00 sont parties (sans ces remises, la preuve du 18/09 19h30 aurait eu 24 h 30 a 20h00 : 26 coupes retenues). Rien ne l a ecrit : a 07h00 Paris l ecran annoncait encore une soiree menacee. Les pushs T69 (passerelle-sms 2 SENT a 02h29, 03h32, 04h36 ; preuve-sms 2 SENT a 02h45, 04h45) ont fait leur travail. Trois defauts, une cause : deux temoins ecrits pour l instant sur un etat qui dure et se resout — sans ligne d entree unique, sans rappel espace, sans ligne de sortie, sans relecture du verdict quand la donnee change (le motif de TRK-081 / T68 sur une seconde source, hors de portee de l anti-flood de 60 s). GESTE, sans toucher au watchdog ni a l interlock : (1) sms-gateway-watchdog.service : UNE CRITICAL a l entree en STALE/OFFLINE (avec lastSeen), rappels DEGRADATION horaires, UNE ligne de sortie « telephone revenu apres H h MM (hors ligne de HH:MM a HH:MM) » qui pose resolvedAt sur les lignes de l episode (dessin de T68 et T74) ; (2) sms-daily-proof : quand le relais pousse un statut terminal sur un gateway_daily_proof APRES la phase verify, ecrire UNE ligne « preuve de 04h30 finalement remise a 04h46 (+2 h 16) — interlock vert » et archiver la ligne INDETERMINEE ; a defaut relire le verdict a +60 et +120 min ; (3) ne rien changer aux notifications T69 (une par heure, une par preuve). NE PAS archiver les 11 lignes du 19/09 a la main ; NE PAS allonger le delai de verify (15 min : a 21h45 Paris il conditionne la coupe de 22h00). 📏 21/09 : 2e EPISODE, CAUSE SERVEUR — le 20/09 de 01h53 a 11h46 UTC, 8 CRITICAL « Passerelle SMS indisponible : The operation was aborted due to timeout » (reachable: false, androidState: null) : le S21 pinguait toutes les 60 s, c est l appel de sante du relais (5 s) qui expirait sur une VM a 10 pour cent de CPU (VPS-045). L incident se referme apres 3 ticks sains (un simple logger.log) et se ROUVRE a l expiration suivante : une CRITICAL et un push par reouverture (7 pushs passerelle-sms, 3 e-mails, « admin@ a recu 15 notifications dont 6 passerelle-sms » le lendemain), 0 ligne de sortie ; 18 CRITICAL actives. Le motif est brut (health.error recopie tel quel, sms-gateway-watchdog.service.ts:60-64). GESTE COMPLEMENTAIRE : (4) hysteresis qui ne rouvre pas un incident referme depuis moins d une heure ; (5) motif traduit : « relais SMS sans reponse en 5 s (telephone : dernier ping il y a N s) » avec la consequence. — 22/09 : 3e episode (telephone, 56 min) — 4 CRITICAL, 1 push, 0 sortie au centre d alerte alors que le journal a ecrit la fermeture (T44) ; le motif est traduit cette fois. Et TRK-093 / T79 ajoute la 3e source au meme dessin (interlock). — 23/09 : 4e episode (telephone, 2 h 09, 18h23m58 → ~20h33) : 9 CRITICAL (rappels 15 min conformes a T44), 0 sortie ; la preuve de 21h30 Paris remise a 20h33m11 (+63 min) et son INDETERMINEE de 19h45 jamais refermee — les deux clauses exercees ensemble pour la 2e fois. — 24/09 : non exerce (0 ligne watchdog) ; l INDETERMINEE du 22/09 19h45 reste active, jamais refermee. — 25/09 : 5e et 6e episodes telephone (24/09 02h13 ; 19h48 → 20h51, 6 CRITICAL STALE / OFFLINE alternes) ; 0 ligne de sortie, 38 CRITICAL watchdog actives ; preuve du soir remise (19h30 +13 s), pas d INDETERMINEE. — 29/09 : EXERCE UNE 8e FOIS (28/09, deux episodes S21) : 6 CRITICAL, 0 ligne de sortie, les 6 restent actives (44 CRITICAL watchdog actives) — la forme que T76 corrige, inchangee.</p>
+  <p class="detail">TROUVE LE 20/09 en lisant la nuit du 18 au 19 : le S21 a cesse de pinger a 02h23m55 UTC et est revenu a 04h46 (2 h 22, cause cote telephone — T55). sms-gateway-watchdog a ecrit 9 CRITICAL (02h29 STALE 305 s, puis OFFLINE a 02h45, 03h00, 03h16, 03h32, 03h48, 04h04, 04h20, 04h36 — 1 265 a 7 925 s), une par balayage de 16 min, et 3 e-mails « erreurs critiques » (02h30, 03h40, 04h40) ; aucune ligne de retour. Les preuves quotidiennes de 02h30 et 04h30 sont restees en file au relais ; la verification a +15 min a ecrit 2 ERROR sms-daily-proof « INDETERMINEE … l interlock refusera les coupes de ce soir » ; a 04h46m41 et 04h46m53 les deux SMS sont partis, remis, echo recu (statut pousse par le relais — T45) ; l interlock a lu lastTerminalSuccessAt = 04h46 et les 30 coupes de 18h00 et 20h00 sont parties (sans ces remises, la preuve du 18/09 19h30 aurait eu 24 h 30 a 20h00 : 26 coupes retenues). Rien ne l a ecrit : a 07h00 Paris l ecran annoncait encore une soiree menacee. Les pushs T69 (passerelle-sms 2 SENT a 02h29, 03h32, 04h36 ; preuve-sms 2 SENT a 02h45, 04h45) ont fait leur travail. Trois defauts, une cause : deux temoins ecrits pour l instant sur un etat qui dure et se resout — sans ligne d entree unique, sans rappel espace, sans ligne de sortie, sans relecture du verdict quand la donnee change (le motif de TRK-081 / T68 sur une seconde source, hors de portee de l anti-flood de 60 s). GESTE, sans toucher au watchdog ni a l interlock : (1) sms-gateway-watchdog.service : UNE CRITICAL a l entree en STALE/OFFLINE (avec lastSeen), rappels DEGRADATION horaires, UNE ligne de sortie « telephone revenu apres H h MM (hors ligne de HH:MM a HH:MM) » qui pose resolvedAt sur les lignes de l episode (dessin de T68 et T74) ; (2) sms-daily-proof : quand le relais pousse un statut terminal sur un gateway_daily_proof APRES la phase verify, ecrire UNE ligne « preuve de 04h30 finalement remise a 04h46 (+2 h 16) — interlock vert » et archiver la ligne INDETERMINEE ; a defaut relire le verdict a +60 et +120 min ; (3) ne rien changer aux notifications T69 (une par heure, une par preuve). NE PAS archiver les 11 lignes du 19/09 a la main ; NE PAS allonger le delai de verify (15 min : a 21h45 Paris il conditionne la coupe de 22h00). 📏 21/09 : 2e EPISODE, CAUSE SERVEUR — le 20/09 de 01h53 a 11h46 UTC, 8 CRITICAL « Passerelle SMS indisponible : The operation was aborted due to timeout » (reachable: false, androidState: null) : le S21 pinguait toutes les 60 s, c est l appel de sante du relais (5 s) qui expirait sur une VM a 10 pour cent de CPU (VPS-045). L incident se referme apres 3 ticks sains (un simple logger.log) et se ROUVRE a l expiration suivante : une CRITICAL et un push par reouverture (7 pushs passerelle-sms, 3 e-mails, « admin@ a recu 15 notifications dont 6 passerelle-sms » le lendemain), 0 ligne de sortie ; 18 CRITICAL actives. Le motif est brut (health.error recopie tel quel, sms-gateway-watchdog.service.ts:60-64). GESTE COMPLEMENTAIRE : (4) hysteresis qui ne rouvre pas un incident referme depuis moins d une heure ; (5) motif traduit : « relais SMS sans reponse en 5 s (telephone : dernier ping il y a N s) » avec la consequence. — 22/09 : 3e episode (telephone, 56 min) — 4 CRITICAL, 1 push, 0 sortie au centre d alerte alors que le journal a ecrit la fermeture (T44) ; le motif est traduit cette fois. Et TRK-093 / T79 ajoute la 3e source au meme dessin (interlock). — 23/09 : 4e episode (telephone, 2 h 09, 18h23m58 → ~20h33) : 9 CRITICAL (rappels 15 min conformes a T44), 0 sortie ; la preuve de 21h30 Paris remise a 20h33m11 (+63 min) et son INDETERMINEE de 19h45 jamais refermee — les deux clauses exercees ensemble pour la 2e fois. — 24/09 : non exerce (0 ligne watchdog) ; l INDETERMINEE du 22/09 19h45 reste active, jamais refermee. — 25/09 : 5e et 6e episodes telephone (24/09 02h13 ; 19h48 → 20h51, 6 CRITICAL STALE / OFFLINE alternes) ; 0 ligne de sortie, 38 CRITICAL watchdog actives ; preuve du soir remise (19h30 +13 s), pas d INDETERMINEE. — 29/09 : EXERCE UNE 8e FOIS (28/09, deux episodes S21) : 6 CRITICAL, 0 ligne de sortie, les 6 restent actives (44 CRITICAL watchdog actives) — la forme que T76 corrige, inchangee. - 05/10 : EPISODE DU 03/10 = 26 lignes CRITICAL sentinelle (une par quart d'heure) + 7 CRITICAL interlock pour UN SEUL silence du S21 ; le plafond horaire de notifications est intervenu pour la 1re fois (GROUPED hourly_cap des 18:22, 8 notifications bloquees sur 2 comptes). La regle UNE CRITICAL par episode, rappels DEGRADATION horaires reste a coder.</p>
   <p class="attendue"><b>Preuve attendue</b> — Au prochain episode (telephone OU relais) : 1 CRITICAL + N DEGRADATION horaires + 1 ligne de sortie, les CRITICAL archivees au retour, motif qui nomme la dependance, ET la notification passerelle-sms toujours partie dans le quart d heure. A la prochaine preuve remise en retard : une ligne qui le dit et la ligne INDETERMINEE archivee ; une preuve jamais remise produit toujours INDETERMINEE puis ECHEC.</p>
   <div class="badges"></div>
 </article>
@@ -580,7 +595,7 @@
     <span class="fiche">TRK-091 · TRK-083 · TRK-085 · T71 · T53</span>
     <span class="classe">🔧 A coder</span>
     <span class="grav" title="gravite 3">G3</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-21">10 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-21">14 j</span>
     
   </div>
   <h3>Le worker RESTORE ne doit pas re-emettre une commande dont le dispatch en ligne est en vol : bail pose a la creation, numero de tentative lu en base, ligne de tentative puis guetteur puis trame — et une P2002 n est pas une CRITICAL</h3>
@@ -595,7 +610,7 @@
     <span class="fiche">TRK-093 · TRK-081 · TRK-089 · T49 · T68 · T76</span>
     <span class="classe">🔧 A coder</span>
     <span class="grav" title="gravite 3">G3</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-22">9 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-22">13 j</span>
     
   </div>
   <h3>L interlock ne doit ecrire qu une ligne par cause et par quart d heure, un push par cause et par heure, et ne compter comme « retenue » qu une coupe qui serait partie — un code stable dans la raison, pas les secondes du dernier ping</h3>
@@ -610,11 +625,11 @@
     <span class="fiche">TRK-095 · TRK-043 · TRK-037</span>
     <span class="classe">🔧 A coder</span>
     <span class="grav" title="gravite 3">G3</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-22">9 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-22">13 j</span>
     
   </div>
   <h3>Un passage d automatisation ecourte sur son budget doit se compter (colonnes budgetAtteint / skippedBudget), se dire au 3e de suite (une DEGRADATION par episode) — et mesurer d abord le temps passe dans Overpass</h3>
-  <p class="detail">TROUVE LE 22/09 : le 21/09, 24 passages sur 24 done, 0 interrompu, mais 11 de 50,0 a 57,4 min (07h45 → 17h45) en abordant 5, 9, 15, 18, 20, 31, 4, 8, 10, 34, 34 vehicules sur 34 — stats.vehicles compte les vehicules abordes (trip-automation.service.ts:578) ; au-dela de RUN_BUDGET_MS = 50 min (:85) le passage ne demarre plus de vehicule (:548-553) et reporte le reste en logger.log (:616) « passage ECOURTE sur son budget de temps ». Serie &gt; 45 min : 18/09 7, 19/09 7 (VM a 10 pour cent de son CPU), 20/09 1, 21/09 11. LA MACHINE EST HORS DE CAUSE : system_metrics du 21/09 = CPU 10 a 20 pour cent, charge 0,35 a 1,10 sur les 24 heures. Piste mesuree une fois : le passage de 00h45 (8,7 min) a passe 4 min 46 s entre « 24 analyses rejouees » et « 25 analyses reprises » avec un Overpass HTTP 504 au milieu ; 3 echecs Overpass dans la journee (TRK-037). A ~10 min par vehicule aborde aux heures pleines, la dependance cartographique est la seule candidate mesurable — non demontree, le journal ne couvre pas 07h45 → 17h45. Pas de perte (fenetre de 26 h), de la latence (un trajet du matin analyse l apres-midi, un exces alerte des heures plus tard) et un instrument aveugle : dix heures a un tiers de flotte ressemblent a une journee ordinaire au centre d alerte — le profil de TRK-043. GESTE : (1) trip_automation_runs gagne budgetAtteint (bool) et skippedBudget (int), deux colonnes additives ; (2) une DEGRADATION TRIP_AUTOMATION a partir de 3 passages consecutifs ecourtes, une ligne par episode, refermee par le premier passage complet ; (3) EN PREMIER : mesurer le temps Overpass par passage (appels, duree cumulee, echecs) et l ecrire dans items ou une colonne ; (4) collecte.sql : min / max de vehicles et compte des passages ecourtes dans la section trip_automation_runs. — 24/09 : 3e jour mesure : 8 passages de 50,0 a 57,1 min (07h45 → 15h45), 4 a 15 vehicules sur 34 ; serie 21/09 11 · 22/09 9 · 23/09 8 — trois jours ouvres de suite, regime des heures de bureau ; CPU 10 a 34 pour cent (7 deploiements ce jour-la ; 07h45 et 08h45, avant tout deploiement, ecourtes aussi). 3 echecs Overpass. — 25/09 : 4e jour — 24/09, 5 passages de 47,8 a 57,4 min (09h45 → 14h45), vehicles 3, 5, 18, 32, 34. Serie &gt; 45 min : 11 · 9 · 8 · 5. — 27/09 : 25/09 : 9 passages de 50,8 a 57,9 min (07h45 → 15h45) ; 26/09 : 5 passages de 46,0 a 58,3 min. Serie &gt; 45 min : 11 · 9 · 8 · 5 · 9 · 5. — 28/09 : dimanche 27/09, 24 passages done, 0 de plus de 45 min (max 39,8). Serie &gt; 45 min : 11 · 9 · 8 · 5 · 9 · 5 · 0 — un dimanche ne dit rien des jours ouvres. — 29/09 : lundi 28/09 : 8 passages sur 24 au-dela de 45 min (07h45 → 15h45, max 59,1) — serie 11 · 9 · 8 · 5 · 9 · 5 · 0 · 8 ; deploy.sh --attendre a patiente 55 min derriere le passage de 14h45. — 01/10 : mercredi 30/09, 8 passages de 50,1 a 58,2 min (07h45 a 15h45 sauf 11h45), vehicles 33, 27, 5, 4, 5, 5, 10, 10 ; 0 interrompu malgre 7 deploiements. Serie &gt; 45 min : 11 · 9 · 8 · 5 · 9 · 5 · 0 · 8 · 6 · 8.</p>
+  <p class="detail">TROUVE LE 22/09 : le 21/09, 24 passages sur 24 done, 0 interrompu, mais 11 de 50,0 a 57,4 min (07h45 → 17h45) en abordant 5, 9, 15, 18, 20, 31, 4, 8, 10, 34, 34 vehicules sur 34 — stats.vehicles compte les vehicules abordes (trip-automation.service.ts:578) ; au-dela de RUN_BUDGET_MS = 50 min (:85) le passage ne demarre plus de vehicule (:548-553) et reporte le reste en logger.log (:616) « passage ECOURTE sur son budget de temps ». Serie &gt; 45 min : 18/09 7, 19/09 7 (VM a 10 pour cent de son CPU), 20/09 1, 21/09 11. LA MACHINE EST HORS DE CAUSE : system_metrics du 21/09 = CPU 10 a 20 pour cent, charge 0,35 a 1,10 sur les 24 heures. Piste mesuree une fois : le passage de 00h45 (8,7 min) a passe 4 min 46 s entre « 24 analyses rejouees » et « 25 analyses reprises » avec un Overpass HTTP 504 au milieu ; 3 echecs Overpass dans la journee (TRK-037). A ~10 min par vehicule aborde aux heures pleines, la dependance cartographique est la seule candidate mesurable — non demontree, le journal ne couvre pas 07h45 → 17h45. Pas de perte (fenetre de 26 h), de la latence (un trajet du matin analyse l apres-midi, un exces alerte des heures plus tard) et un instrument aveugle : dix heures a un tiers de flotte ressemblent a une journee ordinaire au centre d alerte — le profil de TRK-043. GESTE : (1) trip_automation_runs gagne budgetAtteint (bool) et skippedBudget (int), deux colonnes additives ; (2) une DEGRADATION TRIP_AUTOMATION a partir de 3 passages consecutifs ecourtes, une ligne par episode, refermee par le premier passage complet ; (3) EN PREMIER : mesurer le temps Overpass par passage (appels, duree cumulee, echecs) et l ecrire dans items ou une colonne ; (4) collecte.sql : min / max de vehicles et compte des passages ecourtes dans la section trip_automation_runs. — 24/09 : 3e jour mesure : 8 passages de 50,0 a 57,1 min (07h45 → 15h45), 4 a 15 vehicules sur 34 ; serie 21/09 11 · 22/09 9 · 23/09 8 — trois jours ouvres de suite, regime des heures de bureau ; CPU 10 a 34 pour cent (7 deploiements ce jour-la ; 07h45 et 08h45, avant tout deploiement, ecourtes aussi). 3 echecs Overpass. — 25/09 : 4e jour — 24/09, 5 passages de 47,8 a 57,4 min (09h45 → 14h45), vehicles 3, 5, 18, 32, 34. Serie &gt; 45 min : 11 · 9 · 8 · 5. — 27/09 : 25/09 : 9 passages de 50,8 a 57,9 min (07h45 → 15h45) ; 26/09 : 5 passages de 46,0 a 58,3 min. Serie &gt; 45 min : 11 · 9 · 8 · 5 · 9 · 5. — 28/09 : dimanche 27/09, 24 passages done, 0 de plus de 45 min (max 39,8). Serie &gt; 45 min : 11 · 9 · 8 · 5 · 9 · 5 · 0 — un dimanche ne dit rien des jours ouvres. — 29/09 : lundi 28/09 : 8 passages sur 24 au-dela de 45 min (07h45 → 15h45, max 59,1) — serie 11 · 9 · 8 · 5 · 9 · 5 · 0 · 8 ; deploy.sh --attendre a patiente 55 min derriere le passage de 14h45. — 01/10 : mercredi 30/09, 8 passages de 50,1 a 58,2 min (07h45 a 15h45 sauf 11h45), vehicles 33, 27, 5, 4, 5, 5, 10, 10 ; 0 interrompu malgre 7 deploiements. Serie &gt; 45 min : 11 · 9 · 8 · 5 · 9 · 5 · 0 · 8 · 6 · 8. - 05/10 : passages &gt; 45 min par jour Paris : 01/10 10 (max 58,3), 02/10 13 (max 58,8, maximum de la serie), 03/10 6, 04/10 0 (max 37,2) ; 0 interrompu. Serie : 11 9 8 5 9 5 0 8 6 8 10 13 6 0.</p>
   <p class="attendue"><b>Preuve attendue</b> — Au prochain jour a 3 passages ecourtes ou plus : UNE ligne DEGRADATION qui nomme les vehicules reportes et le temps Overpass ; ET un jour a 24 passages courts n en produit aucune. En attendant, relever chaque matin la serie des passages &gt; 45 min et le min de vehicles.</p>
   <div class="badges"></div>
 </article>
@@ -625,7 +640,7 @@
     <span class="fiche">TRK-096 · TRK-093 · TRK-089 · T79 · T76 · T68 · T49</span>
     <span class="classe">🔧 A coder</span>
     <span class="grav" title="gravite 3">G3</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-23">8 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-23">12 j</span>
     
   </div>
   <h3>Quand l interlock repasse au vert, les coupes qu il a retenues repartent au tick suivant — pas a l echeance de leur palier de 30 min — et une ligne de sortie dit le retard</h3>
@@ -640,12 +655,27 @@
     <span class="fiche">TRK-100 · TRK-077 · C6</span>
     <span class="classe">🔧 A coder</span>
     <span class="grav" title="gravite 3">G3</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-30">1 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-30">5 j</span>
     
   </div>
   <h3>deploy.sh : refuser la recreation de l API autour des vagues du coupe-circuit (coupes 20h00 et 22h00 Paris, reprises 05h00 Paris) — lues dans vehicle_schedules, pas codees en dur</h3>
   <p class="detail">TROUVE LE 30/09. deploy.sh refuse HH:42 a HH:46 (passages) et 05h30 a 09h00 Paris (reprises CDEF31) ; entre 22h00 et 07h00 il avertit seulement (C6). Le 29/09 le deploiement ba07aa2a (--attendre, 754 s derriere le passage de 19h45 UTC) a recree l API a 20h06m06 UTC = 22h06 Paris, une seconde apres la derniere coupe TCP de la vague CDEF31 et 24 s avant celle de HM-787-GA, partie alors par SMS faute de socket (et non rapprochee, TRK-100). Les reprises MH Cars de 05h00 Paris tombent AVANT la fenetre du matin (05h30) et ne sont pas gardees non plus. Proposition : refuser la recreation de HH:58 a HH:08 autour de chaque transition planifiee active (lue dans vehicle_schedules au moment de la recreation, meme logique que la double lecture TRK-077), sauf --force ; journaliser le refus (T66).</p>
   <p class="attendue"><b>Preuve attendue</b> — Un deploiement lance a 21h57 Paris est refuse (ou patiente avec --attendre) jusqu a la fin de la vague de 22h00 ; et aucune coupe ni reprise planifiee ne part plus par SMS pour cause de socket tombee pendant une recreation.</p>
+  <div class="badges"></div>
+</article>
+<article class="t etat-OUVERT g3" data-etat="OUVERT" data-partie="centre-alerte" data-classe="A_CODER" data-g="3">
+  <div class="t-h">
+    <span class="marque" title="Ouvert">☐</span>
+    <span class="id">T88</span>
+    <span class="fiche">TRK-101 · engine-control.service.ts:1830</span>
+    <span class="classe">🔧 A coder</span>
+    <span class="grav" title="gravite 3">G3</span>
+    <span class="depuis" title="ouverte depuis le 2026-10-05">0 j</span>
+    
+  </div>
+  <h3>Caler le detecteur d'acharnement sur les essais de pose : pas de CRITICAL ni de push quand un SMS de provisionnement vient d'etre envoye a ce boitier</h3>
+  <p class="detail">TROUVE LE 05/10. 4 lignes engine-control-acharnement CRITICAL du 01 au 04/10, toutes admin@vizyoagency.com (SUPER_ADMIN), sur FL-926-TV, FN-644-CL (01/10), FG-669-DQ, FN-192-JP (04/10) : CUT -&gt; RESTORE -&gt; CUT -&gt; RESTORE en 15 a 40 s, toutes acquittees par TCP, apres la sequence SMS de provisionnement (begin123456 ... fix ok) pour trois d'entre elles. signalerAcharnement (engine-control.service.ts:1830) compte tout geste MANUAL d'un meme utilisateur sur un meme boitier (seuil 4 en 10 min) : il ne distingue pas un operateur en difficulte d'un installateur qui teste un boitier neuf. CODE : si un SMS tracker_provisioning a ete envoye a ce boitier dans les 30 min (ou si le boitier a moins de N heures de trames), ecrire une ligne DEGRADATION essais de pose au lieu de la CRITICAL et du push. GARDER le seuil, la fenetre et l'alternance (ils ont rendu visible l'incident CDEF31 du 24/09). HUMAIN : confirmer que les quatre sequences etaient bien les essais de pose du proprietaire. NE PAS exempter les SUPER_ADMIN.</p>
+  <p class="attendue"><b>Preuve attendue</b> — Le prochain essai de pose produit 0 CRITICAL et une DEGRADATION ; un acharnement sans provisionnement recent produit toujours la CRITICAL (double condition : si les deux cessent, le detecteur est supprime).</p>
   <div class="badges"></div>
 </article>
 <article class="t etat-OUVERT g3" data-etat="OUVERT" data-partie="vps" data-classe="HUMAIN" data-g="3">
@@ -655,7 +685,7 @@
     <span class="fiche">VPS-010</span>
     <span class="classe">🤝 Decision ou geste humain</span>
     <span class="grav" title="gravite 3">G3</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-24">7 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-24">11 j</span>
     
   </div>
   <h3>Redemarrer sur le noyau 6.8.0-142 installe le 24/09 06:09 UTC (reboot-required revenu)</h3>
@@ -670,7 +700,7 @@
     <span class="fiche">VPS-050 · VPS-M127</span>
     <span class="classe">🤝 Decision ou geste humain</span>
     <span class="grav" title="gravite 3">G3</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-28">3 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-28">7 j</span>
     
   </div>
   <h3>Refermer l ecoute de test Teltonika (node en root dans un tmux, port 5027 ouvert a Internet) — ou lui donner une echeance, un utilisateur non root et un journal borne</h3>
@@ -685,7 +715,7 @@
     <span class="fiche">VPS-051 · VPS-M129</span>
     <span class="classe">🔧 A coder</span>
     <span class="grav" title="gravite 3">G3</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-29">2 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-29">6 j</span>
     
   </div>
   <h3>deploy.sh : nommer le repere de repli d apres le code qui TOURNE (dernier sha du journal T33), pas d apres HEAD — et journaliser l ImageId</h3>
@@ -700,7 +730,7 @@
     <span class="fiche">VPS-052 · VPS-M130</span>
     <span class="classe">🔧 A coder</span>
     <span class="grav" title="gravite 3">G3</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-30">1 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-30">5 j</span>
     
   </div>
   <h3>deploy.sh : retrecir la garde du matin a « une reprise est-elle due dans les 10 min ? » au lieu de la franchir par --force</h3>
@@ -715,7 +745,7 @@
     <span class="fiche">TRK-066 · doc 19 §14</span>
     <span class="classe">🔧 A coder</span>
     <span class="grav" title="gravite 4">G4</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-13">18 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-13">22 j</span>
     
   </div>
   <h3>Dépendances : lot séparé après stabilisation (maplibre critique, socket.io/ws, axios via twilio, multer)</h3>
@@ -730,7 +760,7 @@
     <span class="fiche">TRK-097 · TRK-069 · T75 · T34</span>
     <span class="classe">🔧 A coder</span>
     <span class="grav" title="gravite 4">G4</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-24">7 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-24">11 j</span>
     
   </div>
   <h3>La sentinelle de file juge l age d un travail depuis la levee de la pause, pas depuis sa creation — et une ligne « file bouchee » s archive quand la file repasse sous 12 h</h3>
@@ -745,7 +775,7 @@
     <span class="fiche">VPS-M115 · VPS-M56</span>
     <span class="classe">🟡 Commande ecrite, arbitrage humain</span>
     <span class="grav" title="gravite 4">G4</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-25">6 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-25">10 j</span>
     
   </div>
   <h3>Decaler VizyoTracky-LimitesVitesse de 04:30 a 04:40 Paris : elle part pendant chaque collecte de l audit VPS</h3>
@@ -760,7 +790,7 @@
     <span class="fiche">TRK-070</span>
     <span class="classe">🔧 A coder</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-06">25 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-06">29 j</span>
     <code class="commit">2112e9ae</code>
   </div>
   <h3>Le niveau de l'escalade doit suivre la CAUSE, pas la gravite</h3>
@@ -775,7 +805,7 @@
     <span class="fiche">TRK-078</span>
     <span class="classe">🔧 A coder</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-13">18 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-13">22 j</span>
     <code class="commit">229b7861</code>
   </div>
   <h3>Dedupliquer l alerte d exces de vitesse sur l EXCES, pas sur l identifiant de trajet</h3>
@@ -790,7 +820,7 @@
     <span class="fiche">TRK-066 · doc 19 P0-2</span>
     <span class="classe">🔧 A coder</span>
     <span class="grav" title="gravite 1">G1</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-13">18 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-13">22 j</span>
     <code class="commit">8ab1d08e</code>
   </div>
   <h3>P0 — Donner une validité aux SMS CUT (ttl), une priorité aux RESTORE, un appareil explicite, et annuler le SMS CUT supplanté — DÉPLOYÉ le 15/09</h3>
@@ -805,7 +835,7 @@
     <span class="fiche">TRK-016</span>
     <span class="classe">🏗️ Chantier, hors passe</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-08-09">53 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-08-09">57 j</span>
     <code class="commit">4d1c4cb5</code>
   </div>
   <h3>Recalage cartographique : flux neuf repare, mesure a redefinir, historique a rattraper</h3>
@@ -820,7 +850,7 @@
     <span class="fiche">TRK-069</span>
     <span class="classe">🔧 A coder</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-13">18 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-13">22 j</span>
     <code class="commit">507f0763</code>
   </div>
   <h3>Les agents du poste meurent d un Ctrl-C qui ne leur est pas destine — fenetre cachee, CLI isolee, limite corrigee</h3>
@@ -835,7 +865,7 @@
     <span class="fiche">VPS-037</span>
     <span class="classe">🤝 Decision ou geste humain</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-01">30 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-01">34 j</span>
     
   </div>
   <h3>Donner un second depositaire a la copie hors-site — et, en attendant, reveiller le poste (WakeToRun)</h3>
@@ -850,7 +880,7 @@
     <span class="fiche">VPS-047 · VPS-032</span>
     <span class="classe">🗓️ Deploye, a guetter</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-21">10 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-21">14 j</span>
     
   </div>
   <h3>Plus jamais une boucle du poste qui ouvre une session SSH par seconde — /usr/bin/sleep dans tout Monitor, et une surveillance du VPS = UNE session qui boucle cote serveur</h3>
@@ -865,7 +895,7 @@
     <span class="fiche">TRK-066 · doc 19 P2-1 · P2-4</span>
     <span class="classe">🔧 A coder</span>
     <span class="grav" title="gravite 3">G3</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-13">18 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-13">22 j</span>
     <code class="commit">8a8cb2c4</code>
   </div>
   <h3>Course ACK/SMS : ne jamais rétrograder ACKNOWLEDGED en SENT ; dispatcher une CUT PENDING orpheline au lieu de la rendre telle quelle — DÉPLOYÉ le 15/09</h3>
@@ -880,7 +910,7 @@
     <span class="fiche">TRK-066 · doc 19 P2-2</span>
     <span class="classe">🔧 A coder</span>
     <span class="grav" title="gravite 3">G3</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-13">18 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-13">22 j</span>
     <code class="commit">93dba465</code>
   </div>
   <h3>Kill-switch et interlock : une ligne par cause et espacée, pas un CRITICAL par appel — DÉPLOYÉ le 15/09</h3>
@@ -895,7 +925,7 @@
     <span class="fiche">TRK-066 · doc 19 P2-3</span>
     <span class="classe">🔧 A coder</span>
     <span class="grav" title="gravite 3">G3</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-13">18 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-13">22 j</span>
     <code class="commit">8bb24ca7</code>
   </div>
   <h3>Glissement de confirmation réellement volontaire : ni un clic en bout de piste, ni la touche End — DÉPLOYÉ le 15/09</h3>
@@ -910,7 +940,7 @@
     <span class="fiche">TRK-066 · doc 19 P2-5 · P2-6</span>
     <span class="classe">🔧 A coder</span>
     <span class="grav" title="gravite 3">G3</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-13">18 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-13">22 j</span>
     <code class="commit">b582fbf6</code>
   </div>
   <h3>Rappeler une RESTORE qui traîne (toutes les 15 min) et ne pas suspendre le clic manuel derrière la file SMS — DÉPLOYÉ le 15/09</h3>
@@ -925,7 +955,7 @@
     <span class="fiche">TRK-066 · doc 19 P2-8 · P2-9</span>
     <span class="classe">🔧 A coder</span>
     <span class="grav" title="gravite 3">G3</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-13">18 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-13">22 j</span>
     <code class="commit">428d1f39</code>
   </div>
   <h3>Santé par appareil (deviceId, simCards) et allowlist non bloquante pour une RESTORE — DÉPLOYÉ le 15/09</h3>
@@ -940,7 +970,7 @@
     <span class="fiche">TRK-066 · doc 19 P2-10</span>
     <span class="classe">🔧 A coder</span>
     <span class="grav" title="gravite 3">G3</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-13">18 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-13">22 j</span>
     <code class="commit">b407481a</code>
   </div>
   <h3>Tests : exercer la table des tentatives, index dans schema.prisma, migration rejouée sur PostgreSQL réel, changement d'heure du 25/10 — DÉPLOYÉ le 15/09</h3>
@@ -955,7 +985,7 @@
     <span class="fiche">TRK-069</span>
     <span class="classe">🔧 A coder</span>
     <span class="grav" title="gravite 3">G3</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-14">17 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-14">21 j</span>
     <code class="commit">1539674c</code>
   </div>
   <h3>La cle de refroidissement de la sentinelle des agents doit porter la CAUSE — et courrier-ia doit lire le premier objet JSON equilibre — sur main, FUSIONNÉ et poussé le 14/09, à déployer</h3>
@@ -970,7 +1000,7 @@
     <span class="fiche">TRK-079</span>
     <span class="classe">🔧 A coder</span>
     <span class="grav" title="gravite 4">G4</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-14">17 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-14">21 j</span>
     <code class="commit">314e4193</code>
   </div>
   <h3>Ne plus remonter au centre d alerte les appels avortes par la fermeture de la page sur le canal anonyme (robots) — sur main, FUSIONNÉ et poussé le 14/09, à déployer</h3>
@@ -985,7 +1015,7 @@
     <span class="fiche">main · 152883ec</span>
     <span class="classe">🔧 A coder</span>
     <span class="grav" title="gravite 4">G4</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-14">17 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-14">21 j</span>
     <code class="commit">979fdfec</code>
   </div>
   <h3>Test fenetre-utile.spec.ts (trajets, sur main) tient à la milliseconde : deux Date.now() distincts — à figer — sur main, FUSIONNÉ et poussé le 14/09, à déployer</h3>
@@ -1000,7 +1030,7 @@
     <span class="fiche">TRK-075</span>
     <span class="classe">🔧 A coder</span>
     <span class="grav" title="gravite 1">G1</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-08">23 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-08">27 j</span>
     
   </div>
   <h3>Remonter la decision d alerter au bon etage, et borner le rejeu par la retention</h3>
@@ -1015,7 +1045,7 @@
     <span class="fiche">TRK-071 · TRK-069</span>
     <span class="classe">🤝 Decision ou geste humain</span>
     <span class="grav" title="gravite 1">G1</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-13">18 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-13">22 j</span>
     
   </div>
   <h3>Decider la parade au plafond hebdomadaire de la CLI du poste — le repli du repli n avait pas de plan</h3>
@@ -1030,7 +1060,7 @@
     <span class="fiche">TRK-066 · doc 19 P0-1</span>
     <span class="classe">🔧 A coder</span>
     <span class="grav" title="gravite 1">G1</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-13">18 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-13">22 j</span>
     <code class="commit">d5c19a17</code>
   </div>
   <h3>P0 — La clé d'unicité RESTORE ne doit plus vivre pour toujours (RESTORE du lendemain avalée) — DÉPLOYÉ le 15/09</h3>
@@ -1045,7 +1075,7 @@
     <span class="fiche">VPS-013</span>
     <span class="classe">🟢 Agent, seul, avec preuve</span>
     <span class="grav" title="gravite 1">G1</span>
-    <span class="depuis" title="ouverte depuis le 2026-08-05">57 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-08-05">61 j</span>
     
   </div>
   <h3>Trois bases de PRODUCTION sans sauvegarde reproductible</h3>
@@ -1060,7 +1090,7 @@
     <span class="fiche">VPS-016</span>
     <span class="classe">🤝 Decision ou geste humain</span>
     <span class="grav" title="gravite 1">G1</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-17">14 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-17">18 j</span>
     
   </div>
   <h3>Tuer les DEUX clients docker logs bloqués : PID 3366708 (vizyo-auth-api, depuis le 16/09 12:41 UTC, parent bash -c 3366707) et PID 2060212 (foodsqan-traefik, depuis le 19/09 18:30 UTC, parent bash -c 2060192) — VPS-016 nº 6 et nº 7, les deux cœurs pris, 89 % de steal au 20/09 01:10</h3>
@@ -1075,7 +1105,7 @@
     <span class="fiche">VPS-016</span>
     <span class="classe">🔧 A coder</span>
     <span class="grav" title="gravite 1">G1</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-20">11 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-20">15 j</span>
     
   </div>
   <h3>Plus jamais un docker logs sans timeout depuis le poste — 7 occurrences sur 7 viennent d une session SSH du poste : une ligne dans CLAUDE.md, la memoire des agents, et les scripts de diagnostic (« PROXY/ROUTEURS », « dernieres lignes vizyo-auth-api ») a corriger</h3>
@@ -1090,7 +1120,7 @@
     <span class="fiche">VPS-045 · VPS-016</span>
     <span class="classe">🤝 Decision ou geste humain</span>
     <span class="grav" title="gravite 1">G1</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-20">11 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-20">15 j</span>
     
   </div>
   <h3>L hote retient 80 a 90 % du CPU depuis le 19/09 22:10 UTC et ne l a pas rendu apres la mort des deux clients : (1) ticket hebergeur avec l extrait sar, (2) docker compose stop sur les 18 conteneurs hors production, (3) ne rien ajouter (ni deploiement, ni build, ni V4)</h3>
@@ -1105,7 +1135,7 @@
     <span class="fiche">TRK-069 · TRK-071</span>
     <span class="classe">🔧 A coder</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-13">18 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-13">22 j</span>
     <code class="commit">02d985c3</code>
   </div>
   <h3>Le poste sait qu il est au plafond : les agents s arretent seuls, un courriel part, un bouton relance tout — decision D5</h3>
@@ -1120,7 +1150,7 @@
     <span class="fiche">TRK-066 · doc 25 §2</span>
     <span class="classe">🤝 Decision ou geste humain</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-14">17 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-14">21 j</span>
     
   </div>
   <h3>C — Prérequis J-1 — FAITS le 15/09 (Device ID, numéro de preuve, v1.43.0, créneau) ; reste : le S21 branché EN PERMANENCE</h3>
@@ -1135,7 +1165,7 @@
     <span class="fiche">TRK-066 · T45 · T49 · T51 · T44</span>
     <span class="classe">🔧 A coder</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-16">15 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-16">19 j</span>
     <code class="commit">87ae29c9</code>
   </div>
   <h3>Preuve SMS aussi à 21:30 (verdict 21:45) et notifications push aux super-admins quand le coupe-circuit est bloqué — DÉPLOYÉ le 16/09</h3>
@@ -1150,7 +1180,7 @@
     <span class="fiche">TRK-069 · T34</span>
     <span class="classe">🤝 Decision ou geste humain</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-18">13 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-18">17 j</span>
     
   </div>
   <h3>Re-authentifier la session Claude Code du poste (claude auth login) puis « Reprendre maintenant » sur /admin/background-tasks — agents en pause depuis le 17/09 10:50 Paris, zero recit depuis le 16/09 22:00 UTC</h3>
@@ -1165,7 +1195,7 @@
     <span class="fiche">TRK-066</span>
     <span class="classe">⛔ Bloque par un prerequis</span>
     <span class="grav" title="gravite 1">G1</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-04">27 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-04">31 j</span>
     
   </div>
   <h3>Trancher les quatre questions du coupe-circuit — ou les tenir pour tranchees par le chantier fiabilite (D8)</h3>
@@ -1180,7 +1210,7 @@
     <span class="fiche">TRK-053</span>
     <span class="classe">🗓️ Test date : provoquer ou requalifier</span>
     <span class="grav" title="gravite 1">G1</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-01">30 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-01">34 j</span>
     
   </div>
   <h3>Provoquer ou requalifier : boitier debranche ne fait pas taire les alarmes</h3>
@@ -1195,7 +1225,7 @@
     <span class="fiche">TRK-064</span>
     <span class="classe">🗓️ Deploye, a guetter</span>
     <span class="grav" title="gravite 1">G1</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-04">27 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-04">31 j</span>
     
   </div>
   <h3>CLOSE — la sentinelle de vitesse designe des vehicules, et elle sait se taire</h3>
@@ -1210,7 +1240,7 @@
     <span class="fiche">TRK-066</span>
     <span class="classe">🗓️ Deploye, a guetter</span>
     <span class="grav" title="gravite 1">G1</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-04">27 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-04">31 j</span>
     
   </div>
   <h3>Guetter « SMS non remis au relais » — motif technique CONSERVE</h3>
@@ -1225,7 +1255,7 @@
     <span class="fiche">TRK-018</span>
     <span class="classe">⛔ Bloque par un prerequis</span>
     <span class="grav" title="gravite 1">G1</span>
-    <span class="depuis" title="ouverte depuis le 2026-08-11">51 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-08-11">55 j</span>
     
   </div>
   <h3>Accuse de remise de la passerelle SMS</h3>
@@ -1240,7 +1270,7 @@
     <span class="fiche">TRK-073</span>
     <span class="classe">🔧 A coder</span>
     <span class="grav" title="gravite 1">G1</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-06">25 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-06">29 j</span>
     
   </div>
   <h3>Marquer le passage au DEPART, pas a l arrivee</h3>
@@ -1255,7 +1285,7 @@
     <span class="fiche">—</span>
     <span class="classe">🟢 Agent, seul, avec preuve</span>
     <span class="grav" title="gravite 1">G1</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-06">25 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-06">29 j</span>
     
   </div>
   <h3>Verser docs/vps-audit sur main</h3>
@@ -1270,7 +1300,7 @@
     <span class="fiche">VPS-038</span>
     <span class="classe">🟢 Agent, seul, avec preuve</span>
     <span class="grav" title="gravite 1">G1</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-06">25 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-06">29 j</span>
     <code class="commit">fb0642f8</code>
   </div>
   <h3>Sentinelle « boitiers muets »</h3>
@@ -1285,7 +1315,7 @@
     <span class="fiche">VPS-016</span>
     <span class="classe">🤝 Decision ou geste humain</span>
     <span class="grav" title="gravite 1">G1</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-13">18 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-13">22 j</span>
     
   </div>
   <h3>Tuer le client Docker bloque depuis 04h34 UTC le 13/09 — 5e occurrence de VPS-016 (46e heure au 15/09)</h3>
@@ -1300,7 +1330,7 @@
     <span class="fiche">TRK-069</span>
     <span class="classe">🔵 Action materielle</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-05">26 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-05">30 j</span>
     
   </div>
   <h3>Rallumer le poste et lire le motif de agent-recit-trajet</h3>
@@ -1315,7 +1345,7 @@
     <span class="fiche">TRK-072</span>
     <span class="classe">🤝 Decision ou geste humain</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-06">25 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-06">29 j</span>
     
   </div>
   <h3>Calibrer les notifications d exces de vitesse — qui doit les recevoir (D9)</h3>
@@ -1330,7 +1360,7 @@
     <span class="fiche">TRK-062</span>
     <span class="classe">🔧 A coder</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-03">28 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-03">32 j</span>
     <code class="commit">66d286f5</code>
   </div>
   <h3>SENT_UNCONFIRMED pour les commandes de boitier parties par SMS — la migration autorisee, la borne posee</h3>
@@ -1345,7 +1375,7 @@
     <span class="fiche">TRK-068</span>
     <span class="classe">🔧 A coder</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-04">27 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-04">31 j</span>
     <code class="commit">c80632ba</code>
   </div>
   <h3>Borner le fetch vers Vizyo Auth, et son jumeau</h3>
@@ -1360,7 +1390,7 @@
     <span class="fiche">TRK-022</span>
     <span class="classe">🔧 A coder</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-08-13">49 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-08-13">53 j</span>
     
   </div>
   <h3>Deduplication GENERIQUE des alarmes du boitier</h3>
@@ -1375,7 +1405,7 @@
     <span class="fiche">TRK-032</span>
     <span class="classe">🗓️ Test date : provoquer ou requalifier</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-08-21">41 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-08-21">45 j</span>
     
   </div>
   <h3>REQUALIFIER — l'occasion ne viendra pas seule</h3>
@@ -1390,7 +1420,7 @@
     <span class="fiche">TRK-051</span>
     <span class="classe">🗓️ Test date : provoquer ou requalifier</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-08-25">37 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-08-25">41 j</span>
     
   </div>
   <h3>Confier a un humain : le badge ambre du mode fix</h3>
@@ -1405,7 +1435,7 @@
     <span class="fiche">TRK-074</span>
     <span class="classe">🔧 A coder</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-06">25 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-06">29 j</span>
     <code class="commit">171857fc</code>
   </div>
   <h3>Donner une resolution automatique au temoin des taches planifiees</h3>
@@ -1420,7 +1450,7 @@
     <span class="fiche">TRK-076</span>
     <span class="classe">🔧 A coder</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-07">24 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-07">28 j</span>
     
   </div>
   <h3>La carte survit a une perte de contexte WebGL</h3>
@@ -1435,7 +1465,7 @@
     <span class="fiche">TRK-016</span>
     <span class="classe">🔧 A coder</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-09">22 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-09">26 j</span>
     <code class="commit">4d1c4cb5</code>
   </div>
   <h3>Redefinir la mesure du recalage : a la cloture, sur une fenetre fermee</h3>
@@ -1450,7 +1480,7 @@
     <span class="fiche">TRK-077</span>
     <span class="classe">🔧 A coder</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-10">21 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-10">25 j</span>
     <code class="commit">18c975ee</code>
   </div>
   <h3>Relire la garde du deploiement au moment ou elle va tuer, pas au moment ou l on decide</h3>
@@ -1465,7 +1495,7 @@
     <span class="fiche">TRK-069</span>
     <span class="classe">🔧 A coder</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-13">18 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-13">22 j</span>
     <code class="commit">a8f9575e</code>
   </div>
   <h3>Une cause commune aux agents du poste doit produire UNE ligne, pas vingt-cinq CRITICAL</h3>
@@ -1480,7 +1510,7 @@
     <span class="fiche">TRK-077</span>
     <span class="classe">🔧 A coder</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-13">18 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-13">22 j</span>
     <code class="commit">18c975ee</code>
   </div>
   <h3>Rendre le script de deploiement INCONTOURNABLE — decision D1 du proprietaire</h3>
@@ -1495,7 +1525,7 @@
     <span class="fiche">TRK-066 · doc 19 P1-1</span>
     <span class="classe">🔧 A coder</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-13">18 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-13">22 j</span>
     <code class="commit">86c32fa9</code>
   </div>
   <h3>Relancer une RESTORE non prouvée à la reconnexion TCP du boîtier — et ne plus la rendre terminale après trois SMS — FUSIONNÉ sur main le 14/09, à déployer</h3>
@@ -1510,7 +1540,7 @@
     <span class="fiche">TRK-066 · doc 19 P1-2</span>
     <span class="classe">🔵 Action materielle</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-13">18 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-13">22 j</span>
     
   </div>
   <h3>Téléphone passerelle S21 configuré le 14/09 (ping 60 s vérifié, FIFO, délais, limite, veille OFF) — restent les variables du relais dans la fenêtre de déploiement</h3>
@@ -1525,7 +1555,7 @@
     <span class="fiche">TRK-066 · doc 19 P1-2</span>
     <span class="classe">🔧 A coder</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-13">18 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-13">22 j</span>
     <code class="commit">86a2fc53</code>
   </div>
   <h3>Sentinelle Android : hystérésis, bornes d'environnement, fraîcheur par appareil, délai d'envoi séparé du délai de santé — DÉPLOYÉ le 15/09</h3>
@@ -1540,7 +1570,7 @@
     <span class="fiche">TRK-066 · doc 19 P1-3</span>
     <span class="classe">🔧 A coder</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-13">18 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-13">22 j</span>
     <code class="commit">1aa1e0f9</code>
   </div>
   <h3>Preuve SMS quotidienne réconciliée (T-30 min avant chaque fenêtre) — et le relais pousse ses statuts — DÉPLOYÉ le 15/09</h3>
@@ -1555,7 +1585,7 @@
     <span class="fiche">TRK-066 · doc 19 P1-4</span>
     <span class="classe">🔧 A coder</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-13">18 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-13">22 j</span>
     <code class="commit">d5c19a17</code>
   </div>
   <h3>Nettoyer le diff du chantier (reformatage prettier), rebaser sur main, résoudre le conflit — la production est déjà sur 66d286f5</h3>
@@ -1570,7 +1600,7 @@
     <span class="fiche">TRK-066 · doc 19 P1-5</span>
     <span class="classe">🟡 Commande ecrite, arbitrage humain</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-13">18 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-13">22 j</span>
     
   </div>
   <h3>D — La fenêtre de déploiement — JOUÉE le 15/09 au soir : prod = chantier complet (fa9ff1d1 puis 0c9672c9), relais 724bcb8, kill-switch true</h3>
@@ -1585,7 +1615,7 @@
     <span class="fiche">TRK-066 · doc 19 §3 phase 5</span>
     <span class="classe">🔵 Action materielle</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-13">18 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-13">22 j</span>
     
   </div>
   <h3>Recette réelle : boîtier de banc, puis un canari MH Cars, puis un CDEF31 — un à la fois, présence physique, jamais les 37</h3>
@@ -1600,7 +1630,7 @@
     <span class="fiche">TRK-066 · doc 35</span>
     <span class="classe">🔧 A coder</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-14">17 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-14">21 j</span>
     <code class="commit">b3ee67e2</code>
   </div>
   <h3>Une SIM injoignable par SMS met le véhicule en « TCP seul » : coupe auto seulement boîtier connecté, RESTORE en TCP toutes les 5 min, un SMS-sonde par 6 h — DÉPLOYÉ le 15/09</h3>
@@ -1615,7 +1645,7 @@
     <span class="fiche">TRK-066 · doc 25 §7 · PROCEDURE-AUDIT</span>
     <span class="classe">🟢 Agent, seul, avec preuve</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-14">17 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-14">21 j</span>
     
   </div>
   <h3>E — Les 24 h de preuve après le déploiement, lues à chaque passage de la routine du centre d'alerte (six verdicts)</h3>
@@ -1630,7 +1660,7 @@
     <span class="fiche">TRK-066 · T51</span>
     <span class="classe">🔧 A coder</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-15">16 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-15">20 j</span>
     <code class="commit">0c9672c9</code>
   </div>
   <h3>La sentinelle des RESTORE non prouvées relit l'historique entier après la migration — bornée à 24 h (0c9672c9), DÉPLOYÉ le 15/09</h3>
@@ -1645,7 +1675,7 @@
     <span class="fiche">VPS-038</span>
     <span class="classe">🔵 Exploitant / equipe produit</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-08-31">31 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-08-31">35 j</span>
     
   </div>
   <h3>Porter les 6 IMEI muets a l'exploitant</h3>
@@ -1660,7 +1690,7 @@
     <span class="fiche">VPS-038</span>
     <span class="classe">🔵 Exploitant / equipe produit</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-04">27 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-04">31 j</span>
     
   </div>
   <h3>Sortir du parc les 6 boitiers muets depuis plus de 7 jours</h3>
@@ -1675,7 +1705,7 @@
     <span class="fiche">VPS-010</span>
     <span class="classe">🤝 Decision ou geste humain</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-08-04">58 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-08-04">62 j</span>
     
   </div>
   <h3>Planifier un redemarrage vers 23 h 30</h3>
@@ -1690,7 +1720,7 @@
     <span class="fiche">VPS-033</span>
     <span class="classe">🟡 Commande ecrite, arbitrage humain</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-08-20">42 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-08-20">46 j</span>
     
   </div>
   <h3>Fixer l'heure du rafraichissement apt (et non reduire son alea)</h3>
@@ -1705,7 +1735,7 @@
     <span class="fiche">VPS-030</span>
     <span class="classe">🟡 Commande ecrite, arbitrage humain</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-08-19">43 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-08-19">47 j</span>
     
   </div>
   <h3>Ménage du VPS — cinq gestes préparés, une seule session : renommer les deux dossiers de sauvegarde abandonnés (éteint deux 🟠 faux par jour), purger 1,4 Go de copies sans rétention, retirer /opt/vizyo-leads, trancher les 4,5 Go d'outillage dans /root, épingler alpine par empreinte</h3>
@@ -1720,7 +1750,7 @@
     <span class="fiche">VPS-M59</span>
     <span class="classe">🟢 Agent, seul, avec preuve</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-06">25 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-06">29 j</span>
     <code class="commit">9dce59ec</code>
   </div>
   <h3>chargeDeFond.note s'affiche, avec un repli explicite</h3>
@@ -1735,7 +1765,7 @@
     <span class="fiche">VPS-041</span>
     <span class="classe">🟡 Commande ecrite, arbitrage humain</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-13">18 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-13">22 j</span>
     
   </div>
   <h3>Un seul rotateur pour les journaux de conteneur — retirer la stanza logrotate a copytruncate</h3>
@@ -1750,7 +1780,7 @@
     <span class="fiche">VPS-046 · VPS-040</span>
     <span class="classe">🟡 Commande ecrite, arbitrage humain</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-20">11 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-20">15 j</span>
     
   </div>
   <h3>Recreer la pile de demo sur les images courantes (up -d, migrations jouees par le CMD) et faire lancer ce up -d par deploy.sh — l import hebdomadaire du 20/09 a echoue sur une colonne du lot D absente de la base de demo</h3>
@@ -1765,7 +1795,7 @@
     <span class="fiche">VPS-044</span>
     <span class="classe">🔧 A coder</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-28">3 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-28">7 j</span>
     
   </div>
   <h3>Donner un second nom a l image de chaque conteneur en service (tracky-*:en-service, demo-en-service) : reconstruire latest faisait disparaitre l ancienne image sous son conteneur</h3>
@@ -1780,7 +1810,7 @@
     <span class="fiche">TRK-065</span>
     <span class="classe">🤝 Decision ou geste humain</span>
     <span class="grav" title="gravite 3">G3</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-04">27 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-04">31 j</span>
     
   </div>
   <h3>Prevenir le titulaire de compte sans appareil — VOULU : les notifications sont en phase de test</h3>
@@ -1795,7 +1825,7 @@
     <span class="fiche">TRK-060</span>
     <span class="classe">🗓️ Deploye, a guetter</span>
     <span class="grav" title="gravite 3">G3</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-02">29 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-02">33 j</span>
     
   </div>
   <h3>Guetter : « Un point de mesure systeme n'a pas pu etre enregistre »</h3>
@@ -1810,7 +1840,7 @@
     <span class="fiche">TRK-065</span>
     <span class="classe">🗓️ Deploye, a guetter</span>
     <span class="grav" title="gravite 3">G3</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-04">27 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-04">31 j</span>
     
   </div>
   <h3>Guetter la ligne hebdomadaire : le compte technique doit etre ecarte</h3>
@@ -1825,7 +1855,7 @@
     <span class="fiche">TRK-014</span>
     <span class="classe">🧹 Dette de documentation</span>
     <span class="grav" title="gravite 3">G3</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-06">25 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-06">29 j</span>
     
   </div>
   <h3>Rectifier le quoiFaire de TRK-014</h3>
@@ -1840,7 +1870,7 @@
     <span class="fiche">TRK-071</span>
     <span class="classe">🟢 Agent, seul, avec preuve</span>
     <span class="grav" title="gravite 3">G3</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-13">18 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-13">22 j</span>
     
   </div>
   <h3>Rattraper les recits des trois jours de plafond — tous les trajets, decision D4</h3>
@@ -1855,7 +1885,7 @@
     <span class="fiche">VPS-017</span>
     <span class="classe">🤝 Decision ou geste humain</span>
     <span class="grav" title="gravite 3">G3</span>
-    <span class="depuis" title="ouverte depuis le 2026-08-06">56 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-08-06">60 j</span>
     
   </div>
   <h3>Trancher les 4,5 Go d'outillage de developpement dans /root</h3>
@@ -1870,7 +1900,7 @@
     <span class="fiche">VPS-026</span>
     <span class="classe">🟡 Commande ecrite, arbitrage humain</span>
     <span class="grav" title="gravite 3">G3</span>
-    <span class="depuis" title="ouverte depuis le 2026-08-14">48 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-08-14">52 j</span>
     
   </div>
   <h3>Epingler alpine par empreinte</h3>
@@ -1885,7 +1915,7 @@
     <span class="fiche">VPS-032</span>
     <span class="classe">🟢 Agent, seul, avec preuve</span>
     <span class="grav" title="gravite 3">G3</span>
-    <span class="depuis" title="ouverte depuis le 2026-08-19">43 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-08-19">47 j</span>
     
   </div>
   <h3>Multiplexage SSH cote POSTE</h3>
@@ -1900,7 +1930,7 @@
     <span class="fiche">VPS-M79</span>
     <span class="classe">⛔ Bloque par un prerequis</span>
     <span class="grav" title="gravite 3">G3</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-02">29 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-02">33 j</span>
     
   </div>
   <h3>Etiqueter les images de repli au build</h3>
@@ -1915,7 +1945,7 @@
     <span class="fiche">VPS-029</span>
     <span class="classe">⛔ Bloque par un prerequis</span>
     <span class="grav" title="gravite 3">G3</span>
-    <span class="depuis" title="ouverte depuis le 2026-08-20">42 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-08-20">46 j</span>
     
   </div>
   <h3>Trancher quel mecanisme gouverne le cache de build</h3>
@@ -1930,7 +1960,7 @@
     <span class="fiche">VPS-M36</span>
     <span class="classe">⛔ Bloque par un prerequis</span>
     <span class="grav" title="gravite 3">G3</span>
-    <span class="depuis" title="ouverte depuis le 2026-08-15">47 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-08-15">51 j</span>
     
   </div>
   <h3>Echantillonner wchan 3 fois et publier la repartition</h3>
@@ -1945,7 +1975,7 @@
     <span class="fiche">VPS-013 · VPS-M88</span>
     <span class="classe">🟡 Commande ecrite, arbitrage humain</span>
     <span class="grav" title="gravite 3">G3</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-07">24 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-07">28 j</span>
     
   </div>
   <h3>Ranger les deux dossiers de sauvegarde abandonnes</h3>
@@ -1960,7 +1990,7 @@
     <span class="fiche">VPS-040 · VPS-M91</span>
     <span class="classe">🔵 Exploitant / equipe produit</span>
     <span class="grav" title="gravite 3">G3</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-08">23 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-08">27 j</span>
     
   </div>
   <h3>Trancher si la base de DEMONSTRATION doit etre sauvegardee</h3>
@@ -1975,7 +2005,7 @@
     <span class="fiche">VPS-044</span>
     <span class="classe">🟡 Commande ecrite, arbitrage humain</span>
     <span class="grav" title="gravite 3">G3</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-16">15 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-16">19 j</span>
     
   </div>
   <h3>Rendre le repere de repli reel : (a) until=72h sur le menage des images (10 s), (b) deploy.sh etiquette l image du CONTENEUR, pas :latest (a coder)</h3>
@@ -1990,7 +2020,7 @@
     <span class="fiche">VPS-048</span>
     <span class="classe">🤝 Decision ou geste humain</span>
     <span class="grav" title="gravite 3">G3</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-23">8 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-23">12 j</span>
     
   </div>
   <h3>Rapatrier et versionner cdef31-site : la derniere version d un livrable client n existe que sur le VPS</h3>
@@ -2005,7 +2035,7 @@
     <span class="fiche">TRK-001 · TRK-027</span>
     <span class="classe">🔵 Action materielle</span>
     <span class="grav" title="gravite 4">G4</span>
-    <span class="depuis" title="ouverte depuis le 2026-08-03">59 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-08-03">63 j</span>
     
   </div>
   <h3>Controler les antennes de trois vehicules</h3>
@@ -2020,7 +2050,7 @@
     <span class="fiche">—</span>
     <span class="classe">🧹 Dette de documentation</span>
     <span class="grav" title="gravite 4">G4</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-06">25 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-06">29 j</span>
     
   </div>
   <h3>Creer ou dereferencer TACHES-AMELIORATION.md</h3>
@@ -2035,7 +2065,7 @@
     <span class="fiche">TRK-066 · doc 19 §15</span>
     <span class="classe">🧹 Dette de documentation</span>
     <span class="grav" title="gravite 4">G4</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-13">18 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-13">22 j</span>
     <code class="commit">0677cd05</code>
   </div>
   <h3>Corriger les promesses des documents du chantier qui dépassent le code — FUSIONNÉ sur main le 14/09, à déployer</h3>
@@ -2050,7 +2080,7 @@
     <span class="fiche">VPS-018</span>
     <span class="classe">🤝 Decision ou geste humain</span>
     <span class="grav" title="gravite 4">G4</span>
-    <span class="depuis" title="ouverte depuis le 2026-08-12">50 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-08-12">54 j</span>
     
   </div>
   <h3>Retirer /opt/vizyo-leads</h3>
@@ -2065,7 +2095,7 @@
     <span class="fiche">VPS-007</span>
     <span class="classe">🟡 Commande ecrite, arbitrage humain</span>
     <span class="grav" title="gravite 4">G4</span>
-    <span class="depuis" title="ouverte depuis le 2026-08-05">57 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-08-05">61 j</span>
     
   </div>
   <h3>random_page_cost sur 6 bases</h3>
