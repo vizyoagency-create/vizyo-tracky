@@ -752,6 +752,10 @@ button, a, [role="button"], input[type="button"], input[type="submit"], label {
      du fond — cf. `markerInk`. */
   --tracky-ink: #ffffff;
   --tracky-heading: 0deg;
+  /* Rouge de l'« interdit » d'un boîtier débranché. Défaut DÉCLARÉ ici comme les deux
+     précédents ; `buildVehicleMarkerEl` le repose depuis `COULEURS_CARTE.debranche`, et
+     `maplibre-markers.spec` vérifie que la pose a bien lieu. */
+  --tracky-barre: #dc2626;
   /* La couleur est portée UNE FOIS ici ; toutes les formes la reprennent en
      currentColor (décision de la planche : un seul point de vérité). */
   color: var(--tracky-color);

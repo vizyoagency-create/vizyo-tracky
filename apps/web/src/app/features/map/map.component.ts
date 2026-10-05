@@ -84,7 +84,7 @@ import {
   type VehicleMarkerData,
 } from '../../shared/utils/maplibre-markers';
 import { COULEURS_CARTE } from '../../shared/utils/couleurs-carte';
-import { estDebranche, motifHorsService } from '../../shared/utils/hors-service';
+import { estDebranche, motifHorsService, nbDebranchesSurLaCarte } from '../../shared/utils/hors-service';
 import { catmullRom, lerpHeading } from '../../shared/utils/spline';
 import {
   compteursFlotte,
@@ -3364,12 +3364,10 @@ export class MapComponent implements AfterViewInit, OnDestroy {
   });
 
   /**
-   * Combien de véhicules de la société affichée sont DÉCLARÉS débranchés. La légende ne nomme
-   * le marqueur barré que s'il peut apparaître : une légende décrit ce que la carte montre.
+   * Combien de marqueurs BARRÉS la société affichée peut montrer (débranchés AVEC une position).
+   * La légende ne nomme le marqueur barré que s'il apparaît : elle décrit ce que la carte montre.
    */
-  protected readonly nbDebranches = computed(
-    () => this.scopedSnapshot().filter((v) => estDebranche(v.outOfServiceReason)).length,
-  );
+  protected readonly nbDebranches = computed(() => nbDebranchesSurLaCarte(this.scopedSnapshot()));
 
   /** Libellé d'état d'une ligne — ce qu'on affiche à droite de la plaque. */
   protected ligneEtatLabel(v: LigneFlotte): string {

@@ -36,3 +36,23 @@ export function motifHorsService(
 export function estDebranche(motif: string | null | undefined): boolean {
   return motif === MOTIF_DEBRANCHE;
 }
+
+interface LigneInstantane extends PorteMotif {
+  trackerId?: string | null;
+  lastLat?: number | null;
+  lastLng?: number | null;
+}
+
+/**
+ * Combien de marqueurs BARRÉS la carte peut montrer : les débranchés qui ont une position.
+ *
+ * Relevé en production le 05/10 au soir : FT-463-TW (société Ahmed) est déclaré débranché mais
+ * n'a jamais eu de boîtier — aucun marqueur. Compter tous les débranchés faisait annoncer
+ * « Boîtier débranché (4) » à côté de trois pastilles barrées : une légende décrit ce que la
+ * carte montre.
+ */
+export function nbDebranchesSurLaCarte(vehicules: readonly LigneInstantane[]): number {
+  return vehicules.filter(
+    (v) => estDebranche(v.outOfServiceReason) && !!v.trackerId && v.lastLat != null && v.lastLng != null,
+  ).length;
+}

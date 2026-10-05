@@ -1,4 +1,4 @@
-import { estDebranche, motifHorsService, MOTIF_DEBRANCHE } from './hors-service';
+import { estDebranche, motifHorsService, MOTIF_DEBRANCHE, nbDebranchesSurLaCarte } from './hors-service';
 
 /**
  * Le motif « hors service » vu par la carte : l'instantané temps réel fait foi dès qu'il porte
@@ -27,6 +27,35 @@ describe('motifHorsService — quelle source croire', () => {
   it('rend null quand personne ne sait rien', () => {
     expect(motifHorsService(undefined, undefined)).toBeNull();
     expect(motifHorsService({}, {})).toBeNull();
+  });
+});
+
+/**
+ * La légende « Boîtier débranché (n) » compte ce que la carte MONTRE. Cas réel du 05/10 au soir,
+ * vue « Toutes les sociétés » : 4 débranchés déclarés, dont FT-463-TW sans boîtier — 3 marqueurs.
+ */
+describe('nbDebranchesSurLaCarte', () => {
+  const position = { trackerId: 't', lastLat: 43.64, lastLng: 1.45 };
+
+  it('🔴 ne compte pas un débranché qui n’a jamais eu de boîtier ni de position (FT-463-TW)', () => {
+    expect(nbDebranchesSurLaCarte([
+      { ...position, outOfServiceReason: MOTIF_DEBRANCHE },                 // DZ-034-CA
+      { ...position, outOfServiceReason: MOTIF_DEBRANCHE },                 // FS-253-HR
+      { ...position, outOfServiceReason: MOTIF_DEBRANCHE },                 // FS-808-CE
+      { trackerId: null, lastLat: null, lastLng: null, outOfServiceReason: MOTIF_DEBRANCHE }, // FT-463-TW
+    ])).toBe(3);
+  });
+
+  it('ne compte pas un boîtier qui n’a encore jamais émis de position', () => {
+    expect(nbDebranchesSurLaCarte([{ trackerId: 't', lastLat: null, lastLng: null, outOfServiceReason: MOTIF_DEBRANCHE }])).toBe(0);
+  });
+
+  it('ne compte ni les immobilisés ni les véhicules en service', () => {
+    expect(nbDebranchesSurLaCarte([
+      { ...position, outOfServiceReason: 'IMMOBILIZED' },
+      { ...position, outOfServiceReason: null },
+      { ...position },
+    ])).toBe(0);
   });
 });
 
