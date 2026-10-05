@@ -2761,8 +2761,12 @@ for pg in $(db_conteneurs "$MOTEURS_PG"); do
     a_na=$(printf '%s' "$AUTOM" | cut -d'|' -f5);  a_last=$(printf '%s' "$AUTOM" | cut -d'|' -f6)
     a_upd=$(printf '%s' "$AUTOM" | cut -d'|' -f7)
     if [ "$a_en" = "t" ]; then
-      printf '   automatisation des trajets : ✅ ACTIVE (%s, h=%s, fenetre %s h, recits=%s) — dernier run %s UTC, reglee le %s\n' \
+      printf '   automatisation des trajets : ✅ ACTIVE (%s, h=%s, fenetre %s h, recits=%s) — dernier run %s UTC, updatedAt %s\n' \
         "$a_fq" "$a_h" "$a_lb" "$a_na" "$a_last" "$a_upd"
+      # ⚠️ AJOUTE LE 2026-10-05 (VPS-M133) : « reglee le » etait FAUX. updatedAt avance a CHAQUE run
+      # (06:24 = dernier run le 05/10, 01:54 le 01/10) : lu comme une date de reglage, il fait croire
+      # que quelqu un a touche a la configuration juste avant la collecte.
+      [ "$a_upd" = "$a_last" ] && printf '     (updatedAt = dernier run : c est le run qui l a avance, PAS un changement de reglage)\n'
     else
       printf '   automatisation des trajets : ⏸ COUPEE (enabled=false, reglee le %s) — dernier run %s\n' "$a_upd" "$a_last"
       printf '     → les trip_analyses de cette base ne sont PAS produites ici : si elles arrivent, elles\n'
@@ -3326,6 +3330,16 @@ if [ "${APT_STAMP:-0}" -gt 0 ] && [ "$APT_AGE_H" -le 6 ]; then
   echo  '  ── position de CETTE mesure dans le cycle rafraichir → installer (VPS-M74) ──'
   printf '     derniere INSTALLATION declenchee : %s\n' "${APT_INST_LAST:-inconnue}"
   printf '     prochaine INSTALLATION prevue    : %s\n' "${APT_INST_NEXT:-inconnue}"
+  # ⚠️ AJOUTE LE 2026-10-05 (VPS-M134) — ANGLE MORT N° 9 DU 01/10. history.log est tourne le 1er du
+  # mois a 00h53 : le lendemain il est VIDE, et la preuve du test « 6 → 0 » vivait dans
+  # history.log.1.gz. `zcat -f` lit indifferemment le clair et le .gz. Ordre CHRONOLOGIQUE
+  # (les plus anciens .N.gz d abord, le fichier courant en dernier : `sort -V` seul le met a l
+  # envers, .10 apres .1). Ce qui est imprime : la derniere installation DONT LE JOURNAL PORTE DES
+  # PAQUETS — pas la date du timer, qui sonne meme quand il n y a rien a installer.
+  # Cout : une lecture de quelques centaines de Ko, sous $LOW.
+  APT_HIST_LAST=$($LOW sh -c 'for f in $(ls /var/log/apt/history.log.*.gz 2>/dev/null | sort -rV) /var/log/apt/history.log; do zcat -f "$f" 2>/dev/null; done' \
+    | awk '/^Start-Date/{d=$2" "$3} /^Upgrade:/{n=gsub(/\), /,"&")+1; last=d" : "n" paquet(s) mis a jour"} END{print last}')
+  printf '     derniere installation PORTANT DES PAQUETS (history.log* rotation comprise) : %s\n' "${APT_HIST_LAST:-aucune dans les fichiers lus}"
   APT_INST_TS=$(date -d "${APT_INST_LAST:-@0}" +%s 2>/dev/null || echo 0)
   if [ "${APT_INST_TS:-0}" -gt 0 ] && [ "${APT_STAMP:-0}" -gt "${APT_INST_TS:-0}" ]; then
     printf '     🟠 CE COMPTE N EST PAS (ENCORE) UN RETARD : le cache a ete rafraichi %s h APRES le\n' \
@@ -4442,9 +4456,17 @@ for cont in $(db_conteneurs "$MOTEURS_TOUS"); do
   # desactiver en trois jours, et c'est ainsi qu'on perd la vraie alerte.
   # On balaie donc TOUS les dossiers correspondants et on garde la copie LA PLUS RECENTE.
   trouve=""; agemax=""; agemax_h=""; recent=0; horodatages=""
+  # ⚠️ AJOUTE LE 2026-10-05 (VPS-M135) — DEUX FAUX 🔴 « ABANDONNEE » PENDANT AU MOINS 4 PASSAGES.
+  # `capcom6-mysql` et `vizyo-manager-postgres` etaient declares abandonnes (« 31 jours ») alors que leurs
+  # copies du jour existent (`sms` : 30 copies, 1 h ; `vizyo_manager` : 30 copies, 2 h, relues). Cause : le
+  # rapprochement cherche « capcom6 » / « vizyo-manager » (TIRET) dans le nom du dossier ; les dossiers
+  # vivants s appellent `sms` et `vizyo_manager` (SOULIGNE). Seuls restaient les dossiers PERIMES du
+  # 04/09, que la table affichait seuls. Corrige : variante a souligne + un alias explicite pour capcom6.
+  cle_u=$(echo "$cle" | tr '-' '_')
+  case "$cle" in capcom6) cle_alias="sms" ;; *) cle_alias="@@aucun@@" ;; esac
   for d in /var/backups/*/; do
     case "$(basename "$d")" in
-      *"$cle"*)
+      *"$cle"*|*"$cle_u"*|"$cle_alias")
         t=$(find "$d" -maxdepth 1 -type f \( -name '*.gz' -o -name '*.gpg' \) -printf '%T@\n' 2>/dev/null | sort -rn | head -1)
         trouve="${trouve}${trouve:+, }$(basename "$d")"
         DOSSIERS_RECLAMES="${DOSSIERS_RECLAMES} $(basename "$d")"   # VPS-M88
