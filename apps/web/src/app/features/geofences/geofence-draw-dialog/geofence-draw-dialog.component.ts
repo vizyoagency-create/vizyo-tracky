@@ -9,6 +9,7 @@ import { LucideAngularModule, MapPin, X, ChevronRight, Check, Save } from 'lucid
 import * as maplibregl from 'maplibre-gl';
 import type { Map as MlMap, Marker as MlMarker, GeoJSONSource } from 'maplibre-gl';
 import { firstValueFrom } from 'rxjs';
+import { FleetFilterService } from '../../../core/services/fleet-filter.service';
 import { GeofencesApiService } from '../../../core/services/geofences.service';
 import { PreferencesService } from '../../../core/services/preferences.service';
 import { MapService } from '../../../core/services/map.service';
@@ -230,6 +231,7 @@ export class GeofenceDrawDialogComponent implements AfterViewInit, OnDestroy {
   readonly created = output<void>();
 
   private readonly geofencesApi = inject(GeofencesApiService);
+  private readonly fleetFilter = inject(FleetFilterService);
   private readonly preferences = inject(PreferencesService);
   private readonly mapSvc = inject(MapService);
   private readonly mapRef = viewChild<ElementRef<HTMLDivElement>>('mapContainer');
@@ -288,7 +290,17 @@ export class GeofenceDrawDialogComponent implements AfterViewInit, OnDestroy {
     }
   }
 
+  /** Message quand un super-admin crée une zone sans avoir choisi la société (05/10/2026). */
+  private static readonly SOCIETE_A_CHOISIR =
+    'Choisissez d’abord la société de la zone dans le sélecteur en haut de l’écran.';
+
   protected goToStep2(): void {
+    // Avant la carte, pas après : inutile de faire dessiner une zone qu'on ne pourra pas ranger.
+    if (!this.editData() && !this.fleetFilter.societePourCreer()) {
+      this.errorMessage.set(GeofenceDrawDialogComponent.SOCIETE_A_CHOISIR);
+      return;
+    }
+    this.errorMessage.set('');
     this.currentStep.set(2);
     setTimeout(() => this.initMap(), 50);
   }
@@ -357,7 +369,13 @@ export class GeofenceDrawDialogComponent implements AfterViewInit, OnDestroy {
       if (ed) {
         await firstValueFrom(this.geofencesApi.update(ed.id, data as unknown as Record<string, unknown>));
       } else {
-        await firstValueFrom(this.geofencesApi.create(data));
+        // La société choisie dans le sélecteur — le serveur refuse désormais d'en deviner une.
+        const societe = this.fleetFilter.societePourCreer();
+        if (!societe) {
+          this.errorMessage.set(GeofenceDrawDialogComponent.SOCIETE_A_CHOISIR);
+          return;
+        }
+        await firstValueFrom(this.geofencesApi.create({ ...data, ...societe }));
       }
       this.reset();
       this.created.emit();

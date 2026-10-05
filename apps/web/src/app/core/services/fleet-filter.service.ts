@@ -85,6 +85,20 @@ export class FleetFilterService {
   }
 
   /**
+   * La société d'un objet À CRÉER (zone…) : pour un super-admin, celle du sélecteur — `null` s'il
+   * n'en a choisi aucune, à lui de le faire avant de créer ; pour tout autre compte, rien à envoyer
+   * (`{}`), le serveur prend la sienne.
+   *
+   * 05/10/2026 : sans elle, une zone dessinée par un super-admin partait dans la plus ancienne
+   * société de la base (mh cars), quelle que soit celle affichée dans le sélecteur.
+   */
+  societePourCreer(): { fleetId?: string } | null {
+    if (this.auth.user()?.role !== 'SUPER_ADMIN') return {};
+    const id = this._selectedFleetId();
+    return id ? { fleetId: id } : null;
+  }
+
+  /**
    * Une ligne portant `fleetId` doit-elle etre visible sous le filtre courant ?
    * - Non-SUPER_ADMIN : toujours true (scope serveur suffit).
    * - SA sans filtre : toujours true.

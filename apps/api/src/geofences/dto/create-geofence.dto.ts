@@ -1,4 +1,4 @@
-import { ArrayMinSize, IsArray, IsEnum, IsNumber, IsObject, IsOptional, IsString, Max, Min, ValidateNested } from 'class-validator';
+import { ArrayMinSize, IsArray, IsEnum, IsNumber, IsObject, IsOptional, IsString, IsUUID, Max, Min, ValidateNested } from 'class-validator';
 import { Type } from 'class-transformer';
 import { GeofenceRule, GeofenceType } from '@prisma/client';
 
@@ -17,6 +17,14 @@ export class PolygonPointDto {
 export class CreateGeofenceDto {
   @IsString()
   name!: string;
+
+  /**
+   * Société de la zone — LUE pour un super-admin seulement (05/10/2026) : un compte de flotte écrit
+   * toujours dans la sienne. Voir `GeofencesService.societeDeLaZone`.
+   */
+  @IsOptional()
+  @IsUUID()
+  fleetId?: string;
 
   @IsOptional()
   @IsEnum(GeofenceType)

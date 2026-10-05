@@ -1,5 +1,4 @@
 import { swallow } from '../../core/error/swallow';
-import { HttpClient } from '@angular/common/http';
 import { ChangeDetectionStrategy, Component, computed, inject, input, OnInit, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { LucideAngularModule, Plus, Trash2, Pencil, MapPin, Circle, ArrowDownLeft, ArrowUpRight, ArrowLeftRight, Upload, ChevronDown, ChevronRight } from 'lucide-angular';
@@ -274,7 +273,6 @@ import { GroupBadgeComponent } from '../../shared/ui/group-badge/group-badge.com
 export class GeofencesListComponent implements OnInit {
   private readonly geofencesApi = inject(GeofencesApiService);
   private readonly toast = inject(ToastService);
-  private readonly http = inject(HttpClient);
   protected readonly perms = inject(PermissionsService);
   private readonly fleetFilter = inject(FleetFilterService);
 
@@ -336,16 +334,19 @@ export class GeofencesListComponent implements OnInit {
   protected async onFileSelected(files: FileList | null): Promise<void> {
     const file = files?.[0];
     if (!file) return;
+    // Une zone appartient à une société : un super-admin la choisit AVANT d'importer (05/10/2026).
+    const societe = this.fleetFilter.societePourCreer();
+    if (!societe) {
+      this.toast.error('Choisissez d’abord la société des zones dans le sélecteur en haut de l’écran.');
+      const input = document.querySelector<HTMLInputElement>('input[type="file"]');
+      if (input) input.value = '';
+      return;
+    }
     this.importing.set(true);
     try {
       const text = await file.text();
       const json = JSON.parse(text);
-      const result = await firstValueFrom(
-        this.http.post<{ created: number; skipped: number }>(
-          '/api/geofences/import-geojson',
-          json,
-        ),
-      );
+      const result = await firstValueFrom(this.geofencesApi.importGeoJson(json, societe.fleetId));
       this.toast.success(
         `${result.created} zone(s) importee(s)${result.skipped ? ` — ${result.skipped} ignoree(s)` : ''}`,
       );

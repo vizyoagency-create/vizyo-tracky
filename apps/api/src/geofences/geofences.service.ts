@@ -71,22 +71,38 @@ export class GeofencesService {
     private readonly dispatch: NotificationDispatchService,
   ) {}
 
-  async create(dto: CreateGeofenceDto, requestedBy: RequestedBy): Promise<Geofence> {
-    // Resolution du fleetId :
-    // - utilisateur normal (FLEET_ADMIN/MANAGER) : utilise sa propre flotte.
-    // - SUPER_ADMIN sans flotte assignee : par defaut la premiere flotte de la
-    //   base. Permet a l'admin technique de creer des geofences en dev/seed
-    //   sans imposer de selection UI (Sprint F.2 V1.4).
-    let fleetId: string;
-    if (requestedBy.fleetId) {
-      fleetId = requestedBy.fleetId;
-    } else if (requestedBy.role === UserRole.SUPER_ADMIN) {
-      const firstFleet = await this.prisma.fleet.findFirst({ orderBy: { createdAt: 'asc' } });
-      if (!firstFleet) throw new ForbiddenException('Aucune flotte existante a laquelle rattacher la geofence');
-      fleetId = firstFleet.id;
-    } else {
-      throw new ForbiddenException('Aucune flotte associée à votre compte');
+  /**
+   * La société d'une zone, à la création comme à l'import.
+   *
+   * Un compte de flotte écrit TOUJOURS dans la sienne : un `fleetId` envoyé est ignoré, comme sur
+   * toutes les routes qui en reçoivent un hors super-admin. Un super-admin DOIT la nommer.
+   *
+   * ⚠️ 05/10/2026 — jusqu'ici, un super-admin sans société rattachée écrivait EN SILENCE dans la plus
+   *    ancienne société de la base (`findFirst` trié par date de création — mh cars en production),
+   *    quelle que soit celle choisie dans le sélecteur : la zone « Garage » demandée pour cdef31 serait
+   *    partie chez un autre client. Une société absente est désormais une erreur claire, jamais un repli.
+   */
+  private async societeDeLaZone(requestedBy: RequestedBy, demandee?: string | null): Promise<string> {
+    if (requestedBy.role !== UserRole.SUPER_ADMIN) {
+      if (!requestedBy.fleetId) throw new ForbiddenException('Aucune flotte associée à votre compte');
+      return requestedBy.fleetId;
     }
+    const id = demandee || requestedBy.fleetId;
+    if (!id) {
+      throw new BadRequestException('Choisissez la société de la zone dans le sélecteur de société.');
+    }
+    // L'import la reçoit en paramètre d'URL, sans DTO : un identifiant mal formé ferait échouer la
+    // requête Prisma (colonne uuid) en 500 au lieu d'un refus lisible.
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) {
+      throw new BadRequestException('Identifiant de société invalide.');
+    }
+    const societe = await this.prisma.fleet.findUnique({ where: { id }, select: { id: true } });
+    if (!societe) throw new NotFoundException('Société introuvable');
+    return societe.id;
+  }
+
+  async create(dto: CreateGeofenceDto, requestedBy: RequestedBy): Promise<Geofence> {
+    const fleetId = await this.societeDeLaZone(requestedBy, dto.fleetId);
 
     const type = dto.type ?? GeofenceType.CIRCLE;
     if (type === GeofenceType.POLYGON && (!dto.polygonPoints || dto.polygonPoints.length < 3)) {
@@ -404,16 +420,14 @@ export class GeofencesService {
   async importGeoJson(
     json: unknown,
     requestedBy: RequestedBy,
+    fleetIdDemande?: string | null,
   ): Promise<{ created: number; skipped: number }> {
     const { parseGeoJsonToDrafts } = await import('./corridor-geometry');
     const drafts = parseGeoJsonToDrafts(json);
     if (drafts.length === 0) return { created: 0, skipped: 0 };
 
-    const fleetId = requestedBy.fleetId
-      ?? (requestedBy.role === UserRole.SUPER_ADMIN
-        ? (await this.prisma.fleet.findFirst({ orderBy: { createdAt: 'asc' } }))?.id
-        : null);
-    if (!fleetId) throw new ForbiddenException('Aucune flotte associée');
+    // Même règle qu'à la création : jamais la « première société » d'office (05/10/2026).
+    const fleetId = await this.societeDeLaZone(requestedBy, fleetIdDemande);
 
     let created = 0;
     let skipped = 0;

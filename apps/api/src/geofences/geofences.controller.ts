@@ -8,6 +8,7 @@ import {
   Param,
   Patch,
   Post,
+  Query,
   Req,
   UseGuards,
 } from '@nestjs/common';
@@ -88,12 +89,17 @@ export class GeofencesController {
   @Post('import-geojson')
   @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN)
   @RequirePermissions('geofences_manage')
-  importGeoJson(@Body() body: unknown, @Req() req: AuthenticatedRequest) {
-    return this.geofences.importGeoJson(body, {
-      userId: req.user.id,
-      role: req.user.role,
-      fleetId: req.user.fleetId,
-    });
+  importGeoJson(
+    @Body() body: unknown,
+    @Req() req: AuthenticatedRequest,
+    // Société des zones importées — lue pour un super-admin seulement (05/10/2026).
+    @Query('fleetId') fleetId?: string,
+  ) {
+    return this.geofences.importGeoJson(
+      body,
+      { userId: req.user.id, role: req.user.role, fleetId: req.user.fleetId },
+      fleetId,
+    );
   }
 
   @Get(':id/vehicles')
