@@ -1757,6 +1757,86 @@ capture, les trois vidéos et l'archive pour Claude Design ; médias du site rep
 
 ---
 
+## 2026-10-05 — l'assistance prévient Vizyo, et le tuto « Assistance » du CDEF
+
+### La commande (01/10)
+
+Prévenir les super-admins par push quand quelqu'un utilise le chat d'assistance ou appuie sur le bouton
+WhatsApp, et le tracer au centre d'activité des utilisateurs. Ajouter au site du CDEF une page « Assistance »,
+comme l'agenda et les ateliers, avec la fiche d'urgence — laissée sur `app-tracky` : elle est à Tracky.
+
+### Le constat
+
+**Personne n'était prévenu.** `prevenirAdmins` visait les admins de flotte, or `PUSH_ROLLOUT=SUPER_ADMIN_ONLY`
+ne laisse partir le push que vers les super-admins : chaque demande d'assistance sonnait chez personne. Et un
+appui sur la ligne d'urgence WhatsApp n'était tracé nulle part — WhatsApp est hors de l'application.
+
+### Ce qui a été fait — `cdb5f140`, puis `a4f26ceb` après revue
+
+- **Push aux super-admins** : nouvelle question et suite de conversation (un tiroir d'anti-spam par
+  conversation, où se range aussi l'escalade décidée par l'agent — une seule sonnerie par message), rappel
+  urgent (son propre tiroir), appui WhatsApp (un tiroir par personne, 15 min). « Prénom Nom (Société) », la
+  plaque, l'écran d'origine. `fleetId: null` : avec la société du demandeur, la garde anti cross-tenant de
+  l'envoi rejetait le push EN SILENCE (un super-admin n'a pas de société). Les essais de l'équipe ne sonnent
+  chez personne.
+- **Centre d'activité** : deux types écrits par le SERVEUR, `ASSISTANCE` et `URGENCE_WHATSAPP` — absents de
+  `VALID_TYPES`, donc infalsifiables depuis un lot du navigateur ; jamais le contenu d'une question (les
+  admins de la société lisent aussi ce fil). Filtre « Type » de l'historique, lignes d'urgence en rouge, fil
+  « Activité flotte », parcours du rapport IA (`aide:` / `URGENCE:`).
+- **Journal système** : catégorie `ASSISTANCE` — les escalades s'écrivaient en `INTERNAL` et s'affichaient
+  « Provisioning interne ».
+- **`POST /api/assistance/urgence/whatsapp`** : ouverte à tous les rôles (le veilleur est le premier
+  concerné), 10 appels/min, corps fermé (écran en liste, plaque bornée, retard entier ≤ 2 h). Le clic n'est
+  jamais retenu : WhatsApp s'ouvre que l'API réponde ou non.
+- **Écran « mise à jour en cours »** : un appui fait pendant une panne — précisément quand le signalement
+  échoue à coup sûr — est retenu (par compte : les veilleurs se relaient sur le même appareil) puis retransmis
+  au retour de l'API avec son âge ; chaque trace dit l'heure RÉELLE de l'appui.
+
+Vérification : `pnpm verify` vert (types, 154 migrations rejouées, smoke-boot, 423 + 1 028 + 4 868 tests),
+`ng build` sans erreur. Revue `/code-review` (niveau haut) : 7 points, 4 corrigés (double sonnerie à
+l'escalade, route sans plafond, appui retenu perdu sur un 403 de démarrage, trace qui retardait la réponse),
+3 mineurs laissés.
+
+### 🚀 Déployé le 05/10 à 09:19 (Paris) — `a4f26ceb`, SANS `--force`
+
+Pré-construction `api` puis `web` (09:08 – 09:11, `ng build` 49 s sur le VPS), puis un lanceur qui attend le
+premier moment CALME — aucun passage en cours, aucun geste d'un client depuis 5 min, aucune commande moteur
+depuis 15 min, minute ≤ 36 — et lance `deploy.sh` (`/root/deploiement-20261005/lancer-jour.sh`, réutilisable).
+Un gestionnaire travaillait : le lanceur a attendu sa pause. 0 migration, API saine en 11 s, 0 redémarrage,
+démo saine en 15 s, journal `force:false`.
+
+Vérifié après, dans les conteneurs et en base :
+
+- les artefacts — la route et la trace serveur dans l'API compilée, le signalement dans le bundle web servi
+  (importé par `main`), la démo sur la même image ; `/api/health` ok ; la route répond 401 sans jeton (404
+  pour une route inexistante) ;
+- le GPS — repris aussitôt ; sur la même durée (564 s) avant et après le redémarrage, 39 puis 40 boîtiers
+  distincts, aucun boîtier perdu ; les trames tamponnées pendant le redémarrage sont RÉCUPÉRÉES
+  (`stale_devicetime`, déjà vu au déploiement du 01/10 pour le même boîtier) ;
+- 0 erreur au centre d'alerte, 0 ligne de niveau erreur dans l'API ; le gestionnaire actif est revenu seul à
+  09:20:03, après l'écran « mise à jour en cours » ;
+- le passage d'automatisation de 09:45 est parti à l'heure (09:45:00) sur le conteneur neuf, API toujours saine
+  et sans redémarrage ; le push vit (66 alertes envoyées cette semaine) et atteindra les deux super-admins
+  abonnés (3 appareils) — le troisième compte n'a aucun appareil (`no_device`) ;
+- deux bruits PRÉEXISTANTS, pas des régressions : des 403 `alerts_view` (`loadInitialAlerts` du temps réel ne
+  teste pas ce droit — tâche proposée à part), et « Unsupported route path /api/* » au démarrage (déjà le 01/10).
+
+**Pas encore vu en prod : un push réel.** Il faut un compte NON super-admin — appuyer sur le bandeau WhatsApp de
+la liste des véhicules — pour voir la ligne `URGENCE_WHATSAPP` et la notification « Urgence véhicule —
+WhatsApp ouvert ».
+
+### Le tuto « Assistance » (hors dépôt : `cdef31-vizyoagency`, `e002229` puis `1ec9c96`)
+
+**🌐 En ligne le 05/10** : https://cdef31.vizyoagency.com/assistance/ et une 3ᵉ carte sur l'accueil. Ce qu'il
+faut faire quand un véhicule ne démarre pas (22 h – 7 h : immobilisation voulue ; une tentative dans Tracky,
+puis WhatsApp avec plaque, lieu, constat), où est le bouton dans Tracky (trois écrans DESSINÉS avec leur texte
+exact — aucune capture, aucune donnée réelle), comment poser une question (Aide → Assistance), les deux gestes
+à ne jamais tenter, le récapitulatif ; la fiche est LIÉE, pas copiée. La phrase « le bouton de Tracky prévient
+aussi l'équipe Vizyo » n'a été publiée qu'APRÈS ce déploiement. Recette en Chrome sans tête — téléphone,
+tablette, ordinateur, clair et sombre : 0 débordement, 0 violation de CSP, 0 image cassée.
+
+---
+
 ## Ce qu'il ne faut pas défaire
 
 - **L'agent ne réserve plus fermement.** Le réglage `autonomy` est passé à `suggest` en base le
@@ -1820,3 +1900,11 @@ capture, les trois vidéos et l'archive pour Claude Design ; médias du site rep
   « demande à valider » par le notifier. Un nouveau canal d'avis qui ne lui pose pas la question
   sonne chez le client pendant une séance de tests. Et le mode recette EXPIRE seul : jamais de
   coupure sans échéance.
+- **Un push vers un super-admin porte `fleetId: null`.** La garde anti cross-tenant de l'envoi
+  (`WebPushService.sendToUser`) rejette en silence tout push adressé à un compte d'une autre société ; un
+  super-admin n'en a pas. Passer la société du demandeur rend la notification muette, sans erreur.
+- **`ASSISTANCE` et `URGENCE_WHATSAPP` ne s'écrivent que côté serveur** (`recordServerEvent`) : les ajouter à
+  `VALID_TYPES` permettrait à n'importe quel navigateur de fabriquer une « urgence ». Et le fil d'activité ne
+  porte jamais le contenu d'une question.
+- **Le clic WhatsApp n'est jamais retenu** : pas de `preventDefault`, signalement tirer-et-oublier, route
+  exclue de l'intercepteur d'erreurs. Une urgence ne dépend pas d'une réponse de l'API.
