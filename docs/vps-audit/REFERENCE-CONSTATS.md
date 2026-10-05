@@ -5310,6 +5310,10 @@ confondre les deux ferait accuser le mauvais coupable.
   l'outillage système de l'hôte. **Rester en gravité 2** tant que la cible reste l'hygiène de
   l'hôte (démons inutiles, sessions abandonnées).
 
+- **Re-mesure du 2026-10-05** — **récurrence de la même charge** : `guest-exec` du **01/10 06:37:47 UTC**, blob de 1 420 caractères, décodé
+  (9 lignes, `kill -TERM` puis `kill -KILL` sur `docker logs|stats` et pagers de plus de 21 600 s) — identique à celle du 28/08. C'est la seule
+  commande « inattendue » de la fenêtre (1 sur 29 hors sondes ; 339 exécutions / 7 j, **52 par jour sur six jours complets**). Elle est postérieure à
+  la collecte du 01/10 (02:35). Ce qu'elle a tué, s'il y a eu quelque chose, n'est lisible nulle part : la sortie est rendue à l'hyperviseur.
 ---
 
 ## VPS-037 — La copie hors-site des sauvegardes dépend du même poste de travail que l'audit, et elle a dépassé son seuil
@@ -6833,6 +6837,9 @@ confondre les deux ferait accuser le mauvais coupable.
   0 connexion ; journal **12 588 016 o**, toujours figé au 27/09 12:19:48. Le bloc VPS-M128 rend *« écoutes publiques IDENTIQUES au manifeste
   du 2026-09-29 »* : la première comparaison a tourné, et elle ne montre aucun changement. Seuil non franchi.
 
+- **Re-mesure du 2026-10-05** — **J+7** : toujours le même `node /opt/ecoute-teltonika.mjs --port 5027` (pid 4030432, root, **186 h**, tmux, session-6560.scope),
+  port 5027 ouvert (ufw ALLOW v4 + v6), **0 connexion établie**, journal `/opt/ecoute-teltonika.log` **12,6 Mo figé depuis le 27/09 12:19** (8 jours), aucune
+  rotation. Aucune échéance écrite. **Le test n'a rien reçu depuis 8 jours : c'est la décision la plus facile du plan (V41) et la plus ancienne.**
 ---
 
 
@@ -6916,6 +6923,13 @@ confondre les deux ferait accuser le mauvais coupable.
   (`f77754d0`, `ba041c2d`, `e788fcf8`, `a3c99795` la nuit d'avant) ; le centre d'alerte du 01/10 : *« 7 déploiements, 0 `--force`, 0 passage
   tué »*. Le dernier `force=true` du matin date du 29/09 08:12 Paris. V44 n'est pas codée.
 
+- **Re-mesure du 2026-10-05** — 🔴 **le compteur repart à 0 : `force=true` le 01/10 à 04:19:28 UTC (06:19 Paris, DANS la fenêtre 05:30–09:00)**,
+  sha `1dac24e9`, durée 123 s, `healthy`, `demo=saine`. Postérieur à la collecte du 01/10 (02:35 UTC), donc **inconnu du rapport du 01/10**.
+  **Aucun dommage mesuré** : `trip_automation_runs` ne porte aucun passage interrompu (03:45 → 03:52 `done`, 04:45 `done`) ; le déploiement
+  est tombé entre deux passages. C'est « le hasard, pas la garde » du constat, en grandeur nature. **Depuis : 0 déploiement en 98 h** (dernier
+  `tracky-api` en service = `5c7bda844786`, journal T33 vide sur 48 h) : le compteur ne peut ni avancer ni se refermer sans occasion.
+  **Rien à décider côté audit ; V44 reste le seul vrai remède.**
+
 ---
 
 ## VPS-053 — Une commande de diagnostic a fait paniquer dockerd en production, et le collecteur a lu le redémarrage comme une baisse de consommation
@@ -6949,10 +6963,50 @@ confondre les deux ferait accuser le mauvais coupable.
 - **Seuil de réescalade** : **gravité 1** à la prochaine panique de dockerd (bloc VPS-M131 : *« paniques (48 h) ≥ 1 »*) ; `APPLIQUE` quand
   Docker aura été monté ou l'historique nettoyé, **et** qu'un `buildx history` aura été rejoué sans panique sur une machine de test.
 
+- **Re-mesure du 2026-10-05** — **aucune 2ᵉ panique** (`journalctl -u docker` sur 48 h : **0** ; la panique du 30/09 18:23 est sortie de la
+  fenêtre le 02/10, comme annoncé). `NRestarts=1` inchangé, démarrage du démon toujours le 30/09 18:23:07 (🔴 « REDÉMARRÉ 242,1 h après le
+  boot » : c'est une date, pas une alerte). `dockerd` : cumul 1,9 h CPU / mémoire 740 Mo (la mémoire remonte de 695 à 740 en 4 j). Prédiction du
+  rapport du 01/10 *« 1 panique jusqu'au 02/10 18:23, puis 0 »* : **vérifiée**. L'historique BuildKit fautif est **toujours là** (non nettoyé).
 ---
 
 
 ## Constats de méthode (sur l'audit lui-même)
+
+### VPS-M135 — Deux faux 🔴 « ABANDONNEE » dans la couverture des sauvegardes : le rapprochement cherchait un tiret, les dossiers vivants portent un souligné
+
+- **Domaine** : méthode · **Gravité** : 4 · **Statut** : `APPLIQUE` (2026-10-05 — bloc couverture, banc sur le VPS)
+- **Vu** : 2026-10-05 (présent dans les collectes du 30/09 et du 01/10 : *« 26 jours »* ce jour-là, **31** aujourd'hui). `capcom6-mysql` et
+  `vizyo-manager-postgres` étaient affichés *« 🔴 ABANDONNEE — dernière copie il y a 31 jours »* alors que `sms` (30 copies, **1 h**) et `vizyo_manager`
+  (30 copies, **2 h**) sont frais, relus avec leur marqueur de fin, et produits par les unités `capcom6-backup` et `vizyo-manager-backup` (succès).
+- **Cause** : le rapprochement cherche la clé (`capcom6`, `vizyo-manager`) **avec un tiret** dans le nom du dossier. Les dossiers vivants s'appellent `sms` et
+  `vizyo_manager` (**souligné**) ; seuls les dossiers périmés du 04/09 correspondaient, et la table n'affichait qu'eux.
+- **`pourquoiInvisible`** : un 🔴 qui ne change pas devient du décor ; ces deux lignes ressemblaient aux anciens faux positifs de VPS-M81. **Aucun rapport précédent ne les a
+  commentées.**
+- **Correctif** : variante à souligné (`tr '-' '_'`) et alias explicite `capcom6 → sms`. **Banc** (VPS, 1 s) : `capcom6-mysql -> capcom6 sms`,
+  `vizyo-manager-postgres -> vizyo-manager vizyo_manager` ; témoins `texto-postgres` (`vizyo-texto vizyo_texto`) et `tracky-postgres` inchangés. `bash -n` OK.
+  Effet de bord voulu : `sms` et `vizyo_manager` ne sont plus listés *« réclamés par AUCUN conteneur »* (VPS-M88).
+- **`aNePasFaire`** : ❌ ne pas supprimer `/var/backups/capcom6`, `/var/backups/vizyo-manager` et `/var/backups/vizyo-texto` (copies uniques du 04/09, VPS-013) sans décision écrite.
+- **Leçon** : chaque 🔴 récurrent se **réexplique** à chaque passage, ou se corrige.
+
+### VPS-M134 — La preuve du canal de sécurité vivait dans un fichier tourné : `history.log` est vide le lendemain du 1er du mois
+
+- **Domaine** : méthode · **Gravité** : 4 · **Statut** : `APPLIQUE` (2026-10-05 — bloc VPS-M74, banc sur le VPS)
+- **Vu** : 2026-10-01 — **angle mort n° 9, 1 report**. `logrotate` tourne `/var/log/apt/history.log` le 1ᵉʳ à 00:53 : le matin du 01/10, le test « 6 → 0 »
+  n'était lisible que dans `history.log.1.gz`. Le collecteur, lui, ne lisait que le fichier courant (et seulement dans la branche sans `needrestart`).
+- **Correctif** : une ligne dans le bloc de position du cycle — *« dernière installation PORTANT DES PAQUETS (history.log* rotation comprise) »* —,
+  `zcat -f` sur les fichiers **dans l'ordre chronologique** (`sort -rV` : `sort -V` seul met `.10` après `.1`, donc à l'envers — le premier jet du banc
+  rendait *« 2025-12-15 : 4 paquets »*, **faux**, avant correction). **Banc** (VPS, 0 s) : *« 2026-10-02 06:12:57 : 1 paquet(s) mis à jour »*. `bash -n` OK.
+- **Leçon** : un test qui compare deux états doit relire l'**archive** de la rotation, pas seulement le fichier vivant. Et un banc doit être jugé sur une
+  réponse **connue d'avance** : ici, 2025-12 était impossible (les installations quotidiennes de septembre existent).
+
+### VPS-M133 — « réglée le » n'était pas une date de réglage : `updatedAt` avance à chaque passage de l'automatisation des trajets
+
+- **Domaine** : méthode · **Gravité** : 4 · **Statut** : `APPLIQUE` (2026-10-05)
+- **Vu** : 2026-10-05. Le collecteur imprimait *« ACTIVE … dernier run 06:24, réglée le 2026-10-05 06:24 »*. Le 01/10 : *« run 01:54, réglée le 01:54 »*.
+  `updatedAt` est avancé par le run lui-même : lu comme une date de réglage, il suggère qu'**une main a touché à la configuration** juste avant la collecte.
+- **Correctif** : l'étiquette devient `updatedAt` et, quand elle égale le dernier run, une ligne dit *« c'est le run qui l'a avancé, PAS un changement de réglage »*.
+  Le cas COUPÉE (`⏸`, où `updatedAt` est bien la date du réglage : 07/09 14:45) garde son libellé.
+- **Leçon** : un champ nommé `updatedAt` n'est une date de décision que si **rien d'autre** ne l'écrit. Vérifier qui écrit la colonne avant de la libeller.
 
 ### VPS-M132 — Les heures UTC du catalogue d'ordonnancement allaient glisser d'une heure au 25/10 sans qu'aucune ligne ne le dise
 
