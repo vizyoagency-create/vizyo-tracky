@@ -202,6 +202,71 @@ export function libelleResteRecit(heures = fenetreRecitHeures()): string {
   );
 }
 
+/**
+ * Ce que le compteur « à reprendre » compte, en UNE PHRASE — même rôle que `libelleResteRecit` :
+ * le nombre voyage avec sa définition, horizon de rétention compris.
+ *
+ * @param joursHorizon âge maximal, en jours, d'un trajet encore reprenable ; `null` quand la
+ *   rétention des positions est désactivée — rien n'est purgé, donc rien n'est hors de portée.
+ */
+export function libelleResteReprise(joursHorizon: number | null): string {
+  const portee =
+    joursHorizon === null
+      ? 'quel que soit l’âge du trajet (rétention des positions désactivée)'
+      : `dont le trajet a démarré il y a moins de ${joursHorizon} j`;
+  return (
+    `analyses écrites avant le 4 septembre 2026 (sans réserve de vitesse) ${portee} — ` +
+    `le périmètre exact de la reprise horaire, toutes sociétés`
+  );
+}
+
+/**
+ * ══ LE PÉRIMÈTRE DE LA REPRISE DES ANALYSES D'AVANT LE 4 SEPTEMBRE — ÉCRIT UNE SEULE FOIS ══
+ *
+ * `FROM … JOIN … WHERE …` des analyses que `reprendreAnalysesAnciennes` peut encore recalculer.
+ * Trois lecteurs le partagent, aucun n'en écrit sa version : la reprise elle-même, le reste à
+ * faire par société de l'écran d'automatisation (`backlog()`) et le total de l'écran des tâches
+ * de fond (`resteReprise()`).
+ *
+ * ── CE QUE ÇA CORRIGE (mesuré en production le 2026-10-05) ──────────────────────────────
+ *
+ * L'écran des tâches de fond comptait `limitsCoverage IS NULL` : **4 051** analyses annoncées
+ * « reprises par lots à chaque passage », quand la reprise n'en trouvait **aucune**. Le compteur
+ * ne pouvait pas descendre à zéro et laissait croire à un rattrapage en cours. Il additionnait
+ * trois populations que la reprise ne prendra jamais :
+ *   · 2 936 analyses de trajets du 18/06 au 19/07, dont les positions sont purgées ;
+ *   · 1 090 analyses écrites depuis, à la couverture LÉGITIMEMENT nulle — aucun point assez
+ *     rapide pour qu'une limite soit demandée —, et ce nombre croît à chaque trajet lent analysé ;
+ *   · 25 analyses orphelines (le recalcul recrée les trajets sous de nouveaux identifiants).
+ *
+ * ── POURQUOI CES TROIS CLAUSES ───────────────────────────────────────────────────────────
+ *
+ *   · `NOT (ta.detail ? 'vitesse')`, et non `limitsCoverage IS NULL` : la clé `vitesse` est
+ *     écrite à CHAQUE analyse depuis le lot V1, sans exception, alors qu'un taux nul veut dire
+ *     « analyse ancienne » OU « trajet lent ». Se fier au taux ferait reprendre en boucle les
+ *     trajets lents, qui n'en auront jamais ;
+ *   · `JOIN trips` : la reprise relit le trajet — une analyse orpheline n'est reprise par personne ;
+ *   · `t."startedAt" > horizon` : au-delà de l'horizon de rétention, les positions sont purgées et
+ *     l'analyse ne peut plus être refaite.
+ *
+ * Le côté `'perdues'` est le complément EXACT sur l'horizon — même table, même jointure, même
+ * absence de clé : ce que la reprise n'aura pas sauvé, à compter à part et jamais à additionner.
+ *
+ * ⚠️ Alias imposés : `ta` (trip_analyses) et `t` (trips). Le fragment finit sur sa clause WHERE :
+ * un appelant peut y ajouter des conditions par `AND` (société, excès), jamais en retirer.
+ */
+function perimetreReprise(horizon: Date, cote: 'a-reprendre' | 'perdues' = 'a-reprendre'): Prisma.Sql {
+  const date =
+    cote === 'a-reprendre'
+      ? Prisma.sql`t."startedAt" > ${horizon}`
+      : Prisma.sql`t."startedAt" <= ${horizon}`;
+  return Prisma.sql`
+    FROM trip_analyses ta
+    JOIN trips t ON t.id = ta."tripId"
+    WHERE NOT (ta.detail ? 'vitesse')
+      AND ${date}`;
+}
+
 type MutableStats = {
   fleets: number;
   vehicles: number;
@@ -1279,20 +1344,18 @@ export class TripAutomationService implements OnApplicationBootstrap {
         (SELECT count(*) FROM trips t
           WHERE t."fleetId" = f.id AND t."segmentationSource" IN ('fige-retention', 'fige-sans-positions'))::int AS "figes",
         -- ══ REPRISE DES ANALYSES D'AVANT LE 4 SEPTEMBRE ═══════════════════════════════
-        -- Le MEME critere que reprendreAnalysesAnciennes (absence de la cle vitesse) : deux
-        -- definitions de « a reprendre » finiraient par afficher deux nombres, et c'est
-        -- exactement le defaut deja paye sur le compteur « sans recit ».
-        (SELECT count(*) FROM trip_analyses a JOIN trips t ON t.id = a."tripId"
-          WHERE a."fleetId" = f.id AND NOT (a.detail ? 'vitesse')
-            AND t."startedAt" > ${horizon})::int AS "reprisesARattraper",
+        -- Le perimetre MEME de reprendreAnalysesAnciennes (perimetreReprise), restreint a la
+        -- societe : deux definitions de « a reprendre » finiraient par afficher deux nombres,
+        -- et c'est exactement le defaut paye sur le compteur « sans recit », puis le 05/10 sur
+        -- l'ecran des taches de fond (4 051 annoncees, 0 reprenable).
+        (SELECT count(*) ${perimetreReprise(horizon)}
+            AND ta."fleetId" = f.id)::int AS "reprisesARattraper",
         -- Au-delà de l'horizon : les positions sont purgées, le rejeu est impossible.
-        (SELECT count(*) FROM trip_analyses a JOIN trips t ON t.id = a."tripId"
-          WHERE a."fleetId" = f.id AND NOT (a.detail ? 'vitesse')
-            AND t."startedAt" <= ${horizon})::int AS "reprisesHorsPortee",
-        (SELECT count(*) FROM trip_analyses a JOIN trips t ON t.id = a."tripId"
-          WHERE a."fleetId" = f.id AND NOT (a.detail ? 'vitesse')
-            AND t."startedAt" <= ${horizon}
-            AND jsonb_array_length(COALESCE(a.detail->'speeding', '[]'::jsonb)) > 0)::int AS "reprisesHorsPorteeAvecExces"
+        (SELECT count(*) ${perimetreReprise(horizon, 'perdues')}
+            AND ta."fleetId" = f.id)::int AS "reprisesHorsPortee",
+        (SELECT count(*) ${perimetreReprise(horizon, 'perdues')}
+            AND ta."fleetId" = f.id
+            AND jsonb_array_length(COALESCE(ta.detail->'speeding', '[]'::jsonb)) > 0)::int AS "reprisesHorsPorteeAvecExces"
       FROM fleets f
       ORDER BY f.name`;
     return {
@@ -1336,6 +1399,33 @@ export class TripAutomationService implements OnApplicationBootstrap {
       aNarrer: fleets.reduce((n, f) => n + f.sansRecit, 0),
       enAttenteDeRecalcul: fleets.reduce((n, f) => n + f.sansRecitBruts, 0),
       libelle: libelleResteRecit(),
+    };
+  }
+
+  /**
+   * Le total « encore à reprendre », toutes sociétés — le nombre que la reprise des analyses
+   * d'avant le 4 septembre a ENCORE devant elle — et le trajet le plus ancien concerné, qui est
+   * aussi le prochain à franchir l'horizon de purge.
+   *
+   * ⚠️ POINT D'ENTRÉE UNIQUE POUR LES ÉCRANS QUI RÉSUMENT LA REPRISE, comme `resteRecitTotal`
+   * pour l'agent local. L'écran des tâches de fond comptait lui-même `limitsCoverage IS NULL` :
+   * 4 051 analyses annoncées le 2026-10-05, aucune reprenable (cf. `perimetreReprise`).
+   *
+   * Une requête dédiée plutôt que la somme des lignes de `backlog()` : c'est le périmètre de la
+   * reprise tel quel, sans détour par la société de l'analyse — et `backlog()`, déjà appelé deux
+   * fois par chargement de cet écran (~1,5 s chacun, mesuré le 05/10), n'a pas à l'être une
+   * troisième. Coût mesuré le même jour : ~0,3 s, le balayage du détail des analyses.
+   */
+  async resteReprise(): Promise<{ aReprendre: number; plusAncien: Date | null; libelle: string }> {
+    const maintenant = Date.now();
+    const horizonMs = this.horizonRetention(maintenant);
+    const [ligne] = await this.prisma.$queryRaw<Array<{ n: number; plusAncien: Date | null }>>`
+      SELECT count(*)::int AS n, min(t."startedAt") AS "plusAncien"
+      ${perimetreReprise(new Date(horizonMs))}`;
+    return {
+      aReprendre: Number(ligne?.n ?? 0),
+      plusAncien: ligne?.plusAncien ?? null,
+      libelle: libelleResteReprise(horizonMs > 0 ? Math.round((maintenant - horizonMs) / 86_400_000) : null),
     };
   }
 
@@ -1662,22 +1752,19 @@ export class TripAutomationService implements OnApplicationBootstrap {
     const MAX_REPRISE_PAR_PASSAGE = 25;
 
     /**
-     * Une analyse d'avant le 4 septembre se reconnaît à l'absence de `limitsCoverage` : la colonne
-     * est née avec le lot V3, et toute analyse écrite depuis en porte une valeur — y compris
-     * `null` quand aucun point n'était assez rapide pour qu'une limite soit demandée.
+     * Les candidats : `perimetreReprise`, et rien d'autre. Une analyse d'avant le 4 septembre se
+     * reconnaît à l'absence de clé `vitesse` dans son détail, PAS à un `limitsCoverage` nul — qui
+     * est aussi celui, légitime, d'un trajet trop lent pour qu'une limite soit demandée.
      *
-     * ⚠️ D'où le second critère, `detail` sans clé `vitesse` : lui est écrit à CHAQUE analyse
-     * depuis le lot V1, sans exception. Se fier au seul taux de couverture ferait reprendre en
-     * boucle les trajets entièrement lents, qui n'en auront jamais.
+     * ⚠️ Ne rien ajouter au WHERE ici : les écrans comptent ce reste avec le MÊME fragment, et une
+     * clause posée d'un seul côté leur ferait annoncer un travail que la reprise ne fera pas
+     * (`rattrapage-reprise.spec.ts` le vérifie).
      */
     let candidats: { tripId: string }[];
     try {
       candidats = await this.prisma.$queryRaw<{ tripId: string }[]>`
         SELECT ta."tripId"
-        FROM trip_analyses ta
-        JOIN trips t ON t.id = ta."tripId"
-        WHERE NOT (ta.detail ? 'vitesse')
-          AND t."startedAt" > ${new Date(this.horizonRetention())}
+        ${perimetreReprise(new Date(this.horizonRetention()))}
         ORDER BY
           -- Les analyses qui affichent de FAUX excès d'abord : ce sont celles dont un client peut
           -- lire un chiffre erroné aujourd'hui.

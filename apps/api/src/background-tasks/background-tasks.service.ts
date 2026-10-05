@@ -780,6 +780,21 @@ function dureeFr(ms: number): string {
   return `${Math.floor(h / 24)} jours`;
 }
 
+/**
+ * L'explication de la ligne « à reprendre » : ce qui est compté (la définition voyage avec le
+ * nombre), ce que la reprise en fait — et ce qui n'est PAS compté. Les analyses que la purge a
+ * rendues irréparables sont nommées, et l'on dit où elles sont comptées : les taire laisserait
+ * croire qu'un compteur tombé de 4 051 à 0 a tout repris.
+ */
+function explicationReprise(aReprendre: number, definition: string): string {
+  const perdues =
+    'Les plus anciennes ont perdu leurs positions, purgées : elles ne seront jamais reprises et ne ' +
+    'sont pas comptées ici — l’écran « Automatisation des trajets » les montre à part, colonne « Perdues ».';
+  return aReprendre === 0
+    ? `Arriéré résorbé : il ne reste aucune des ${definition}. ${perdues}`
+    : `Compte les ${definition}. Le passage horaire les recalcule par lots, après les trajets neufs. ${perdues}`;
+}
+
 @Injectable()
 export class BackgroundTasksService {
   private readonly logger = new Logger(BackgroundTasksService.name);
@@ -942,20 +957,33 @@ export class BackgroundTasksService {
       this.logger.warn(`Rattrapage des tracés illisible : ${(e as Error)?.message ?? e}`);
     }
 
+    /**
+     * ── LES ANALYSES À REPRENDRE : CE QUE LA REPRISE SAIT ENCORE FAIRE, ET RIEN D'AUTRE ──────
+     *
+     * Jusqu'au 2026-10-05, cette ligne comptait `limitsCoverage IS NULL` : 4 051 analyses
+     * « reprises par lots à chaque passage », quand la reprise n'en trouvait AUCUNE. 2 936 avaient
+     * perdu leurs positions (purge à 60 jours), 1 090 étaient des trajets trop lents à la
+     * couverture nulle à bon droit — un nombre qui croît à chaque trajet lent —, 25 n'avaient
+     * plus de trajet. Un arriéré qui ne peut pas atteindre zéro ressemble trait pour trait à un
+     * rattrapage bloqué — exactement ce que cette section existe pour démêler.
+     *
+     * L'écran ne compte donc plus rien lui-même. Il lit `resteReprise()`, bâti sur le périmètre
+     * même de la reprise (`perimetreReprise`) — `rattrapage-reprise.spec.ts` verrouille l'égalité.
+     */
     try {
-      const restant = await this.prisma.tripAnalysis.count({ where: { limitsCoverage: null } });
+      const reste = await this.tripAutomation.resteReprise();
       out.push({
+        // Identifiant historique, conservé : l'écran ne s'en sert que comme clé de suivi.
         id: 'couverture-limites',
-        label: 'Analyses sans couverture des limites de vitesse',
-        explication:
-          "Analyses antérieures au 4 septembre : on ne sait pas quelle part du trajet avait une " +
-          'limite connue. Reprises par lots à chaque passage, sans jamais passer devant les trajets neufs.',
-        restant,
-        plusAncien: null,
+        label: 'Analyses d’avant le 4 septembre à reprendre',
+        explication: explicationReprise(reste.aReprendre, reste.libelle),
+        restant: reste.aReprendre,
+        plusAncien: reste.plusAncien?.toISOString() ?? null,
+        // Aucun journal ne garde le nombre de reprises par passage : pas de rythme mesurable.
         parJour: null,
       });
     } catch (e) {
-      this.logger.warn(`Rattrapage des limites illisible : ${(e as Error)?.message ?? e}`);
+      this.logger.warn(`Reprise des analyses illisible : ${(e as Error)?.message ?? e}`);
     }
     return out;
   }
