@@ -3,12 +3,13 @@
  *
  * Demande du propriétaire du 05/10/2026 : un véhicule marqué « Boîtier débranché » sur sa
  * fiche doit se voir BARRÉ — sur la page Carte (marqueur, liste flotte, card, légende) et sur
- * la mini-carte de sa fiche. Les autres motifs (accident, immobilisé) gardent pour l'instant
- * le marqueur ordinaire.
+ * la mini-carte de sa fiche. Le 06/10 : « pareil pour immobilisé, avec la clé ». Seul
+ * « accidenté » garde le marqueur ordinaire.
  */
 
-/** Le motif posé par le sélecteur « État d'exploitation » de la fiche. */
+/** Les motifs posés par le sélecteur « État d'exploitation » de la fiche. */
 export const MOTIF_DEBRANCHE = 'TRACKER_UNPLUGGED';
+export const MOTIF_IMMOBILISE = 'IMMOBILIZED';
 
 interface PorteMotif {
   outOfServiceReason?: string | null;
@@ -37,6 +38,11 @@ export function estDebranche(motif: string | null | undefined): boolean {
   return motif === MOTIF_DEBRANCHE;
 }
 
+/** Immobilisé (au garage, à l'atelier) — 06/10/2026 : marqueur grisé à badge « clé ». */
+export function estImmobilise(motif: string | null | undefined): boolean {
+  return motif === MOTIF_IMMOBILISE;
+}
+
 interface LigneInstantane extends PorteMotif {
   trackerId?: string | null;
   lastLat?: number | null;
@@ -52,7 +58,16 @@ interface LigneInstantane extends PorteMotif {
  * carte montre.
  */
 export function nbDebranchesSurLaCarte(vehicules: readonly LigneInstantane[]): number {
+  return nbSurLaCarte(vehicules, MOTIF_DEBRANCHE);
+}
+
+/** Même règle pour la clé « Immobilisé (n) » de la légende. */
+export function nbImmobilisesSurLaCarte(vehicules: readonly LigneInstantane[]): number {
+  return nbSurLaCarte(vehicules, MOTIF_IMMOBILISE);
+}
+
+function nbSurLaCarte(vehicules: readonly LigneInstantane[], motif: string): number {
   return vehicules.filter(
-    (v) => estDebranche(v.outOfServiceReason) && !!v.trackerId && v.lastLat != null && v.lastLng != null,
+    (v) => v.outOfServiceReason === motif && !!v.trackerId && v.lastLat != null && v.lastLng != null,
   ).length;
 }

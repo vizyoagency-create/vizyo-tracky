@@ -3,7 +3,7 @@ import {
   getVehicleConnectivityState,
   type VehicleConnectivityState,
 } from '@vizyo/tracky-shared';
-import { estDebranche } from '../../shared/utils/hors-service';
+import { estDebranche, estImmobilise } from '../../shared/utils/hors-service';
 
 /** Les quatre puces de la feuille flotte (planche « Carte + flotte »). */
 export type FiltreFlotte = 'tous' | 'route' | 'arret' | 'hors-ligne';
@@ -22,6 +22,12 @@ export interface LigneFlotte {
   silence: string | null;
   /** Boîtier débranché DÉCLARÉ sur la fiche — la ligne le dit au lieu de « Hors ligne · 45 j ». */
   debranche: boolean;
+  /**
+   * Immobilisé DÉCLARÉ sur la fiche (06/10/2026) — la ligne dit « Immobilisé ». Son état reste
+   * celui que le boîtier mesure (un véhicule au garage peut très bien émettre) : seul le
+   * libellé change, pas le rangement.
+   */
+  immobilise: boolean;
 }
 
 /** Ce dont la ligne a besoin, et rien de plus — sous-ensemble de `VehicleSnapshotDto`. */
@@ -100,6 +106,7 @@ export function construireLignesFlotte(
         connectivite,
         silence: formatSilenceLabel(v.lastSeenAt, maintenant),
         debranche,
+        immobilise: !debranche && estImmobilise(v.outOfServiceReason),
       };
     })
     .sort((a, b) => RANG[a.etat] - RANG[b.etat] || a.plate.localeCompare(b.plate));

@@ -123,6 +123,22 @@ describe('construireLignesFlotte', () => {
       expect(lignes.map((l) => l.etat)).toEqual(['route', 'route']);
     });
   });
+
+  /** Immobilisé déclaré (06/10/2026) : la ligne le dit, son rangement reste celui que mesure le boîtier. */
+  describe('véhicule immobilisé déclaré', () => {
+    it('est marqué immobilisé et garde l’état mesuré (au garage, le boîtier peut émettre)', () => {
+      const [l] = construireLignesFlotte([vehicule({ plate: 'HD-998-XY', outOfServiceReason: 'IMMOBILIZED' })], () => 0, MAINTENANT);
+      expect(l.immobilise).toBeTrue();
+      expect(l.debranche).toBeFalse();
+      expect(l.etat).toBe('arret');
+    });
+
+    it('n’est pas marqué immobilisé quand il est débranché (une seule déclaration)', () => {
+      const [l] = construireLignesFlotte([vehicule({ outOfServiceReason: 'TRACKER_UNPLUGGED' })], () => 0, MAINTENANT);
+      expect(l.debranche).toBeTrue();
+      expect(l.immobilise).toBeFalse();
+    });
+  });
 });
 
 describe('compteursFlotte et filtrerFlotte', () => {

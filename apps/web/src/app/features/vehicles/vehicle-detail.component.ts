@@ -14,7 +14,7 @@ import {
   // Boîtier débranché déclaré (05/10/2026) — bandeau au-dessus de la mini-carte.
   Unplug,
 } from 'lucide-angular';
-import { estDebranche } from '../../shared/utils/hors-service';
+import { estDebranche, estImmobilise } from '../../shared/utils/hors-service';
 
 /** Espace dépôt (2026-08) — la mission en cours affichée en bandeau (A2 § 9). */
 interface MissionEnCours {
@@ -664,8 +664,16 @@ import { VehicleQrDialogComponent } from './vehicle-qr-dialog.component';
               <p class="vd-carte-debranche" role="note">
                 <lucide-icon [img]="UnplugIcon" [size]="14"></lucide-icon>
                 <span>
-                  <strong>Boîtier débranché</strong>{{ depuisDebranche() }} &mdash; la position
+                  <strong>Boîtier débranché</strong>{{ depuisHorsService() }} &mdash; la position
                   affichée est la dernière reçue avant.
+                </span>
+              </p>
+            } @else if (immobilise()) {
+              <p class="vd-carte-immobilise" role="note">
+                <lucide-icon [img]="WrenchIcon" [size]="14"></lucide-icon>
+                <span>
+                  <strong>Immobilisé</strong>{{ depuisHorsService() }} &mdash; hors service : ni
+                  réservation, ni alertes, ni analyse de trajets.
                 </span>
               </p>
             }
@@ -678,6 +686,7 @@ import { VehicleQrDialogComponent } from './vehicle-qr-dialog.component';
               [plate]="vehicle()?.plate ?? ''"
               [ignition]="pos.ignition"
               [unplugged]="debranche()"
+              [immobilized]="immobilise()"
               [interactive]="!isWatchman()"
               height="500px"
             />
@@ -1302,6 +1311,22 @@ import { VehicleQrDialogComponent } from './vehicle-qr-dialog.component';
     }
     .vd-carte-debranche strong { color: var(--texte-alerte); font-weight: 700; }
     .vd-carte-debranche lucide-icon { color: var(--texte-alerte); flex-shrink: 0; margin-top: 2px; }
+    /* Immobilisé : le même bandeau, dans l'ambre « attente » (jetons du thème). */
+    .vd-carte-immobilise {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      margin: 0 0 10px;
+      padding: 8px 12px;
+      background: color-mix(in srgb, var(--texte-attente) 10%, var(--bg-secondary));
+      border: 1px solid color-mix(in srgb, var(--texte-attente) 35%, var(--border-subtle));
+      border-radius: 10px;
+      color: var(--fg-secondary);
+      font-size: 12.5px;
+      line-height: 1.45;
+    }
+    .vd-carte-immobilise strong { color: var(--texte-attente); font-weight: 700; }
+    .vd-carte-immobilise lucide-icon { color: var(--texte-attente); flex-shrink: 0; margin-top: 2px; }
 
     /* Zones mortes GPS (suivi FS-253) */
     .vd-dz-card { display: flex; flex-direction: column; gap: 10px; padding: 12px 14px; background: color-mix(in srgb, #0ea5e9 6%, var(--bg-secondary)); border: 1px solid color-mix(in srgb, #0ea5e9 22%, var(--border-subtle)); border-radius: 12px; }
@@ -2005,6 +2030,7 @@ export class VehicleDetailComponent implements OnInit {
   protected readonly SatelliteDish = SatelliteDish;
   protected readonly ParkingSquare = ParkingSquare;
   protected readonly UnplugIcon = Unplug;
+  protected readonly WrenchIcon = Wrench;
   protected readonly MessageSquareIcon = MessageSquare;
   protected readonly PencilIcon = Pencil;
   protected readonly XIcon = X;
@@ -2488,8 +2514,11 @@ export class VehicleDetailComponent implements OnInit {
    */
   protected readonly debranche = computed(() => estDebranche(this.vehicle()?.outOfServiceReason));
 
+  /** Immobilisé DÉCLARÉ sur la fiche (06/10/2026) : pastille à badge « clé » et bandeau, à tous les profils. */
+  protected readonly immobilise = computed(() => estImmobilise(this.vehicle()?.outOfServiceReason));
+
   /** « depuis le 31 août 2026 » — rien du tout plutôt que « depuis le une date inconnue ». */
-  protected readonly depuisDebranche = computed(() => {
+  protected readonly depuisHorsService = computed(() => {
     const iso = this.vehicle()?.outOfServiceSince;
     const d = iso ? new Date(iso) : null;
     return d && !Number.isNaN(d.getTime()) ? ` depuis le ${this.dateHorsService(iso)}` : '';

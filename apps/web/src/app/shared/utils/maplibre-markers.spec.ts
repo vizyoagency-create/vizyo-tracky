@@ -4,6 +4,7 @@ import {
   OFFLINE_MARKER_COLOR,
   GPS_LOST_MARKER_COLOR,
   speedColor,
+  IMMOBILIZED_MARKER_COLOR,
   UNPLUGGED_MARKER_COLOR,
   updateVehicleMarkerEl,
   type VehicleMarkerData,
@@ -433,3 +434,112 @@ describe('marqueur — boîtier débranché déclaré', () => {
   });
 });
 
+/**
+ * Véhicule IMMOBILISÉ déclaré sur la fiche — demande du propriétaire du 06/10/2026 : « pareil
+ * que débranché, avec la clé ». Même fabrique pour la page Carte et la mini-carte de la fiche.
+ */
+describe('marqueur — véhicule immobilisé déclaré', () => {
+  function data(over: Partial<VehicleMarkerData> = {}): VehicleMarkerData {
+    return {
+      trackerId: 't-998',
+      vehicleId: 'v-998',
+      type: 'VAN',
+      plate: 'HD-998-XY',
+      speedKmh: 0,
+      heading: 0,
+      ignition: false,
+      ...over,
+    } as VehicleMarkerData;
+  }
+  const labelOf = (el: HTMLElement) => el.querySelector('.tracky-marker__plate')!.textContent;
+  const couleurOf = (el: HTMLElement) => el.style.getPropertyValue('--tracky-color').toLowerCase();
+
+  it('se dessine grisé avec sa classe, sans l’habillage hors ligne, et le dit', () => {
+    // Cas réel : HD-998-XY, « Immobilisé — Au garage », boîtier encore vivant au garage.
+    const el = buildVehicleMarkerEl(data({ immobilized: true, offline: true }));
+    expect(el.classList).toContain('tracky-marker--immobilise');
+    expect(el.classList).not.toContain('tracky-marker--offline');
+    expect(el.classList).not.toContain('tracky-marker--debranche');
+    expect(couleurOf(el)).toBe(IMMOBILIZED_MARKER_COLOR.toLowerCase());
+    expect(labelOf(el)).toBe('HD-998-XY · immobilisé');
+    expect(el.getAttribute('aria-label')).toBe('Vehicule HD-998-XY, immobilisé');
+  });
+
+  it('n’affiche ni vitesse ni vert « en route », même si le boîtier émet au garage', () => {
+    const el = buildVehicleMarkerEl(data({ immobilized: true, speedKmh: 31, ignition: true }));
+    expect(couleurOf(el)).toBe(IMMOBILIZED_MARKER_COLOR.toLowerCase());
+    expect(labelOf(el)).toBe('HD-998-XY · immobilisé');
+  });
+
+  it('cède au débranché si les deux sont posés : une seule déclaration habille la pastille', () => {
+    const el = buildVehicleMarkerEl(data({ immobilized: true, unplugged: true }));
+    expect(el.classList).toContain('tracky-marker--debranche');
+    expect(el.classList).not.toContain('tracky-marker--immobilise');
+    expect(labelOf(el)).toBe('HD-998-XY · débranché');
+  });
+
+  it('se pose puis se lève EN DIRECT, sans reconstruire la pastille', () => {
+    const el = buildVehicleMarkerEl(data({ speedKmh: 12, ignition: true }));
+    const svg = el.querySelector('svg');
+    updateVehicleMarkerEl(el, data({ speedKmh: 12, ignition: true, immobilized: true }));
+    expect(el.classList).toContain('tracky-marker--immobilise');
+    expect(labelOf(el)).toBe('HD-998-XY · immobilisé');
+
+    updateVehicleMarkerEl(el, data({ speedKmh: 12, ignition: true }));
+    expect(el.classList).not.toContain('tracky-marker--immobilise');
+    expect(labelOf(el)).toBe('HD-998-XY · 12');
+    expect(el.getAttribute('aria-label')).toBe('Vehicule HD-998-XY');
+    expect(el.querySelector('svg')).toBe(svg);
+  });
+
+  it('porte la clé dès la création, sur TOUS les marqueurs, et la couleur de la palette', () => {
+    for (const immobilized of [true, false]) {
+      const el = buildVehicleMarkerEl(data({ immobilized }));
+      for (const sel of ['.tracky-marker__cle', '.tracky-marker__cle-anneau', '.tracky-marker__cle-badge', '.tracky-marker__cle-trait']) {
+        expect(el.querySelector(sel)).withContext(`${sel} (immobilized=${immobilized})`).not.toBeNull();
+      }
+      expect(el.style.getPropertyValue('--tracky-cle').toUpperCase()).toBe(COULEURS_CARTE.immobilise);
+    }
+  });
+
+  /** Le RENDU, par la feuille globale que Karma charge — comme pour le débranché. */
+  describe('rendu par la feuille globale', () => {
+    const rgb = (hex: string) => {
+      const n = hex.replace('#', '');
+      return `rgb(${parseInt(n.slice(0, 2), 16)}, ${parseInt(n.slice(2, 4), 16)}, ${parseInt(n.slice(4, 6), 16)})`;
+    };
+    const style = (el: HTMLElement, sel: string) => getComputedStyle(el.querySelector(sel)!);
+    let poses: HTMLElement[] = [];
+    const poser = (d: VehicleMarkerData) => {
+      const el = buildVehicleMarkerEl(d);
+      document.body.appendChild(el);
+      poses.push(el);
+      return el;
+    };
+    afterEach(() => { poses.forEach((el) => el.remove()); poses = []; });
+
+    it('montre l’anneau et le badge AMBRE, la clé blanche, et pas la barre rouge', () => {
+      const el = poser(data({ immobilized: true }));
+      expect(style(el, '.tracky-marker__cle').display).not.toBe('none');
+      expect(style(el, '.tracky-marker__cle-anneau').stroke).toBe(rgb(COULEURS_CARTE.immobilise));
+      expect(style(el, '.tracky-marker__cle-badge').fill).toBe(rgb(COULEURS_CARTE.immobilise));
+      expect(style(el, '.tracky-marker__cle-trait').stroke).toBe('rgb(255, 255, 255)');
+      expect(style(el, '.tracky-marker__barre').display).toBe('none');
+    });
+
+    it('masque la flèche, le contact (place du badge), le halo et le logo ; estompe le cœur', () => {
+      const el = poser(data({ immobilized: true, brand: 'Dacia', active: true, ignition: true }));
+      for (const sel of ['.tracky-marker__cap', '.tracky-marker__acc', '.tracky-marker__pulse']) {
+        expect(style(el, sel).display).withContext(sel).toBe('none');
+      }
+      const logo = el.querySelector('.tracky-marker__brand');
+      if (logo) expect(getComputedStyle(logo).display).toBe('none');
+      expect(Number(style(el, '.tracky-marker__coeur').fillOpacity)).toBeCloseTo(0.55, 2);
+    });
+
+    it('ne montre AUCUNE clé sur un marqueur ordinaire', () => {
+      const el = poser(data({ speedKmh: 30, ignition: true }));
+      expect(style(el, '.tracky-marker__cle').display).toBe('none');
+    });
+  });
+});

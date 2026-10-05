@@ -18,7 +18,7 @@ import { HttpClient } from '@angular/common/http';
 import { ActivatedRoute, Router } from '@angular/router';
 import * as maplibregl from 'maplibre-gl';
 import type { Map as MlMap, Marker as MlMarker, Popup, GeoJSONSource } from 'maplibre-gl';
-import type { GeofenceDto, PositionUpdateEvent } from '@vizyo/tracky-shared';
+import type { FuelStationMapPointDto, GeofenceDto, PositionUpdateEvent } from '@vizyo/tracky-shared';
 import {
   deriveMotion,
   DORMANT_STOP_ACTING_MS,
@@ -79,12 +79,19 @@ import {
   buildVehicleMarkerEl,
   markerInk,
   speedColor,
+  IMMOBILIZED_MARKER_COLOR,
   UNPLUGGED_MARKER_COLOR,
   updateVehicleMarkerEl,
   type VehicleMarkerData,
 } from '../../shared/utils/maplibre-markers';
 import { COULEURS_CARTE } from '../../shared/utils/couleurs-carte';
-import { estDebranche, motifHorsService, nbDebranchesSurLaCarte } from '../../shared/utils/hors-service';
+import {
+  estDebranche,
+  estImmobilise,
+  motifHorsService,
+  nbDebranchesSurLaCarte,
+  nbImmobilisesSurLaCarte,
+} from '../../shared/utils/hors-service';
 import { catmullRom, lerpHeading } from '../../shared/utils/spline';
 import {
   compteursFlotte,
@@ -94,6 +101,7 @@ import {
   type LigneFlotte,
 } from './flotte-lignes';
 import { regrouperParProximite } from './regroupement-lieux';
+import { stationDuLieu, stationsCouvertes } from './stations-couvertes';
 import { BottomSheetComponent } from '../../shared/ui/bottom-sheet/bottom-sheet.component';
 import { ZoneComponent, type EtatZone } from '../../shared/ui/zone/zone.component';
 import { SaFleetBadgeComponent } from '../../shared/ui/super-admin-context/sa-fleet-badge.component';
@@ -171,9 +179,10 @@ interface BaanoolCardData {
   lastNoFixAt?: string | null;
   /** Sprint 1 (Fondation Groupes) — groupe (single) du véhicule. */
   group?: { id: string; name: string } | null;
-  /** Boîtier débranché déclaré sur la fiche, et depuis quand (ISO) — badge de la card. */
+  /** États DÉCLARÉS sur la fiche (boîtier débranché, immobilisé), et depuis quand (ISO) — badges de la card. */
   debranche?: boolean;
-  debrancheDepuis?: string | null;
+  immobilise?: boolean;
+  horsServiceDepuis?: string | null;
 }
 
 /**
@@ -195,7 +204,21 @@ type PlaceCardData =
       lng: number;
       vehicles: { plate: string | null; visits: number }[];
     }
-  | { type: 'place'; place: FleetPlaceDto };
+  | {
+      type: 'place';
+      place: FleetPlaceDto;
+      /**
+       * Pompe de la flotte : la station DÉTECTÉE qu'elle recouvre (06/10/2026). Son rond violet
+       * n'est plus dessiné, c'est donc la card de la pompe qui porte ses passages et ses véhicules.
+       */
+      station?: {
+        where: string;
+        visits: number;
+        distinctVehicles: number;
+        lastPriceEur: number | null;
+        vehicles: { plate: string | null; visits: number }[];
+      };
+    };
 
 /**
  * Etat de mouvement d'un marker.
@@ -484,7 +507,7 @@ const RESYNC_RADIUS_M = 150;
             @for (v of flotteVisibles(); track v.vehicleId) {
               <li>
                 <button type="button" class="fl-ligne" (click)="ouvrirDepuisFlotte(v)">
-                  <span class="fl-pastille" [class]="'fl-pastille--' + (v.debranche ? 'debranche' : v.etat)"></span>
+                  <span class="fl-pastille" [class]="'fl-pastille--' + (v.debranche ? 'debranche' : v.immobilise ? 'immobilise' : v.etat)"></span>
                   <span class="fl-ligne-texte">
                     <span class="fl-plaque">{{ v.plate }}</span>
                     <span class="fl-modele">{{ v.modele }}</span>
@@ -1022,13 +1045,21 @@ const RESYNC_RADIUS_M = 150;
           <p class="tracky-sheet-title">Légende vitesse</p>
           <!-- Générée depuis BANDES_VITESSE : la même table que les marqueurs et les tracés. -->
           <app-legende-vitesse disposition="grille" style="--lv-taille: 12px"></app-legende-vitesse>
-          @if (nbDebranches() > 0) {
+          @if (nbDebranches() > 0 || nbImmobilises() > 0) {
             <p class="tracky-sheet-title" style="margin-top:10px">Véhicules</p>
             <div class="tracky-sheet-legend">
-              <div class="tracky-sheet-legend-item">
-                <ng-container [ngTemplateOutlet]="cleDebranche"></ng-container>
-                <span>Boîtier débranché ({{ nbDebranches() }})</span>
-              </div>
+              @if (nbDebranches() > 0) {
+                <div class="tracky-sheet-legend-item">
+                  <ng-container [ngTemplateOutlet]="cleDebranche"></ng-container>
+                  <span>Boîtier débranché ({{ nbDebranches() }})</span>
+                </div>
+              }
+              @if (nbImmobilises() > 0) {
+                <div class="tracky-sheet-legend-item">
+                  <ng-container [ngTemplateOutlet]="cleImmobilise"></ng-container>
+                  <span>Immobilisé ({{ nbImmobilises() }})</span>
+                </div>
+              }
             </div>
           }
           @if (showFuelStations() || showDeadZones() || placesLayerVisible()) {
@@ -1042,7 +1073,7 @@ const RESYNC_RADIUS_M = 150;
               }
               @if (placesLayerVisible()) {
                 <div class="tracky-sheet-legend-item">
-                  <span class="w-2.5 h-2.5 rounded-[3px]" style="background:#10E0A0"></span>
+                  <ng-container [ngTemplateOutlet]="clePompe"></ng-container>
                   <span>Station de la flotte (validée)</span>
                 </div>
                 <div class="tracky-sheet-legend-item">
@@ -1092,6 +1123,26 @@ const RESYNC_RADIUS_M = 150;
               stroke-width="7" stroke-linecap="round" />
       </svg>
     </ng-template>
+    <!-- La clé « Station de la flotte » : le repère carré émeraude et sa pompe, à l'encre sombre
+         comme sur la carte (plus d'émoji ⛽, dessiné rouge par Windows — 06/10/2026). -->
+    <ng-template #clePompe>
+      <span class="mp-cle-pompe" [style.background]="COULEUR_POMPE">
+        <svg viewBox="0 0 24 24" width="8" height="8" fill="none" [attr.stroke]="encreMarqueur(COULEUR_POMPE)"
+             stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+          <line x1="3" x2="15" y1="22" y2="22" /><line x1="4" x2="14" y1="9" y2="9" />
+          <path d="M14 22V4a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v18" />
+          <path d="M14 13h2a2 2 0 0 1 2 2v2a2 2 0 0 0 2 2a2 2 0 0 0 2-2V9.83a2 2 0 0 0-.59-1.42L18 5" />
+        </svg>
+      </span>
+    </ng-template>
+    <!-- La clé « Immobilisé » : la pastille grisée, son anneau et son badge « clé » ambre. -->
+    <ng-template #cleImmobilise>
+      <svg class="mp-cle-debranche" viewBox="0 0 56 56" width="12" height="12" aria-hidden="true" focusable="false">
+        <circle cx="28" cy="28" r="15" [attr.fill]="COULEUR_IMMOBILISE_COEUR" fill-opacity="0.55" />
+        <circle cx="28" cy="28" r="23" fill="none" [attr.stroke]="COULEUR_IMMOBILISE" stroke-width="6" />
+        <circle cx="40" cy="40" r="14" [attr.fill]="COULEUR_IMMOBILISE" />
+      </svg>
+    </ng-template>
 
     <!-- Légende vitesse - DESKTOP ONLY (mobile : dans la sheet) -->
     <!-- ══ LA LÉGENDE SE REPLIE, ET RESTE REPLIÉE ══
@@ -1114,12 +1165,22 @@ const RESYNC_RADIUS_M = 150;
         <p class="text-[10px] font-semibold text-fg-secondary mb-1.5 uppercase tracking-wider">Vitesse</p>
         <!-- Générée depuis BANDES_VITESSE : la même table que les marqueurs et les tracés. -->
         <app-legende-vitesse></app-legende-vitesse>
-        @if (nbDebranches() > 0) {
+        @if (nbDebranches() > 0 || nbImmobilises() > 0) {
           <hr class="my-2 border-border-subtle" />
           <p class="text-[10px] font-semibold text-fg-secondary mb-1.5 uppercase tracking-wider">Véhicules</p>
-          <div class="flex items-center gap-2">
-            <ng-container [ngTemplateOutlet]="cleDebranche"></ng-container>
-            <span class="text-[10px] text-fg-tertiary">Boîtier débranché ({{ nbDebranches() }})</span>
+          <div class="flex flex-col gap-1">
+            @if (nbDebranches() > 0) {
+              <div class="flex items-center gap-2">
+                <ng-container [ngTemplateOutlet]="cleDebranche"></ng-container>
+                <span class="text-[10px] text-fg-tertiary">Boîtier débranché ({{ nbDebranches() }})</span>
+              </div>
+            }
+            @if (nbImmobilises() > 0) {
+              <div class="flex items-center gap-2">
+                <ng-container [ngTemplateOutlet]="cleImmobilise"></ng-container>
+                <span class="text-[10px] text-fg-tertiary">Immobilisé ({{ nbImmobilises() }})</span>
+              </div>
+            }
           </div>
         }
         @if (showFuelStations() || showDeadZones() || placesLayerVisible()) {
@@ -1134,7 +1195,7 @@ const RESYNC_RADIUS_M = 150;
             }
             @if (placesLayerVisible()) {
               <div class="flex items-center gap-2">
-                <span class="w-2.5 h-2.5 rounded-[3px] flex items-center justify-center text-[7px] font-bold text-white" style="background:#10E0A0">⛽</span>
+                <ng-container [ngTemplateOutlet]="clePompe"></ng-container>
                 <span class="text-[10px] text-fg-tertiary">Station de la flotte (validée)</span>
               </div>
               <div class="flex items-center gap-2">
@@ -1227,10 +1288,33 @@ const RESYNC_RADIUS_M = 150;
                   </div>
                 }
               } @else {
+                <!-- Pompe de la flotte : les chiffres de la station détectée qu'elle recouvre —
+                     son rond violet n'est plus dessiné (06/10/2026), la card de la pompe les porte. -->
+                @if (pc.station; as st) {
+                  @if (st.where) { <div>{{ st.where }}</div> }
+                  <div>
+                    <b>{{ st.visits }}</b> passage(s) · <b>{{ st.distinctVehicles }}</b> véhicule(s)
+                    @if (st.lastPriceEur != null) { · <b>{{ st.lastPriceEur | number: '1.3-3' }} €/L</b> }
+                  </div>
+                  @if (st.vehicles.length) {
+                    <div class="bn-place-vehicles">
+                      @for (v of st.vehicles; track $index) {
+                        @if ($index < 6) {
+                          <span class="bn-place-veh"><b>{{ v.plate || 'véhicule' }}</b> {{ v.visits }}×</span>
+                        }
+                      }
+                      @if (st.vehicles.length > 6) {
+                        <span class="bn-place-veh">+{{ st.vehicles.length - 6 }}</span>
+                      }
+                    </div>
+                  }
+                }
                 <div>Rayon {{ pc.place.radiusM }} m</div>
                 @if (pc.place.note) { <div>{{ pc.place.note }}</div> }
+                <!-- Le repère ne se déplace PAS depuis la carte (07/09, redit le 06/10) : cette
+                     phrase promettait « glissez le repère », un geste qui n'existe plus. -->
                 @if (canManagePlaces()) {
-                  <div class="bn-place-hint">Glissez le repère sur la carte pour le déplacer.</div>
+                  <div class="bn-place-hint">Pour le déplacer : page Lieux clés.</div>
                 }
               }
             </div>
@@ -1390,6 +1474,13 @@ const RESYNC_RADIUS_M = 150;
                   <span class="bn-vcard-badge-dot"></span>
                   Boîtier débranché
                 </span>
+              } @else if (baanoolCard()!.immobilise) {
+                <!-- Immobilisé (06/10/2026) : le badge « clé » du marqueur, dit en mots. Le badge
+                     de connectivité reste : un véhicule au garage peut très bien émettre. -->
+                <span class="bn-vcard-badge bn-vcard-badge--attente" [attr.title]="titreImmobilise(baanoolCard()!)">
+                  <span class="bn-vcard-badge-dot"></span>
+                  Immobilisé
+                </span>
               }
               <!-- V1.15 — Badge Fleet (visible SA only). -->
               <app-sa-fleet-badge [fleetId]="baanoolCard()!.fleetId" />
@@ -1538,6 +1629,10 @@ const RESYNC_RADIUS_M = 150;
     .mp-legende-chevron { font-size: 11px; line-height: 1; color: var(--fg-tertiary); }
     .mp-legende-contenu { margin-top: 6px; }
     .mp-cle-debranche { flex-shrink: 0; display: block; overflow: visible; }
+    .mp-cle-pompe {
+      width: 10px; height: 10px; border-radius: 3px; flex-shrink: 0;
+      display: inline-flex; align-items: center; justify-content: center;
+    }
 
     /* Cibles tactiles au doigt — critère de recette « iPhone 390 px : cibles ≥ 44 px ».
        Mesuré à 375 px : les pastilles de la feuille (10 par écran), sa croix de
@@ -1752,6 +1847,13 @@ const RESYNC_RADIUS_M = 150;
         linear-gradient(45deg, transparent calc(50% - 1px), var(--texte-alerte) calc(50% - 1px) calc(50% + 1px), transparent calc(50% + 1px)),
         color-mix(in srgb, var(--texte-inactif) 55%, transparent);
       box-shadow: inset 0 0 0 1.5px var(--texte-alerte);
+    }
+    /* Immobilisé : la même pastille grisée, cerclée d'ambre, avec le point du badge « clé ». */
+    .fl-pastille--immobilise {
+      background:
+        radial-gradient(circle at 76% 76%, var(--texte-attente) 0 27%, transparent 29%),
+        color-mix(in srgb, var(--texte-inactif) 55%, transparent);
+      box-shadow: inset 0 0 0 1.5px var(--texte-attente);
     }
     .fl-ligne-texte {
       display: flex;
@@ -2874,6 +2976,10 @@ export class MapComponent implements AfterViewInit, OnDestroy {
    */
   protected readonly COULEUR_DEBRANCHE = COULEURS_CARTE.debranche;
   protected readonly COULEUR_DEBRANCHE_COEUR = UNPLUGGED_MARKER_COLOR;
+  protected readonly COULEUR_IMMOBILISE = COULEURS_CARTE.immobilise;
+  protected readonly COULEUR_IMMOBILISE_COEUR = IMMOBILIZED_MARKER_COLOR;
+  /** L'émeraude des stations de la flotte — celle de `fleetPlaceStyle('FUEL_STATION')`. */
+  protected readonly COULEUR_POMPE = fleetPlaceStyle('FUEL_STATION').color;
 
   protected readonly realtime = inject(RealtimeService);
   /** Filtre société global (sélecteur super-admin). matches() = true pour un non-super. */
@@ -2999,6 +3105,12 @@ export class MapComponent implements AfterViewInit, OnDestroy {
   private fuelCursorBound = false;
   /** Détail par véhicule d'une station (qui + combien de passages), indexé par stationId (popup). */
   private fuelStationVehicles = new Map<string, { plate: string | null; visits: number }[]>();
+  /**
+   * Les stations détectées telles que l'API les rend. Le calque n'en dessine qu'une partie : celles
+   * qu'aucune pompe de la flotte affichée ne recouvre (`renderFuelStations`). Gardées ici pour
+   * redessiner sans recharger quand les lieux changent, et pour la card d'une pompe.
+   */
+  private fuelStationsBrutes: FuelStationMapPointDto[] = [];
   /** Zones mortes GPS (suivi FS-253) — parkings souterrains + zones récurrentes/suspectes de la flotte.
    *  Chargées en continu (pas seulement au toggle) pour l'override « à l'arrêt · souterrain » des cards. */
   protected readonly showDeadZones = signal(true);
@@ -3368,10 +3480,13 @@ export class MapComponent implements AfterViewInit, OnDestroy {
    * La légende ne nomme le marqueur barré que s'il apparaît : elle décrit ce que la carte montre.
    */
   protected readonly nbDebranches = computed(() => nbDebranchesSurLaCarte(this.scopedSnapshot()));
+  /** Même règle pour les immobilisés (badge « clé ») — 06/10/2026. */
+  protected readonly nbImmobilises = computed(() => nbImmobilisesSurLaCarte(this.scopedSnapshot()));
 
   /** Libellé d'état d'une ligne — ce qu'on affiche à droite de la plaque. */
   protected ligneEtatLabel(v: LigneFlotte): string {
     if (v.debranche) return 'Boîtier débranché';
+    if (v.immobilise) return 'Immobilisé';
     if (v.etat === 'route') return `${v.vitesse} km/h`;
     if (v.etat === 'arret') return 'À l’arrêt';
     switch (v.connectivite) {
@@ -5268,31 +5383,48 @@ export class MapComponent implements AfterViewInit, OnDestroy {
       const stations = await firstValueFrom(
         this.tripAnalysisApi.fuelStationsMap(from, undefined, this.fleetFilter.selectedFleetId() ?? undefined),
       );
-      const now = Date.now();
-      const RECENT_MS = 21 * 24 * 3600 * 1000;
       // Détail par véhicule (qui + combien de passages) indexé par stationId pour le popup :
       // les propriétés GeoJSON sont aplaties en primitives, on ne peut pas y stocker un tableau.
       this.fuelStationVehicles.clear();
-      const features: GeoJSON.Feature[] = stations.map((s) => {
-        this.fuelStationVehicles.set(s.stationId, s.vehicles ?? []);
-        return {
-          type: 'Feature',
-          geometry: { type: 'Point', coordinates: [s.lng, s.lat] },
-          properties: {
-            stationId: s.stationId,
-            brand: s.brand ?? '', city: s.city ?? '', address: s.address ?? '',
-            visits: s.visits, distinctVehicles: s.distinctVehicles,
-            lastPriceEur: s.lastPriceEur, lastVisitAt: s.lastVisitAt,
-            recent: now - new Date(s.lastVisitAt).getTime() <= RECENT_MS ? 1 : 0,
-          },
-        };
-      });
-      const src = this.map.getSource('fuel-stations') as maplibregl.GeoJSONSource | undefined;
-      src?.setData({ type: 'FeatureCollection', features });
+      for (const s of stations) this.fuelStationVehicles.set(s.stationId, s.vehicles ?? []);
+      this.fuelStationsBrutes = stations;
+      this.renderFuelStations();
     } catch (err) {
       // silent
       swallow('map:loadFuelStations', err);
     }
+  }
+
+  /**
+   * Dessine les stations détectées, MOINS celles qu'une pompe de la flotte affichée recouvre.
+   *
+   * Demande du propriétaire du 06/10/2026 : sous une pompe, plus de rond violet ni de nombre de
+   * passages — ils se superposaient à la pompe, et le rond, plus large, prenait ses clics. Rappelée
+   * à chaque redessin des lieux (`renderFleetPlaceMarkers`) : valider une station efface son rond,
+   * retirer la pompe ou masquer les lieux le fait revenir, sans rien recharger.
+   */
+  private renderFuelStations(): void {
+    if (!this.map || !this.carteUtilisable()) return;
+    const src = this.map.getSource('fuel-stations') as maplibregl.GeoJSONSource | undefined;
+    if (!src) return;
+    const lieuxAffiches = this.canViewPlaces() && this.showFleetPlaces() ? this.fleetPlaces() : [];
+    const couvertes = stationsCouvertes(this.fuelStationsBrutes, lieuxAffiches);
+    const now = Date.now();
+    const RECENT_MS = 21 * 24 * 3600 * 1000;
+    const features: GeoJSON.Feature[] = this.fuelStationsBrutes
+      .filter((s) => !couvertes.has(s.stationId))
+      .map((s) => ({
+        type: 'Feature',
+        geometry: { type: 'Point', coordinates: [s.lng, s.lat] },
+        properties: {
+          stationId: s.stationId,
+          brand: s.brand ?? '', city: s.city ?? '', address: s.address ?? '',
+          visits: s.visits, distinctVehicles: s.distinctVehicles,
+          lastPriceEur: s.lastPriceEur, lastVisitAt: s.lastVisitAt,
+          recent: now - new Date(s.lastVisitAt).getTime() <= RECENT_MS ? 1 : 0,
+        },
+      }));
+    src.setData({ type: 'FeatureCollection', features });
   }
 
   /** Toggle du calque stations-service (charge à la 1re activation). */
@@ -5594,6 +5726,8 @@ export class MapComponent implements AfterViewInit, OnDestroy {
         this.fleetPlaceMarkers.delete(id);
       }
     }
+    // Les pompes affichées ont pu changer : le rond violet qu'elles recouvrent aussi.
+    this.renderFuelStations();
   }
 
   /** Élément DOM d'un lieu de la flotte (couleur + glyphe par nature). */
@@ -5606,7 +5740,13 @@ export class MapComponent implements AfterViewInit, OnDestroy {
       `z-index:${g.z};width:${g.taille}px;height:${g.taille}px;border-radius:8px;background:${color};` +
       'border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.35);display:flex;align-items:center;' +
       `justify-content:center;color:#fff;font-weight:800;font-size:${g.police}px;line-height:1;cursor:pointer`;
-    el.textContent = glyph;
+    if (p.kind === 'FUEL_STATION') {
+      // La pompe en SVG, à l'ENCRE SOMBRE de l'émeraude (11:1, contre 1,7:1 au blanc) : l'émoji
+      // ⛽ qu'elle remplace est dessiné ROUGE par Windows (demande du propriétaire, 06/10/2026).
+      el.innerHTML = svgPompe(markerInk(color), Math.round(g.taille * 0.62));
+    } else {
+      el.textContent = glyph;
+    }
     el.setAttribute('aria-label', p.name);
     // Plus de « glissez pour déplacer » : le repère ne se déplace plus depuis la carte (cf.
     // `renderFleetPlaceMarkers`). Une infobulle qui promet un geste impossible est un défaut.
@@ -5622,7 +5762,20 @@ export class MapComponent implements AfterViewInit, OnDestroy {
   private openPlaceCard(p: FleetPlaceDto): void {
     this.closeBaanoolCard();
     this.renamingPlaceId.set(null);
-    this.placeCard.set({ type: 'place', place: p });
+    const s = stationDuLieu(p, this.fuelStationsBrutes);
+    this.placeCard.set({
+      type: 'place',
+      place: p,
+      station: s
+        ? {
+            where: [s.address, s.city].filter(Boolean).join(', '),
+            visits: s.visits,
+            distinctVehicles: s.distinctVehicles,
+            lastPriceEur: s.lastPriceEur,
+            vehicles: this.fuelStationVehicles.get(s.stationId) ?? [],
+          }
+        : undefined,
+    });
   }
 
   /** Ferme la card repère. */
@@ -5917,9 +6070,10 @@ export class MapComponent implements AfterViewInit, OnDestroy {
         offline: !live,
         gpsLost,
         parkedDeadZone,
-        // Boîtier débranché DÉCLARÉ sur la fiche : marqueur barré, prioritaire sur tout le
-        // reste. L'instantané fait foi (il suit une remise en service sans recharger la page).
+        // États DÉCLARÉS sur la fiche : débranché (marqueur barré) et immobilisé (badge clé),
+        // prioritaires sur tout le reste. L'instantané fait foi (il suit une remise en service).
         unplugged: estDebranche(motifHorsService(snap, meta)),
+        immobilized: estImmobilise(motifHorsService(snap, meta)),
       };
 
       // GPS sanity (live) : rejette les fixes `valid: false` (broadcastes par le
@@ -6380,7 +6534,8 @@ export class MapComponent implements AfterViewInit, OnDestroy {
       lastNoFixAt: snap?.lastNoFixAt ?? null,
       group: meta.group ?? null,
       debranche: estDebranche(motifHorsService(snap, meta)),
-      debrancheDepuis: snap?.outOfServiceSince ?? null,
+      immobilise: estImmobilise(motifHorsService(snap, meta)),
+      horsServiceDepuis: snap?.outOfServiceSince ?? null,
     });
     this.activePopupTrackerId = trackerId;
     this.activePopupVehicleId = pos.vehicleId;
@@ -6399,11 +6554,20 @@ export class MapComponent implements AfterViewInit, OnDestroy {
 
   /** Infobulle du badge « Boîtier débranché » : qui l'a dit, depuis quand, et ce que vaut la position. */
   protected titreDebranche(card: BaanoolCardData): string {
-    const depuis = card.debrancheDepuis ? new Date(card.debrancheDepuis) : null;
-    const quand = depuis && !Number.isNaN(depuis.getTime())
+    return `Déclaré débranché sur la fiche du véhicule${this.declareLe(card)} — la position affichée est la dernière reçue avant.`;
+  }
+
+  /** Infobulle du badge « Immobilisé » : ce que l'état coupe (cf. bandeau de la fiche). */
+  protected titreImmobilise(card: BaanoolCardData): string {
+    return `Déclaré immobilisé sur la fiche du véhicule${this.declareLe(card)} — hors service : ni réservation, ni alertes, ni analyse de trajets.`;
+  }
+
+  /** « le 31/08/2026 » — rien du tout si la date manque ou ne se lit pas. */
+  private declareLe(card: BaanoolCardData): string {
+    const depuis = card.horsServiceDepuis ? new Date(card.horsServiceDepuis) : null;
+    return depuis && !Number.isNaN(depuis.getTime())
       ? ` le ${depuis.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' })}`
       : '';
-    return `Déclaré débranché sur la fiche du véhicule${quand} — la position affichée est la dernière reçue avant.`;
   }
 
   private closePopup(): void {
@@ -6608,7 +6772,8 @@ export class MapComponent implements AfterViewInit, OnDestroy {
 function fleetPlaceStyle(kind: FleetPlaceKind): { color: string; glyph: string } {
   switch (kind) {
     case 'FUEL_STATION':
-      return { color: '#10E0A0', glyph: '⛽' };
+      // Pas de glyphe texte : la pompe est un SVG (`svgPompe`), cf. `buildFleetPlaceEl`.
+      return { color: '#10E0A0', glyph: '' };
     case 'PARKING':
       return { color: '#0ea5e9', glyph: 'P' };
     case 'DEPOT':
@@ -6616,6 +6781,24 @@ function fleetPlaceStyle(kind: FleetPlaceKind): { color: string; glyph: string }
     default:
       return { color: '#94a3b8', glyph: '★' };
   }
+}
+
+/**
+ * La pompe des stations de la flotte — l'icône `Fuel` de Lucide (boîte 24 × 24), la famille
+ * d'icônes de l'application. Remplace l'émoji ⛽ (06/10/2026) : selon le système il sortait
+ * ROUGE, et sa taille suivait la police au lieu du repère.
+ */
+const POMPE_LUCIDE =
+  '<line x1="3" x2="15" y1="22" y2="22"/><line x1="4" x2="14" y1="9" y2="9"/>' +
+  '<path d="M14 22V4a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v18"/>' +
+  '<path d="M14 13h2a2 2 0 0 1 2 2v2a2 2 0 0 0 2 2a2 2 0 0 0 2-2V9.83a2 2 0 0 0-.59-1.42L18 5"/>';
+
+/** La pompe à la taille du repère (17 px en « discrets », 26 px sinon), trait plus épais en petit. */
+function svgPompe(encre: string, taille: number): string {
+  const trait = taille < 14 ? 2.6 : 2.2;
+  return `<svg viewBox="0 0 24 24" width="${taille}" height="${taille}" fill="none" stroke="${encre}"` +
+    ` stroke-width="${trait}" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">` +
+    `${POMPE_LUCIDE}</svg>`;
 }
 
 /** Sprint F.2 — feature GeoJSON pour un polygone defini par ses sommets. */

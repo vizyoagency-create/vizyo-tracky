@@ -1,4 +1,12 @@
-import { estDebranche, motifHorsService, MOTIF_DEBRANCHE, nbDebranchesSurLaCarte } from './hors-service';
+import {
+  estDebranche,
+  estImmobilise,
+  motifHorsService,
+  MOTIF_DEBRANCHE,
+  MOTIF_IMMOBILISE,
+  nbDebranchesSurLaCarte,
+  nbImmobilisesSurLaCarte,
+} from './hors-service';
 
 /**
  * Le motif « hors service » vu par la carte : l'instantané temps réel fait foi dès qu'il porte
@@ -66,5 +74,26 @@ describe('estDebranche', () => {
     expect(estDebranche('ACCIDENT')).toBeFalse();
     expect(estDebranche(null)).toBeFalse();
     expect(estDebranche(undefined)).toBeFalse();
+  });
+});
+
+/** Immobilisé (06/10/2026) : même règle, autre motif. */
+describe('estImmobilise et nbImmobilisesSurLaCarte', () => {
+  const position = { trackerId: 't', lastLat: 43.66, lastLng: 1.42 };
+
+  it('ne reconnaît que le motif « immobilisé »', () => {
+    expect(estImmobilise(MOTIF_IMMOBILISE)).toBeTrue();
+    expect(estImmobilise(MOTIF_DEBRANCHE)).toBeFalse();
+    expect(estImmobilise('ACCIDENT')).toBeFalse();
+    expect(estImmobilise(null)).toBeFalse();
+  });
+
+  it('compte les immobilisés qui ont une position, et eux seuls', () => {
+    expect(nbImmobilisesSurLaCarte([
+      { ...position, outOfServiceReason: MOTIF_IMMOBILISE },               // HD-998-XY
+      { ...position, outOfServiceReason: MOTIF_IMMOBILISE },               // HM-787-GA
+      { trackerId: 't', lastLat: null, lastLng: null, outOfServiceReason: MOTIF_IMMOBILISE },
+      { ...position, outOfServiceReason: MOTIF_DEBRANCHE },
+    ])).toBe(2);
   });
 });

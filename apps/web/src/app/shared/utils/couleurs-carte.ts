@@ -52,6 +52,16 @@ export const COULEURS_CARTE = {
    * sinon la clé ment.
    */
   debranche: '#DC2626',
+  /**
+   * L'anneau et le badge « clé » d'un véhicule IMMOBILISÉ (déclaré sur la fiche, 06/10/2026).
+   *
+   * Ambre d'atelier, mais l'ambre 700 et non le 600 : calculé, `#D97706` ne donnait que 2,6:1
+   * sur le fond de carte clair (`#ECE7DF`), sous les 3:1 d'un élément graphique ; celui-ci
+   * donne 4,1:1 (clair), 3,2:1 (sombre `#1D2126`) et 5,0:1 à la clé BLANCHE posée sur le badge.
+   * Distinct du rouge du débranché et de l'ambre 500 de la bande 66-100 km/h, qui teinte le
+   * CŒUR d'un véhicule en mouvement, jamais un anneau.
+   */
+  immobilise: '#B45309',
 } as const;
 
 /**

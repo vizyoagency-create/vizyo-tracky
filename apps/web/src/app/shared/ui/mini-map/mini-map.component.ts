@@ -68,6 +68,8 @@ export class MiniMapComponent implements AfterViewInit, OnDestroy {
    * (même fabrique `buildVehicleMarkerEl`, même habillage).
    */
   readonly unplugged = input(false);
+  /** Immobilisé DÉCLARÉ sur la fiche (06/10/2026) : pastille grisée à badge « clé », comme la page Carte. */
+  readonly immobilized = input(false);
   readonly zoom = input(15);
   readonly height = input('300px');
   /** Sprint 3 — false = carte figée (pan/zoom/rotation désactivés), pour le veilleur de nuit. */
@@ -101,6 +103,7 @@ export class MiniMapComponent implements AfterViewInit, OnDestroy {
     const type = this.vehicleType();
     const plate = this.plate();
     const unplugged = this.unplugged();
+    const immobilized = this.immobilized();
     const ready = this.mapReady(); // tracké par l'effect
 
     if (!this.map || !c || !ready) return;
@@ -115,6 +118,7 @@ export class MiniMapComponent implements AfterViewInit, OnDestroy {
       ignition: ign,
       active: false,
       unplugged,
+      immobilized,
     };
 
     if (this.marker && this.markerEl) {
