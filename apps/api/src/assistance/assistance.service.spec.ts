@@ -353,11 +353,14 @@ describe('AssistanceService', () => {
       expect(appelsVers(['sa-1'])[0]).toMatchObject({ kind: 'rappel-urgent', subjectKey: 'c1', title: 'RAPPEL URGENT demandé' });
     });
 
-    it('une escalade de l’agent prévient les super-admins', async () => {
+    it('une escalade de l’agent prévient — dans le MÊME tiroir que la question : une seule sonnerie', async () => {
       const { svc, user, appelsVers } = build({ superAdmins: [{ id: 'sa-1' }], ia: { escalade: true, motifEscalade: 'hors connaissance' } });
       await svc.poser(user, 'question');
-      const kinds = appelsVers(['sa-1']).map((a) => a.kind);
-      expect(kinds).toEqual(expect.arrayContaining(['conversation', 'escalade']));
+      const appels = appelsVers(['sa-1']);
+      expect(appels).toHaveLength(2);
+      // Le socle regroupe ce qui partage `kind` + `subjectKey` dans le quart d'heure.
+      expect(appels.map((a) => [a.kind, a.subjectKey])).toEqual([['conversation', 'c1'], ['conversation', 'c1']]);
+      expect(appels[1].title).toBe('Assistance — un humain doit reprendre');
     });
 
     it('le centre d’activité reçoit le GESTE, jamais le CONTENU de la question', async () => {

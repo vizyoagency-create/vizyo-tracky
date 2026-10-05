@@ -144,11 +144,20 @@ describe('AssistanceApiService — la ligne d’urgence WhatsApp', () => {
       expect(retenu()).not.toBeNull();
     });
 
-    it('un refus définitif (4xx) l’oublie — sinon il serait retenté à chaque démarrage', () => {
+    it('un refus définitif (400) l’oublie — sinon il serait retenté à chaque démarrage', () => {
       poser({ ecran: 'mise-a-jour', a: T0 - 60_000 });
       svc.retransmettreAppuiRetenu();
       http.expectOne(URL).flush({}, { status: 400, statusText: 'Bad Request' });
       expect(retenu()).toBeNull();
+    });
+
+    it('🔴 un 403 de démarrage (appareil à vérifier, consentement) ne l’efface PAS : il attend', () => {
+      for (const code of ['DEVICE_VERIFICATION_REQUIRED', 'CONSENT_REQUIRED']) {
+        poser({ ecran: 'mise-a-jour', a: T0 - 60_000 });
+        svc.retransmettreAppuiRetenu();
+        http.expectOne(URL).flush({ code }, { status: 403, statusText: 'Forbidden' });
+        expect(retenu()).withContext(code).not.toBeNull();
+      }
     });
 
     it('🔴 l’appui d’un AUTRE compte ne part jamais sous ce nom — il attend son auteur', () => {

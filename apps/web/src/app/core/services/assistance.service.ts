@@ -32,6 +32,14 @@ const estPanneDeTransport = (e: unknown): boolean =>
   e instanceof HttpErrorResponse && [0, 502, 503, 504].includes(e.status);
 
 /**
+ * Le seul refus DÉFINITIF : le serveur a lu le corps et l'a jugé invalide. Tout le reste attend la
+ * prochaine occasion — un 401 (jeton à renouveler), un 403 de démarrage (consentement, appareil à
+ * vérifier : l'intercepteur les lève AVANT que la personne ait pu y répondre), un 429. Oublier
+ * l'appui sur l'un d'eux perdrait précisément l'appel à l'aide fait pendant la panne (revue du 05/10).
+ */
+const estRefusDefinitif = (e: unknown): boolean => e instanceof HttpErrorResponse && e.status === 400;
+
+/**
  * Assistance IA (2026-08) — client HTTP.
  *
  * Deux surfaces distinctes, comme côté serveur : ce qu'un utilisateur voit de SA conversation, et
@@ -108,8 +116,9 @@ export class AssistanceApiService {
    * moins de deux heures. Le serveur reçoit son ÂGE (`retardS`) et annonce l'heure réelle de
    * l'appui : un appel à l'aide vieux d'une demi-heure ne doit pas se lire « maintenant ».
    *
-   * L'appui n'est oublié qu'une fois REÇU (ou refusé pour de bon, en 4xx) : si l'API est encore
-   * à terre, il attend la prochaine occasion.
+   * L'appui n'est oublié qu'une fois REÇU, ou refusé pour de bon (400) : si l'API est encore à
+   * terre, ou si un écran de démarrage (consentement, appareil) passe avant, il attend la prochaine
+   * occasion. Il expire de lui-même au bout de deux heures.
    */
   retransmettreAppuiRetenu(): void {
     const userId = this.auth.user()?.sub;
@@ -131,7 +140,7 @@ export class AssistanceApiService {
     this.http.post<void>(URL_URGENCE_WHATSAPP, corps).subscribe({
       next: () => oublierAppui(userId),
       error: (e: unknown) => {
-        if (!estPanneDeTransport(e)) oublierAppui(userId);
+        if (estRefusDefinitif(e)) oublierAppui(userId);
         this.retransmissionEnCours = false;
       },
       complete: () => {

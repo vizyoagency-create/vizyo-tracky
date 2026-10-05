@@ -1,4 +1,5 @@
 import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post, Query, Req, UseGuards } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { UserRole } from '@prisma/client';
 import type {
   AssistanceAdminDetailDto,
@@ -105,6 +106,11 @@ export class AssistanceController {
    */
   @Post('urgence/whatsapp')
   @HttpCode(204)
+  // Chaque appel écrit au fil, au journal et au registre des envois : sans plafond propre, une
+  // boucle (client défaillant, script) les remplirait sans fin. Dix par minute couvrent largement
+  // l'appui répété de quelqu'un que WhatsApp fait attendre — et un 429 ne retient rien : le lien
+  // WhatsApp s'ouvre côté navigateur quoi que réponde cette route.
+  @Throttle({ default: { ttl: 60_000, limit: 10 } })
   signalerWhatsapp(@Req() req: AuthenticatedRequest, @Body() dto: SignalUrgenceWhatsappBodyDto): Promise<void> {
     return this.assistance.signalerUrgenceWhatsapp(req.user, dto);
   }

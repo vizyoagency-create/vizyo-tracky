@@ -114,8 +114,8 @@ export class AssistanceService {
     if (!conversationId) await this.prevenirAdmins(user, conv.id, texte);
 
     // Le geste au centre d'activité des utilisateurs — sans le CONTENU, qui reste à son auteur
-    // (les admins de la société lisent aussi ce fil).
-    await this.userActivity.recordServerEvent(user, {
+    // (les admins de la société lisent aussi ce fil). Lancé sans attendre, comme le push.
+    const trace = this.userActivity.recordServerEvent(user, {
       type: 'ASSISTANCE',
       target: conversationId ? 'Question — suite de la conversation' : 'Nouvelle question à l’assistance',
       route: '/assistance',
@@ -137,7 +137,8 @@ export class AssistanceService {
     try {
       return await this.repondre(user, conv, texte);
     } finally {
-      await avertissement;
+      // Aucune des deux ne rejette (best-effort) : rien d'autre ne peut être masqué ici.
+      await Promise.all([trace, avertissement]);
     }
   }
 
@@ -317,10 +318,12 @@ export class AssistanceService {
       meta: { conversationId, gravite, urgent },
     });
     // Le centre d'alerte n'envoie AUCUN push : sans ceci, un rappel urgent attendait que quelqu'un
-    // ouvre l'écran. Tiroir d'anti-spam DISTINCT de celui des questions — un rappel qui suit de
-    // près une question déjà notifiée est un autre signal, il ne doit pas se regrouper avec elle.
+    // ouvre l'écran. Le RAPPEL URGENT a son propre tiroir d'anti-spam : demandé exprès par la
+    // personne, il doit sonner même juste après la question. L'escalade de l'AGENT, elle, naît
+    // PENDANT la question — qui vient de prévenir dans le tiroir « conversation » : la ranger au
+    // même endroit évite deux sonneries pour un seul message (revue du 05/10/2026).
     await this.prevenirSuperAdmins(user, {
-      kind: urgent ? 'rappel-urgent' : 'escalade',
+      kind: urgent ? 'rappel-urgent' : 'conversation',
       subjectKey: conversationId,
       title: urgent ? 'RAPPEL URGENT demandé' : 'Assistance — un humain doit reprendre',
       corps: (qui) => `${qui} : ${(motif ?? 'sans motif').slice(0, 120)}`,
