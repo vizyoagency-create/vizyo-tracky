@@ -1825,6 +1825,29 @@ Vérifié après, dans les conteneurs et en base :
 la liste des véhicules — pour voir la ligne `URGENCE_WHATSAPP` et la notification « Urgence véhicule —
 WhatsApp ouvert ».
 
+### 🚀 Le même jour à 11:36 — les 403 `alerts_view`, corrigés et déployés AVEC `--force` (`950b25da`)
+
+Le bruit relevé après le déploiement de 09:19 avait trois sources, toutes côté navigateur — le serveur
+refusait à juste titre : le temps réel demandait les alertes à CHAQUE (re)connexion en ne gardant que le
+rôle dépôt ; le tableau de bord masquait son widget mais lançait la requête ; la fiche véhicule ne gardait
+que le rôle veilleur. Touchés en prod : un gestionnaire du CDEF, le veilleur de nuit (qui n'a jamais
+`alerts_view`), le conducteur. Correctif : `perms.can('alerts_view')` en résolution GLOBALE — la règle du
+serveur —, lu en `computed` (la relecture des portées à chaque retour d'onglet ne redemande rien tant que la
+réponse ne change pas). 7 tests sur le VRAI `PermissionsService`, dont 5 rouges contre l'ancien code.
+
+Déployé sur l'ordre du propriétaire, `--force` compris : le passage de 10:45 (52 min, plus long que
+d'habitude) a été INTERROMPU — une alerte critique « passage interrompu », attendue ; celui de 11:45 est
+parti à l'heure. Pré-construction api puis web d'abord, recréation en 15 s, 0 redémarrage, démo saine.
+Prouvé en conditions réelles : le bundle servi porte 12 contrôles `alerts_view` contre 8 avant (les quatre
+gardes ajoutées) ; le gestionnaire a produit ses derniers 403 avec l'ANCIEN code jusqu'à 11:39:52 — le
+service worker garde l'ancienne version tant qu'on n'a pas validé la fenêtre « mise à jour requise » —, a
+rechargé à 11:39:56, et depuis sa session de 11:40:06 sur le nouveau code : plus aucun 403. GPS : 39
+boîtiers avant, 39 après, sur la même durée.
+
+Au passage, `pnpm verify` a révélé un test de l'agent de l'agenda qui dépend de l'HEURE
+(`agenda-agent-runner.service.spec.ts`, « lundis() » : rouge un lundi après 09:00, relancé seul compris) —
+sans rapport avec ce lot ; une tâche distincte a été proposée.
+
 ### Le tuto « Assistance » (hors dépôt : `cdef31-vizyoagency`, `e002229` puis `1ec9c96`)
 
 **🌐 En ligne le 05/10** : https://cdef31.vizyoagency.com/assistance/ et une 3ᵉ carte sur l'accueil. Ce qu'il
@@ -1908,3 +1931,7 @@ tablette, ordinateur, clair et sombre : 0 débordement, 0 violation de CSP, 0 im
   porte jamais le contenu d'une question.
 - **Le clic WhatsApp n'est jamais retenu** : pas de `preventDefault`, signalement tirer-et-oublier, route
   exclue de l'intercepteur d'erreurs. Une urgence ne dépend pas d'une réponse de l'API.
+- **On ne demande pas au serveur ce qu'il refuserait** : un appel gardé par un droit (`alerts_view`…) se
+  garde AUSSI côté navigateur, avec la règle du serveur (résolution globale pour `GET /api/alerts`). Et un
+  droit lu dans un effet passe par un `computed` : `PermissionsService` relit les portées à chaque retour
+  d'onglet, et un `can()` lu en direct rejouerait l'effet — donc l'appel — à chaque fois.
