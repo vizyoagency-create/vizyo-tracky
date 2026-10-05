@@ -65,7 +65,7 @@ type FiltreStatut = 'tous' | 'roulage' | 'arret' | 'hors-ligne' | 'sans-boitier'
         <div class="wn-header">
           <h1 class="wn-title">Véhicules</h1>
           <p class="wn-sub">
-            {{ search().trim() ? filteredVehicles().length + ' résultat(s)' : vehicles().length + ' véhicule(s)' }}
+            {{ search().trim() ? filteredVehicles().length + ' résultat(s)' : totalPerimetre() + ' véhicule(s)' }}
           </p>
         </div>
 
@@ -168,7 +168,7 @@ type FiltreStatut = 'tous' | 'roulage' | 'arret' | 'hors-ligne' | 'sans-boitier'
       <div class="vlist-header">
         <div>
           <span class="vt-eyebrow">Flotte</span>
-          <h1 class="vlist-title">{{ vehicles().length }} véhicule{{ vehicles().length > 1 ? 's' : '' }}</h1>
+          <h1 class="vlist-title">{{ totalPerimetre() }} véhicule{{ totalPerimetre() > 1 ? 's' : '' }}</h1>
           <p class="vlist-sub">Suivi temps réel de votre flotte</p>
         </div>
         <div class="vlist-actions">
@@ -254,7 +254,7 @@ type FiltreStatut = 'tous' | 'roulage' | 'arret' | 'hors-ligne' | 'sans-boitier'
                 </select>
               </div>
             }
-            <span class="vlist-count">{{ filteredVehicles().length }} / {{ vehicles().length }}</span>
+            <span class="vlist-count">{{ filteredVehicles().length }} / {{ totalPerimetre() }}</span>
             <!-- Entrée MOBILE des filtres : sur téléphone la barre d'outils ci-dessus
                  est masquée (ses commandes tombaient à 20 px de haut). -->
             <button type="button" class="vf-declencheur" (click)="filtresOuverts.set(true)"
@@ -1247,10 +1247,14 @@ export class VehiclesListComponent implements OnInit {
   protected readonly search = signal('');
   /** Filtre groupe (vide = tous). Appliqué avant la recherche texte. */
   protected readonly groupFilter = signal('');
-  /** Groupes distincts présents dans la flotte, pour le menu de filtre. */
+  /**
+   * Groupes distincts présents dans la société choisie, pour le menu de filtre. Pris sur la liste
+   * brute, le menu proposait sous « mh cars » les groupes des autres sociétés — un choix qui ne
+   * pouvait rendre qu'une liste vide.
+   */
   protected readonly groupOptions = computed(() => {
     const map = new Map<string, string>();
-    for (const v of this.vehicles()) {
+    for (const v of this.vehiculesDuPerimetre()) {
       if (v.group) map.set(v.group.id, v.group.name);
     }
     return Array.from(map, ([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name));
@@ -1264,6 +1268,14 @@ export class VehiclesListComponent implements OnInit {
   protected readonly vehiculesDuPerimetre = computed(() =>
     this.vehicles().filter((v) => this.fleetFilter.matches(v.fleetId)),
   );
+
+  /**
+   * LE total annoncé — titre « N véhicules », en-tête du veilleur, compteur « affichés / total » et
+   * puce « Tous ». Un seul calcul pour tous : jusqu'au 05/10, le titre et le compteur lisaient
+   * `vehicles().length` et annonçaient « 50 véhicules » sous le filtre « mh cars », pendant que la
+   * liste juste en dessous n'en montrait que ceux de la société.
+   */
+  protected readonly totalPerimetre = computed(() => this.vehiculesDuPerimetre().length);
 
   /**
    * La société sélectionnée n'a aucun véhicule — vide par PÉRIMÈTRE, pas par
@@ -1380,9 +1392,13 @@ export class VehiclesListComponent implements OnInit {
     return v.moving ? 'roulage' : 'arret';
   }
 
-  /** Compteurs des puces — sur la flotte ENTIÈRE, jamais sur la vue déjà filtrée. */
+  /**
+   * Compteurs des puces — sur la société ENTIÈRE, jamais sur la vue déjà filtrée (recherche, groupe,
+   * statut). « Entière » veut dire le périmètre du sélecteur de société, pas la liste brute : sous
+   * « mh cars », « Tous » comptait les véhicules de toutes les sociétés.
+   */
   protected readonly compteursStatut = computed(() => {
-    const tous = this.vehicles();
+    const tous = this.vehiculesDuPerimetre();
     const n: Record<FiltreStatut, number> = {
       tous: tous.length, roulage: 0, arret: 0, 'hors-ligne': 0, 'sans-boitier': 0,
     };
