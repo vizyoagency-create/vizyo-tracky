@@ -12,6 +12,8 @@ import type {
   BgTaskTraceLocale,
 } from '@vizyo/tracky-shared';
 import { PrismaService } from '../prisma/prisma.service';
+import { compterPortionsAResoudre, FENETRE_AGENT_LIMITES_JOURS } from '../trip-analysis/portions-a-resoudre';
+import { SPEEDING_CANDIDATE_KMH } from '../trip-analysis/trip-analysis.preprocessor';
 import { TripAutomationService } from '../trip-analysis/trip-automation.service';
 import { nextFireInstant, nextPeriodicTick, previousFireInstant, previousPeriodicTick, SERVER_TZ } from './next-run.util';
 
@@ -26,6 +28,14 @@ const DAY_MS = 86_400_000;
  * Voir {@link BackgroundTasksService.rythmeDeRattrapageTraces}.
  */
 export const RECALAGE_DIFFERE = '1 hour';
+
+/**
+ * Âge maximal du reste de l'agent des limites avant d'en reprendre la mesure (choix du
+ * propriétaire, 2026-10-05). Sa requête coûte 1 à 2 s, l'écran se recharge toutes les 30 s, et ce
+ * reste ne baisse qu'aux passages de l'agent : un quart d'heure ne cache rien d'utile. Le libellé
+ * dit l'âge de la mesure. Voir {@link BackgroundTasksService.resteAgentLimites}.
+ */
+export const RESTE_LIMITES_TTL_MS = 15 * 60_000;
 
 /**
  * Entrée du CATALOGUE STATIQUE des traitements de fond.
@@ -795,9 +805,26 @@ function explicationReprise(aReprendre: number, definition: string): string {
     : `Compte les ${definition}. Le passage horaire les recalcule par lots, après les trajets neufs. ${perdues}`;
 }
 
+/**
+ * Le reste de l'agent des limites en une phrase : ce que son prochain passage prendrait, et l'âge
+ * de la mesure — un nombre mis en cache qui tait son âge se lit comme un nombre frais.
+ */
+function libelleResteLimites(reste: { n: number; mesureA: number } | null, nowMs: number): string {
+  if (!reste) return 'reste de l’agent non mesuré';
+  const quand = `mesuré il y a ${dureeFr(nowMs - reste.mesureA)}`;
+  if (reste.n === 0) return `aucune portion à résoudre (${quand})`;
+  return (
+    `${reste.n.toLocaleString('fr-FR')} portion(s) à résoudre — parcourue(s) à plus de ` +
+    `${SPEEDING_CANDIDATE_KMH} km/h ces ${FENETRE_AGENT_LIMITES_JOURS} derniers jours, ${quand}`
+  );
+}
+
 @Injectable()
 export class BackgroundTasksService {
   private readonly logger = new Logger(BackgroundTasksService.name);
+  /** Dernière mesure du reste de l'agent des limites, et celle en cours s'il y en a une. */
+  private resteLimites: { n: number; mesureA: number } | null = null;
+  private resteLimitesEnVol: Promise<{ n: number; mesureA: number }> | null = null;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -1221,6 +1248,26 @@ export class BackgroundTasksService {
   }
 
   /**
+   * Ce que l'agent des limites prendrait s'il passait maintenant — `compterPortionsAResoudre`, sa
+   * requête même —, mesuré au plus une fois par {@link RESTE_LIMITES_TTL_MS}.
+   *
+   * La requête balaie les positions des 60 derniers jours (1 à 2 s en production, tri sur disque),
+   * l'écran se recharge toutes les 30 s, et ce reste ne baisse qu'aux passages de l'agent. Deux
+   * chargements simultanés partagent la même mesure ; un échec n'est pas retenu, le chargement
+   * suivant réessaie.
+   */
+  private resteAgentLimites(): Promise<{ n: number; mesureA: number }> {
+    const derniere = this.resteLimites;
+    if (derniere && Date.now() - derniere.mesureA < RESTE_LIMITES_TTL_MS) return Promise.resolve(derniere);
+    this.resteLimitesEnVol ??= compterPortionsAResoudre(this.prisma)
+      .then((n) => (this.resteLimites = { n, mesureA: Date.now() }))
+      .finally(() => {
+        this.resteLimitesEnVol = null;
+      });
+    return this.resteLimitesEnVol;
+  }
+
+  /**
    * État de l'agent de limites de vitesse, qui tourne sur le POSTE du propriétaire.
    *
    * ⚠️ On ne lui demande pas s'il va bien : on regarde ce qu'il a ÉCRIT. La date de la dernière
@@ -1235,19 +1282,26 @@ export class BackgroundTasksService {
    * ⚠️ Depuis 2026-09, le JOURNAL DES PASSAGES prime dès qu'il en contient un : lui seul dit « il
    * a tourné et n'a rien trouvé », que la production ne sait pas distinguer d'une panne. Le
    * travail écrit reste le repli tant que cet agent n'inscrit pas ses passages.
+   *
+   * ⚠️ SON RESTE À FAIRE SE COMPTE EN PORTIONS, PAS EN TRAJETS (2026-10-05). L'écran affichait
+   * « 576 trajets encore sans limite » (`limitsKnown = false`) : aucun n'était son travail — 565
+   * trajets sans point au-dessus de 33 km/h, 3 anciens aux positions purgées, 8 orphelines — et le
+   * nombre ne pouvait pas descendre à zéro. Son vrai reste ce jour-là : 145 portions. On lit
+   * désormais sa requête même (`compterPortionsAResoudre`), mesurée au plus tous les quarts d'heure.
    */
   private async etatAgentLimites(nowMs: number): Promise<EtatLocal> {
     const passage = await this.dernierPassage('agent-limites-vitesse');
     try {
-      const [dernier, resolues, restantes] = await Promise.all([
+      const [dernier, resolues, reste] = await Promise.all([
         this.prisma.speedLimitCache.aggregate({ _max: { createdAt: true } }),
         this.prisma.speedLimitCache.count({ where: { maxspeed: { not: null } } }),
-        this.prisma.tripAnalysis.count({ where: { limitsKnown: false } }),
+        // Mesure lente et accessoire : son échec ne doit emporter ni la preuve de vie, ni l'acquis.
+        this.resteAgentLimites().catch(() => null),
       ]);
       return this.etatLocal({
         id: 'agent-limites-vitesse', nowMs, passage,
         productionAt: dernier._max.createdAt ?? null,
-        production: `${resolues.toLocaleString('fr-FR')} limites résolues · ${restantes.toLocaleString('fr-FR')} trajets encore sans limite`,
+        production: `${resolues.toLocaleString('fr-FR')} limites résolues · ${libelleResteLimites(reste, nowMs)}`,
       });
     } catch {
       // La supervision ne doit jamais faire tomber la page qu'elle supervise. Un passage déjà lu

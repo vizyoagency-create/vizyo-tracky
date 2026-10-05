@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { formatFleetDate, parisDayKey, parisDayStart } from '../common/utils/datetime';
 import { PrismaService } from '../prisma/prisma.service';
+import { SPEEDING_CANDIDATE_KMH } from '../trip-analysis/trip-analysis.preprocessor';
 
 /**
  * ── TRK-016 / T28 (2026-09-13) — « À LA CLÔTURE » SE DÉFINIT PAR LE TEMPS ─────────────────
@@ -23,6 +24,18 @@ interface JourneeClose {
   apresCoup: number;
   sansRecalage: number;
   origineInconnue: number;
+}
+
+/**
+ * Les analyses SANS AUCUNE limite, rangées par cause — des entiers, castés côté SQL. Les causes
+ * s'excluent, dans cet ordre : sans trajet, trajet lent, positions purgées ; ce qui reste est un
+ * trajet récent parcouru vite et pourtant sans limite.
+ */
+interface SansLimite {
+  orphelines: number;
+  lentes: number;
+  purgees: number;
+  recentesRapides: number;
 }
 
 /**
@@ -84,6 +97,28 @@ export class RecuperationService {
     if (j.sansRecalage > 0) parts.push(`${j.sansRecalage.toLocaleString('fr-FR')} sans tracé recalé`);
     if (j.origineInconnue > 0) parts.push(`${j.origineInconnue.toLocaleString('fr-FR')} d’origine inconnue (recalé(s) avant le 13/09)`);
     return parts.length > 0 ? parts.join(' · ') : null;
+  }
+
+  /**
+   * Ce qui manque à la ligne des limites, cause par cause — la réponse à « pourquoi pas 100 ? ».
+   *
+   * ⚠️ Jamais « restant(s) » : le 2026-10-05, « 576 restant(s) » ne désignait AUCUN travail en
+   * attente (565 trajets sans point au-dessus de 33 km/h, 3 anciens aux positions purgées, 8
+   * orphelines, 0 trajet récent parcouru vite). Un manque qui ne peut pas se combler se nomme ; il
+   * ne se compte pas en reste.
+   */
+  private manqueLimites(total: number, s: SansLimite | null): string | null {
+    if (total <= 0) return null;
+    const n = (v: number | undefined) => Number(v ?? 0).toLocaleString('fr-FR');
+    if (!s) return `${n(total)} sans limite — ventilation indisponible`;
+    const causes: string[] = [];
+    if (s.lentes > 0) causes.push(`${n(s.lentes)} trajet(s) sans point au-dessus de ${SPEEDING_CANDIDATE_KMH} km/h`);
+    if (s.purgees > 0) causes.push(`${n(s.purgees)} ancienne(s) hors rétention`);
+    if (s.orphelines > 0) causes.push(`${n(s.orphelines)} orpheline(s)`);
+    if (s.recentesRapides > 0) {
+      return [`${n(s.recentesRapides)} trajet(s) récent(s) parcouru(s) vite et toujours sans limite`, ...causes].join(' · ');
+    }
+    return causes.length > 0 ? `aucune n’attend l’agent : ${causes.join(', ')}` : `${n(total)} sans limite`;
   }
 
   async etat(maintenant = new Date()): Promise<{ lignes: LigneRecuperation[]; mesureLe: string }> {
@@ -160,6 +195,27 @@ export class RecuperationService {
       this.prisma.trip.count({ where: { polylineMatched: null, polyline: { not: null }, endedAt: { not: null } } }),
     ]);
 
+    /**
+     * Les analyses sans aucune limite, par cause (voir `manqueLimites`). `maxSpeedKmh` est la vitesse
+     * CORROBORÉE la plus haute : à 33 km/h ou moins, aucun point n'a demandé de limite. Une colonne,
+     * pas le détail JSON : quelques dizaines de millisecondes. Best-effort — une ventilation
+     * illisible ne fait pas tomber l'écran, le manque dit alors qu'elle manque.
+     */
+    const sansLimite = await this.prisma.$queryRaw<SansLimite[]>`
+      SELECT
+        count(*) FILTER (WHERE t.id IS NULL)::int AS "orphelines",
+        count(*) FILTER (WHERE t.id IS NOT NULL AND ta."maxSpeedKmh" <= ${SPEEDING_CANDIDATE_KMH})::int AS "lentes",
+        count(*) FILTER (WHERE t.id IS NOT NULL AND ta."maxSpeedKmh" > ${SPEEDING_CANDIDATE_KMH}
+                           AND t."startedAt" < ${limiteRetention})::int AS "purgees",
+        count(*) FILTER (WHERE t.id IS NOT NULL AND ta."maxSpeedKmh" > ${SPEEDING_CANDIDATE_KMH}
+                           AND t."startedAt" >= ${limiteRetention})::int AS "recentesRapides"
+      FROM trip_analyses ta
+      LEFT JOIN trips t ON t.id = ta."tripId"
+      WHERE ta."limitsKnown" = false
+    `
+      .then(([ligne]) => ligne ?? null)
+      .catch(() => null);
+
     const reste = (n: number) => (n > 0 ? `${n.toLocaleString('fr-FR')} restant(s)` : null);
 
     const lignes: LigneRecuperation[] = [
@@ -187,11 +243,13 @@ export class RecuperationService {
         id: 'limites',
         famille: 'Trajets',
         libelle: 'Limites de vitesse (OpenStreetMap)',
-        role: "Transforme « il roulait vite » en excès CERTAIN. Sans elle, aucun excès n'est calculable et le score de conduite ne mesure rien.",
+        role:
+          "Transforme « il roulait vite » en excès CERTAIN. Sans elle, aucun excès n'est calculable et le score de conduite ne mesure rien. " +
+          `Un trajet qui n'a jamais dépassé ${SPEEDING_CANDIDATE_KMH} km/h n'en demande aucune : il reste sans limite à bon droit.`,
         attendu: analyses,
         obtenu: avecLimites,
         taux: this.taux(avecLimites, analyses),
-        manque: reste(analyses - avecLimites),
+        manque: this.manqueLimites(analyses - avecLimites, sansLimite),
       },
       {
         id: 'carburant',
@@ -248,7 +306,14 @@ export class RecuperationService {
         attendu: cacheTotal,
         obtenu: cacheResolu,
         taux: this.taux(cacheResolu, cacheTotal),
-        manque: reste(cacheTotal - cacheResolu),
+        // ⚠️ Pas un « restant » : une portion inscrite sans limite est un CONSTAT (aucune voie
+        // carrossable à portée, ou une voie dont OpenStreetMap ne permet de déduire aucune limite),
+        // inscrit exprès pour ne plus être réinterrogé. L'agent ne la reprendra jamais.
+        manque:
+          cacheTotal > cacheResolu
+            ? `${(cacheTotal - cacheResolu).toLocaleString('fr-FR')} sans limite connue — aucune voie carrossable à ` +
+              'portée, ou limite absente d’OpenStreetMap : un constat, l’agent ne les reprend pas'
+            : null,
       },
       {
         id: 'stations',

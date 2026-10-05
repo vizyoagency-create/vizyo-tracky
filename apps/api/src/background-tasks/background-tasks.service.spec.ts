@@ -1,4 +1,5 @@
-import { BackgroundTasksService } from './background-tasks.service';
+import { Prisma } from '@prisma/client';
+import { BackgroundTasksService, RESTE_LIMITES_TTL_MS } from './background-tasks.service';
 
 /**
  * ── CE QUE CES TESTS PROTÈGENT ───────────────────────────────────────────────────────
@@ -14,9 +15,21 @@ import { BackgroundTasksService } from './background-tasks.service';
  */
 const HEURE = 3_600_000;
 
-function service(opts: { dernier?: Date | null; resolues?: number; restantes?: number; casse?: boolean } = {}) {
+function service(
+  opts: { dernier?: Date | null; resolues?: number; portions?: number; resteCasse?: boolean; casse?: boolean } = {},
+) {
   const rejette = () => Promise.reject(new Error('base injoignable'));
+  /**
+   * Requêtes brutes de l'écran. Celle du reste de l'agent se reconnaît à sa table (`positions`) ;
+   * les autres (rythme des tracés) rendent un compte nul.
+   */
+  const $queryRaw = jest.fn(async (...appel: unknown[]) => {
+    if (!texteDe(appel).includes('FROM positions')) return [{ n: BigInt(0) }];
+    if (opts.resteCasse) throw new Error('canceling statement due to statement timeout');
+    return [{ n: opts.portions ?? 0 }];
+  });
   const prisma = {
+    $queryRaw,
     tripAutomationSettings: { findFirst: jest.fn().mockResolvedValue(null) },
     activityReportSchedule: { findFirst: jest.fn().mockResolvedValue(null) },
     agendaAgentSettings: { findMany: jest.fn().mockResolvedValue([]) },
@@ -27,10 +40,22 @@ function service(opts: { dernier?: Date | null; resolues?: number; restantes?: n
         : jest.fn().mockResolvedValue({ _max: { createdAt: opts.dernier ?? null } }),
       count: jest.fn().mockResolvedValue(opts.resolues ?? 0),
     },
-    tripAnalysis: { count: jest.fn().mockResolvedValue(opts.restantes ?? 0) },
+    tripAnalysis: { count: jest.fn().mockResolvedValue(576) },
   };
   const registry = { getCronJobs: () => new Map(), getIntervals: () => [] };
   return new BackgroundTasksService(prisma as never, registry as never, { resteRecitTotal: async () => ({ aNarrer: 0, enAttenteDeRecalcul: 0, libelle: 'analyses sans recit que l agent prendra' }) } as never);
+}
+
+/** Le texte d'une requête brute, fragments `Prisma.raw` aplatis par Prisma lui-même. */
+function texteDe(appel: readonly unknown[]): string {
+  const [morceaux, ...valeurs] = appel as [TemplateStringsArray, ...unknown[]];
+  return Prisma.sql(morceaux, ...valeurs).text;
+}
+
+/** Combien de fois le reste de l'agent a réellement été mesuré en base. */
+function mesuresDuReste(svc: BackgroundTasksService): number {
+  const { $queryRaw } = (svc as unknown as { prisma: { $queryRaw: jest.Mock } }).prisma;
+  return $queryRaw.mock.calls.filter((c) => texteDe(c).includes('FROM positions')).length;
 }
 
 const agentDe = async (svc: BackgroundTasksService) =>
@@ -57,7 +82,7 @@ describe('Traitements de fond — l’agent sur poste n’est pas invisible', ()
 
   it('⚠️ récemment actif → sain, et le dernier passage est celui du DERNIER TRAVAIL écrit', async () => {
     const ecrit = new Date(Date.now() - 2 * HEURE);
-    const agent = await agentDe(service({ dernier: ecrit, resolues: 16217, restantes: 4439 }));
+    const agent = await agentDe(service({ dernier: ecrit, resolues: 16217, portions: 145 }));
     expect(agent!.enabled).toBe(true);
     expect(agent!.lastRunAt).toBe(ecrit.toISOString());
   });
@@ -69,11 +94,64 @@ describe('Traitements de fond — l’agent sur poste n’est pas invisible', ()
     expect(agent!.enabled).toBe(false);
   });
 
-  it('le résumé porte le RESTE À FAIRE, pas seulement l’acquis', async () => {
-    const agent = await agentDe(service({ dernier: new Date(), resolues: 16217, restantes: 4439 }));
-    expect(agent!.settingsSummary).toContain('16');
-    expect(agent!.settingsSummary).toContain('4');
-    expect(agent!.settingsSummary).toContain('encore sans limite');
+  /**
+   * ⚠️ LE RESTE DE L'AGENT SE COMPTE EN PORTIONS — CELLES QU'IL PREND (2026-10-05).
+   *
+   * L'écran lui attribuait « 576 trajets encore sans limite » (`limitsKnown = false`) : aucun n'était
+   * son travail (trajets lents, positions purgées, orphelines), et le nombre ne pouvait pas
+   * descendre à zéro. Le reste affiché est désormais celui de sa requête même — 145 portions ce
+   * jour-là — et l'ancien compte ne doit plus revenir par la bande.
+   */
+  it('le résumé porte le RESTE À FAIRE de l’agent — ses portions, pas des trajets', async () => {
+    const svc = service({ dernier: new Date(), resolues: 350600, portions: 145 });
+    const agent = await agentDe(svc);
+
+    expect(agent!.settingsSummary).toMatch(/350.600 limites résolues/);
+    expect(agent!.settingsSummary).toContain('145 portion(s) à résoudre');
+    expect(agent!.settingsSummary).toContain('plus de 33 km/h ces 60 derniers jours');
+    expect(agent!.settingsSummary).not.toContain('trajets encore sans limite');
+    const { tripAnalysis } = (svc as unknown as { prisma: { tripAnalysis: { count: jest.Mock } } }).prisma;
+    expect(tripAnalysis.count.mock.calls.filter(([a]) => 'limitsKnown' in (a?.where ?? {}))).toEqual([]);
+  });
+
+  it('un reste nul se dit — « aucune portion à résoudre » —, avec l’âge de la mesure', async () => {
+    const agent = await agentDe(service({ dernier: new Date(), resolues: 350600, portions: 0 }));
+    expect(agent!.settingsSummary).toContain('aucune portion à résoudre (mesuré il y a moins d’une minute)');
+  });
+
+  /**
+   * La requête de l'agent balaie les positions des 60 derniers jours : 1 à 2 s en production. L'écran
+   * se recharge toutes les 30 s ; la rejouer à chaque fois coûterait plus que l'écran entier.
+   */
+  it('⚠️ le reste est mesuré au plus une fois par quart d’heure — et dit son âge', async () => {
+    jest.useFakeTimers({ now: Date.parse('2026-10-05T14:00:00Z') });
+    try {
+      const svc = service({ dernier: new Date(), portions: 145 });
+      await agentDe(svc);
+      await agentDe(svc);
+      expect(mesuresDuReste(svc)).toBe(1);
+
+      jest.setSystemTime(Date.parse('2026-10-05T14:12:00Z'));
+      const agent = await agentDe(svc);
+      expect(mesuresDuReste(svc)).toBe(1);
+      expect(agent!.settingsSummary).toContain('mesuré il y a 12 min');
+
+      jest.setSystemTime(Date.parse('2026-10-05T14:00:00Z') + RESTE_LIMITES_TTL_MS + 1);
+      await agentDe(svc);
+      expect(mesuresDuReste(svc)).toBe(2);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('une mesure en échec ne coûte que le reste — ni la preuve de vie, ni l’acquis — et se retente', async () => {
+    const svc = service({ dernier: new Date(), resolues: 350600, resteCasse: true });
+    const agent = await agentDe(svc);
+    expect(agent!.enabled).toBe(true);
+    expect(agent!.settingsSummary).toMatch(/350.600 limites résolues · reste de l’agent non mesuré/);
+    // Un échec n'est pas retenu : le chargement suivant mesure de nouveau.
+    await agentDe(svc);
+    expect(mesuresDuReste(svc)).toBe(2);
   });
 
   it('jamais lancé → état INCONNU, pas « en panne » (on n’accuse pas sans preuve)', async () => {

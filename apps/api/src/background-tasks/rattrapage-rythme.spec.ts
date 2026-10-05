@@ -11,8 +11,8 @@ import { BackgroundTasksService, RECALAGE_DIFFERE } from './background-tasks.ser
  * Mesuré en production le 27/09 : **463/jour comptés, 367/jour de vrai rattrapage** (+26 %) —
  * une échéance annoncée à ~19 jours pour ~24 jours réels.
  *
- * Ces tests verrouillent l'exclusion. Si quelqu'un revient au `count` naïf, `$queryRaw` n'est
- * plus appelé du tout et le premier test tombe.
+ * Ces tests verrouillent l'exclusion. Si quelqu'un revient au `count` naïf, la requête du rythme
+ * n'est plus envoyée du tout et le premier test tombe.
  */
 describe("BackgroundTasksService — le rythme de rattrapage des tracés", () => {
   function monter(opts: { restant?: number; plusAncien?: Date | null; rythme?: number }) {
@@ -53,8 +53,13 @@ describe("BackgroundTasksService — le rythme de rattrapage des tracés", () =>
     const { svc, $queryRaw } = monter({ rythme: 367 });
     await traces(svc);
 
-    expect($queryRaw).toHaveBeenCalledTimes(1);
-    const [fragments, ...valeurs] = $queryRaw.mock.calls[0] as unknown as [string[], ...unknown[]];
+    // L'écran envoie d'autres requêtes brutes (le reste de l'agent des limites, depuis le 05/10) :
+    // celle du rythme se reconnaît à sa colonne, et il en faut exactement une.
+    const appels = ($queryRaw.mock.calls as unknown as [string[], ...unknown[]][]).filter(([fragments]) =>
+      fragments.join(' ').includes('"polylineMatchedAt"'),
+    );
+    expect(appels).toHaveLength(1);
+    const [fragments, ...valeurs] = appels[0];
     const sql = fragments.join(' ? ');
     // La fenêtre de 24 h est conservée : une moyenne plus longue masquerait un arrêt de deux jours.
     expect(sql).toMatch(/"polylineMatchedAt"\s*>=\s*now\(\)\s*-\s*interval\s*'24 hours'/);

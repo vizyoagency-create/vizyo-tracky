@@ -14,7 +14,17 @@ import { RecuperationService } from './recuperation.service';
 /** T28 — ce que la requête sur la journée close rend ; tout à zéro par défaut. */
 interface JourneeClose { total: number; aLaCloture: number; apresCoup: number; sansRecalage: number; origineInconnue: number }
 
-function service(n: Partial<Record<string, number>> = {}, journee: Partial<JourneeClose> = {}) {
+/** Les analyses sans limite, par cause — ce que rend la ventilation ; `'casse'` = requête en échec. */
+interface SansLimite { orphelines: number; lentes: number; purgees: number; recentesRapides: number }
+
+/** Le texte d'une requête brute capturée, ses morceaux joints. */
+const texteDe = (appel: readonly unknown[]): string => (appel[0] as readonly string[]).join(' ');
+
+function service(
+  n: Partial<Record<string, number>> = {},
+  journee: Partial<JourneeClose> = {},
+  sansLimite: Partial<SansLimite> | 'casse' = {},
+) {
   const c = (v = 0) => jest.fn().mockResolvedValue(v);
   const prisma = {
     trip: {
@@ -28,8 +38,15 @@ function service(n: Partial<Record<string, number>> = {}, journee: Partial<Journ
         .mockResolvedValue(0),
     },
     // T28 — la journée close se mesure en une requête, avec une comparaison de colonnes que
-    // Prisma ne sait pas écrire (la date du recalage contre celle de la clôture).
-    $queryRaw: jest.fn().mockResolvedValue([{ total: 0, aLaCloture: 0, apresCoup: 0, sansRecalage: 0, origineInconnue: 0, ...journee }]),
+    // Prisma ne sait pas écrire (la date du recalage contre celle de la clôture). Depuis le 05/10,
+    // une seconde ventile les analyses sans limite par cause : on répond selon la requête.
+    $queryRaw: jest.fn(async (...appel: unknown[]) => {
+      if (!texteDe(appel).includes('"limitsKnown" = false')) {
+        return [{ total: 0, aLaCloture: 0, apresCoup: 0, sansRecalage: 0, origineInconnue: 0, ...journee }];
+      }
+      if (sansLimite === 'casse') throw new Error('base injoignable');
+      return [{ orphelines: 0, lentes: 0, purgees: 0, recentesRapides: 0, ...sansLimite }];
+    }),
     tripAnalysis: {
       count: jest
         .fn()
@@ -177,12 +194,14 @@ describe('T28 — le recalage à la clôture, sur une journée close', () => {
     await svc.etat(maintenant);
 
     const prisma = (svc as unknown as { prisma: { $queryRaw: jest.Mock } }).prisma;
-    expect(prisma.$queryRaw).toHaveBeenCalledTimes(1);
+    // La journée close se reconnaît à sa colonne de recalage ; il en faut exactement une requête.
+    const appels = prisma.$queryRaw.mock.calls.filter((c) => texteDe(c).includes('"polylineMatchedAt"'));
+    expect(appels).toHaveLength(1);
     // Les bornes passées à la requête : minuit à minuit, heure de Paris, la veille (UTC+2 en septembre).
-    const dates = (prisma.$queryRaw.mock.calls[0].slice(1) as unknown[]).filter((v): v is Date => v instanceof Date);
+    const dates = (appels[0].slice(1) as unknown[]).filter((v): v is Date => v instanceof Date);
     expect(dates.map((d) => d.toISOString())).toEqual(['2026-09-11T22:00:00.000Z', '2026-09-12T22:00:00.000Z']);
     // Et le délai de clôture est passé en paramètre, en secondes — une seule définition, dans le code.
-    expect(prisma.$queryRaw.mock.calls[0].slice(1)).toContain(7200);
+    expect(appels[0].slice(1)).toContain(7200);
   });
 
   it('la ligne « à la clôture » compte les trajets clôturés ce jour-là qui ont été recalés dans les deux heures', async () => {
@@ -226,5 +245,71 @@ describe('T28 — le recalage à la clôture, sur une journée close', () => {
     expect(cloture.role).toContain('deux heures');
     expect(cloture.role).toContain('journée close');
     expect(rattrapage.role).toContain('13/09');
+  });
+});
+
+/**
+ * ── UN MANQUE QUI NE SE COMBLERA PAS SE NOMME — IL NE SE COMPTE PAS EN « RESTANT » ──────────
+ *
+ * Le 2026-10-05, la ligne « Limites de vitesse » affichait « 576 restant(s) » : aucune de ces
+ * analyses n'attendait quoi que ce soit — 565 trajets sans point au-dessus de 33 km/h, 3 anciens aux
+ * positions purgées, 8 orphelines, 0 trajet récent parcouru vite. Et « 3 484 restant(s) » sur les
+ * portions désignait des constats que l'agent ne reprend jamais. Les deux nombres ne pouvaient pas
+ * descendre à zéro.
+ */
+describe('Récupération — un manque qui ne se comblera pas se nomme', () => {
+  /** La ventilation mesurée en production le 2026-10-05 à 16:39 (requête exacte du service). */
+  const MESURE_05_10 = { orphelines: 8, lentes: 565, purgees: 3, recentesRapides: 0 };
+
+  it('⚠️ limites : les 576 sont rangées par cause, et l’écran dit qu’aucune n’attend l’agent', async () => {
+    const l = await ligne(service({ analyses: 17815, limites: 17239 }, {}, MESURE_05_10), 'limites');
+    // Le rapport reste exact — c'est le manque qui change de nature.
+    expect(l.taux).toBe(96.8);
+    expect(l.manque).toBe(
+      'aucune n’attend l’agent : 565 trajet(s) sans point au-dessus de 33 km/h, 3 ancienne(s) hors rétention, 8 orpheline(s)',
+    );
+    expect(l.role).toContain('jamais dépassé 33 km/h');
+  });
+
+  it('un trajet récent parcouru vite et toujours sans limite passe en tête : c’est le seul à surveiller', async () => {
+    const l = await ligne(service({ analyses: 100, limites: 90 }, {}, { lentes: 7, recentesRapides: 3 }), 'limites');
+    expect(l.manque).toBe('3 trajet(s) récent(s) parcouru(s) vite et toujours sans limite · 7 trajet(s) sans point au-dessus de 33 km/h');
+  });
+
+  it('la ventilation garde les orphelines (LEFT JOIN) et range par la vitesse CORROBORÉE, au seuil de l’analyse', async () => {
+    const svc = service({ analyses: 10, limites: 0 }, {}, MESURE_05_10);
+    await svc.etat();
+    const prisma = (svc as unknown as { prisma: { $queryRaw: jest.Mock } }).prisma;
+    const appels = prisma.$queryRaw.mock.calls.filter((c) => texteDe(c).includes('"limitsKnown" = false'));
+    expect(appels).toHaveLength(1);
+    const texte = texteDe(appels[0]);
+    expect(texte).toContain('LEFT JOIN trips t ON t.id = ta."tripId"');
+    expect(texte).toContain('ta."maxSpeedKmh" <=');
+    // Le seuil est celui de l'analyse (33), et l'horizon celui de la ligne « hors rétention » (60 j).
+    const valeurs = appels[0].slice(1) as unknown[];
+    expect(valeurs).toContain(33);
+    const horizons = valeurs.filter((v): v is Date => v instanceof Date);
+    expect(horizons.length).toBeGreaterThan(0);
+    for (const h of horizons) expect(Math.round((Date.now() - h.getTime()) / 86_400_000)).toBe(60);
+  });
+
+  it('ventilation illisible : le manque le dit, et l’écran ne tombe pas', async () => {
+    const l = await ligne(service({ analyses: 100, limites: 90 }, {}, 'casse'), 'limites');
+    expect(l.manque).toBe('10 sans limite — ventilation indisponible');
+  });
+
+  it('⚠️ portions : une portion inscrite sans limite est un constat, pas un reste', async () => {
+    const l = await ligne(service({ cacheTotal: 354084, cacheResolu: 350600 }), 'portions');
+    expect(l.manque).toMatch(/^3.484 sans limite connue/);
+    expect(l.manque).toContain('l’agent ne les reprend pas');
+    for (const id of ['limites', 'portions']) {
+      expect((await ligne(service({ analyses: 17815, limites: 17239, cacheTotal: 354084, cacheResolu: 350600 }, {}, MESURE_05_10), id)).manque)
+        .not.toContain('restant');
+    }
+  });
+
+  it('rien sans limite → aucun manque', async () => {
+    expect((await ligne(service({ analyses: 100, limites: 100 }), 'limites')).manque).toBeNull();
+    expect((await ligne(service({ cacheTotal: 10, cacheResolu: 10 }), 'portions')).manque).toBeNull();
   });
 });
