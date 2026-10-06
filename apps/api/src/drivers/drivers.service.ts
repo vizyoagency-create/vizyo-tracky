@@ -16,6 +16,8 @@ interface RequestedBy {
   userId: string;
   role: UserRole;
   fleetId: string | null;
+  /** Périmètre granulaire (VehicleAccessService). Absent ou 'ALL' = borné à la société seule. */
+  accessibleVehicleIds?: string[] | 'ALL';
 }
 
 /**
@@ -148,6 +150,15 @@ export class DriversService {
     if (requestedBy.role !== UserRole.SUPER_ADMIN) {
       if (!requestedBy.fleetId) throw new NotFoundException('Véhicule introuvable');
       vehicleWhere.fleetId = requestedBy.fleetId;
+    }
+    // Revue du 29/09 — la société ne suffit pas : un gestionnaire limité à un groupe ne touche
+    // pas au conducteur d'un véhicule qu'il ne voit pas. 404, comme `VehiclesService.findOne`.
+    if (
+      requestedBy.accessibleVehicleIds &&
+      requestedBy.accessibleVehicleIds !== 'ALL' &&
+      !requestedBy.accessibleVehicleIds.includes(vehicleId)
+    ) {
+      throw new NotFoundException('Véhicule introuvable');
     }
     const vehicle = await this.prisma.vehicle.findFirst({ where: vehicleWhere });
     if (!vehicle) throw new NotFoundException('Véhicule introuvable');

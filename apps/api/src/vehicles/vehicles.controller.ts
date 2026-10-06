@@ -276,18 +276,24 @@ export class VehiclesController {
   /**
    * Phase 2 — Definit/retire le conducteur "courant" du vehicule.
    * Snape sur Trip.driverId au prochain finalize (driverSource='AUTO').
+   *
+   * Revue du 29/09 — même trou que `PATCH :id` (T9), resté ouvert ici : `@RequirePermissions`
+   * seul résout l'union des scopes, et le service ne filtrait que la société. Un gestionnaire qui
+   * a `drivers_manage` sur UN véhicule assignait donc, par son UUID, un conducteur à n'importe
+   * quel véhicule de sa société — hors de son périmètre, ou sur une ligne d'accès qui lui refuse
+   * ce droit. Même double verrou : `drivers_manage` résolu sur CE véhicule (403), et le périmètre
+   * appliqué par le service (404).
    */
   @Patch(':id/driver')
   @Roles(UserRole.SUPER_ADMIN, UserRole.FLEET_ADMIN, UserRole.FLEET_MANAGER)
   @RequirePermissions('drivers_manage')
-  assignDriver(
+  @RequireVehiclePermission('drivers_manage', { paramName: 'id' })
+  async assignDriver(
     @Param('id') id: string,
     @Body() dto: AssignDriverDto,
     @Req() req: AuthenticatedRequest,
   ) {
-    return this.drivers.assignToVehicle(id, dto.driverId, {
-      userId: req.user.id, role: req.user.role, fleetId: req.user.fleetId,
-    });
+    return this.drivers.assignToVehicle(id, dto.driverId, await this.buildRequestedBy(req));
   }
 
   /**
