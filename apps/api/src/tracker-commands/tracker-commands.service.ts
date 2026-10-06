@@ -102,6 +102,9 @@ export class TrackerCommandsService {
     const tracker = await this.prisma.tracker.findUnique({
       where: { id: trackerId },
       include: { vehicle: true },
+      // Demandé EXPLICITEMENT : omis de toutes les lectures par défaut (PrismaService).
+      // Il entre dans la commande construite plus bas (`buildPayload`).
+      omit: { devicePassword: false },
     });
     if (!tracker) throw new NotFoundException('Tracker introuvable');
     if (!tracker.vehicle) throw new BadRequestException('Tracker non associé à un véhicule');

@@ -118,6 +118,9 @@ export class AudioMonitoringService {
     const tracker = await this.prisma.tracker.findFirst({
       where: trackerWhere,
       include: { vehicle: { include: { fleet: true } } },
+      // Demandé EXPLICITEMENT : omis de toutes les lectures par défaut (PrismaService).
+      // Il sert à armer l'écoute (`monitor<mdp>`) plus bas.
+      omit: { devicePassword: false },
     });
     if (!tracker) {
       throw new NotFoundException('Tracker introuvable');

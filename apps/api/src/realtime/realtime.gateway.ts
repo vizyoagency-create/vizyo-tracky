@@ -11,11 +11,11 @@ import {
 } from '@nestjs/websockets';
 import type { AlertEvent, DepotMissionEndedEvent, DepotMissionPositionEvent, EngineCommandUpdatedEvent, GeofenceViolationEvent, PositionUpdateEvent, TrackerStatusChangedDto, TripStartedEvent, TripCompletedEvent, VehicleMovementEvent } from '@vizyo/tracky-shared';
 import { WS_EVENTS } from '@vizyo/tracky-shared';
-import type { Alert, Vehicle, Tracker } from '@prisma/client';
+import type { Alert, Vehicle } from '@prisma/client';
 import { Server, Socket } from 'socket.io';
 import { AuthService } from '../auth/auth.service';
 import { DepotScopeService } from '../depot/depot-scope.service';
-import { PrismaService } from '../prisma/prisma.service';
+import { PrismaService, type TrackerLu } from '../prisma/prisma.service';
 
 // V1.10 (Sprint 6) — Le Redis adapter est branche au niveau IoAdapter custom
 // dans main.ts (RedisIoAdapter). Plus de hook afterInit ici : la signature
@@ -552,7 +552,7 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
     ]);
   }
 
-  broadcastAlert(alert: Alert & { vehicle?: Vehicle | null; tracker?: Tracker | null }): void {
+  broadcastAlert(alert: Alert & { vehicle?: Vehicle | null; tracker?: TrackerLu | null }): void {
     const payload = (alert.payload ?? {}) as Record<string, unknown>;
     const event: AlertEvent = {
       id: alert.id,

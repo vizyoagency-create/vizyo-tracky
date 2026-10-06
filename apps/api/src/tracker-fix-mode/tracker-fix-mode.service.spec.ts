@@ -180,8 +180,9 @@ describe('TrackerFixModeService — envoi réel (repli SMS + override)', () => {
     id: TRACKER_ID,
     imei: '123456789012345',
     simPhoneNumber: '+33656691615',
-    // 2026-09-30 — la forme SMS porte le mot de passe DU boîtier : sans lui, « fix099s***nundefined ».
-    devicePassword: '123456',
+    // 2026-10-07 — PAS de `devicePassword` ici : le boîtier reçu vient de lectures qui l'omettent
+    // (PrismaService). La forme SMS le porte pourtant : `requestChange` le RELIT en base, à
+    // l'instant du repli (voir `prisma.tracker.findUnique` plus bas, et les tests dédiés).
     lastSeenAt: overrides.lastSeenAt === undefined ? new Date(Date.now() - 30 * 60_000) : overrides.lastSeenAt,
     lastValidFrameAt: null,
     desiredFixIntervalS: 30,
@@ -194,7 +195,8 @@ describe('TrackerFixModeService — envoi réel (repli SMS + override)', () => {
 
   beforeEach(async () => {
     prisma = {
-      tracker: { update: jest.fn().mockResolvedValue({}), findUnique: jest.fn() },
+      // `findUnique` rend par défaut ce que relit le repli SMS : le mot de passe du boîtier, seul.
+      tracker: { update: jest.fn().mockResolvedValue({}), findUnique: jest.fn().mockResolvedValue({ devicePassword: '123456' }) },
       trackerCommand: {
         create: jest.fn().mockResolvedValue({ id: 'cmd-1' }),
         update: jest.fn().mockResolvedValue({}),
@@ -281,6 +283,45 @@ describe('TrackerFixModeService — envoi réel (repli SMS + override)', () => {
     });
   });
 
+  describe('repli SMS — le mot de passe est RELU en base, à l\'instant du repli (2026-10-07)', () => {
+    // Le boîtier reçu n'en porte pas (lectures qui l'omettent) : c'est la relecture qui fait foi.
+    // Un mot de passe propre au boîtier doit donc partir tel quel dans le SMS.
+    it('envoie le SMS avec le mot de passe relu, pas une valeur supposée', async () => {
+      prisma.tracker.findUnique.mockResolvedValueOnce({ devicePassword: '904417' });
+
+      const out = await service.requestChange(tracker({ failing: false }) as never, 300, 'TEST', {});
+
+      expect(prisma.tracker.findUnique).toHaveBeenCalledWith({
+        where: { id: TRACKER_ID },
+        select: { devicePassword: true },
+      });
+      expect(sms.send).toHaveBeenCalledWith('+33656691615', 'fix099s***n904417', expect.any(Object));
+      expect(out?.sent).toBe(true);
+    });
+
+    // Boîtier disparu entre la lecture et le repli : sans mot de passe, le firmware ignorerait la
+    // commande — un SMS facturé pour rien, et une commande qui aurait l'air partie.
+    it('mot de passe illisible : aucun SMS, la commande n\'est pas donnée pour partie', async () => {
+      prisma.tracker.findUnique.mockResolvedValueOnce(null);
+
+      const out = await service.requestChange(tracker({ failing: false }) as never, 300, 'TEST', {});
+
+      expect(sms.send).not.toHaveBeenCalled();
+      expect(out?.sent).toBe(false);
+    });
+
+    // La forme TCP ne porte pas de mot de passe (session authentifiée par l'IMEI) : un envoi par
+    // la socket ne doit même pas relire le secret.
+    it('envoi par la socket : le mot de passe n\'est pas relu', async () => {
+      registry.send.mockReturnValue(true);
+
+      await service.requestChange(tracker({ failing: false }) as never, 300, 'TEST', {});
+
+      expect(prisma.tracker.findUnique).not.toHaveBeenCalled();
+      expect(sms.send).not.toHaveBeenCalled();
+    });
+  });
+
   describe('setManualOverride — l\'indicateur d\'échec suit l\'envoi RÉEL', () => {
     beforeEach(() => {
       prisma.tracker.findUnique.mockResolvedValue(tracker({ lastSeenAt: new Date() }));
@@ -348,8 +389,11 @@ describe('TrackerFixModeService — envoi réel (repli SMS + override)', () => {
     // `force` traverse la porte « boîtier muet » : un humain qui décide de sonder un
     // boîtier silencieux garde ce droit — la porte ne vise que les automates.
     it('laisse l\'override forcé atteindre un boîtier dormant', async () => {
-      prisma.tracker.findUnique.mockResolvedValue(
-        tracker({ lastSeenAt: new Date(Date.now() - 89 * DAY) }),
+      // Comme la vraie base : la lecture du boîtier (avec `include`) ne rend pas le mot de passe ;
+      // seule la relecture demandée par le repli SMS (`select: { devicePassword }`) le rend.
+      const dormant = tracker({ lastSeenAt: new Date(Date.now() - 89 * DAY) });
+      prisma.tracker.findUnique.mockImplementation(async (args: { select?: { devicePassword?: boolean } }) =>
+        args?.select?.devicePassword ? { devicePassword: '123456' } : dormant,
       );
       registry.send.mockReturnValue(false);
 

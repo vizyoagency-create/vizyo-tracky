@@ -14,7 +14,7 @@ import {
   isVehicleDormant,
 } from '@vizyo/tracky-shared';
 import { CobanWireLogger } from '../observability/coban-wire-logger.service';
-import { PrismaService } from '../prisma/prisma.service';
+import { PrismaService, type TrackerLu } from '../prisma/prisma.service';
 import { SmsGatewayService } from '../sms/sms-gateway.service';
 import { AckWaiterService } from '../tracker-commands/ack-waiter.service';
 import { SocketRegistryService } from '../socket-registry/socket-registry.service';
@@ -174,6 +174,16 @@ export class TrackerFixModeService {
    * facture pour rien. `force` (override admin explicite) reste au-dessus de cette
    * porte — un humain qui decide de sonder un boitier silencieux garde ce droit.
    */
+  /**
+   * Mot de passe du boîtier, relu à l'instant de construire une commande qui le porte (forme SMS),
+   * ou `null` s'il a disparu. Jamais transporté avec le boîtier : toutes les lectures l'omettent
+   * (PrismaService), et c'est voulu — il ne doit exister en mémoire que le temps d'un envoi.
+   */
+  private async motDePasseBoitier(trackerId: string): Promise<string | null> {
+    const t = await this.prisma.tracker.findUnique({ where: { id: trackerId }, select: { devicePassword: true } });
+    return t?.devicePassword ?? null;
+  }
+
   private async tryFallbackSms(
     tracker: Pick<Tracker, 'id' | 'imei' | 'simPhoneNumber' | 'lastSeenAt'>,
     payload: string,
@@ -663,7 +673,7 @@ export class TrackerFixModeService {
       let emises = 0;
       for (const t of bloques) {
         const out = await this.requestChange(
-          t as Tracker & { vehicle: (Vehicle & { fleet: Fleet }) | null },
+          t,
           t.desiredFixIntervalS,
           'RECUPERATION_TRK045',
           { cadenceObservee: t.currentFixIntervalS, cible: t.desiredFixIntervalS },
@@ -979,7 +989,7 @@ export class TrackerFixModeService {
    * setManualOverride en tirait la conclusion inverse de la realite (cf. plus bas).
    */
   async requestChange(
-    tracker: Tracker & { vehicle: (Vehicle & { fleet: Fleet }) | null },
+    tracker: TrackerLu & { vehicle: (Vehicle & { fleet: Fleet }) | null },
     desiredS: number,
     reason: string,
     contextSnapshot: Record<string, unknown>,
@@ -1055,12 +1065,21 @@ export class TrackerFixModeService {
     // `fix005m***n<mdp>`, la seule que le firmware lit dans un SMS.
     //
     // Le mot de passe vient du boîtier depuis le 30/09/2026 : la forme SMS le porte, la forme
-    // TCP non (la session est authentifiée par l'IMEI).
-    const pwd = tracker.devicePassword;
-    const payloadTcp = template.buildTcpPayload
-      ? template.buildTcpPayload(tracker.imei, { interval })
-      : template.buildPayload(tracker.imei, { interval }, pwd);
-    const payloadSms = template.buildPayload(tracker.imei, { interval }, pwd);
+    // TCP non (la session est authentifiée par l'IMEI). Il n'est PAS lu avec le boîtier reçu ici
+    // (lectures qui l'omettent, PrismaService — dont celle de l'ingestion des positions, à
+    // chaque trame) : il est relu seulement s'il faut construire une forme qui le porte.
+    let payloadTcp: string;
+    if (template.buildTcpPayload) {
+      payloadTcp = template.buildTcpPayload(tracker.imei, { interval });
+    } else {
+      // Pas de forme TCP propre : la commande texte porte le mot de passe, relu ici.
+      const pwdTcp = await this.motDePasseBoitier(tracker.id);
+      if (!pwdTcp) {
+        this.logger.error({ trackerId: tracker.id }, 'Mot de passe du boîtier illisible — commande fix non construite');
+        return null;
+      }
+      payloadTcp = template.buildPayload(tracker.imei, { interval }, pwdTcp);
+    }
 
     // Persist command + snapshot before any wire IO.
     const command = await this.prisma.trackerCommand.create({
@@ -1093,8 +1112,14 @@ export class TrackerFixModeService {
       // Tentative fallback SMS si tracker offline > 5min ET simPhoneNumber connu.
       // `force` traverse la porte « boitier muet » du repli : un override admin explicite
       // reste autorise a sonder un boitier silencieux, l'automate non.
-      const smsSent = await this.tryFallbackSms(tracker, payloadSms, command.id, force);
-      if (smsSent) {
+      //
+      // Le mot de passe n'entre que dans la forme SMS : relu ICI, à l'instant du repli. Illisible
+      // (boîtier disparu entre-temps) → pas de SMS : sans mot de passe, le firmware ignorerait la
+      // commande, et le SMS serait facturé pour rien (même règle que le coupe-circuit).
+      const pwd = await this.motDePasseBoitier(tracker.id);
+      const payloadSms = pwd ? template.buildPayload(tracker.imei, { interval }, pwd) : null;
+      const smsSent = payloadSms !== null && (await this.tryFallbackSms(tracker, payloadSms, command.id, force));
+      if (payloadSms !== null && smsSent) {
         await this.prisma.trackerCommand.update({
           where: { id: command.id },
           data: {
@@ -1211,7 +1236,7 @@ export class TrackerFixModeService {
       });
       if (tracker) {
         const out = await this.requestChange(
-          tracker as Tracker & { vehicle: (Vehicle & { fleet: Fleet }) | null },
+          tracker,
           desiredS,
           'MANUAL_OPERATOR',
           { manualOverrideBy: requestedByUserId, untilMinutes },

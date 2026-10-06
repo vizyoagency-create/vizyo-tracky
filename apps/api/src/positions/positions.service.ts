@@ -6,7 +6,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { CommandStatus, EngineAction, Prisma, UserRole } from '@prisma/client';
-import type { Position, Tracker, Vehicle } from '@prisma/client';
+import type { Position, Vehicle } from '@prisma/client';
 import type { CobanPositionFrame, PositionUpdateEvent } from '@vizyo/tracky-shared';
 import { evaluateIngestionFix, isPlausibleReportedSpeed, isValidLatLng, WS_EVENTS } from '@vizyo/tracky-shared';
 import { EventEmitter2 } from '@nestjs/event-emitter';
@@ -18,7 +18,7 @@ import {
 } from '../gps-dead-zones/presomption-stationnement';
 import { SORTIE_HORS_CHAMP_EVENT, type SortieHorsChampEvent } from './sortie-hors-champ.event';
 import { ErrorLogger } from '../observability/error-logger.service';
-import { PrismaService } from '../prisma/prisma.service';
+import { PrismaService, type TrackerLu } from '../prisma/prisma.service';
 import { PositionBroadcastBuffer } from '../realtime/position-broadcast-buffer.service';
 import { PositionBatchBufferService } from './position-batch-buffer.service';
 import { resolveEffectivePrivacy } from '../privacy-mode/effective-privacy';
@@ -412,7 +412,7 @@ export class PositionsService {
         frame.speedKph > 5 &&
         frame.deviceTime.getTime() - tracker.lastPositionAt.getTime() >= RESURFACE_SOMBRE_MIN_MS
       ) {
-        void this.detecterSortieHorsChamp(tracker as Tracker & { vehicle: Vehicle }, frame).catch((err) => {
+        void this.detecterSortieHorsChamp(tracker as TrackerLu & { vehicle: Vehicle }, frame).catch((err) => {
           this.logger.warn(
             `TRK-046 : détection de sortie hors champ impossible pour ${frame.imei} — ${err instanceof Error ? err.message : String(err)}`,
           );
@@ -555,7 +555,7 @@ export class PositionsService {
     // Detect ignition transitions for SMS bypass / relay reset
     if (ignitionChanged && tracker.vehicle) {
       this.handleIgnitionTransition(
-        tracker as Tracker & { vehicle: Vehicle },
+        tracker as TrackerLu & { vehicle: Vehicle },
         tracker.lastKnownIgnition!,
         resolvedIgnition!,
       ).catch((err) => {
@@ -597,7 +597,7 @@ export class PositionsService {
       if (stateChanged || desiredS !== tracker.desiredFixIntervalS) {
         this.fixMode
           .requestChange(
-            tracker as Tracker & { vehicle: Vehicle & { fleet: NonNullable<typeof tracker.vehicle>['fleet'] } },
+            tracker as TrackerLu & { vehicle: Vehicle & { fleet: NonNullable<typeof tracker.vehicle>['fleet'] } },
             desiredS,
             stateChanged ? `${tracker.lastSampledState ?? 'NEW'}_TO_${samplingState}` : `${samplingState}_INTERVAL_ADJUSTED`,
             {
@@ -716,7 +716,7 @@ export class PositionsService {
    * d'AVANT la trame (l'ancre lastLat/lastLng est encore le point d'entrée du lieu).
    */
   private async detecterSortieHorsChamp(
-    tracker: Tracker & { vehicle: Vehicle },
+    tracker: TrackerLu & { vehicle: Vehicle },
     frame: CobanPositionFrame,
   ): Promise<void> {
     const sombreDepuis = tracker.lastPositionAt as Date; // garanti par l'appelant
@@ -828,7 +828,7 @@ export class PositionsService {
   }
 
   private async handleIgnitionTransition(
-    tracker: Tracker & { vehicle: Vehicle },
+    tracker: TrackerLu & { vehicle: Vehicle },
     previousIgnition: boolean,
     currentIgnition: boolean,
   ): Promise<void> {

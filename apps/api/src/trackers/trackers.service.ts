@@ -7,10 +7,9 @@ import {
 } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Prisma, UserRole } from '@prisma/client';
-import type { Tracker } from '@prisma/client';
 import { resolveTenantScope } from '../common/tenant-scope';
 import { VEHICLE_GROUP_INCLUDE, flattenVehicleGroup } from '../common/vehicle-group';
-import { PrismaService } from '../prisma/prisma.service';
+import { PrismaService, type TrackerLu } from '../prisma/prisma.service';
 import type { CreateTrackerDto } from './dto/create-tracker.dto';
 import type { UpdateTrackerDto } from './dto/update-tracker.dto';
 
@@ -29,10 +28,12 @@ interface RequestedBy {
  * le dire ; et inversement, la valeur d'usine peut changer d'un lot de matériel à l'autre.
  * Ce qui compte n'est pas la chaîne, c'est « quelqu'un s'en est-il occupé ».
  */
-function sansMotDePasse<T extends { devicePassword?: string; devicePasswordSetAt?: Date | null }>(
+function sansMotDePasse<T extends { devicePasswordSetAt?: Date | null }>(
   t: T,
 ): T {
-  const { devicePassword: _secret, ...reste } = t;
+  // Ceinture et bretelles : `PrismaService` l'omet déjà de toute lecture ; on le retire quand
+  // même, au cas où un objet le porterait (lecture explicite, objet construit à la main).
+  const { devicePassword: _secret, ...reste } = t as T & { devicePassword?: string };
   return { ...(reste as T), motDePasseUsine: t.devicePasswordSetAt == null } as T;
 }
 
@@ -43,7 +44,7 @@ export class TrackersService {
     private readonly eventEmitter: EventEmitter2,
   ) {}
 
-  async create(dto: CreateTrackerDto, _requestedBy: RequestedBy): Promise<Tracker> {
+  async create(dto: CreateTrackerDto, _requestedBy: RequestedBy): Promise<TrackerLu> {
     if (!/^\d{15}$/.test(dto.imei)) {
       throw new BadRequestException('IMEI doit contenir exactement 15 chiffres');
     }
@@ -119,7 +120,7 @@ export class TrackersService {
   async findAll(
     requestedBy: RequestedBy,
     filters?: { status?: string; unassigned?: string; limit?: number },
-  ): Promise<Tracker[]> {
+  ): Promise<TrackerLu[]> {
     const isSuperAdmin = requestedBy.role === UserRole.SUPER_ADMIN;
     const maxLimit = isSuperAdmin ? 500 : 50;
     const limit = Math.min(filters?.limit ?? maxLimit, maxLimit);
@@ -156,7 +157,7 @@ export class TrackersService {
     );
   }
 
-  async findOne(id: string, requestedBy: RequestedBy): Promise<Tracker> {
+  async findOne(id: string, requestedBy: RequestedBy): Promise<TrackerLu> {
     // V1.10 (Sprint 6) — IDOR fix : filtre tenant integre au where (404 si
     // tracker d'une autre flotte). SUPER_ADMIN voit tout (incl. trackers
     // orphelins en stock). Non-SUPER ne voit que les trackers attaches a
@@ -177,7 +178,7 @@ export class TrackersService {
     return sansMotDePasse(out);
   }
 
-  async update(id: string, dto: UpdateTrackerDto, requestedBy: RequestedBy): Promise<Tracker> {
+  async update(id: string, dto: UpdateTrackerDto, requestedBy: RequestedBy): Promise<TrackerLu> {
     await this.findOne(id, requestedBy);
 
     // V1.7 — accConnected reglable UNIQUEMENT par SUPER_ADMIN. Decision a fort
@@ -232,7 +233,7 @@ export class TrackersService {
     trackerId: string,
     vehicleId: string,
     requestedBy: RequestedBy,
-  ): Promise<Tracker> {
+  ): Promise<TrackerLu> {
     // V1.10 (Sprint 6) — IDOR fix : filtre tenant integre au where pour le
     // vehicule (404 si autre flotte) et pour le tracker (libre OU dans la
     // flotte du caller).
@@ -288,7 +289,7 @@ export class TrackersService {
     return sansMotDePasse(updated);
   }
 
-  async unassign(trackerId: string, requestedBy: RequestedBy): Promise<Tracker> {
+  async unassign(trackerId: string, requestedBy: RequestedBy): Promise<TrackerLu> {
     const tracker = await this.findOne(trackerId, requestedBy);
 
     if (!tracker.vehicleId) {
