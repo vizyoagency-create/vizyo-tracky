@@ -6932,6 +6932,13 @@ confondre les deux ferait accuser le mauvais coupable.
 
 ---
 
+- **Re-mesure du 2026-10-06** — **gravité inchangée (3), statut inchangé, mais la lecture change** : le rapport du 05/10 ne voyait que la garde du **matin** (05:30–09:00 Paris) et concluait « aucun dommage ». Le
+  journal T33 du 05/10 porte **3 `force=true`** (09:37, 10:58, 21:42 UTC) et **deux passages d'automatisation `interrupted`** (`finishedAt` NUL) : **08:45 UTC** (↔ `950b25da`, 09:37:33Z, « sur l'ordre du propriétaire »,
+  commit `d6eb9d85`) et **10:45 UTC** (↔ `64649f90`, 10:58:05Z, recréation à HH:58, commit `d1bf92ac`) ; le passage de 21:45 est `done` après `e0e3b404` (21:42Z). **La garde des passages (TRK-077) est donc franchie
+  elle aussi, et elle tue.** Le même jour, **8 déploiements par `--attendre`** (16:41 → 23:56, dont 2 attentes de 19 min) n'ont rien tué. Garde du matin : dernier `force=true` dans 05:30–09:00 Paris = **01/10 06:19** →
+  compteur **jour 5/7** (APPLIQUE possible le **08/10** si rien ne passe). Le coût d'un passage tué est **une heure de retard** (la fenêtre de 26 h recouvre), pas une donnée perdue : c'est la même mécanique qui, un jour, tombera
+  sur une reprise. Mesuré par le collecteur lui-même depuis ce passage (**VPS-M137**).
+
 ## VPS-053 — Une commande de diagnostic a fait paniquer dockerd en production, et le collecteur a lu le redémarrage comme une baisse de consommation
 
 - **Domaine** : docker · **Gravité** : 2 · **Statut** : `SURVEILLANCE` — règle déjà posée (commit `b2f4e204`, `CLAUDE.md`) ; collecteur corrigé (**VPS-M131**)
@@ -6969,8 +6976,51 @@ confondre les deux ferait accuser le mauvais coupable.
   rapport du 01/10 *« 1 panique jusqu'au 02/10 18:23, puis 0 »* : **vérifiée**. L'historique BuildKit fautif est **toujours là** (non nettoyé).
 ---
 
+## VPS-054 — Maestroo est en production sur ce VPS : sa base est sauvegardée, mais sur le même disque, jamais relue, et invisible du collecteur
+
+- **Domaine** : sauvegardes · **Gravité** : 3 · **Statut** : `A_TRAITER` — décision hors audit (**V45**)
+- **Vu** : 2026-10-06 (conteneurs créés le **05/10 23:56:38** pour `maestroo-prod-postgres`, **06/10 00:31:45 / 00:31:53** pour `-api` / `-web`). **Mesure** (lecture seule) :
+
+  | Grandeur | Valeur | Source |
+  |---|---|---|
+  | conteneurs | 3, `healthy`, 0 redémarrage, 0 limite mémoire, routés `app.maestroo.app` et `api.maestroo.app` | collecte §4 |
+  | base | `maestroo`, 11 Mo, 59 tables, 7 connexions / 100, `random_page_cost` 4 | §5 |
+  | sauvegarde | cron root `15 2 * * *` → `/opt/backups/maestroo-prod/db-AAAAMMJJ-HHMM.sql.gz` (28–32 Ko), rotation 30 j ; `/var/log/maestroo-backup.log` 02:15:03 « base OK : 59 tables, 176 377 octets » ; dossier mode 700 | `crontab -l`, `ls` |
+  | collecteur | « 🔴 AUCUNE SAUVEGARDE » — il ne lisait que `/var/backups` (**VPS-M136**) | §11 |
+  | healthchecks | 78 → **84 / min** (+6) ; limites : 31 / 38 → **34 / 41** sans limite | §7, §12 |
+  | cron neufs au catalogue | `maestroo-lp-autostart.sh` (`*/10`, **s'efface** quand les DNS de `maestroo.app` pointent ici, installé le 06/10), backup prod `02:15`, backup dev `02:45` | §7 |
+
+- **QUOI — la cause** : la base est entrée en production par le dépôt Maestroo, avec **son** script de sauvegarde, **sa** destination (`/opt/backups`, deuxième racine que ni la couverture ni l'intégrité du collecteur ne lisaient) et
+  **sa** rotation. Rien de cela n'est mauvais ; mais la copie est **sur le disque de la base**, **n'est relue par personne** (le journal dit « OK » à l'écriture, pas « se relit ») et **n'a aucune copie hors-site** (la copie vers le PC ne couvre que
+  `vizyo-verify`).
+- **`pourquoiInvisible`** : le collecteur a répondu « aucune sauvegarde » (faux), ce qui aurait été corrigé par un humain en ajoutant un dossier sous `/var/backups` — **le mauvais remède**. Le vrai défaut n'est pas l'absence de copie, c'est qu'elle ne soit
+  ni relue ni éloignée.
+- **QUOI FAIRE** : (1) ✅ le collecteur lit désormais `/opt/backups` (**VPS-M136**) ; (2) **décider** d'une copie hors-site (la base pèse 11 Mo : coût nul) et d'une relecture `gzip -t` + marqueur `pg_dump` ; (3) poser les limites mémoire avec celles de **V7**.
+- **`aNePasFaire`** : ❌ ne pas déplacer le dossier vers `/var/backups` « pour que le collecteur le voie » (le script de Maestroo le recréerait) ; ❌ ne pas toucher au cron depuis l'audit ; ❌ ne pas retirer `maestroo-lp-autostart.sh` de la crontab : il s'efface seul.
+- **Seuil de réescalade** : **gravité 2** si une sauvegarde nocturne manque (dossier sans fichier de moins de 30 h) ou si la base dépasse 100 Mo sans copie hors-site ; `APPLIQUE` quand une copie hors du disque existe et que sa relecture est au collecteur.
+---
+
 
 ## Constats de méthode (sur l'audit lui-même)
+
+### VPS-M137 — Le collecteur demandait « un passage a-t-il été tué ? » sous chaque `--force` et n'y répondait jamais
+
+- **Domaine** : méthode · **Gravité** : 3 · **Statut** : `APPLIQUE` (2026-10-06 — bloc sous le journal T33, banc sur le VPS)
+- **Vu** : 2026-10-06. Angle mort n° 3 du rapport du 29/09, **reporté trois fois** (29/09, 01/10, 05/10). Sous chaque `force=true`, le collecteur imprimait *« un passage HH:45 en cours a-t-il été tué ? (centre d'alerte) »* : la réponse
+  était un SQL tapé à la main. Le 05/10, **deux** `--force` (09:37 et 10:58 UTC) ont tué deux passages (08:45 et 10:45, `interrupted`, `finishedAt` NUL) ; le rapport de 06:47 UTC n'a pas pu le dire.
+- **Correctif** : `trip_automation_runs` non `done` (ou `finishedAt` NUL) sur 48 h et de plus de 60 min, croisé avec les lignes du journal T33 tombées **dans l'heure** qui suit leur départ ; 🔴 avec cause, 🟠 sans (cause non établie) ; `timeout 20` ;
+  code de retour testé — *mesure NON FAITE ≠ aucun passage tué*. **Banc VPS** : *« 🔴 passage du 10-05 08:45 UTC : interrupted — 2026-10-05T09:37:33Z(force=true) »* et *« 10:45 — 10:58:05Z(force=true) »*. `bash -n` OK.
+- **`aNePasFaire`** : ❌ ne pas lire « dans l'heure » comme une preuve (corrélation) ; le centre d'alerte (TRK-077) tranche. ❌ ne pas élargir la fenêtre de 48 h sans relire le coût (une requête, ~0,1 s).
+- **Leçon** : un contrôle qui imprime une **question** sans sa réponse est un report déguisé. Il doit répondre, ou écrire « mesure NON FAITE ».
+
+### VPS-M136 — La couverture des sauvegardes ne lisait que `/var/backups` : une base de production neuve s'affichait « 🔴 AUCUNE SAUVEGARDE »
+
+- **Domaine** : méthode · **Gravité** : 3 · **Statut** : `APPLIQUE` (2026-10-06 — bloc couverture, banc sur le VPS)
+- **Vu** : 2026-10-06, le jour où `maestroo-prod-postgres` entre dans la table. Elle est sauvegardée chaque nuit à 02:15 (cron root, `/opt/backups/maestroo-prod/`, journal « 59 tables, 176 377 octets »), mais le balayage ne lisait que `/var/backups`.
+- **Correctif** : `for d in /var/backups/*/ /opt/backups/*/`. **Banc VPS** : `maestroo-prod-postgres -> maestroo-prod`, `maestroo-dev-postgres -> maestroo-dev`, témoin `tracky-postgres -> tracky-pre-deploy-20260427 vizyo-tracky tracky` (bruit assumé : `/opt/backups/tracky`, copie de juillet,
+  ne gagne jamais sur la plus récente). `bash -n` OK. **Effet à lire demain** : `maestroo-dev-postgres` passe de « aucune sauvegarde — VOULU » à ✅ si `/opt/backups/maestroo-dev` est frais.
+- **Limite connue (angle mort 3)** : la **fraîcheur** est lue, pas l'**intégrité** ni la copie hors-site pour cette racine (VPS-054).
+- **`aNePasFaire`** : ❌ ne pas lire « ✅ à jour » comme « se relit » : seul le bloc *Intégrité* le dit, et il ne couvre pas encore `/opt/backups`.
 
 ### VPS-M135 — Deux faux 🔴 « ABANDONNEE » dans la couverture des sauvegardes : le rapprochement cherchait un tiret, les dossiers vivants portent un souligné
 
