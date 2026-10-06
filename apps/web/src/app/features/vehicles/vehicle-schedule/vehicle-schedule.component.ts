@@ -185,7 +185,7 @@ const TIMEZONES = [
                     type="button"
                     (click)="toggleDay(day.key)"
                     [disabled]="readonly()"
-                    class="vsched-day-toggle"
+                    class="vsched-day-toggle vt-interrupteur"
                     [class.vsched-day-toggle--on]="day.enabled"
                     [attr.aria-label]="(day.enabled ? 'Désactiver ' : 'Activer ') + day.label"
                   >

@@ -169,7 +169,7 @@ const ATTESTATION_VERSION = 'v1';
                 [attr.aria-checked]="assistanceOn()"
                 (click)="toggle()"
                 [disabled]="saving() || (!assistanceOn() && !attested())"
-                class="switch"
+                class="switch vt-interrupteur"
                 [class.on]="assistanceOn()"
               >
                 <span class="knob"></span>

@@ -329,6 +329,31 @@ body.plat-android {
     justify-content: flex-start;
   }
 
+  /* ⚠️ LES INTERRUPTEURS — 2026-10-07.
+   *
+   * Un interrupteur dessiné en CSS — une piste, une pastille en position absolue — est un
+   * `<button>` de 32 × 18 à 52 × 32 px. La hauteur minimale ci-dessus l'étirait à 44 px : une
+   * piste ovale, la pastille collée en haut (constaté sur les jours des horaires du véhicule à
+   * 375 px ; même défaut sur le rapport du dépôt et les réglages d'écoute). Un interrupteur
+   * garde sa FORME ; c'est sa ZONE DE TOUCHER qui grandit — un pseudo-élément invisible, centré,
+   * de 44 px au moins dans les deux sens. Même exigence d'accessibilité, sans déformer le dessin.
+   *
+   * L'interrupteur doit être positionné (`position: relative`), ce que sa pastille absolue
+   * exige déjà. Comment repérer le suivant : un `<button>` dont le CSS fixe une hauteur sous
+   * 44 px et qui contient une pastille en position absolue (souvent `role="switch"`). */
+  .vt-interrupteur {
+    min-height: 0;
+  }
+  .vt-interrupteur::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: max(100%, 44px);
+    height: max(100%, 44px);
+    transform: translate(-50%, -50%);
+  }
+
   /* Les exceptions motivées ci-dessus.
    *
    * ⚠️ `.maplibregl-marker` AJOUTÉ LE 2026-09-07, ET C'EST LA FORME QUI COMPTE.

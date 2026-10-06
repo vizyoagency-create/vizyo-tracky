@@ -88,7 +88,7 @@ import { ToastService } from '../../shared/ui/toast/toast.service';
                       [attr.aria-label]="'Éligibilité audio de ' + f.fleetName"
                       (click)="toggleEligibility(f)"
                       [disabled]="savingId() === f.fleetId || savingAssistId() === f.fleetId"
-                      class="switch"
+                      class="switch vt-interrupteur"
                       [class.on]="f.superAdminEnabled"
                     >
                       <span class="knob"></span>
@@ -108,7 +108,7 @@ import { ToastService } from '../../shared/ui/toast/toast.service';
                         [attr.aria-label]="'Mode assistance (test) de ' + f.fleetName"
                         (click)="toggleAssistance(f)"
                         [disabled]="savingAssistId() === f.fleetId || savingId() === f.fleetId"
-                        class="switch"
+                        class="switch vt-interrupteur"
                         [class.on]="f.assistanceEnabled"
                       >
                         <span class="knob"></span>

@@ -49,7 +49,7 @@ import { DepotExportModalComponent } from './modals/depot-export-modal.component
         </div>
         <button
           type="button"
-          class="dd-switch"
+          class="dd-switch vt-interrupteur"
           role="switch"
           [attr.aria-checked]="rapportActif()"
           [class.dd-switch--on]="rapportActif()"
