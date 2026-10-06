@@ -28,6 +28,8 @@ import { GroupBadgeComponent } from '../../shared/ui/group-badge/group-badge.com
 import { ConnectivityBadgeComponent } from '../../shared/ui/connectivity-badge/connectivity-badge.component';
 import { BrandLogoComponent } from '../../shared/ui/brand-logo/brand-logo.component';
 import { InstallReviewBadgeComponent } from '../../shared/ui/install-review-badge/install-review-badge.component';
+import { EtatVehiculeBadgeComponent } from '../../shared/ui/etat-vehicule-badge/etat-vehicule-badge.component';
+import { etatVehicule, immobilisationRetenue } from '../../shared/utils/hors-service';
 import { TrackClickDirective } from '../../shared/directives/track-click.directive';
 import { BottomSheetComponent } from '../../shared/ui/bottom-sheet/bottom-sheet.component';
 import { ZoneComponent, type EtatZone } from '../../shared/ui/zone/zone.component';
@@ -51,7 +53,7 @@ type FiltreStatut = 'tous' | 'roulage' | 'arret' | 'hors-ligne' | 'sans-boitier'
   selector: 'app-vehicles-list',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [RouterLink, FormsModule, LucideAngularModule, VehicleDialogComponent, VehicleGroupsTabComponent, VehicleCapacityTableComponent, ConfirmModalComponent, SaFleetBadgeComponent, GroupBadgeComponent, ConnectivityBadgeComponent, BrandLogoComponent, InstallReviewBadgeComponent, TrackClickDirective, EngineControlButtonComponent, VehicleLinkDirective, PrivacyModeTabComponent, VehicleQrDialogComponent, BottomSheetComponent, ZoneComponent, UrgenceVehiculeComponent],
+  imports: [RouterLink, FormsModule, LucideAngularModule, VehicleDialogComponent, VehicleGroupsTabComponent, VehicleCapacityTableComponent, ConfirmModalComponent, SaFleetBadgeComponent, GroupBadgeComponent, ConnectivityBadgeComponent, BrandLogoComponent, InstallReviewBadgeComponent, EtatVehiculeBadgeComponent, TrackClickDirective, EngineControlButtonComponent, VehicleLinkDirective, PrivacyModeTabComponent, VehicleQrDialogComponent, BottomSheetComponent, ZoneComponent, UrgenceVehiculeComponent],
   template: `
     @if (auth.isWatchman()) {
       <!-- ───────────────────────────────────────────────────────────────────
@@ -354,6 +356,8 @@ type FiltreStatut = 'tous' | 'roulage' | 'arret' | 'hors-ligne' | 'sans-boitier'
                       } @else {
                         <app-connectivity-badge [state]="presence(v)" [lastSeenAt]="lastSeenOf(v)" />
                       }
+                      <!-- 06/10/2026 — l'état de disponibilité (fiche, agenda) : les mots de la carte. -->
+                      <app-etat-vehicule-badge [etat]="etatDe(v)" [immobilisation]="immobilisationDe(v)" />
                       @if (installToReview(v)) { <app-install-review-badge /> }
                     </td>
                     <td>
@@ -438,6 +442,7 @@ type FiltreStatut = 'tous' | 'roulage' | 'arret' | 'hors-ligne' | 'sans-boitier'
                           <span class="v-dormant-age">Dormant · {{ silenceLabel(v) }}</span>
                         }
                       }
+                      <app-etat-vehicule-badge [etat]="etatDe(v)" [immobilisation]="immobilisationDe(v)" [compact]="true" />
                       @if (installToReview(v)) { <app-install-review-badge [compact]="true" /> }
                     </span>
                     <span class="v-trow-speed"
@@ -511,6 +516,7 @@ type FiltreStatut = 'tous' | 'roulage' | 'arret' | 'hors-ligne' | 'sans-boitier'
                     </span>
                   }
                   <app-connectivity-badge [state]="presence(v)" [lastSeenAt]="lastSeenOf(v)" [hideWhenOnline]="true" />
+                  <app-etat-vehicule-badge [etat]="etatDe(v)" [immobilisation]="immobilisationDe(v)" />
                   @if (installToReview(v)) { <app-install-review-badge /> }
                   @if (instBadge(v); as b) {
                     <span class="v-inst" [class]="'v-inst--' + b.cls">{{ b.label }}</span>
@@ -1469,6 +1475,8 @@ export class VehiclesListComponent implements OnInit {
   protected readonly ShieldOffIcon = ShieldOff;
 
   ngOnInit(): void {
+    // 06/10/2026 — l'état (fiche, agenda) se lit dans l'instantané : relu s'il date de plus d'une minute.
+    this.realtime.rafraichirEtatsSiAnciens();
     // Sprint 1 — retour depuis le détail : si on revient d'un groupe précis, on
     // scrolle vers sa section après le rendu (la vue groupée est restaurée via
     // les préférences, et les sections sont dépliées par défaut).
@@ -1615,6 +1623,19 @@ export class VehiclesListComponent implements OnInit {
   }
 
   /** Dernier signal du boîtier, pour que le badge affiche « Dormant · 89 j ». */
+  /**
+   * 06/10/2026 — l'état de disponibilité (débranché, accidenté, immobilisé, en maintenance, incident),
+   * même règle que la carte : l'instantané temps réel fait foi (il suit l'agenda et la fiche sans
+   * recharger la page), la liste REST est le repli.
+   */
+  protected etatDe(v: VehicleDetailDto) {
+    return etatVehicule(this.realtime.snapshot().find((s) => s.vehicleId === v.id), v);
+  }
+
+  protected immobilisationDe(v: VehicleDetailDto) {
+    return immobilisationRetenue(this.realtime.snapshot().find((s) => s.vehicleId === v.id), v);
+  }
+
   protected lastSeenOf(v: VehicleDetailDto): string | null {
     return this.freshestLastSeen(v);
   }

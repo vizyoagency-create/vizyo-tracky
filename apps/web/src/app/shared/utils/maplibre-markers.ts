@@ -71,10 +71,16 @@ export const UNPLUGGED_MARKER_COLOR = OFFLINE_MARKER_COLOR;
  */
 export const IMMOBILIZED_MARKER_COLOR = OFFLINE_MARKER_COLOR;
 /**
- * Cœur d'un marqueur « accidenté » : grisé aussi. Le magenta est porté par l'anneau et le
- * triangle « ! » (`--tracky-accident`).
+ * Cœur d'un marqueur « accidenté » : grisé aussi. L'anthracite de l'anneau (`--tracky-accident`)
+ * et le panneau jaune « ! » (`--tracky-accident-panneau`) portent l'état.
  */
 export const ACCIDENT_MARKER_COLOR = OFFLINE_MARKER_COLOR;
+/**
+ * Cœur d'un marqueur « au parking souterrain » : le gris du hors-ligne, comme avant — le véhicule
+ * est garé et son GPS masqué. Le bleu du « P » est porté par l'anneau et le badge
+ * (`--tracky-souterrain`), le même que les repères « Parking souterrain » de la carte.
+ */
+export const UNDERGROUND_MARKER_COLOR = OFFLINE_MARKER_COLOR;
 
 /**
  * La barre d'« interdit » va d'un bord à l'autre de l'anneau (r = 23, centre 28) sur la
@@ -102,15 +108,46 @@ const CLE_LUCIDE =
 const TRIANGLE_ACCIDENT = 'M42 31.5 L52 49 L32 49 Z';
 
 /**
- * L'état DÉCLARÉ sur la fiche, s'il habille le marqueur — une seule règle de priorité pour
- * toute la fabrique : débranché, puis accidenté, puis immobilisé (un véhicule n'a qu'un motif,
- * mais une donnée incohérente ne doit pas faire porter deux habillages à la même pastille).
+ * Le « P » du badge « parking souterrain » — la lettre de l'icône `CircleParking` de Lucide
+ * (boîte 24 × 24), tracée en trait comme la clé : aucune police à charger, nette à toute taille.
+ */
+const P_LUCIDE = 'M9 17V7h4a3 3 0 0 1 0 6H9';
+
+/** L'habillage d'une pastille : un état DÉCLARÉ (fiche ou agenda) ou le parking souterrain. */
+type EtatPastille = 'debranche' | 'accidente' | 'immobilise' | 'souterrain';
+
+/**
+ * L'état DÉCLARÉ qui habille le marqueur — une seule règle de priorité pour toute la fabrique :
+ * débranché, puis accidenté, puis immobilisé (fiche) ou en maintenance / incident (agenda). Un
+ * véhicule n'a qu'un état (`etatIndisponibilite`), mais une donnée incohérente ne doit pas faire
+ * porter deux habillages à la même pastille.
  */
 function etatDeclare(data: VehicleMarkerData): 'debranche' | 'accidente' | 'immobilise' | null {
   if (data.unplugged) return 'debranche';
   if (data.accident) return 'accidente';
-  if (data.immobilized) return 'immobilise';
+  if (data.immobilized || data.agenda) return 'immobilise';
   return null;
+}
+
+/**
+ * L'habillage complet : l'état déclaré d'abord, puis le parking souterrain (06/10/2026, « ajouter
+ * même un rond pour les voitures en souterrain comme la HM-769 ») — un véhicule immobilisé dans un
+ * parking souterrain montre la clé : c'est son indisponibilité qui compte.
+ */
+function etatPastille(data: VehicleMarkerData): EtatPastille | null {
+  return etatDeclare(data) ?? (data.underground ? 'souterrain' : null);
+}
+
+/** Le mot qui suit la plaque pour un état — la clé dit « immobilisé », « en maintenance » ou « incident ». */
+function motEtat(data: VehicleMarkerData, etat: EtatPastille): string {
+  switch (etat) {
+    case 'debranche': return 'débranché';
+    case 'accidente': return 'accidenté';
+    case 'immobilise':
+      if (data.immobilized) return 'immobilisé';
+      return data.agenda === 'INCIDENT' ? 'incident' : 'en maintenance';
+    case 'souterrain': return data.undergroundLabel || 'souterrain';
+  }
 }
 
 /**
@@ -128,7 +165,7 @@ function etatDeclare(data: VehicleMarkerData): 'debranche' | 'accidente' | 'immo
  * `accState()`.
  */
 function isStale(data: VehicleMarkerData): boolean {
-  return !!(data.unplugged || data.offline || data.gpsLost || data.parkedDeadZone);
+  return !!(data.unplugged || data.offline || data.gpsLost || data.parkedDeadZone || data.underground);
 }
 
 /**
@@ -138,7 +175,7 @@ function isStale(data: VehicleMarkerData): boolean {
  * deux estompait le cœur deux fois (0,5 × 0,55) et pâlissait l'étiquette qu'on veut lire.
  */
 function porteHabillageHorsLigne(data: VehicleMarkerData): boolean {
-  return !etatDeclare(data) && !!(data.offline || data.gpsLost || data.parkedDeadZone);
+  return !etatPastille(data) && !!(data.offline || data.gpsLost || data.parkedDeadZone);
 }
 
 /**
@@ -148,12 +185,11 @@ function porteHabillageHorsLigne(data: VehicleMarkerData): boolean {
  */
 function nomAccessible(data: VehicleMarkerData): string {
   const base = data.plate ? `Vehicule ${data.plate}` : 'Vehicule';
-  switch (etatDeclare(data)) {
-    case 'debranche': return `${base}, boîtier débranché`;
-    case 'accidente': return `${base}, accidenté`;
-    case 'immobilise': return `${base}, immobilisé`;
-    default: return base;
-  }
+  const etat = etatPastille(data);
+  if (!etat) return base;
+  if (etat === 'debranche') return `${base}, boîtier débranché`;
+  if (etat === 'souterrain') return `${base}, au parking ${data.undergroundLabel === 'parking couvert' ? 'couvert' : 'souterrain'}`;
+  return `${base}, ${motEtat(data, etat)}`;
 }
 
 /**
@@ -192,6 +228,7 @@ function markerColor(data: VehicleMarkerData): string {
   if (declare === 'debranche') return UNPLUGGED_MARKER_COLOR;
   if (declare === 'accidente') return ACCIDENT_MARKER_COLOR;
   if (declare === 'immobilise') return IMMOBILIZED_MARKER_COLOR;
+  if (data.underground) return UNDERGROUND_MARKER_COLOR;
   if (data.parkedDeadZone) return OFFLINE_MARKER_COLOR;
   if (data.gpsLost) return GPS_LOST_MARKER_COLOR;
   return data.offline ? OFFLINE_MARKER_COLOR : speedColor(vitesseAffichee(data));
@@ -244,11 +281,28 @@ export interface VehicleMarkerData {
   immobilized?: boolean;
   /**
    * Véhicule ACCIDENTÉ, déclaré sur la fiche. Demande du propriétaire du 06/10/2026 : « fais
-   * pareil pour accidenté ». Cœur gris estompé, anneau magenta et triangle « ! » en bas à droite ;
+   * pareil pour accidenté ». Cœur gris estompé, anneau anthracite et panneau jaune « ! » en bas à
+   * droite (magenta jusqu'au 06/10 midi, refusé par le propriétaire : « j'aime pas le violet ») ;
    * ni cap, ni contact, ni logo ; étiquette « · accidenté ». Priorité : après le débranché,
    * avant l'immobilisé (`etatDeclare`).
    */
   accident?: boolean;
+  /**
+   * Immobilisé par l'AGENDA (06/10/2026) : une maintenance ou un incident « Immobilise le véhicule »
+   * en cours. Demande du propriétaire : « si on ajoute une maintenance à une voiture, elle doit
+   * passer avec le rond marron et la clé ». Même habillage que l'immobilisé de la fiche ; seule
+   * l'étiquette change (« · en maintenance », « · incident »). La fiche l'emporte si les deux sont posés.
+   */
+  agenda?: 'MAINTENANCE' | 'INCIDENT';
+  /**
+   * Garé dans un parking SOUTERRAIN ou COUVERT validé, GPS masqué (TRK-046, `presumedParkedZone`).
+   * Demande du propriétaire du 06/10/2026 : « ajouter même un rond pour les voitures en souterrain
+   * comme la HM-769 ». Cœur gris, anneau et badge « P » bleus — le bleu des repères « Parking
+   * souterrain » de la carte. Un état déclaré l'emporte.
+   */
+  underground?: boolean;
+  /** Le mot de l'étiquette pour `underground` : « souterrain » (défaut) ou « parking couvert ». */
+  undergroundLabel?: string;
   /**
    * Vitesse (km/h) a utiliser pour la COULEUR uniquement. Permet d'afficher une
    * couleur de mouvement (vert/orange) basee sur la vitesse robuste derivee du
@@ -269,10 +323,8 @@ export function plateLabel(data: VehicleMarkerData): string {
   if (!data.plate) return '';
   // Avant « hors ligne » : le boîtier ne se TAIT pas, il a été débranché — on dit pourquoi.
   // Et un véhicule immobilisé n'a pas de vitesse à afficher, même si son boîtier émet encore.
-  const declare = etatDeclare(data);
-  if (declare === 'debranche') return `${data.plate} · débranché`;
-  if (declare === 'accidente') return `${data.plate} · accidenté`;
-  if (declare === 'immobilise') return `${data.plate} · immobilisé`;
+  const etat = etatPastille(data);
+  if (etat) return `${data.plate} · ${motEtat(data, etat)}`;
   if (isStale(data)) return `${data.plate} · hors ligne`;
   // ⚠️ LA MÊME vitesse que celle qui donne la COULEUR — cf. `vitesseAffichee`.
   // Relevé au navigateur le 2026-08-12 : une pastille ROUGE portait « TE002ST · 18 »
@@ -311,8 +363,8 @@ export function buildVehicleMarkerEl(data: VehicleMarkerData): HTMLElement {
   const activeClass = data.active ? 'tracky-marker--active' : '';
   const hydClass = data.hydrated ? 'tracky-marker--hydrated' : '';
   const offlineClass = porteHabillageHorsLigne(data) ? 'tracky-marker--offline' : '';
-  const declare = etatDeclare(data);
-  const declareClass = declare ? `tracky-marker--${declare}` : '';
+  const etat = etatPastille(data);
+  const declareClass = etat ? `tracky-marker--${etat}` : '';
   const isArrow = data.type === 'OTHER';
   const headingDeg = Math.round(data.heading || 0);
   const svgContent = getVehicleSvg(data.type);
@@ -336,11 +388,13 @@ export function buildVehicleMarkerEl(data: VehicleMarkerData): HTMLElement {
   el.style.setProperty('--tracky-color', color);
   el.style.setProperty('--tracky-ink', markerInk(color));
   el.style.setProperty('--tracky-heading', `${headingDeg}deg`);
-  // Le rouge de l'« interdit » et l'ambre de la clé viennent de la palette de carte, comme les
-  // clés de la légende.
+  // Le rouge de l'« interdit », l'ocre de la clé, l'anthracite et le jaune du panneau, le bleu du
+  // « P » viennent de la palette de carte, comme les clés de la légende.
   el.style.setProperty('--tracky-barre', COULEURS_CARTE.debranche);
   el.style.setProperty('--tracky-cle', COULEURS_CARTE.immobilise);
   el.style.setProperty('--tracky-accident', COULEURS_CARTE.accidente);
+  el.style.setProperty('--tracky-accident-panneau', COULEURS_CARTE.accidentePanneau);
+  el.style.setProperty('--tracky-souterrain', COULEURS_CARTE.souterrain);
   el.innerHTML = `
     <svg class="tracky-marker__pastille" viewBox="0 0 56 56" width="56" height="56"
          aria-hidden="true" focusable="false">
@@ -371,6 +425,13 @@ export function buildVehicleMarkerEl(data: VehicleMarkerData): HTMLElement {
         <path class="tracky-marker__accident-triangle" d="${TRIANGLE_ACCIDENT}" />
         <line class="tracky-marker__accident-signe" x1="42" y1="37.6" x2="42" y2="42.4" />
         <line class="tracky-marker__accident-signe" x1="42" y1="45.6" x2="42" y2="45.7" />
+      </g>
+      <g class="tracky-marker__souterrain">
+        <circle class="tracky-marker__souterrain-anneau" cx="28" cy="28" r="23" />
+        <circle class="tracky-marker__souterrain-badge" cx="42" cy="42" r="9" />
+        <g transform="translate(35.5 35.5) scale(0.54)">
+          <path class="tracky-marker__souterrain-p" d="${P_LUCIDE}" />
+        </g>
       </g>
       <circle class="tracky-marker__acc ${ignClass}" cx="40.5" cy="40.5" r="5" />
     </svg>
@@ -460,12 +521,13 @@ export function updateVehicleMarkerEl(el: HTMLElement, data: VehicleMarkerData):
   el.classList.toggle('tracky-marker--active', !!data.active);
   el.classList.toggle('tracky-marker--hydrated', !!data.hydrated);
   el.classList.toggle('tracky-marker--offline', porteHabillageHorsLigne(data));
-  // La barre d'« interdit » et la clé sont déjà dans le SVG : déclarer ou lever un état sur la
-  // fiche ne fait que basculer ces classes au prochain rendu.
-  const declare = etatDeclare(data);
-  el.classList.toggle('tracky-marker--debranche', declare === 'debranche');
-  el.classList.toggle('tracky-marker--accidente', declare === 'accidente');
-  el.classList.toggle('tracky-marker--immobilise', declare === 'immobilise');
+  // La barre d'« interdit », la clé, le triangle et le « P » sont déjà dans le SVG : déclarer ou
+  // lever un état (fiche, agenda, parking) ne fait que basculer ces classes au prochain rendu.
+  const etat = etatPastille(data);
+  el.classList.toggle('tracky-marker--debranche', etat === 'debranche');
+  el.classList.toggle('tracky-marker--accidente', etat === 'accidente');
+  el.classList.toggle('tracky-marker--immobilise', etat === 'immobilise');
+  el.classList.toggle('tracky-marker--souterrain', etat === 'souterrain');
 }
 
 /**

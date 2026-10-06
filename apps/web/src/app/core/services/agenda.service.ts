@@ -25,7 +25,8 @@ import type {
   VehicleEventStatus,
   VehicleEventType,
 } from '@vizyo/tracky-shared';
-import { Observable } from 'rxjs';
+import { Observable, tap } from 'rxjs';
+import { EtatsVehiculesBus } from './etats-vehicules.bus';
 
 /**
  * Sprint 7 — Agenda (maintenance + incidents). Client HTTP typé sur les DTOs
@@ -48,6 +49,8 @@ export interface AgendaEventQuery {
 @Injectable({ providedIn: 'root' })
 export class AgendaApiService {
   private readonly http = inject(HttpClient);
+  /** 06/10/2026 — une maintenance ou un incident change l'état du véhicule : on le signale. */
+  private readonly etats = inject(EtatsVehiculesBus);
 
   /** GET /api/agenda/events — événements de la flotte sur une fenêtre temporelle. */
   listEvents(query: AgendaEventQuery): Observable<VehicleEventDto[]> {
@@ -81,22 +84,26 @@ export class AgendaApiService {
 
   /** POST /api/agenda/incidents — signalement rapide d'incident (status OPEN). */
   reportIncident(data: ReportIncidentDto): Observable<VehicleEventDto> {
-    return this.http.post<VehicleEventDto>('/api/agenda/incidents', data);
+    return this.http.post<VehicleEventDto>('/api/agenda/incidents', data).pipe(tap(() => this.etats.signaler()));
   }
 
-  /** POST /api/agenda/events — création d'un événement (maintenance / incident). */
+  /**
+   * POST /api/agenda/events — création d'un événement (maintenance / incident).
+   * 06/10/2026 : une maintenance ou un incident change l'état du véhicule (la clé sur la carte, les
+   * coupes suspendues) — le service temps réel relit les états dès la réponse.
+   */
   createEvent(data: CreateVehicleEventDto): Observable<VehicleEventDto> {
-    return this.http.post<VehicleEventDto>('/api/agenda/events', data);
+    return this.http.post<VehicleEventDto>('/api/agenda/events', data).pipe(tap(() => this.etats.signaler()));
   }
 
   /** PATCH /api/agenda/events/:id — modification partielle (statut, dates, ...). */
   updateEvent(id: string, data: UpdateVehicleEventDto): Observable<VehicleEventDto> {
-    return this.http.patch<VehicleEventDto>(`/api/agenda/events/${id}`, data);
+    return this.http.patch<VehicleEventDto>(`/api/agenda/events/${id}`, data).pipe(tap(() => this.etats.signaler()));
   }
 
   /** DELETE /api/agenda/events/:id — suppression d'un événement. */
   deleteEvent(id: string): Observable<void> {
-    return this.http.delete<void>(`/api/agenda/events/${id}`);
+    return this.http.delete<void>(`/api/agenda/events/${id}`).pipe(tap(() => this.etats.signaler()));
   }
 
   /** GET /api/agenda/plans — plans d'entretien (optionnellement filtrés véhicule). */

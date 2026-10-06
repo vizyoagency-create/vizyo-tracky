@@ -9,6 +9,8 @@ import type { VehicleSchedule } from '@prisma/client';
 import { EngineControlService } from '../engine-control/engine-control.service';
 import { ErrorLogger } from '../observability/error-logger.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { coupesAutoSuspendues, LIBELLES_ETAT } from '@vizyo/tracky-shared';
+import { etatIndisponibiliteVehicule } from '../vehicles/immobilisation-agenda';
 import { evaluateSchedule } from './schedule-evaluator';
 import type { UpsertVehicleScheduleDto } from './dto/upsert-vehicle-schedule.dto';
 
@@ -182,6 +184,15 @@ export class VehicleSchedulesService {
           { vehicleId, state },
           'Schedule enabled out-of-window — CUT queued for paced scheduler dispatch',
         );
+      } else if (coupesAutoSuspendues(await this.etatSansEchec(vehicleId))) {
+        // 06/10/2026 — véhicule INDISPONIBLE (hors service déclaré, maintenance ou incident de
+        // l'agenda) : activer son planning hors plage ne le coupe pas — même règle que le cron, qui
+        // suspend ses coupes automatiques. `lastEvaluatedState` reste tel quel : à la remise en
+        // service, le cron coupera s'il est toujours hors plage.
+        this.logger.log(
+          { vehicleId, state },
+          'Schedule enabled out-of-window — vehicle unavailable, automatic CUT suspended',
+        );
       } else {
         // Hors fenetre → CUT immediat
         const tracker = await this.prisma.tracker.findFirst({ where: { vehicleId } });
@@ -212,6 +223,22 @@ export class VehicleSchedulesService {
 
     // Retourner l'état frais (lastEvaluatedState peut avoir changé par l'évaluation immédiate)
     return this.prisma.vehicleSchedule.findUnique({ where: { id: updated.id } }) as Promise<VehicleSchedule>;
+  }
+
+  /**
+   * L'état d'indisponibilité du véhicule, ou `null` — et `null` aussi si la lecture échoue : une
+   * panne de lecture ne doit pas empêcher d'enregistrer un planning (le cron, lui, relit l'état à
+   * chaque tick et suspendra la coupe s'il le faut).
+   */
+  private async etatSansEchec(vehicleId: string) {
+    try {
+      const etat = await etatIndisponibiliteVehicule(this.prisma, vehicleId);
+      if (etat) this.logger.debug({ vehicleId, etat: LIBELLES_ETAT[etat].court }, 'Véhicule indisponible');
+      return etat;
+    } catch (err) {
+      this.logger.warn({ vehicleId, error: (err as Error).message }, 'État de disponibilité illisible — coupe immédiate évaluée sans lui');
+      return null;
+    }
   }
 
   /**

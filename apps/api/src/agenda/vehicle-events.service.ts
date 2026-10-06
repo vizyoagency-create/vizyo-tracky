@@ -23,6 +23,7 @@ import { formatFleetDate, formatFleetDateTime, formatFleetTime } from '../common
 import { PrismaService } from '../prisma/prisma.service';
 import { SystemActivityService, type SystemActivityInput } from '../system-activity/system-activity.service';
 import { VehicleAccessService } from '../vehicle-access/vehicle-access.service';
+import { DISPONIBILITE_MODIFIEE_EVENT, type DisponibiliteModifieeEvent } from '../vehicles/immobilisation-agenda';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -135,6 +136,17 @@ export class VehicleEventsService {
     // (`new VehicleEventsService(prisma, access)`) restent valides, et sans journal rien ne casse.
     @Optional() private readonly systemActivity?: SystemActivityService,
   ) {}
+
+  /**
+   * 06/10/2026 — une maintenance ou un incident a changé : l'état de disponibilité du véhicule aussi
+   * (carte, page Horaires, coupes automatiques). Le cache de l'instantané est vidé à réception.
+   */
+  private signalerDisponibilite(row: { type: VehicleEventType; fleetId?: string | null; vehicleId: string }): void {
+    if (row.type !== VehicleEventType.MAINTENANCE && row.type !== VehicleEventType.INCIDENT) return;
+    if (!row.fleetId) return;
+    const evt: DisponibiliteModifieeEvent = { fleetId: row.fleetId, vehicleId: row.vehicleId };
+    this.emitter?.emit(DISPONIBILITE_MODIFIEE_EVENT, evt);
+  }
 
   /** Notifie l'agent d'agenda qu'un incident/maintenance vient d'être créé (déclencheur P3). */
   private emitAgentTrigger(fleetId: string, kind: 'incident' | 'maintenance'): void {
@@ -376,8 +388,11 @@ export class VehicleEventsService {
         startAt,
         endAt,
         allDay: dto.allDay ?? true,
-        // Un incident immobilise par défaut (roue crevée = indisponible) ; une maintenance non.
-        blocksVehicle: dto.blocksVehicle ?? dto.type === VehicleEventType.INCIDENT,
+        // Un incident immobilise par défaut (roue crevée = indisponible) ; une maintenance AUSSI depuis
+        // le 06/10/2026 (« si on ajoute une maintenance à une voiture, elle doit passer avec la clé »).
+        // Les rappels des plans d'entretien ne passent pas par ici : ils restent non bloquants.
+        blocksVehicle:
+          dto.blocksVehicle ?? (dto.type === VehicleEventType.INCIDENT || dto.type === VehicleEventType.MAINTENANCE),
         odometerKm: dto.odometerKm ?? null,
         metadata: dto.metadata ? (dto.metadata as Prisma.InputJsonValue) : undefined,
         createdBy: user.id,
@@ -389,6 +404,7 @@ export class VehicleEventsService {
     if (row.type === VehicleEventType.INCIDENT || row.type === VehicleEventType.MAINTENANCE) {
       this.emitAgentTrigger(row.fleetId, row.type === VehicleEventType.INCIDENT ? 'incident' : 'maintenance');
     }
+    this.signalerDisponibilite(row);
     // Un INCIDENT saisi par la feuille « Nouvel évènement » est un incident signalé, comme par le
     // bouton dédié : même libellé au fil, sinon le client lit « Événement créé » pour une panne.
     this.journaliser(() => ({
@@ -432,6 +448,7 @@ export class VehicleEventsService {
       include: { vehicle: { select: { plate: true } } },
     });
     this.emitAgentTrigger(row.fleetId, 'incident');
+    this.signalerDisponibilite(row);
     this.journaliser(() => ({
       action: 'incident_signale',
       target: row.vehicle?.plate ?? null,
@@ -491,6 +508,7 @@ export class VehicleEventsService {
     if (dto.odometerKm !== undefined) {
       await this.maybeUpdateOdometer(existing.vehicleId, dto.odometerKm, row.startAt);
     }
+    this.signalerDisponibilite(row);
     // « Clos » = le statut PASSE à DONE (réponse « Oui, terminée » de l'écran « À clore », bouton
     // « Terminé ») ; un DONE réécrit sur un évènement déjà clos n'est qu'une modification.
     const clos = dto.status === VehicleEventStatus.DONE && existing.status !== VehicleEventStatus.DONE;
@@ -657,6 +675,7 @@ export class VehicleEventsService {
       }));
       throw e;
     }
+    this.signalerDisponibilite(existing);
     return { ok: true };
   }
 

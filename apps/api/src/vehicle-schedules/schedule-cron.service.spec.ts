@@ -949,3 +949,173 @@ describe('ScheduleCronService.evaluateOne override', () => {
     });
   });
 });
+
+/**
+ * 06/10/2026 — demande du propriétaire : « un système d'état qui fonctionne dans toute l'app —
+ * dans les horaires auto, ça désactive ». Et TRK-053 : HM-733-GA et HM-779-GA, déclarés hors
+ * service, coupés par le planning le 14/09 à 22:00.
+ *
+ * Le test qui compte le plus est celui de la REPRISE : suspendre les coupes d'un véhicule
+ * indisponible ne doit jamais laisser un véhicule coupé — l'asymétrie de CUT_BACKOFF_MS tient.
+ */
+describe('ScheduleCronService — véhicule indisponible : coupe suspendue, reprise assurée', () => {
+  const ALERT_UUID = '7b1d2c3e-0000-4abc-9def-0123456789ab';
+  const H = 60 * 60 * 1000;
+
+  /** Toujours hors plage (aucun jour actif), dernier état « dans la plage » → une COUPE est due. */
+  const HORS_PLAGE = (vehicle: Record<string, unknown> = {}) => ({
+    ...makeSchedule({
+      lastEvaluatedState: 'IN_WINDOW',
+      mondayEnabled: false, tuesdayEnabled: false, wednesdayEnabled: false,
+      thursdayEnabled: false, fridayEnabled: false,
+    }),
+    vehicle: { id: 'v-1', fleetId: 'f-1', plate: 'HD-998-XY', tracker: { id: 't-1', imei: '123', status: 'ONLINE' }, ...vehicle },
+  } as any);
+
+  /** Toujours dans la plage, dernier état « hors plage » → une REPRISE est due. */
+  const EN_PLAGE = (vehicle: Record<string, unknown> = {}) => ({
+    ...makeSchedule({
+      lastEvaluatedState: 'OUT_OF_WINDOW',
+      mondayStart: null, mondayEnd: null, tuesdayStart: null, tuesdayEnd: null,
+      wednesdayStart: null, wednesdayEnd: null, thursdayStart: null, thursdayEnd: null,
+      fridayStart: null, fridayEnd: null,
+      saturdayEnabled: true, sundayEnabled: true,
+    }),
+    vehicle: { id: 'v-1', fleetId: 'f-1', plate: 'HD-998-XY', tracker: { id: 't-1', imei: '123', status: 'ONLINE' }, ...vehicle },
+  } as any);
+
+  const maintenanceEnCours = () => ({
+    eventId: 'ev-1', type: 'MAINTENANCE' as const, title: 'Pneus',
+    startAt: new Date(Date.now() - H).toISOString(), endAt: new Date(Date.now() + H).toISOString(),
+  });
+
+  function build(opts: { failWith?: Error; schedules?: unknown[]; evenements?: unknown[] | Error } = {}) {
+    const prisma = {
+      vehicleSchedule: {
+        update: jest.fn().mockResolvedValue({}),
+        findMany: jest.fn().mockResolvedValue(opts.schedules ?? []),
+      },
+      scheduleHistory: { create: jest.fn().mockResolvedValue({}) },
+      errorLog: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
+      vehicleEvent: {
+        findMany: opts.evenements instanceof Error
+          ? jest.fn().mockRejectedValue(opts.evenements)
+          : jest.fn().mockResolvedValue(opts.evenements ?? []),
+      },
+    } as any;
+    const engine = {
+      requestCommand: opts.failWith ? jest.fn().mockRejectedValue(opts.failWith) : jest.fn().mockResolvedValue({}),
+    } as any;
+    const errorLogger = { record: jest.fn().mockResolvedValue(ALERT_UUID) } as any;
+    const service = new ScheduleCronService(prisma, engine, errorLogger, { emit: jest.fn() } as any);
+    return { service, engine, prisma, errorLogger };
+  }
+
+  const flush = async () => { await Promise.resolve(); await Promise.resolve(); await Promise.resolve(); };
+
+  afterEach(() => jest.useRealTimers());
+
+  it.each(['IMMOBILIZED', 'ACCIDENT', 'TRACKER_UNPLUGGED'])(
+    'déclaré %s sur la fiche : aucune coupe, aucun état avancé, aucune alerte — même après une nuit',
+    async (motif) => {
+      jest.useFakeTimers();
+      const { service, engine, prisma, errorLogger } = build();
+      const schedule = HORS_PLAGE({ outOfServiceReason: motif });
+      for (let minute = 0; minute < 12 * 60; minute++) {
+        await service.evaluateOne(schedule);
+        jest.advanceTimersByTime(60 * 1000);
+      }
+      expect(engine.requestCommand).not.toHaveBeenCalled();
+      // `lastEvaluatedState` n'avance pas : remis en service hors plage, il sera coupé au tick suivant.
+      expect(prisma.vehicleSchedule.update).not.toHaveBeenCalled();
+      expect(errorLogger.record).not.toHaveBeenCalled();
+    },
+  );
+
+  it('en maintenance dans l’agenda : la coupe est suspendue aussi', async () => {
+    const { service, engine } = build();
+    await service.evaluateOne(HORS_PLAGE(), { immobilisationAgenda: maintenanceEnCours() });
+    expect(engine.requestCommand).not.toHaveBeenCalled();
+  });
+
+  it('⚠️ la REPRISE part toujours, même pour un véhicule déclaré immobilisé ou en maintenance', async () => {
+    const { service, engine } = build();
+    await service.evaluateOne(EN_PLAGE({ outOfServiceReason: 'IMMOBILIZED' }));
+    await service.evaluateOne(EN_PLAGE(), { immobilisationAgenda: maintenanceEnCours() });
+    expect(engine.requestCommand).toHaveBeenCalledTimes(2);
+    for (const call of engine.requestCommand.mock.calls) {
+      expect(call[1]).toBe('RESTORE');
+      expect(call[4]).toBe('SCHEDULER');
+    }
+  });
+
+  it('ne prend AUCUNE place dans la file anti-rafale (les autres véhicules ne l’attendent pas)', async () => {
+    const { service } = build();
+    const gate = (service as any).automaticCutGate as AutomaticCutQueueGate;
+    const spy = jest.spyOn(gate, 'tryAcquire');
+    await service.evaluateOne(HORS_PLAGE({ outOfServiceReason: 'ACCIDENT' }));
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it('remis en service hors plage : la coupe part au tick suivant, comme pour les autres', async () => {
+    const { service, engine } = build();
+    await service.evaluateOne(HORS_PLAGE({ outOfServiceReason: 'IMMOBILIZED' }));
+    expect(engine.requestCommand).not.toHaveBeenCalled();
+    await service.evaluateOne(HORS_PLAGE({ outOfServiceReason: null }));
+    expect(engine.requestCommand).toHaveBeenCalledTimes(1);
+    expect(engine.requestCommand.mock.calls[0][1]).toBe('CUT');
+  });
+
+  it('REFERME les alertes « coupe impossible » écrites avant la déclaration : le véhicule n’est plus bloqué, il est indisponible', async () => {
+    jest.useFakeTimers();
+    const { service, prisma } = build({ failWith: new ServiceUnavailableException('Tracker hors ligne') });
+    for (let minute = 0; minute < 31; minute++) {
+      await service.evaluateOne(HORS_PLAGE());
+      await flush();
+      jest.advanceTimersByTime(60 * 1000);
+    }
+    await service.evaluateOne(HORS_PLAGE({ outOfServiceReason: 'IMMOBILIZED' }));
+    await flush();
+    expect(prisma.errorLog.updateMany).toHaveBeenCalledWith({
+      where: { id: { in: [ALERT_UUID] }, resolvedAt: null },
+      data: expect.objectContaining({ resolvedNote: expect.stringContaining('suspendue (véhicule immobilisé)') }),
+    });
+  });
+
+  describe('evaluateAll — l’agenda est lu en lot, seulement pour les véhicules à couper', () => {
+    const evenementMaintenance = (vehicleId: string) => ({
+      id: 'ev-1', vehicleId, type: 'MAINTENANCE', status: 'PLANNED', blocksVehicle: true, title: 'Pneus',
+      startAt: new Date(Date.now() - H), endAt: new Date(Date.now() + H),
+    });
+
+    it('une maintenance « Immobilise le véhicule » en cours suspend la coupe due', async () => {
+      const { service, engine, prisma } = build({ schedules: [HORS_PLAGE()], evenements: [evenementMaintenance('v-1')] });
+      await service.evaluate();
+      expect(prisma.vehicleEvent.findMany).toHaveBeenCalledTimes(1);
+      expect(prisma.vehicleEvent.findMany.mock.calls[0][0].where.vehicleId).toEqual({ in: ['v-1'] });
+      expect(engine.requestCommand).not.toHaveBeenCalled();
+    });
+
+    it('aucune coupe due (que des reprises) : aucune requête sur l’agenda', async () => {
+      const { service, engine, prisma } = build({ schedules: [EN_PLAGE()] });
+      await service.evaluate();
+      expect(prisma.vehicleEvent.findMany).not.toHaveBeenCalled();
+      expect(engine.requestCommand).toHaveBeenCalledTimes(1);
+    });
+
+    it('le vidage de file (toutes les 10 s) réutilise la lecture pendant 30 s', async () => {
+      const { service, prisma } = build({ schedules: [HORS_PLAGE()], evenements: [evenementMaintenance('v-1')] });
+      await service.drainAutomaticCutQueue();
+      await service.drainAutomaticCutQueue();
+      await service.drainAutomaticCutQueue();
+      expect(prisma.vehicleEvent.findMany).toHaveBeenCalledTimes(1);
+    });
+
+    it('agenda illisible : la coupe suit son cours comme avant (fail-open, jamais tout le planning bloqué)', async () => {
+      const { service, engine } = build({ schedules: [HORS_PLAGE()], evenements: new Error('DB down') });
+      await service.evaluate();
+      expect(engine.requestCommand).toHaveBeenCalledTimes(1);
+      expect(engine.requestCommand.mock.calls[0][1]).toBe('CUT');
+    });
+  });
+});

@@ -1,4 +1,5 @@
 import type { InstallationEnergy } from './installation.dto';
+import type { ImmobilisationAgendaDto } from '../utils/etat-vehicule';
 
 export type VehicleState = 'moving' | 'idle' | 'stopped' | 'engine_cut' | 'offline';
 
@@ -64,6 +65,8 @@ export interface VehicleCapacityRowDto {
   divergentFields: VehicleSyncableField[];
   /** Hors service déclaré (accident, boîtier débranché, immobilisé) — revue du 29/09, vue Parc. */
   outOfServiceReason?: string | null;
+  /** Immobilisation d'agenda EN COURS (maintenance ou incident bloquant) — 06/10/2026, vue Parc. */
+  immobilisationAgenda?: ImmobilisationAgendaDto | null;
   /** Dérivés au read-time par le serveur (boîtier muet). */
   dormant?: boolean;
   lastSeenAt?: string | null;

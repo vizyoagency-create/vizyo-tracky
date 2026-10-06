@@ -758,8 +758,12 @@ button, a, [role="button"], input[type="button"], input[type="submit"], label {
   --tracky-barre: #dc2626;
   /* Ocre de la clé d'un véhicule immobilisé — même discipline (`COULEURS_CARTE.immobilise`). */
   --tracky-cle: #8a6a00;
-  /* Magenta du triangle d'un véhicule accidenté — même discipline (`COULEURS_CARTE.accidente`). */
-  --tracky-accident: #c026d3;
+  /* Anthracite de l'anneau et du contour du panneau d'un véhicule accidenté, jaune du panneau —
+     même discipline (`COULEURS_CARTE.accidente` / `.accidentePanneau`, 06/10/2026). */
+  --tracky-accident: #111827;
+  --tracky-accident-panneau: #facc15;
+  /* Bleu de l'anneau et du badge « P » d'un véhicule au parking souterrain (`COULEURS_CARTE.souterrain`). */
+  --tracky-souterrain: #0284c7;
   /* La couleur est portée UNE FOIS ici ; toutes les formes la reprennent en
      currentColor (décision de la planche : un seul point de vérité). */
   color: var(--tracky-color);
@@ -1094,10 +1098,11 @@ textarea:focus-visible,
 }
 
 /* Véhicule ACCIDENTÉ — déclaré sur la fiche. Demande du propriétaire du 06/10/2026 : « fais
-   pareil pour accidenté ». Même habillage grisé ; anneau et TRIANGLE « ! » magenta
-   (`--tracky-accident`, depuis `COULEURS_CARTE.accidente`). Le triangle — la forme du panneau de
-   danger — le sépare du badge ROND de la clé, et le magenta du rouge et de l'ambre (mesuré au
-   validateur de palette). Choisi sur prototype parmi quatre formes. */
+   pareil pour accidenté ». Même habillage grisé ; anneau ANTHRACITE et PANNEAU DE DANGER jaune
+   cerclé d'anthracite, « ! » anthracite (`--tracky-accident` / `--tracky-accident-panneau`).
+   Magenta au premier jet, refusé par le propriétaire le 06/10 midi (« j'aime pas le violet ») ;
+   aucune teinte ne restait libre à côté du rouge, de l'ocre et du bleu — il se distingue par la
+   valeur (le noir et jaune du danger) et par la forme triangulaire. Choisi sur banc (06/10). */
 .tracky-marker__accident { display: none; }
 .tracky-marker--accidente .tracky-marker__accident { display: inline; }
 .tracky-marker__accident-anneau {
@@ -1106,28 +1111,57 @@ textarea:focus-visible,
   stroke-width: 3;
 }
 .tracky-marker__accident-triangle {
-  fill: var(--tracky-accident);
-  stroke: #fff;
-  stroke-width: 2;
+  fill: var(--tracky-accident-panneau);
+  stroke: var(--tracky-accident);
+  stroke-width: 1.6;
   stroke-linejoin: round;
 }
 .tracky-marker__accident-signe {
-  stroke: #fff;
+  stroke: var(--tracky-accident);
   stroke-width: 2.4;
   stroke-linecap: round;
 }
 
-/* Habillage COMMUN aux trois états déclarés. L'anneau blanc d'origine devient le liseré de
-   l'anneau de couleur. */
+/* Véhicule au PARKING SOUTERRAIN (ou couvert) validé, GPS masqué — TRK-046 `presumedParkedZone`.
+   Demande du propriétaire du 06/10/2026 : « ajouter même un rond pour les voitures en souterrain
+   comme la HM-769 ». Cœur grisé (il est garé, sa position est un souvenir), anneau et badge « P »
+   BLEUS (`--tracky-souterrain`) — le bleu des repères « Parking souterrain » de la carte, assombri
+   d'un cran pour tenir 3:1 en trait fin sur le fond clair. Pas un état déclaré : il cède à la clé,
+   au triangle et à la barre. */
+.tracky-marker__souterrain { display: none; }
+.tracky-marker--souterrain .tracky-marker__souterrain { display: inline; }
+.tracky-marker__souterrain-anneau {
+  fill: none;
+  stroke: var(--tracky-souterrain);
+  stroke-width: 3;
+}
+.tracky-marker__souterrain-badge {
+  fill: var(--tracky-souterrain);
+  stroke: #fff;
+  stroke-width: 2;
+}
+.tracky-marker__souterrain-p {
+  fill: none;
+  stroke: #fff;
+  stroke-width: 3.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* Habillage COMMUN aux états (les trois déclarés et le parking souterrain). L'anneau blanc
+   d'origine devient le liseré de l'anneau de couleur. */
 .tracky-marker--debranche .tracky-marker__anneau,
 .tracky-marker--accidente .tracky-marker__anneau,
-.tracky-marker--immobilise .tracky-marker__anneau { stroke: #fff; stroke-width: 6; }
+.tracky-marker--immobilise .tracky-marker__anneau,
+.tracky-marker--souterrain .tracky-marker__anneau { stroke: #fff; stroke-width: 6; }
 .tracky-marker--debranche .tracky-marker__coeur,
 .tracky-marker--accidente .tracky-marker__coeur,
-.tracky-marker--immobilise .tracky-marker__coeur { fill-opacity: 0.55; }
+.tracky-marker--immobilise .tracky-marker__coeur,
+.tracky-marker--souterrain .tracky-marker__coeur { fill-opacity: 0.55; }
 .tracky-marker--debranche .tracky-marker__icone,
 .tracky-marker--accidente .tracky-marker__icone,
-.tracky-marker--immobilise .tracky-marker__icone { opacity: 0.75; }
+.tracky-marker--immobilise .tracky-marker__icone,
+.tracky-marker--souterrain .tracky-marker__icone { opacity: 0.75; }
 .tracky-marker--debranche .tracky-marker__cap,
 .tracky-marker--debranche .tracky-marker__pulse,
 .tracky-marker--debranche .tracky-marker__acc,
@@ -1139,10 +1173,16 @@ textarea:focus-visible,
 .tracky-marker--immobilise .tracky-marker__cap,
 .tracky-marker--immobilise .tracky-marker__pulse,
 .tracky-marker--immobilise .tracky-marker__acc,
-.tracky-marker--immobilise .tracky-marker__brand { display: none; }
+.tracky-marker--immobilise .tracky-marker__brand,
+.tracky-marker--souterrain .tracky-marker__cap,
+.tracky-marker--souterrain .tracky-marker__pulse,
+.tracky-marker--souterrain .tracky-marker__acc,
+.tracky-marker--souterrain .tracky-marker__brand { display: none; }
 .tracky-marker--debranche .tracky-marker__plate { border-color: rgba(220, 38, 38, 0.7); }
-.tracky-marker--accidente .tracky-marker__plate { border-color: rgba(192, 38, 211, 0.75); }
+/* Le jaune du panneau, pas l'anthracite : sur une étiquette sombre, l'anthracite disparaîtrait. */
+.tracky-marker--accidente .tracky-marker__plate { border-color: rgba(250, 204, 21, 0.85); }
 .tracky-marker--immobilise .tracky-marker__plate { border-color: rgba(138, 106, 0, 0.8); }
+.tracky-marker--souterrain .tracky-marker__plate { border-color: rgba(2, 132, 199, 0.8); }
 
 /* ════════════════════════════════════════════════════════════
    Popover marker (info card véhicule) — design tracky cohérent

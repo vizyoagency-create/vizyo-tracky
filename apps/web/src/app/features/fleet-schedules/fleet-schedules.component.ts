@@ -25,6 +25,7 @@ import {
   PowerOff,
   RefreshCw,
   Timer,
+  Wrench,
   X,
 } from 'lucide-angular';
 import type {
@@ -33,6 +34,7 @@ import type {
   FleetScheduleRowDto,
   FleetScheduleHolidayForecast,
 } from '@vizyo/tracky-shared';
+import { etatIndisponibilite, LIBELLES_ETAT } from '@vizyo/tracky-shared';
 import { AuthService } from '../../core/services/auth.service';
 import { FleetFilterService } from '../../core/services/fleet-filter.service';
 import { PermissionsService } from '../../core/services/permissions.service';
@@ -98,6 +100,7 @@ export class FleetSchedulesComponent implements OnInit, OnDestroy {
   protected readonly PowerOffIcon = PowerOff;
   protected readonly RefreshCwIcon = RefreshCw;
   protected readonly XIcon = X;
+  protected readonly WrenchIcon = Wrench;
 
   // ── État liste ──
   protected readonly rows = signal<FleetScheduleRowDto[]>([]);
@@ -196,9 +199,11 @@ export class FleetSchedulesComponent implements OnInit, OnDestroy {
 
   protected readonly summary = computed(() => {
     const rows = this.filteredRows();
-    let enabled = 0, outOfWindow = 0, cut = 0, driving = 0, awaiting = 0, noTracker = 0;
+    let enabled = 0, outOfWindow = 0, cut = 0, driving = 0, awaiting = 0, noTracker = 0, suspendus = 0;
     for (const r of rows) {
       if (r.scheduleEnabled) enabled++;
+      // 06/10/2026 — automatisés mais INDISPONIBLES : leurs coupes sont suspendues.
+      if (r.coupesSuspendues) suspendus++;
       if (r.windowState === 'OUT_OF_WINDOW') outOfWindow++;
       // Revue : ne compter que les coupes CONFIRMÉES (pas les 'pending' non confirmées par le boîtier).
       if (this.displayCut(r) === 'cut') cut++;
@@ -207,7 +212,7 @@ export class FleetSchedulesComponent implements OnInit, OnDestroy {
       else if (pr === 'AWAITING_STOP') awaiting++;
       if (!r.hasTracker) noTracker++;
     }
-    return { total: rows.length, enabled, outOfWindow, cut, driving, awaiting, noTracker };
+    return { total: rows.length, enabled, outOfWindow, cut, driving, awaiting, noTracker, suspendus };
   });
 
   /** Véhicules qui ROULENT ENCORE après leur heure de coupe → à surveiller en priorité. */
@@ -300,6 +305,8 @@ export class FleetSchedulesComponent implements OnInit, OnDestroy {
   /** Recalcule le motif de report avec la fraîcheur temps réel (mouvement + coupe live). */
   protected displayPending(r: FleetScheduleRowDto): PendingDisplay {
     if (!r.scheduleEnabled || r.overrideActive) return null;
+    // 06/10/2026 — une coupe SUSPENDUE (véhicule indisponible) n'est pas « en attente » : elle ne partira pas.
+    if (r.coupesSuspendues) return null;
     if (r.windowState !== 'OUT_OF_WINDOW') return null;
     if (this.displayCut(r) !== 'normal') return null; // déjà coupé / en cours
     if (r.connectivity === 'GPS_LOST') return null; // affiché comme « GPS perdu » (chip dédié)
@@ -313,6 +320,11 @@ export class FleetSchedulesComponent implements OnInit, OnDestroy {
     if (r.overrideActive) return { label: 'Suspendu (manuel)', cls: 'chip-info', icon: this.AlarmClockIcon };
 
     const cut = this.displayCut(r);
+    // 06/10/2026 — véhicule INDISPONIBLE : ses coupes sont suspendues. S'il est encore coupé (coupé la
+    // nuit, déclaré le matin), « Coupé » reste vrai et prime : sa reprise partira à l'heure.
+    if (r.coupesSuspendues && cut === 'normal') {
+      return { label: `Suspendu · ${this.motEtat(r)}`, cls: 'chip-info', icon: this.WrenchIcon };
+    }
     const pending = this.displayPending(r);
     if (pending === 'DRIVING') return { label: 'Roule encore', cls: 'chip-danger', icon: this.AlertTriangleIcon };
     if (pending === 'AWAITING_STOP') return { label: "En attente d'arrêt", cls: 'chip-warn', icon: this.TimerIcon };
@@ -331,6 +343,9 @@ export class FleetSchedulesComponent implements OnInit, OnDestroy {
     if (!r.hasTracker) return "Pas de boîtier GPS : l'automatisation horaire ne peut pas s'appliquer.";
     if (!r.scheduleEnabled) return 'Aucun horaire programmé (pas de coupe/reprise automatique).';
     if (r.overrideActive) return "Une action manuelle a suspendu l'automatisation. Le véhicule REJOINT le cycle ensuite (voir la reprise) et se recoupera au prochain créneau. Exception : un blocage veilleur tient jusqu'au rallumage manuel.";
+    if (r.coupesSuspendues && this.displayCut(r) === 'normal') {
+      return `Véhicule ${this.motEtat(r)} : ses coupes automatiques sont suspendues tant qu'il l'est — on ne coupe pas un véhicule au garage, accidenté ou sans boîtier. Une reprise due part toujours. Il rejoint le cycle tout seul à sa remise en service (fiche ou agenda).`;
+    }
     const cut = this.displayCut(r);
     const pending = this.displayPending(r);
     if (pending === 'DRIVING') return "Ce véhicule ROULE alors que ses horaires sont terminés. Par sécurité on ne coupe jamais en marche : la coupe se fera dès qu'il sera arrêté 10 min. À surveiller.";
@@ -341,6 +356,16 @@ export class FleetSchedulesComponent implements OnInit, OnDestroy {
     if (r.connectivity === 'GPS_LOST') return "GPS perdu : le boîtier communique encore (réseau OK) mais n'envoie plus de position GPS. La dernière vitesse affichée est FIGÉE — ce véhicule ne « roule » pas forcément. Antenne à vérifier. La coupe horaire reste possible.";
     if (r.windowState === 'IN_WINDOW') return "Le véhicule est DANS ses horaires : il a le droit de rouler. S'il roule, c'est normal.";
     return 'Hors de ses horaires.';
+  }
+
+  /** « immobilisé », « en maintenance (« Pneus ») »… — le mot partagé de l'état, et le titre de l'agenda. */
+  protected motEtat(r: FleetScheduleRowDto): string {
+    const etat = etatIndisponibilite(r);
+    if (!etat) return 'indisponible';
+    const im = r.immobilisationAgenda;
+    return im && (etat === 'MAINTENANCE' || etat === 'INCIDENT')
+      ? `${LIBELLES_ETAT[etat].court} (« ${im.title} »)`
+      : LIBELLES_ETAT[etat].court;
   }
 
   /** Compte-à-rebours vers la prochaine bascule (coupe/reprise). */

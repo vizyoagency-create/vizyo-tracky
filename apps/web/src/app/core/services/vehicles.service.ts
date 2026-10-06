@@ -3,6 +3,7 @@ import { HttpClient } from '@angular/common/http';
 import { inject, Injectable } from '@angular/core';
 import type {
   DriverSummaryDto,
+  ImmobilisationAgendaDto,
   InstallationEnergy,
   VehicleCapacityRowDto,
   VehicleInstallationSourceDto,
@@ -91,6 +92,12 @@ export interface VehicleDetailDto {
    * WebSocket comme source de vérité, perdu à chaque recréation de conteneur.
    */
   engineCutState?: 'normal' | 'pending' | 'cut' | null;
+  /**
+   * 06/10/2026 — immobilisation d'AGENDA en cours (maintenance ou incident « Immobilise le
+   * véhicule »), ou null. Avec `outOfServiceReason`, elle fait l'état de disponibilité
+   * (`etatIndisponibilite`) : la liste et la fiche disent la même chose que la carte et l'agenda.
+   */
+  immobilisationAgenda?: ImmobilisationAgendaDto | null;
 }
 
 @Injectable({ providedIn: 'root' })

@@ -2,7 +2,16 @@ import { ForbiddenException, Injectable, Logger, ServiceUnavailableException } f
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Cron } from '@nestjs/schedule';
 import { CommandStatus, EngineAction, type VehicleSchedule } from '@prisma/client';
-import { DORMANT_STOP_ACTING_MS, formatSilenceLabel, trackerSilenceMs } from '@vizyo/tracky-shared';
+import {
+  coupesAutoSuspendues,
+  DORMANT_STOP_ACTING_MS,
+  etatIndisponibilite,
+  formatSilenceLabel,
+  LIBELLES_ETAT,
+  trackerSilenceMs,
+  type EtatIndisponibilite,
+  type ImmobilisationAgendaDto,
+} from '@vizyo/tracky-shared';
 import { ErrorLogger } from '../observability/error-logger.service';
 import { PrismaService } from '../prisma/prisma.service';
 import {
@@ -12,6 +21,7 @@ import {
 } from '../engine-control/engine-control.service';
 import { evaluateSchedule, type EvaluationResult } from './schedule-evaluator';
 import { AUTOMATIC_CUT_QUEUE_INTERVAL_MS, AutomaticCutQueueGate } from './automatic-cut-queue';
+import { immobilisationsAgendaEnCours } from '../vehicles/immobilisation-agenda';
 
 const DAYS = [
   'sunday',
@@ -98,6 +108,21 @@ const PARKED_RECHECK_MS = 10 * 60 * 1000;
 /** Journal « considéré stationné » : une ligne à l'entrée dans l'état, puis toutes les 6 h. */
 const PARKED_RELOG_MS = 6 * 60 * 60 * 1000;
 
+/**
+ * 06/10/2026 — les immobilisations d'agenda des véhicules à couper sont relues au plus toutes les
+ * 30 s : le vidage de la file passe toutes les 10 s, et un véhicule en maintenance la nuit y
+ * revient à chaque passage (sa coupe est suspendue, pas faite). Une maintenance posée dans l'agenda
+ * est donc prise en compte en moins de 30 s.
+ */
+const IMMOBILISATIONS_TTL_MS = 30 * 1000;
+/** Journal « coupe suspendue » : une ligne à l'entrée dans l'état (ou s'il change), puis toutes les 6 h. */
+const SUSPENSION_RELOG_MS = 6 * 60 * 60 * 1000;
+
+/** Ce qu'`evaluateAll` sait d'un véhicule en plus de sa ligne : son immobilisation d'agenda. */
+export interface ContexteEvaluation {
+  immobilisationAgenda?: ImmobilisationAgendaDto | null;
+}
+
 @Injectable()
 export class ScheduleCronService {
   private readonly logger = new Logger(ScheduleCronService.name);
@@ -160,6 +185,10 @@ export class ScheduleCronService {
    * sa ligne, une par cause. Vidé par clearDeferral, ou par un refus d'une autre nature.
    */
   private readonly withheldCuts = new Set<string>();
+  /** 06/10/2026 — dernière lecture des immobilisations d'agenda (cf. IMMOBILISATIONS_TTL_MS). */
+  private immobilisationsLues: { at: number; ids: Set<string>; parVehicule: Map<string, ImmobilisationAgendaDto> } | null = null;
+  /** 06/10/2026 — journal « coupe suspendue » : dernière ligne écrite par véhicule, et pour quel état. */
+  private readonly lastSuspendedLog = new Map<string, { at: number; etat: EtatIndisponibilite }>();
 
   /** Évaluation complète chaque minute : RESTORE prioritaires + transitions ordinaires. */
   @Cron('0 * * * * *')
@@ -228,9 +257,19 @@ export class ScheduleCronService {
       return (a.vehicle.plate ?? a.vehicleId).localeCompare(b.vehicle.plate ?? b.vehicleId);
     });
 
+    // 06/10/2026 — l'immobilisation d'agenda n'est lue que pour les véhicules qu'on s'apprête à
+    // COUPER (la reprise n'est jamais suspendue) : la plupart des ticks n'en ont aucun, donc aucune
+    // requête. En lot, jamais par véhicule.
+    const aCouper = schedules
+      .filter((s) => evaluateSchedule(s).state === 'OUT_OF_WINDOW' && s.lastEvaluatedState !== 'OUT_OF_WINDOW')
+      .map((s) => s.vehicleId);
+    const immobilisations = await this.immobilisationsAgenda(aCouper);
+
     for (const schedule of schedules) {
       try {
-        await this.evaluateOne(schedule as ScheduleWithVehicle);
+        await this.evaluateOne(schedule as ScheduleWithVehicle, {
+          immobilisationAgenda: immobilisations.get(schedule.vehicleId) ?? null,
+        });
       } catch (err) {
         this.logger.warn(
           { vehicleId: schedule.vehicleId, error: (err as Error).message },
@@ -245,8 +284,33 @@ export class ScheduleCronService {
     }
   }
 
+  /**
+   * Les immobilisations d'agenda en cours de ces véhicules, relues au plus toutes les 30 s.
+   * Fail-open : si la lecture échoue, la coupe suit son cours comme avant ce correctif — une panne
+   * de lecture ne doit jamais bloquer tout le planning.
+   */
+  private async immobilisationsAgenda(vehicleIds: string[]): Promise<Map<string, ImmobilisationAgendaDto>> {
+    if (vehicleIds.length === 0) return new Map();
+    const cache = this.immobilisationsLues;
+    if (cache && Date.now() - cache.at < IMMOBILISATIONS_TTL_MS && vehicleIds.every((id) => cache.ids.has(id))) {
+      return cache.parVehicule;
+    }
+    try {
+      const parVehicule = await immobilisationsAgendaEnCours(this.prisma, vehicleIds);
+      this.immobilisationsLues = { at: Date.now(), ids: new Set(vehicleIds), parVehicule };
+      return parVehicule;
+    } catch (err) {
+      this.logger.warn(
+        { error: (err as Error).message },
+        "Lecture des immobilisations d'agenda impossible — coupes évaluées sans elles",
+      );
+      return new Map();
+    }
+  }
+
   async evaluateOne(
     schedule: ScheduleWithVehicle,
+    contexte: ContexteEvaluation = {},
   ): Promise<void> {
     const tracker = schedule.vehicle.tracker;
     if (!tracker) return; // no tracker → nothing to do
@@ -312,6 +376,24 @@ export class ScheduleCronService {
     // n'est pas écoulé (c'est l'appel lui-même qui crée une commande, tente TCP puis SMS, et
     // journalise). La RESTAURATION n'est jamais retardée — cf. CUT_BACKOFF_MS.
     if (action === EngineAction.CUT) {
+      // ══ 06/10/2026 — VÉHICULE INDISPONIBLE : LA COUPE AUTOMATIQUE EST SUSPENDUE ═══════════════
+      // Hors service déclaré sur la fiche (TRK-053 : HM-733-GA et HM-779-GA, déclarés hors service,
+      // coupés par le planning le 14/09 à 22:00) ou immobilisé par l'agenda (maintenance, incident) :
+      // le couper au garage ou sur la dépanneuse n'a pas de sens, et l'atelier doit pouvoir démarrer.
+      // Un ÉTAT, pas un échec : ni report, ni backoff, ni alerte — et aucune place prise dans la file
+      // anti-rafale (on sort AVANT `tryAcquire`). `lastEvaluatedState` n'avance pas : remis en
+      // service hors plage, le véhicule est coupé au tick suivant comme les autres, règle des 10 min
+      // comprise. La REPRISE ne passe pas par ici : elle n'est jamais suspendue.
+      const etat = etatIndisponibilite({
+        outOfServiceReason: schedule.vehicle.outOfServiceReason ?? null,
+        immobilisationAgenda: contexte.immobilisationAgenda ?? null,
+      });
+      if (coupesAutoSuspendues(etat)) {
+        this.clearDeferral(schedule.vehicleId, `coupe automatique suspendue (véhicule ${LIBELLES_ETAT[etat].court})`);
+        this.journaliserSuspension(schedule, etat);
+        return;
+      }
+
       // TRK-046 — véhicule considéré stationné (hors champ GPS, parking validé) : on attend
       // sa sortie SANS rien compter. Ni deferredSince, ni backoff, ni alerte : ce n'est pas
       // un échec, c'est un état. La sortie est surveillée par l'ingestion, pas par ce tick.
@@ -617,6 +699,23 @@ export class ScheduleCronService {
   }
 
   /**
+   * 06/10/2026 — trace la suspension d'une coupe dans les LOGS DU CONTENEUR, une ligne à l'entrée
+   * dans l'état (ou quand il change), puis toutes les 6 h. Pas au centre d'alerte : c'est un état
+   * stable, lisible sur la page Horaires (« Coupes suspendues ») — même leçon que `reportDormant`.
+   */
+  private journaliserSuspension(schedule: ScheduleWithVehicle, etat: EtatIndisponibilite): void {
+    const vid = schedule.vehicleId;
+    const now = Date.now();
+    const dernier = this.lastSuspendedLog.get(vid);
+    if (dernier && dernier.etat === etat && now - dernier.at < SUSPENSION_RELOG_MS) return;
+    this.lastSuspendedLog.set(vid, { at: now, etat });
+    this.logger.log(
+      { vehicleId: vid, plate: schedule.vehicle.plate ?? null, etat },
+      `Coupe automatique suspendue : véhicule ${LIBELLES_ETAT[etat].court} — la reprise, elle, reste assurée`,
+    );
+  }
+
+  /**
    * Arme le prochain essai de coupe et renvoie le délai appliqué (ms). Palier croissant borné :
    * on n'abandonne JAMAIS de couper, on arrête juste de marteler.
    */
@@ -743,6 +842,9 @@ interface ScheduleWithVehicle extends VehicleSchedule {
     /** Optionnel dans le type (les fixtures de test ne la fournissent pas) mais TOUJOURS chargée
      *  en production : `evaluateAll` inclut le véhicule entier. Sert à nommer le véhicule en alerte. */
     plate?: string | null;
+    /** 06/10/2026 — hors service déclaré sur la fiche : suspend les COUPES automatiques. Toujours
+     *  chargé en production (véhicule entier) ; absent des anciennes fixtures = en service. */
+    outOfServiceReason?: string | null;
     tracker: {
       id: string;
       imei: string;

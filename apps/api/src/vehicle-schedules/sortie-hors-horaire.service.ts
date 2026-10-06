@@ -7,6 +7,7 @@ import {
   SORTIE_HORS_CHAMP_EVENT,
   type SortieHorsChampEvent,
 } from '../positions/sortie-hors-champ.event';
+import { etatIndisponibiliteVehicule } from '../vehicles/immobilisation-agenda';
 import { evaluateSchedule } from './schedule-evaluator';
 
 /**
@@ -18,10 +19,13 @@ import { evaluateSchedule } from './schedule-evaluator';
  * l'ingestion et tranche la seule question qui reste : cette réapparition en mouvement
  * tombe-t-elle pendant la plage où le planning veut le véhicule immobilisé ?
  *
- * Quatre abstentions, toutes voulues :
+ * Cinq abstentions, toutes voulues :
  *  - pas de planning actif → la sortie n'enfreint rien ;
  *  - override manuel en cours → un humain a explicitement autorisé (coupe/reprise manuelle) ;
  *  - dans la plage autorisée → trajet normal ;
+ *  - véhicule INDISPONIBLE (06/10/2026 : hors service déclaré, maintenance ou incident de l'agenda)
+ *    → ses coupes automatiques sont suspendues, donc son planning aussi : le garagiste qui l'essaie
+ *    ou la dépanneuse qui l'emporte n'enfreignent rien ;
  *  - un RESTORE créé PENDANT l'obscurité → quelqu'un a délibérément rendu le véhicule
  *    utilisable (déverrouillage conducteur, reprise manuelle) : l'alerter serait crier sur
  *    une autorisation.
@@ -65,6 +69,11 @@ export class SortieHorsHoraireService {
         select: { id: true },
       });
       if (restoreAutorise) return;
+
+      // 06/10/2026 — véhicule indisponible (hors service déclaré, maintenance ou incident de
+      // l'agenda) : même règle que le cron, qui suspend ses coupes — évaluée à l'heure de la TRAME
+      // (leçon TRK-044). Lue en dernier : deux requêtes, seulement quand une alerte allait partir.
+      if (await etatIndisponibiliteVehicule(this.prisma, evt.vehicleId, at)) return;
 
       await this.alerts.createSortieHorsHoraireAlert(
         { id: evt.trackerId, imei: evt.imei },

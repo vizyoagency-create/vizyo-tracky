@@ -1,7 +1,9 @@
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { Prisma, UserRole } from '@prisma/client';
 import {
+  coupesAutoSuspendues,
   DORMANT_STOP_COUNTING_MS,
+  etatIndisponibilite,
   formatSilenceLabel,
   getVehicleConnectivityState,
   getVehiclePresenceState,
@@ -167,18 +169,31 @@ export class FleetSchedulesService {
       const evalRes = enabled && sched ? evaluateSchedule(sched, now) : null;
       const windowState = evalRes?.state ?? null;
 
-      // Prochaine bascule : seulement si planning actif ET non suspendu par un override.
+      // 06/10/2026 — véhicule INDISPONIBLE (hors service déclaré, maintenance ou incident de
+      // l'agenda) : le cron suspend ses COUPES automatiques (jamais ses reprises). La page le dit
+      // au lieu d'annoncer une coupe qui ne partira pas.
+      const etat = etatIndisponibilite({
+        outOfServiceReason: s.outOfServiceReason ?? null,
+        immobilisationAgenda: s.immobilisationAgenda ?? null,
+      });
+      const coupesSuspendues = enabled && coupesAutoSuspendues(etat);
+
+      // Prochaine bascule : seulement si planning actif ET non suspendu par un override. Une
+      // prochaine COUPE suspendue n'est pas annoncée ; une prochaine REPRISE, si (elle partira).
       let nextTransitionAt: string | null = null;
       let nextTransitionAction: 'CUT' | 'RESTORE' | null = null;
       if (enabled && sched && !overrideActive) {
         const nt = this.cachedNextTransition(sched, now);
-        nextTransitionAt = nt.at;
-        nextTransitionAction = nt.action;
+        if (!(coupesSuspendues && nt.action === 'CUT')) {
+          nextTransitionAt = nt.at;
+          nextTransitionAction = nt.action;
+        }
       }
 
       // Le planning « veut couper » (hors plage, non suspendu) mais le moteur n'est PAS encore coupé.
+      // Une coupe SUSPENDUE n'est pas « en attente » : elle ne partira pas.
       const cutPending =
-        enabled && !overrideActive && windowState === 'OUT_OF_WINDOW' && s.engineCutState === 'normal';
+        enabled && !overrideActive && !coupesSuspendues && windowState === 'OUT_OF_WINDOW' && s.engineCutState === 'normal';
 
       let pendingReason: FleetSchedulePendingReason | null = null;
       if (cutPending) {
@@ -231,6 +246,9 @@ export class FleetSchedulesService {
         cutPending,
         pendingReason,
         awaitingStopUntil: null,
+        outOfServiceReason: s.outOfServiceReason ?? null,
+        immobilisationAgenda: s.immobilisationAgenda ?? null,
+        coupesSuspendues,
       };
       rows.push(row);
 
@@ -397,6 +415,14 @@ export class FleetSchedulesService {
       }
       res.outOfWindowNow++;
       const s = snapByVehicle.get(t.id);
+      // 06/10/2026 — indisponible (hors service, maintenance, incident) : sa coupe sera SUSPENDUE.
+      if (coupesAutoSuspendues(etatIndisponibilite({
+        outOfServiceReason: s?.outOfServiceReason ?? null,
+        immobilisationAgenda: s?.immobilisationAgenda ?? null,
+      }))) {
+        res.wouldSuspend = (res.wouldSuspend ?? 0) + 1;
+        continue;
+      }
       const moving = (s?.lastSpeedKmh ?? 0) > MOVING_SPEED_KMH;
       const conn = getVehicleConnectivityState(
         {
@@ -439,7 +465,7 @@ export class FleetSchedulesService {
     // Tous les CUT hors plage passent par la file. Les véhicules en mouvement/hors ligne
     // peuvent rester plus longtemps en attente ; cette durée est donc un minimum opérationnel.
     res.estimatedCutQueueDurationSec =
-      Math.max(0, res.outOfWindowNow - 1) * res.cutQueueIntervalSec;
+      Math.max(0, res.outOfWindowNow - (res.wouldSuspend ?? 0) - 1) * res.cutQueueIntervalSec;
     return res;
   }
 

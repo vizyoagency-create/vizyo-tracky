@@ -5,9 +5,11 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { OnEvent } from '@nestjs/event-emitter';
 import { CommandStatus, EngineAction, Prisma, UserRole , VehicleOutOfServiceReason } from '@prisma/client';
 import type { Vehicle } from '@prisma/client';
 import type {
+  ImmobilisationAgendaDto,
   VehicleCapacityRowDto,
   VehicleInstallationSourceDto,
   VehicleSnapshotDto,
@@ -32,6 +34,11 @@ import {
 } from '../gps-dead-zones/presomption-stationnement';
 import { PrismaService } from '../prisma/prisma.service';
 import { SystemActivityService } from '../system-activity/system-activity.service';
+import {
+  DISPONIBILITE_MODIFIEE_EVENT,
+  immobilisationsAgendaEnCours,
+  type DisponibiliteModifieeEvent,
+} from './immobilisation-agenda';
 import { UnlockTokenService } from '../driver-unlock/unlock-token.service';
 import * as QRCode from 'qrcode';
 import type { CreateVehicleDto } from './dto/create-vehicle.dto';
@@ -128,6 +135,12 @@ export type VehicleWithGroup = Vehicle & {
    * page Horaires. `null` quand le véhicule n'a pas de tracker. Même sémantique que le snapshot.
    */
   engineCutState?: 'normal' | 'pending' | 'cut' | null;
+  /**
+   * 06/10/2026 — immobilisation d'AGENDA en cours (maintenance ou incident « Immobilise le
+   * véhicule »), ou null. Avec `outOfServiceReason`, elle fait l'état de disponibilité du véhicule
+   * (`etatIndisponibilite`) : liste, fiche et carte disent la même chose que l'agenda.
+   */
+  immobilisationAgenda?: ImmobilisationAgendaDto | null;
 };
 
 @Injectable()
@@ -272,6 +285,16 @@ export class VehiclesService {
   }
 
   /**
+   * 06/10/2026 — une maintenance ou un incident de l'agenda vient de changer : l'instantané porte
+   * l'immobilisation (`immobilisationAgenda`), son cache de 15 s doit tomber — même geste que
+   * `setOutOfService` pour l'état déclaré sur la fiche.
+   */
+  @OnEvent(DISPONIBILITE_MODIFIEE_EVENT)
+  onDisponibiliteModifiee(evt: DisponibiliteModifieeEvent): void {
+    this.invalidateKpiCache(evt?.fleetId ?? null);
+  }
+
+  /**
    * Cadre de temps de travail par défaut (lot 2) : lun-ven 07h00-19h00, samedi/dimanche fermés.
    * `enabled: true` = le cadre est DÉFINI ; c'est `Vehicle.mixedUseEnabled` (false par défaut) qui
    * décide s'il s'APPLIQUE. Les horaires sont explicites à dessein : sans start/end, l'évaluateur
@@ -411,6 +434,8 @@ export class VehiclesService {
     const etatCoupe = await this.etatCoupeParTracker(
       rows.map((v) => v.tracker?.id).filter(Boolean) as string[],
     );
+    // 06/10/2026 — l'immobilisation d'agenda voyage avec la liste (une requête, bornée à la page).
+    const immobilisations = await immobilisationsAgendaEnCours(this.prisma, rows.map((v) => v.id));
     return rows.map((v) => {
       const withGroup = VehiclesService.withGroup(v);
       const moving =
@@ -420,7 +445,8 @@ export class VehiclesService {
         zonesParVehicule.get(v.id) ?? [],
       );
       const engineCutState = v.tracker ? (etatCoupe.get(v.tracker.id) ?? 'normal') : null;
-      return { ...withGroup, moving, presumedParkedZone, engineCutState };
+      const immobilisationAgenda = immobilisations.get(v.id) ?? null;
+      return { ...withGroup, moving, presumedParkedZone, engineCutState, immobilisationAgenda };
     }) as VehicleWithGroup[];
   }
 
@@ -463,7 +489,9 @@ export class VehiclesService {
       vehicle.tracker as TrackerPourPresomption | null,
       zonesParVehicule.get(vehicle.id) ?? [],
     );
-    return { ...VehiclesService.withGroup(vehicle), presumedParkedZone };
+    // 06/10/2026 — même état que la liste et la carte : la fiche dit « en maintenance » quand l'agenda le dit.
+    const immobilisationAgenda = (await immobilisationsAgendaEnCours(this.prisma, [vehicle.id])).get(vehicle.id) ?? null;
+    return { ...VehiclesService.withGroup(vehicle), presumedParkedZone, immobilisationAgenda };
   }
 
   /**
@@ -939,6 +967,8 @@ export class VehiclesService {
           },
         })
       : [];
+    // 06/10/2026 — « non dispo » dans la vue Parc aussi quand l'agenda immobilise (maintenance, incident).
+    const immobilisations = await immobilisationsAgendaEnCours(this.prisma, vids);
     const srcByVeh = new Map<string, VehicleInstallationSourceDto>();
     for (const t of tasks) {
       if (!t.vehicleId || srcByVeh.has(t.vehicleId)) continue; // 1re rencontrée (desc) = la plus récente
@@ -978,6 +1008,7 @@ export class VehiclesService {
         installationSource: source,
         divergentFields,
         outOfServiceReason: v.outOfServiceReason ?? null,
+        immobilisationAgenda: immobilisations.get(v.id) ?? null,
         // Dérivé au read-time : aucun champ en base, aucun drapeau à lever ni à baisser.
         // Le jour où le boîtier ré-émet, `dormant` retombe à false tout seul au prochain appel.
         dormant: isVehicleDormant({ trackerId: v.tracker?.id ?? null, lastSeenAt }, now),
@@ -1260,6 +1291,9 @@ export class VehiclesService {
 
     const trackerIds = vehicles.map((v) => v.tracker?.id).filter(Boolean) as string[];
     const cutStateByTracker = await this.etatCoupeParTracker(trackerIds);
+    // 06/10/2026 — maintenance / incident d'agenda en cours : la carte pose la clé, la page Horaires
+    // dit « coupes suspendues ». Une requête par rafraîchissement (le snapshot est caché 15 s).
+    const immobilisations = await immobilisationsAgendaEnCours(this.prisma, vehicles.map((v) => v.id));
 
     const result: VehicleSnapshotDto[] = vehicles.map((v) => {
       const t = v.tracker;
@@ -1296,6 +1330,7 @@ export class VehiclesService {
         ),
         outOfServiceReason: v.outOfServiceReason ?? null,
         outOfServiceSince: v.outOfServiceSince ? v.outOfServiceSince.toISOString() : null,
+        immobilisationAgenda: immobilisations.get(v.id) ?? null,
       };
     });
 

@@ -13,7 +13,7 @@ import {
 import { HttpErrorResponse } from '@angular/common/http';
 import { apiErrorMessage } from '../../../core/error/api-error';
 import {
-  LucideAngularModule, Baby, Truck, X, Loader, Pencil, Check, AlertTriangle, WifiOff, Ban, Search,
+  LucideAngularModule, Baby, Truck, X, Loader, Pencil, Check, AlertTriangle, WifiOff, Ban, Search, Wrench,
 } from 'lucide-angular';
 import {
   CHILD_SEAT_LABELS,
@@ -65,12 +65,26 @@ interface Brouillon {
  * (`isVehicleDormant` + `DORMANT_STOP_COUNTING_MS`), recalculés ici depuis `lastSeenAt`.
  */
 export function etatVehicule(
-  r: Pick<VehicleCapacityRowDto, 'outOfServiceReason' | 'dormant' | 'lastSeenAt' | 'silenceLabel'> | undefined,
+  r: Pick<VehicleCapacityRowDto, 'outOfServiceReason' | 'dormant' | 'lastSeenAt' | 'silenceLabel' | 'immobilisationAgenda'> | undefined,
   now = Date.now(),
-): { kind: 'hors_service' | 'muet'; label: string } | null {
+): { kind: 'hors_service' | 'muet' | 'maintenance'; label: string } | null {
   if (!r) return null;
   const hs = horsServiceLabel(r.outOfServiceReason);
   if (hs) return { kind: 'hors_service', label: `Hors service · ${hs}` };
+  const muet = etatMuet(r, now);
+  if (muet) return muet;
+  // 06/10/2026 — maintenance ou incident « Immobilise le véhicule » EN COURS (même règle que la
+  // carte et la réservation) : la carte du véhicule le dit, grisée comme les autres indisponibles.
+  const im = r.immobilisationAgenda;
+  if (im) return { kind: 'maintenance', label: `${im.type === 'INCIDENT' ? 'Incident en cours' : 'En maintenance'} · ${im.title}` };
+  return null;
+}
+
+/** Le boîtier muet — même prédicat et même seuil que la feuille Réserver. */
+function etatMuet(
+  r: Pick<VehicleCapacityRowDto, 'dormant' | 'lastSeenAt' | 'silenceLabel'>,
+  now: number,
+): { kind: 'muet'; label: string } | null {
   if (r.lastSeenAt === undefined) {
     // Réponse sans le champ (API antérieure) : le drapeau du serveur, calculé au même seuil.
     return r.dormant ? { kind: 'muet', label: `Boîtier muet depuis ${r.silenceLabel ?? 'longtemps'}` } : null;
@@ -190,6 +204,7 @@ function ficheAEcrire(e: Brouillon): { erreur: string } | { payload: Record<stri
           @if (sansPlaces() > 0) { <span class="pv-kpi pv-kpi--warn"><lucide-icon [img]="AlertIcon" [size]="12"></lucide-icon> <strong>{{ sansPlaces() }}</strong> sans places renseignées</span> }
           @if (horsService() > 0) { <span class="pv-kpi pv-kpi--off"><lucide-icon [img]="BanIcon" [size]="12"></lucide-icon> <strong>{{ horsService() }}</strong> hors service</span> }
           @if (muets() > 0) { <span class="pv-kpi pv-kpi--off"><lucide-icon [img]="WifiOffIcon" [size]="12"></lucide-icon> <strong>{{ muets() }}</strong> boîtier muet</span> }
+          @if (enMaintenance() > 0) { <span class="pv-kpi pv-kpi--off"><lucide-icon [img]="WrenchIcon" [size]="12"></lucide-icon> <strong>{{ enMaintenance() }}</strong> en maintenance</span> }
         </div>
       </header>
 
@@ -279,7 +294,7 @@ function ficheAEcrire(e: Brouillon): { erreur: string } | { payload: Record<stri
                   @if (r.features.length > 3) { <span class="pv-chip pv-chip--feat">+{{ r.features.length - 3 }}</span> }
                 </div>
                 @if (etatDe(r); as e) {
-                  <span class="pv-etat" [attr.data-kind]="e.kind"><lucide-icon [img]="e.kind === 'muet' ? WifiOffIcon : BanIcon" [size]="11"></lucide-icon> {{ e.label }}</span>
+                  <span class="pv-etat" [attr.data-kind]="e.kind"><lucide-icon [img]="e.kind === 'muet' ? WifiOffIcon : e.kind === 'maintenance' ? WrenchIcon : BanIcon" [size]="11"></lucide-icon> {{ e.label }}</span>
                 }
               </button>
             }
@@ -402,6 +417,7 @@ function ficheAEcrire(e: Brouillon): { erreur: string } | { payload: Record<stri
     .pv-chip--feat { font-weight: 600; }
     .pv-etat { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 700; color: var(--fg-tertiary); }
     .pv-etat[data-kind='hors_service'] { color: var(--texte-alerte); }
+    .pv-etat[data-kind='maintenance'] { color: var(--texte-attente); }
 
     .pv-mini { display: inline-flex; align-items: center; gap: 4px; padding: 6px 9px; border-radius: 8px; font-size: 12px; font-weight: 700; background: var(--bg-tertiary); border: 1px solid var(--border-subtle); color: var(--fg-secondary); min-height: 32px; }
     .pv-btn { display: inline-flex; align-items: center; gap: 6px; padding: 9px 14px; border-radius: 10px; font-size: 13px; font-weight: 700; min-height: 40px; background: var(--bg-tertiary); border: 1px solid var(--border-subtle); color: var(--fg-secondary); cursor: pointer; }
@@ -474,6 +490,7 @@ export class AgendaParcViewComponent {
   protected readonly AlertIcon = AlertTriangle;
   protected readonly WifiOffIcon = WifiOff;
   protected readonly BanIcon = Ban;
+  protected readonly WrenchIcon = Wrench;
   protected readonly SearchIcon = Search;
   protected readonly energies = ENERGIES;
   protected readonly policies = SEAT_POLICIES;
@@ -528,6 +545,8 @@ export class AgendaParcViewComponent {
   protected readonly sansPlaces = computed(() => this.rows().filter((r) => r.seats === null).length);
   protected readonly horsService = computed(() => [...this.etats().values()].filter((e) => e?.kind === 'hors_service').length);
   protected readonly muets = computed(() => [...this.etats().values()].filter((e) => e?.kind === 'muet').length);
+  /** 06/10/2026 — immobilisés par l'agenda (maintenance, incident) en ce moment. */
+  protected readonly enMaintenance = computed(() => [...this.etats().values()].filter((e) => e?.kind === 'maintenance').length);
 
   protected readonly stock = signal<ChildSeatStockDto | null>(null);
   /** Échec de LECTURE du stock : il n'y a rien à montrer, le bloc affiche le message et « Réessayer ». */

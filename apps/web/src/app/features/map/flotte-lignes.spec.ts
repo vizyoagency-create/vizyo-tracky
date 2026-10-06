@@ -147,6 +147,52 @@ describe('construireLignesFlotte', () => {
       expect(l.immobilise).toBeFalse();
     });
   });
+
+  /** 06/10/2026 — l'agenda et le parking souterrain entrent dans la liste. */
+  describe('maintenance de l’agenda et parking souterrain', () => {
+    const maintenance = {
+      eventId: 'ev-1', type: 'MAINTENANCE' as const, title: 'Pneus',
+      startAt: ilYA(60 * MINUTE), endAt: new Date(MAINTENANT + 60 * MINUTE).toISOString(),
+    };
+
+    it('une maintenance pose la clé (immobilise) et son état propre, sans toucher au rangement mesuré', () => {
+      const [l] = construireLignesFlotte([vehicule({ immobilisationAgenda: maintenance })], () => 0, MAINTENANT);
+      expect(l.immobilise).toBeTrue();
+      expect(l.etatDispo).toBe('MAINTENANCE');
+      expect(l.etat).toBe('arret');
+    });
+
+    it('la fiche l’emporte sur l’agenda', () => {
+      const [l] = construireLignesFlotte([vehicule({ outOfServiceReason: 'ACCIDENT', immobilisationAgenda: maintenance })], () => 0, MAINTENANT);
+      expect(l.etatDispo).toBe('ACCIDENTE');
+      expect(l.accidente).toBeTrue();
+      expect(l.immobilise).toBeFalse();
+    });
+
+    it('au parking souterrain : marqué tant que le boîtier reste sans GPS', () => {
+      const [l] = construireLignesFlotte([vehicule({
+        plate: 'HM-769-GA',
+        presumedParkedZone: 'parking souterrain — Toulouse',
+        lastSeenAt: ilYA(30_000),
+        lastPositionAt: ilYA(15 * 60 * MINUTE),
+        lastNoFixAt: ilYA(30_000),
+        lastIgnition: false,
+      })], () => 0, MAINTENANT);
+      expect(l.souterrain).toBeTrue();
+      expect(l.etatDispo).toBeNull();
+    });
+
+    it('un véhicule immobilisé au sous-sol montre la clé, pas le « P »', () => {
+      const [l] = construireLignesFlotte([vehicule({
+        outOfServiceReason: 'IMMOBILIZED',
+        presumedParkedZone: 'parking souterrain — Toulouse',
+        lastPositionAt: ilYA(15 * 60 * MINUTE),
+        lastNoFixAt: ilYA(30_000),
+      })], () => 0, MAINTENANT);
+      expect(l.immobilise).toBeTrue();
+      expect(l.souterrain).toBeFalse();
+    });
+  });
 });
 
 describe('compteursFlotte et filtrerFlotte', () => {

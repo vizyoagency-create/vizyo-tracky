@@ -1,6 +1,6 @@
 import { swallow } from '../../core/error/swallow';
 import { HttpClient } from '@angular/common/http';
-import { computed, effect, inject, Injectable, signal } from '@angular/core';
+import { computed, effect, inject, Injectable, signal, untracked } from '@angular/core';
 import { Router } from '@angular/router';
 import type { AlertAcknowledgedEvent, AlertEvent, EngineCommandUpdatedEvent, FleetSnapshotResponse, PositionsBatchEvent, PositionUpdateEvent, TrackerStatusChangedDto, VehicleMovementEvent, VehicleSnapshotDto } from '@vizyo/tracky-shared';
 import { WS_EVENTS } from '@vizyo/tracky-shared';
@@ -9,6 +9,7 @@ import { io, Socket } from 'socket.io-client';
 import { ToastService } from '../../shared/ui/toast/toast.service';
 import { retourSur } from '../auth/retour-interne';
 import { AuthService } from './auth.service';
+import { EtatsVehiculesBus } from './etats-vehicules.bus';
 import { FleetFilterService } from './fleet-filter.service';
 import { NotificationsApiService } from './notifications.service';
 import { PermissionsService } from './permissions.service';
@@ -58,6 +59,9 @@ export function deciderApresTentativeDeRafraichissement(etat: {
   // onglet laissé ouvert avec un refresh mort martèlerait `/auth/refresh` à l'infini.
   return etat.echecsCumules + 1 >= etat.seuil ? 'expirer' : 'compter';
 }
+
+/** 06/10/2026 — cadence de relecture des états de l'instantané (onglet visible seulement). */
+const RAFRAICHISSEMENT_ETATS_MS = 5 * 60 * 1000;
 
 @Injectable({ providedIn: 'root' })
 export class RealtimeService {
@@ -330,6 +334,7 @@ export class RealtimeService {
     // Hydratation immediate en parallele de la connexion WS — la carte ne reste plus
     // vide en attendant la prochaine trame Coban.
     this.hydrate().catch(() => { /* silent: live WS will populate eventually */ });
+    this.armerRafraichissementEtats();
 
     // Transport : on tente WebSocket d'abord (connexion rapide), MAIS avec repli
     // polling si l'upgrade WS echoue. Sans `tryAllTransports`, socket.io-client
@@ -658,6 +663,7 @@ export class RealtimeService {
   }
 
   disconnect(): void {
+    if (this.etatsTimer) { clearInterval(this.etatsTimer); this.etatsTimer = null; }
     this.socket?.disconnect();
     this.socket = null;
     this.connected.set(false);
@@ -862,6 +868,103 @@ export class RealtimeService {
     if (engineDirty && newEngineCmds) this._engineCommandUpdates.set(newEngineCmds);
   }
 
+  /** 06/10/2026 — relecture périodique des ÉTATS de l'instantané (cf. `rafraichirEtats`). */
+  private etatsTimer: ReturnType<typeof setInterval> | null = null;
+  /** Dernière lecture réussie des états (hydratation ou relecture), en ms epoch. */
+  private etatsLusA = 0;
+
+  /**
+   * À l'ouverture d'une page qui MONTRE les états (carte, liste, fiche) : relit l'instantané si sa
+   * dernière lecture a plus de `ageMaxMs`. Sans quoi une maintenance posée par un collègue il y a
+   * 4 min n'apparaîtrait qu'à la relecture périodique suivante.
+   */
+  rafraichirEtatsSiAnciens(ageMaxMs = 60 * 1000): void {
+    if (Date.now() - this.etatsLusA < ageMaxMs) return;
+    this.rafraichirEtats().catch(() => { /* silencieux */ });
+  }
+
+  /**
+   * Pose TOUT DE SUITE, sur la ligne de l'instantané, l'état que la fiche vient d'enregistrer : la
+   * carte et la fiche lisent l'instantané en premier — sans ce geste, l'ancien état resterait affiché
+   * le temps de la relecture (et pour de bon si elle échouait).
+   */
+  appliquerEtatDeclare(vehicleId: string, outOfServiceReason: string | null, outOfServiceSince: string | null): void {
+    const courant = this.snapshot();
+    const i = courant.findIndex((s) => s.vehicleId === vehicleId);
+    if (i < 0) return;
+    const suivant = [...courant];
+    suivant[i] = {
+      ...courant[i],
+      outOfServiceReason: (outOfServiceReason as VehicleSnapshotDto['outOfServiceReason']) ?? null,
+      outOfServiceSince,
+    };
+    this.snapshot.set(suivant);
+  }
+
+  /**
+   * 06/10/2026 — un geste de l'application a peut-être changé un état (maintenance posée dans
+   * l'agenda, déclaration sur la fiche) : on relit les états tout de suite, sans attendre les 5 min.
+   */
+  private readonly etatsBus = inject(EtatsVehiculesBus);
+  private readonly etatsEffect = effect(() => {
+    if (this.etatsBus.revision() === 0) return;
+    untracked(() => { this.rafraichirEtats().catch(() => { /* silencieux */ }); });
+  });
+
+  private armerRafraichissementEtats(): void {
+    if (this.etatsTimer) return;
+    this.etatsTimer = setInterval(() => {
+      if (this.visibility.isVisible()) this.rafraichirEtats().catch(() => { /* silencieux */ });
+    }, RAFRAICHISSEMENT_ETATS_MS);
+  }
+
+  /**
+   * 06/10/2026 — relit l'instantané pour ses champs d'ÉTAT seulement : hors service déclaré,
+   * immobilisation d'agenda, parking souterrain, planning activé. Les positions et l'état de coupe,
+   * que le direct tient à jour à la trame près, ne sont PAS touchés.
+   *
+   * Pourquoi : ces champs ne voyagent pas par le WebSocket. Avant, ils n'étaient relus qu'à la
+   * reconnexion — une maintenance posée dans l'agenda, ou un véhicule déclaré immobilisé sur sa
+   * fiche, n'apparaissait sur la carte déjà ouverte qu'au rechargement. Appelé après un geste qui
+   * change un état (fiche, agenda), et toutes les 5 min tant que l'onglet est visible : une
+   * maintenance commence et finit à l'heure dite, sans aucun geste.
+   */
+  async rafraichirEtats(): Promise<void> {
+    if (this.auth.isDepot()) return;
+    try {
+      const res = await firstValueFrom(this.http.get<FleetSnapshotResponse>('/api/vehicles/snapshot'));
+      const frais = new Map((res.items ?? []).map((v) => [v.vehicleId, v]));
+      let change = false;
+      const suivant = this.snapshot().map((s) => {
+        const f = frais.get(s.vehicleId);
+        if (!f) return s;
+        const memeAgenda = JSON.stringify(s.immobilisationAgenda ?? null) === JSON.stringify(f.immobilisationAgenda ?? null);
+        if (
+          memeAgenda &&
+          s.outOfServiceReason === f.outOfServiceReason &&
+          s.outOfServiceSince === f.outOfServiceSince &&
+          s.presumedParkedZone === f.presumedParkedZone &&
+          s.scheduleEnabled === f.scheduleEnabled
+        ) return s;
+        change = true;
+        return {
+          ...s,
+          outOfServiceReason: f.outOfServiceReason ?? null,
+          outOfServiceSince: f.outOfServiceSince ?? null,
+          immobilisationAgenda: f.immobilisationAgenda ?? null,
+          presumedParkedZone: f.presumedParkedZone ?? null,
+          scheduleEnabled: f.scheduleEnabled,
+        };
+      });
+      this.etatsLusA = Date.now();
+      // Un signal neuf seulement si un état a bougé : la carte ne redessine pas ses pastilles
+      // toutes les 5 min pour rien.
+      if (change) this.snapshot.set(suivant);
+    } catch (err) {
+      swallow('realtime:rafraichirEtats', err);
+    }
+  }
+
   /**
    * Hydratation immediate de la carte au login : recupere la derniere position
    * connue de chaque vehicule via /api/vehicles/snapshot et peuple le signal
@@ -895,6 +998,7 @@ export class RealtimeService {
       );
       const items = res.items ?? [];
       this.snapshot.set(items);
+      this.etatsLusA = Date.now();
 
       const next = new Map(this.positions());
       const hydratedIds = new Set<string>();

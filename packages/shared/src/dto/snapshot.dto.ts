@@ -1,3 +1,5 @@
+import type { ImmobilisationAgendaDto } from '../utils/etat-vehicule';
+
 /**
  * Snapshot d'un vehicule : metadonnees + derniere position connue (denormalisee).
  * Utilise pour l'hydratation immediate de la carte au login (chantier 1 — V1.4).
@@ -97,6 +99,13 @@ export interface VehicleSnapshotDto {
   outOfServiceReason?: 'ACCIDENT' | 'TRACKER_UNPLUGGED' | 'IMMOBILIZED' | null;
   /** ISO — depuis quand le véhicule est hors service (null si en service). */
   outOfServiceSince?: string | null;
+  /**
+   * Immobilisation EN COURS posée dans l'agenda (maintenance ou incident « Immobilise le
+   * véhicule »), `null` sinon — même règle que la réservation (`immobilisationAgendaEnCours`).
+   * Demande du propriétaire du 06/10/2026 : une maintenance ajoutée dans l'agenda doit se voir
+   * sur la carte (« le rond marron et la clé ») et suspendre les coupes automatiques.
+   */
+  immobilisationAgenda?: ImmobilisationAgendaDto | null;
 }
 
 export interface FleetSnapshotResponse {

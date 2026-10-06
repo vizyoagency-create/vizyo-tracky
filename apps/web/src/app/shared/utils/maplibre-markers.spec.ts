@@ -6,6 +6,7 @@ import {
   speedColor,
   ACCIDENT_MARKER_COLOR,
   IMMOBILIZED_MARKER_COLOR,
+  UNDERGROUND_MARKER_COLOR,
   UNPLUGGED_MARKER_COLOR,
   updateVehicleMarkerEl,
   type VehicleMarkerData,
@@ -606,6 +607,7 @@ describe('marqueur — véhicule accidenté déclaré', () => {
         expect(el.querySelector(sel)).withContext(`${sel} (accident=${accident})`).not.toBeNull();
       }
       expect(el.style.getPropertyValue('--tracky-accident').toUpperCase()).toBe(COULEURS_CARTE.accidente);
+      expect(el.style.getPropertyValue('--tracky-accident-panneau').toUpperCase()).toBe(COULEURS_CARTE.accidentePanneau);
     }
   });
 
@@ -624,14 +626,25 @@ describe('marqueur — véhicule accidenté déclaré', () => {
     };
     afterEach(() => { poses.forEach((el) => el.remove()); poses = []; });
 
-    it('montre l’anneau et le triangle MAGENTA, le « ! » blanc, et ni barre ni clé', () => {
+    // 06/10/2026 midi — le magenta est refusé (« j'aime pas le violet ») : le noir et jaune du danger.
+    it('montre l’anneau ANTHRACITE et le panneau JAUNE cerclé d’anthracite, « ! » anthracite, ni barre ni clé', () => {
       const el = poser(data({ accident: true }));
       expect(style(el, '.tracky-marker__accident').display).not.toBe('none');
       expect(style(el, '.tracky-marker__accident-anneau').stroke).toBe(rgb(COULEURS_CARTE.accidente));
-      expect(style(el, '.tracky-marker__accident-triangle').fill).toBe(rgb(COULEURS_CARTE.accidente));
-      expect(style(el, '.tracky-marker__accident-signe').stroke).toBe('rgb(255, 255, 255)');
+      expect(style(el, '.tracky-marker__accident-triangle').fill).toBe(rgb(COULEURS_CARTE.accidentePanneau));
+      expect(style(el, '.tracky-marker__accident-triangle').stroke).toBe(rgb(COULEURS_CARTE.accidente));
+      expect(style(el, '.tracky-marker__accident-signe').stroke).toBe(rgb(COULEURS_CARTE.accidente));
       expect(style(el, '.tracky-marker__barre').display).toBe('none');
       expect(style(el, '.tracky-marker__cle').display).toBe('none');
+      expect(style(el, '.tracky-marker__souterrain').display).toBe('none');
+    });
+
+    it('🔴 plus aucun magenta dans la pastille', () => {
+      const el = poser(data({ accident: true }));
+      for (const sel of ['.tracky-marker__accident-anneau', '.tracky-marker__accident-triangle']) {
+        const st = style(el, sel);
+        expect([st.fill, st.stroke]).not.toContain('rgb(192, 38, 211)');
+      }
     });
 
     it('masque la flèche, le contact, le halo et le logo ; estompe le cœur', () => {
@@ -647,6 +660,148 @@ describe('marqueur — véhicule accidenté déclaré', () => {
     it('ne montre AUCUN triangle sur un marqueur ordinaire', () => {
       const el = poser(data({ speedKmh: 30, ignition: true }));
       expect(style(el, '.tracky-marker__accident').display).toBe('none');
+    });
+  });
+});
+
+
+/**
+ * 06/10/2026 — « si on ajoute une maintenance à une voiture, elle doit passer avec le rond marron et
+ * la clé » : une maintenance (ou un incident) « Immobilise le véhicule » de l'AGENDA habille la
+ * pastille comme l'immobilisé de la fiche ; seule l'étiquette dit d'où vient l'état.
+ */
+describe('marqueur — immobilisé par l’agenda (maintenance, incident)', () => {
+  function data(over: Partial<VehicleMarkerData> = {}): VehicleMarkerData {
+    return { trackerId: 't-998', vehicleId: 'v-998', type: 'VAN', plate: 'HD-998-XY', speedKmh: 0, heading: 0, ignition: false, ...over } as VehicleMarkerData;
+  }
+  const labelOf = (el: HTMLElement) => el.querySelector('.tracky-marker__plate')!.textContent;
+
+  it('une maintenance pose la CLÉ (classe immobilisé) et dit « en maintenance »', () => {
+    const el = buildVehicleMarkerEl(data({ agenda: 'MAINTENANCE', speedKmh: 12, ignition: true }));
+    expect(el.classList).toContain('tracky-marker--immobilise');
+    expect(el.classList).not.toContain('tracky-marker--offline');
+    expect(el.style.getPropertyValue('--tracky-color').toLowerCase()).toBe(IMMOBILIZED_MARKER_COLOR.toLowerCase());
+    expect(labelOf(el)).toBe('HD-998-XY · en maintenance');
+    expect(el.getAttribute('aria-label')).toBe('Vehicule HD-998-XY, en maintenance');
+  });
+
+  it('un incident de l’agenda dit « incident »', () => {
+    const el = buildVehicleMarkerEl(data({ agenda: 'INCIDENT' }));
+    expect(el.classList).toContain('tracky-marker--immobilise');
+    expect(labelOf(el)).toBe('HD-998-XY · incident');
+  });
+
+  it('la fiche l’emporte : déclaré immobilisé ET en maintenance → « immobilisé » ; accidenté → triangle', () => {
+    expect(labelOf(buildVehicleMarkerEl(data({ immobilized: true, agenda: 'MAINTENANCE' })))).toBe('HD-998-XY · immobilisé');
+    const acc = buildVehicleMarkerEl(data({ accident: true, agenda: 'MAINTENANCE' }));
+    expect(acc.classList).toContain('tracky-marker--accidente');
+    expect(acc.classList).not.toContain('tracky-marker--immobilise');
+  });
+
+  it('se pose et se lève EN DIRECT quand la maintenance commence puis finit', () => {
+    const el = buildVehicleMarkerEl(data({ speedKmh: 20, ignition: true }));
+    const svg = el.querySelector('svg');
+    updateVehicleMarkerEl(el, data({ speedKmh: 0, agenda: 'MAINTENANCE' }));
+    expect(el.classList).toContain('tracky-marker--immobilise');
+    expect(labelOf(el)).toBe('HD-998-XY · en maintenance');
+    updateVehicleMarkerEl(el, data({ speedKmh: 20, ignition: true }));
+    expect(el.classList).not.toContain('tracky-marker--immobilise');
+    expect(labelOf(el)).toBe('HD-998-XY · 20');
+    expect(el.querySelector('svg')).toBe(svg);
+  });
+});
+
+/**
+ * 06/10/2026 — « ajouter même un rond pour les voitures en souterrain comme la HM-769 » : anneau et
+ * badge « P » bleus, cœur grisé, étiquette « souterrain ». Un état déclaré l'emporte.
+ */
+describe('marqueur — au parking souterrain', () => {
+  function data(over: Partial<VehicleMarkerData> = {}): VehicleMarkerData {
+    return { trackerId: 't-769', vehicleId: 'v-769', type: 'CAR', plate: 'HM-769-GA', speedKmh: 0, heading: 0, ignition: false, ...over } as VehicleMarkerData;
+  }
+  const labelOf = (el: HTMLElement) => el.querySelector('.tracky-marker__plate')!.textContent;
+
+  it('se dessine grisé, avec son anneau, SANS l’habillage hors ligne, et le dit', () => {
+    const el = buildVehicleMarkerEl(data({ underground: true, gpsLost: true, parkedDeadZone: true }));
+    expect(el.classList).toContain('tracky-marker--souterrain');
+    expect(el.classList).not.toContain('tracky-marker--offline');
+    expect(el.style.getPropertyValue('--tracky-color').toLowerCase()).toBe(UNDERGROUND_MARKER_COLOR.toLowerCase());
+    expect(labelOf(el)).toBe('HM-769-GA · souterrain');
+    expect(el.getAttribute('aria-label')).toBe('Vehicule HM-769-GA, au parking souterrain');
+  });
+
+  it('un parking couvert le dit aussi', () => {
+    const el = buildVehicleMarkerEl(data({ underground: true, undergroundLabel: 'parking couvert' }));
+    expect(labelOf(el)).toBe('HM-769-GA · parking couvert');
+    expect(el.getAttribute('aria-label')).toBe('Vehicule HM-769-GA, au parking couvert');
+  });
+
+  it('🔴 n’affirme jamais le contact : la dernière trame est un souvenir', () => {
+    const el = buildVehicleMarkerEl(data({ underground: true, ignition: true }));
+    expect(el.querySelector('.tracky-marker__acc')!.classList).toContain('tracky-acc--unknown');
+  });
+
+  it('cède à tout état déclaré (immobilisé au sous-sol → la clé)', () => {
+    const el = buildVehicleMarkerEl(data({ underground: true, immobilized: true }));
+    expect(el.classList).toContain('tracky-marker--immobilise');
+    expect(el.classList).not.toContain('tracky-marker--souterrain');
+    expect(labelOf(el)).toBe('HM-769-GA · immobilisé');
+  });
+
+  it('l’anneau tombe EN DIRECT quand le véhicule ressort', () => {
+    const el = buildVehicleMarkerEl(data({ underground: true }));
+    updateVehicleMarkerEl(el, data({ speedKmh: 18, ignition: true }));
+    expect(el.classList).not.toContain('tracky-marker--souterrain');
+    expect(labelOf(el)).toBe('HM-769-GA · 18');
+  });
+
+  it('porte le « P » dès la création, sur TOUS les marqueurs, et le bleu de la palette', () => {
+    for (const underground of [true, false]) {
+      const el = buildVehicleMarkerEl(data({ underground }));
+      for (const sel of ['.tracky-marker__souterrain', '.tracky-marker__souterrain-anneau', '.tracky-marker__souterrain-badge', '.tracky-marker__souterrain-p']) {
+        expect(el.querySelector(sel)).withContext(`${sel} (underground=${underground})`).not.toBeNull();
+      }
+      expect(el.style.getPropertyValue('--tracky-souterrain').toUpperCase()).toBe(COULEURS_CARTE.souterrain);
+    }
+  });
+
+  describe('rendu par la feuille globale', () => {
+    const rgb = (hex: string) => {
+      const h = hex.replace('#', '');
+      return `rgb(${parseInt(h.slice(0, 2), 16)}, ${parseInt(h.slice(2, 4), 16)}, ${parseInt(h.slice(4, 6), 16)})`;
+    };
+    const style = (el: HTMLElement, sel: string) => getComputedStyle(el.querySelector(sel)!);
+    let poses: HTMLElement[] = [];
+    const poser = (d: VehicleMarkerData) => {
+      const el = buildVehicleMarkerEl(d);
+      document.body.appendChild(el);
+      poses.push(el);
+      return el;
+    };
+    afterEach(() => { poses.forEach((el) => el.remove()); poses = []; });
+
+    it('montre l’anneau et le badge BLEUS, le « P » blanc, et ni clé ni barre ni triangle', () => {
+      const el = poser(data({ underground: true }));
+      expect(style(el, '.tracky-marker__souterrain').display).not.toBe('none');
+      expect(style(el, '.tracky-marker__souterrain-anneau').stroke).toBe(rgb(COULEURS_CARTE.souterrain));
+      expect(style(el, '.tracky-marker__souterrain-badge').fill).toBe(rgb(COULEURS_CARTE.souterrain));
+      expect(style(el, '.tracky-marker__souterrain-p').stroke).toBe('rgb(255, 255, 255)');
+      for (const sel of ['.tracky-marker__cle', '.tracky-marker__barre', '.tracky-marker__accident']) {
+        expect(style(el, sel).display).withContext(sel).toBe('none');
+      }
+    });
+
+    it('masque la flèche, le contact (place du badge), le halo et le logo ; estompe le cœur', () => {
+      const el = poser(data({ underground: true, brand: 'Dacia', active: true }));
+      for (const sel of ['.tracky-marker__cap', '.tracky-marker__acc', '.tracky-marker__pulse']) {
+        expect(style(el, sel).display).withContext(sel).toBe('none');
+      }
+      expect(Number(style(el, '.tracky-marker__coeur').fillOpacity)).toBeCloseTo(0.55, 2);
+    });
+
+    it('ne montre AUCUN « P » sur un marqueur ordinaire', () => {
+      const el = poser(data({ speedKmh: 30, ignition: true }));
+      expect(style(el, '.tracky-marker__souterrain').display).toBe('none');
     });
   });
 });

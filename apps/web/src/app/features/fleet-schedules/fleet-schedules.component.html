@@ -87,6 +87,13 @@
         <span class="n warn">{{ summary().awaiting }}</span><span class="l">Attente d'arrêt</span>
         <span class="l-sub">hors horaires, coupés dès 10 min à l'arrêt</span>
       </div>
+      @if (summary().suspendus > 0) {
+        <!-- 06/10/2026 — automatisés mais indisponibles (hors service, maintenance, incident). -->
+        <div class="tile" title="Véhicules automatisés mais indisponibles (hors service déclaré, maintenance ou incident de l'agenda) : leurs coupes automatiques sont suspendues, leurs reprises partent toujours.">
+          <span class="n">{{ summary().suspendus }}</span><span class="l">Indisponibles</span>
+          <span class="l-sub">coupes suspendues (garage, accident, maintenance)</span>
+        </div>
+      }
     </div>
 
     <!-- Aide : bien expliquer les états pour les opérateurs (non-techniques) -->
@@ -105,6 +112,7 @@
             <li><span class="dot chip-warn"></span> <b>En attente d'arrêt</b> — hors horaires, à l'arrêt depuis moins de 10 min : coupé automatiquement une fois immobile 10 minutes.</li>
             <li><span class="dot chip-cut"></span> <b>Coupé</b> — moteur coupé par l'horaire (le véhicule ne peut pas démarrer jusqu'à la reprise).</li>
             <li><span class="dot chip-info"></span> <b>Suspendu</b> — une coupure ou remise en marche manuelle a mis l'automatisation en pause sur ce véhicule.</li>
+            <li><span class="dot chip-info"></span> <b>Suspendu · immobilisé / en maintenance / accidenté</b> — le véhicule est indisponible (déclaré sur sa fiche, ou maintenance de l'agenda) : on ne le coupe pas, il reprend le cycle tout seul à sa remise en service.</li>
           </ul>
           <p class="help-note">💡 Les compteurs « Roulent encore » et « Attente d'arrêt » ne comptent QUE les véhicules <b>hors de leurs horaires</b>. Un véhicule qui roule pendant ses horaires est « Autorisé » — c'est pour ça qu'il peut rouler sans apparaître dans « Roulent encore ».</p>
         </div>
@@ -284,6 +292,7 @@
           @if (pv.wouldDeferDwell > 0) { <li class="warn"><b>{{ pv.wouldDeferDwell }}</b> arrêtés depuis moins de 10 min → coupe différée</li> }
           <li class="warn"><b>{{ pv.wouldDeferMoving }}</b> roulent → coupe différée jusqu'à l'arrêt</li>
           <li class="warn"><b>{{ pv.wouldDeferOffline }}</b> hors ligne → coupe dès reconnexion</li>
+          @if ((pv.wouldSuspend ?? 0) > 0) { <li class="muted"><b>{{ pv.wouldSuspend }}</b> indisponibles (hors service, maintenance) → coupe suspendue</li> }
           @if (pv.withoutTracker > 0) { <li class="muted"><b>{{ pv.withoutTracker }}</b> sans boîtier → ignorés</li> }
         </ul>
         @if (pv.outOfWindowNow > 0) {

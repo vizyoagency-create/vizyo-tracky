@@ -11,6 +11,7 @@
  */
 
 import type { VehicleConnectivityState } from '../utils/tracker-liveness';
+import type { ImmobilisationAgendaDto } from '../utils/etat-vehicule';
 
 /** État courant de la fenêtre horaire (résultat de l'évaluateur). */
 export type FleetScheduleWindowState = 'IN_WINDOW' | 'OUT_OF_WINDOW';
@@ -81,6 +82,18 @@ export interface FleetScheduleRowDto {
   pendingReason: FleetSchedulePendingReason | null;
   /** ISO — quand la coupe pourra s'appliquer (arrêt + 10 min), si AWAITING_STOP. Sinon null. */
   awaitingStopUntil: string | null;
+
+  // --- État de disponibilité (06/10/2026) ---
+  /** Hors service déclaré sur la fiche, ou null. */
+  outOfServiceReason?: string | null;
+  /** Immobilisation d'agenda en cours (maintenance ou incident bloquant), ou null. */
+  immobilisationAgenda?: ImmobilisationAgendaDto | null;
+  /**
+   * `true` quand le véhicule est indisponible (`etatIndisponibilite`) : ses COUPES automatiques
+   * ne partent pas, ses REPRISES si (`coupesAutoSuspendues`). `cutPending` est alors faux — aucune
+   * coupe n'est en attente, elle est suspendue.
+   */
+  coupesSuspendues?: boolean;
 }
 
 /**
@@ -176,6 +189,11 @@ export interface BulkSchedulePreviewResponse {
   wouldDeferOffline: number;
   /** Sans tracker → planning inapplicable. */
   withoutTracker: number;
+  /**
+   * 06/10/2026 — hors plage mais INDISPONIBLES (hors service, maintenance, incident) : leur coupe
+   * est suspendue tant qu'ils le restent. Compris dans `outOfWindowNow`, exclus des trois reports.
+   */
+  wouldSuspend?: number;
   /** Paramètres annoncés de la file anti-rafale CUT. */
   cutQueueIntervalSec: number;
   estimatedCutQueueDurationSec: number;

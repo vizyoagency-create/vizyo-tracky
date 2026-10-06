@@ -1125,6 +1125,7 @@ function groupeReservationId(ev: VehicleEventDto): string | null {
     <app-reservation-sheet
       [open]="resSheetOpen()"
       [vehicles]="scopedVehicles()"
+      [evenements]="events()"
       [defaultDate]="resDefaultDate()"
       [startMode]="resStartMode()"
       [editReservation]="resEditReservation()"
@@ -3505,7 +3506,10 @@ export class AgendaComponent implements OnInit {
       allDay: true,
       endDate: '',
       endTime: '18:00',
-      blocksVehicle: false, // défaut MAINTENANCE ; setFormType() le passe à true pour un incident
+      // 06/10/2026 — une maintenance IMMOBILISE par défaut, comme un incident : « si on ajoute une
+      // maintenance à une voiture, elle doit passer avec le rond marron et la clé » (propriétaire).
+      // La case reste décochable (contrôle rapide qui laisse le véhicule disponible).
+      blocksVehicle: true,
       odometerKm: null as number | null,
       description: '',
     };
@@ -3522,7 +3526,8 @@ export class AgendaComponent implements OnInit {
    */
   protected setFormType(type: VehicleEventType): void {
     this.form.type = type;
-    this.form.blocksVehicle = type === 'INCIDENT';
+    // 06/10/2026 — maintenance comme incident : le véhicule est indisponible pendant l'évènement.
+    this.form.blocksVehicle = type === 'INCIDENT' || type === 'MAINTENANCE';
     this.onPeriodeChange();
   }
 

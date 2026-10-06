@@ -1,14 +1,21 @@
+import type { ImmobilisationAgendaDto } from '@vizyo/tracky-shared';
 import {
+  drapeauxPastille,
   estAccidente,
+  estAuSouterrain,
   estDebranche,
   estImmobilise,
+  etatVehicule,
+  immobilisationRetenue,
   motifHorsService,
+  motSouterrain,
   MOTIF_ACCIDENT,
   MOTIF_DEBRANCHE,
   MOTIF_IMMOBILISE,
   nbAccidentesSurLaCarte,
   nbDebranchesSurLaCarte,
   nbImmobilisesSurLaCarte,
+  nbSouterrainsSurLaCarte,
 } from './hors-service';
 
 /**
@@ -118,5 +125,104 @@ describe('estAccidente et nbAccidentesSurLaCarte', () => {
       { trackerId: null, lastLat: null, lastLng: null, outOfServiceReason: MOTIF_ACCIDENT },
       { ...position, outOfServiceReason: MOTIF_IMMOBILISE },
     ])).toBe(1);
+  });
+});
+
+/**
+ * 06/10/2026 — « un système d'état qui fonctionne dans toute l'app » : la fiche, puis l'agenda, puis
+ * le parking souterrain. La règle est partagée avec l'API (`etatIndisponibilite`).
+ */
+describe('état de disponibilité — fiche, agenda, parking souterrain', () => {
+  const maintenance: ImmobilisationAgendaDto = {
+    eventId: 'ev-1', type: 'MAINTENANCE', title: 'Pneus',
+    startAt: '2026-10-06T07:00:00.000Z', endAt: '2026-10-06T16:00:00.000Z',
+  };
+  const incident: ImmobilisationAgendaDto = { ...maintenance, eventId: 'ev-2', type: 'INCIDENT', endAt: null };
+
+  it('etatVehicule : la fiche d’abord, puis l’agenda', () => {
+    expect(etatVehicule({ outOfServiceReason: MOTIF_IMMOBILISE, immobilisationAgenda: maintenance })).toBe('IMMOBILISE');
+    expect(etatVehicule({ outOfServiceReason: null, immobilisationAgenda: maintenance })).toBe('MAINTENANCE');
+    expect(etatVehicule({ outOfServiceReason: null, immobilisationAgenda: incident })).toBe('INCIDENT');
+    expect(etatVehicule({ outOfServiceReason: null, immobilisationAgenda: null })).toBeNull();
+  });
+
+  it('🔴 l’instantané fait foi, `null` compris : une maintenance finie ne ressuscite pas depuis la liste', () => {
+    expect(immobilisationRetenue({ immobilisationAgenda: null }, { immobilisationAgenda: maintenance })).toBeNull();
+    expect(etatVehicule({ immobilisationAgenda: null }, { immobilisationAgenda: maintenance })).toBeNull();
+    // Repli sur la liste quand l'instantané ne porte pas le champ (API d'avant le 06/10).
+    expect(etatVehicule({}, { immobilisationAgenda: maintenance })).toBe('MAINTENANCE');
+    expect(etatVehicule(undefined, { outOfServiceReason: MOTIF_ACCIDENT })).toBe('ACCIDENTE');
+  });
+
+  it('drapeauxPastille : une maintenance pose la clé (agenda), jamais l’immobilisé de la fiche', () => {
+    expect(drapeauxPastille('MAINTENANCE')).toEqual({ unplugged: false, accident: false, immobilized: false, agenda: 'MAINTENANCE' });
+    expect(drapeauxPastille('INCIDENT').agenda).toBe('INCIDENT');
+    expect(drapeauxPastille('IMMOBILISE')).toEqual({ unplugged: false, accident: false, immobilized: true });
+    expect(drapeauxPastille('DEBRANCHE').unplugged).toBeTrue();
+    expect(drapeauxPastille(null)).toEqual({ unplugged: false, accident: false, immobilized: false });
+  });
+
+  describe('estAuSouterrain — HM-769-GA (06/10 : vivant, sans GPS, zone parking validée à 28 m)', () => {
+    const MAINTENANT = Date.parse('2026-10-06T08:38:00.000Z');
+    const hm769 = {
+      presumedParkedZone: 'parking souterrain — Toulouse',
+      trackerId: 't-hm769',
+      lastSeenAt: '2026-10-06T08:38:00.000Z',     // le boîtier parle
+      lastPositionAt: '2026-10-05T15:49:00.000Z', // dernier fix : la veille au soir
+      lastNoFixAt: '2026-10-06T08:38:00.000Z',    // trames sans GPS
+      lastIgnition: false,
+    };
+
+    it('anneau « P » : présomption du serveur ET boîtier sans GPS', () => {
+      expect(estAuSouterrain(hm769, MAINTENANT)).toBeTrue();
+    });
+
+    it('anneau aussi quand le boîtier s’est tu (le réseau ne passe pas toujours au sous-sol)', () => {
+      expect(estAuSouterrain({ ...hm769, lastSeenAt: '2026-10-06T05:00:00.000Z', lastNoFixAt: null }, MAINTENANT)).toBeTrue();
+    });
+
+    it('🔴 plus d’anneau dès qu’une position valide revient en direct — il est sorti', () => {
+      expect(estAuSouterrain({ ...hm769, lastPositionAt: '2026-10-06T08:37:30.000Z', lastNoFixAt: null }, MAINTENANT)).toBeFalse();
+    });
+
+    it('sans présomption du serveur, jamais d’anneau', () => {
+      expect(estAuSouterrain({ ...hm769, presumedParkedZone: null }, MAINTENANT)).toBeFalse();
+      expect(estAuSouterrain(undefined, MAINTENANT)).toBeFalse();
+    });
+
+    it('le mot de l’étiquette suit le type de parking du serveur', () => {
+      expect(motSouterrain('parking souterrain — Toulouse')).toBe('souterrain');
+      expect(motSouterrain('parking couvert — Blagnac')).toBe('parking couvert');
+      expect(motSouterrain(null)).toBe('souterrain');
+    });
+  });
+
+  describe('légende : on compte ce que la carte montre', () => {
+    const position = { trackerId: 't', lastLat: 43.6, lastLng: 1.44 };
+
+    it('« Immobilisé ou en maintenance (n) » compte la CLÉ : la fiche ET l’agenda', () => {
+      expect(nbImmobilisesSurLaCarte([
+        { ...position, outOfServiceReason: MOTIF_IMMOBILISE },
+        { ...position, outOfServiceReason: null, immobilisationAgenda: maintenance },
+        { ...position, outOfServiceReason: null, immobilisationAgenda: incident },
+        // Accidenté ET en maintenance : le triangle l'emporte, pas compté ici.
+        { ...position, outOfServiceReason: MOTIF_ACCIDENT, immobilisationAgenda: maintenance },
+      ])).toBe(3);
+    });
+
+    it('« Au parking souterrain (n) » : l’anneau « P », qu’un état déclaré recouvre', () => {
+      const MAINTENANT = Date.parse('2026-10-06T08:38:00.000Z');
+      const auSousSol = {
+        ...position, presumedParkedZone: 'parking souterrain — Toulouse',
+        lastSeenAt: '2026-10-06T08:38:00.000Z', lastPositionAt: '2026-10-05T15:49:00.000Z',
+        lastNoFixAt: '2026-10-06T08:38:00.000Z', lastIgnition: false,
+      };
+      expect(nbSouterrainsSurLaCarte([
+        auSousSol,
+        // HD-292-SH : immobilisé ET au sous-sol — la clé l'emporte.
+        { ...auSousSol, outOfServiceReason: MOTIF_IMMOBILISE },
+        { ...position, presumedParkedZone: null },
+      ], MAINTENANT)).toBe(1);
+    });
   });
 });

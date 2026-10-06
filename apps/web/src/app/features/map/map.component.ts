@@ -30,8 +30,11 @@ import {
   isAcceptableLiveFix,
   isTrackerOnline,
   isVehicleDormant,
+  LIBELLES_ETAT,
   MOVING_FRESHNESS_MS,
   sanitizePositions,
+  type EtatIndisponibilite,
+  type ImmobilisationAgendaDto,
   type VehicleConnectivityState,
 } from '@vizyo/tracky-shared';
 
@@ -81,19 +84,22 @@ import {
   speedColor,
   ACCIDENT_MARKER_COLOR,
   IMMOBILIZED_MARKER_COLOR,
+  UNDERGROUND_MARKER_COLOR,
   UNPLUGGED_MARKER_COLOR,
   updateVehicleMarkerEl,
   type VehicleMarkerData,
 } from '../../shared/utils/maplibre-markers';
 import { COULEURS_CARTE } from '../../shared/utils/couleurs-carte';
 import {
-  estAccidente,
-  estDebranche,
-  estImmobilise,
-  motifHorsService,
+  drapeauxPastille,
+  estAuSouterrain,
+  etatVehicule,
+  immobilisationRetenue,
+  motSouterrain,
   nbAccidentesSurLaCarte,
   nbDebranchesSurLaCarte,
   nbImmobilisesSurLaCarte,
+  nbSouterrainsSurLaCarte,
 } from '../../shared/utils/hors-service';
 import { catmullRom, lerpHeading } from '../../shared/utils/spline';
 import {
@@ -156,6 +162,8 @@ interface VehicleMeta {
   group?: { id: string; name: string } | null;
   /** Hors service déclaré sur la fiche (repli quand l'instantané ne le porte pas). */
   outOfServiceReason?: string | null;
+  /** Immobilisation d'agenda en cours (maintenance, incident) — repli, même règle. 06/10/2026. */
+  immobilisationAgenda?: ImmobilisationAgendaDto | null;
 }
 
 /** Donnees affichees dans la bottom card Baanool au clic sur un marker. */
@@ -187,6 +195,14 @@ interface BaanoolCardData {
   accidente?: boolean;
   immobilise?: boolean;
   horsServiceDepuis?: string | null;
+  /**
+   * 06/10/2026 — l'état de disponibilité complet (fiche puis agenda) et l'immobilisation d'agenda
+   * qui le porte, pour le badge « En maintenance · Pneus · jusqu'au 07/10 18:00 ».
+   */
+  etatDispo?: EtatIndisponibilite | null;
+  immobilisation?: ImmobilisationAgendaDto | null;
+  /** Au parking souterrain (TRK-046) : le libellé du serveur (« parking souterrain — Toulouse »). */
+  souterrain?: string | null;
 }
 
 /**
@@ -511,7 +527,7 @@ const RESYNC_RADIUS_M = 150;
             @for (v of flotteVisibles(); track v.vehicleId) {
               <li>
                 <button type="button" class="fl-ligne" (click)="ouvrirDepuisFlotte(v)">
-                  <span class="fl-pastille" [class]="'fl-pastille--' + (v.debranche ? 'debranche' : v.accidente ? 'accidente' : v.immobilise ? 'immobilise' : v.etat)"></span>
+                  <span class="fl-pastille" [class]="'fl-pastille--' + (v.debranche ? 'debranche' : v.accidente ? 'accidente' : v.immobilise ? 'immobilise' : v.souterrain ? 'souterrain' : v.etat)"></span>
                   <span class="fl-ligne-texte">
                     <span class="fl-plaque">{{ v.plate }}</span>
                     <span class="fl-modele">{{ v.modele }}</span>
@@ -1049,7 +1065,7 @@ const RESYNC_RADIUS_M = 150;
           <p class="tracky-sheet-title">Légende vitesse</p>
           <!-- Générée depuis BANDES_VITESSE : la même table que les marqueurs et les tracés. -->
           <app-legende-vitesse disposition="grille" style="--lv-taille: 12px"></app-legende-vitesse>
-          @if (nbDebranches() > 0 || nbAccidentes() > 0 || nbImmobilises() > 0) {
+          @if (nbDebranches() > 0 || nbAccidentes() > 0 || nbImmobilises() > 0 || nbSouterrains() > 0) {
             <p class="tracky-sheet-title" style="margin-top:10px">Véhicules</p>
             <div class="tracky-sheet-legend">
               @if (nbDebranches() > 0) {
@@ -1067,7 +1083,13 @@ const RESYNC_RADIUS_M = 150;
               @if (nbImmobilises() > 0) {
                 <div class="tracky-sheet-legend-item">
                   <ng-container [ngTemplateOutlet]="cleImmobilise"></ng-container>
-                  <span>Immobilisé ({{ nbImmobilises() }})</span>
+                  <span>Immobilisé ou en maintenance ({{ nbImmobilises() }})</span>
+                </div>
+              }
+              @if (nbSouterrains() > 0) {
+                <div class="tracky-sheet-legend-item">
+                  <ng-container [ngTemplateOutlet]="cleSouterrain"></ng-container>
+                  <span>Au parking souterrain ({{ nbSouterrains() }})</span>
                 </div>
               }
             </div>
@@ -1145,12 +1167,22 @@ const RESYNC_RADIUS_M = 150;
         </svg>
       </span>
     </ng-template>
-    <!-- La clé « Accidenté » : la pastille grisée, son anneau et son triangle magenta. -->
+    <!-- La clé « Accidenté » : la pastille grisée, son anneau anthracite et son panneau jaune
+         cerclé d'anthracite (06/10/2026 — le magenta a été refusé). -->
     <ng-template #cleAccident>
       <svg class="mp-cle-debranche" viewBox="0 0 56 56" width="12" height="12" aria-hidden="true" focusable="false">
         <circle cx="28" cy="28" r="15" [attr.fill]="COULEUR_ACCIDENT_COEUR" fill-opacity="0.55" />
         <circle cx="28" cy="28" r="23" fill="none" [attr.stroke]="COULEUR_ACCIDENT" stroke-width="6" />
-        <path d="M40 22 L56 50 L24 50 Z" [attr.fill]="COULEUR_ACCIDENT" />
+        <path d="M40 22 L56 50 L24 50 Z" [attr.fill]="COULEUR_ACCIDENT_PANNEAU"
+              [attr.stroke]="COULEUR_ACCIDENT" stroke-width="4" stroke-linejoin="round" />
+      </svg>
+    </ng-template>
+    <!-- La clé « Au parking souterrain » : la pastille grisée, son anneau et son badge bleus. -->
+    <ng-template #cleSouterrain>
+      <svg class="mp-cle-debranche" viewBox="0 0 56 56" width="12" height="12" aria-hidden="true" focusable="false">
+        <circle cx="28" cy="28" r="15" [attr.fill]="COULEUR_SOUTERRAIN_COEUR" fill-opacity="0.55" />
+        <circle cx="28" cy="28" r="23" fill="none" [attr.stroke]="COULEUR_SOUTERRAIN" stroke-width="6" />
+        <circle cx="40" cy="40" r="14" [attr.fill]="COULEUR_SOUTERRAIN" />
       </svg>
     </ng-template>
     <!-- La clé « Immobilisé » : la pastille grisée, son anneau et son badge « clé » ocre. -->
@@ -1183,7 +1215,7 @@ const RESYNC_RADIUS_M = 150;
         <p class="text-[10px] font-semibold text-fg-secondary mb-1.5 uppercase tracking-wider">Vitesse</p>
         <!-- Générée depuis BANDES_VITESSE : la même table que les marqueurs et les tracés. -->
         <app-legende-vitesse></app-legende-vitesse>
-        @if (nbDebranches() > 0 || nbAccidentes() > 0 || nbImmobilises() > 0) {
+        @if (nbDebranches() > 0 || nbAccidentes() > 0 || nbImmobilises() > 0 || nbSouterrains() > 0) {
           <hr class="my-2 border-border-subtle" />
           <p class="text-[10px] font-semibold text-fg-secondary mb-1.5 uppercase tracking-wider">Véhicules</p>
           <div class="flex flex-col gap-1">
@@ -1202,7 +1234,13 @@ const RESYNC_RADIUS_M = 150;
             @if (nbImmobilises() > 0) {
               <div class="flex items-center gap-2">
                 <ng-container [ngTemplateOutlet]="cleImmobilise"></ng-container>
-                <span class="text-[10px] text-fg-tertiary">Immobilisé ({{ nbImmobilises() }})</span>
+                <span class="text-[10px] text-fg-tertiary">Immobilisé ou en maintenance ({{ nbImmobilises() }})</span>
+              </div>
+            }
+            @if (nbSouterrains() > 0) {
+              <div class="flex items-center gap-2">
+                <ng-container [ngTemplateOutlet]="cleSouterrain"></ng-container>
+                <span class="text-[10px] text-fg-tertiary">Au parking souterrain ({{ nbSouterrains() }})</span>
               </div>
             }
           </div>
@@ -1511,6 +1549,20 @@ const RESYNC_RADIUS_M = 150;
                   <span class="bn-vcard-badge-dot"></span>
                   Immobilisé
                 </span>
+              } @else if (baanoolCard()!.immobilisation; as im) {
+                <!-- Maintenance ou incident de l'AGENDA (06/10/2026) : la même clé, dite en mots, avec
+                     le titre et l'échéance — c'est l'agenda qui rendra le véhicule. -->
+                <span class="bn-vcard-badge bn-vcard-badge--attente" [attr.title]="titreAgenda(im)">
+                  <span class="bn-vcard-badge-dot"></span>
+                  {{ libelleAgenda(im) }}
+                </span>
+              } @else if (baanoolCard()!.souterrain) {
+                <!-- Parking souterrain (06/10/2026) : l'anneau « P » du marqueur, dit en mots. -->
+                <span class="bn-vcard-badge bn-vcard-badge--info"
+                      title="Garé dans un parking souterrain validé : le GPS y est masqué, c'est normal. La sortie est surveillée.">
+                  <span class="bn-vcard-badge-dot"></span>
+                  Au {{ baanoolCard()!.souterrain }}
+                </span>
               }
               <!-- V1.15 — Badge Fleet (visible SA only). -->
               <app-sa-fleet-badge [fleetId]="baanoolCard()!.fleetId" />
@@ -1520,11 +1572,12 @@ const RESYNC_RADIUS_M = 150;
                    Masquée si on affiche déjà « à l'arrêt · parking souterrain » (zone confirmée),
                    pour ne pas alarmer avec « GPS perdu » là où c'est normal — et pour un boîtier
                    débranché : « Hors ligne » à côté de « Boîtier débranché » répéterait la cause. -->
-              @if (!deadZoneHint()?.benign && !baanoolCard()!.debranche) {
+              @if (!deadZoneHint()?.benign && !baanoolCard()!.debranche && !baanoolCard()!.souterrain) {
                 <app-connectivity-badge [state]="cardConnectivity()" [hideWhenOnline]="true" />
               }
-              <!-- Zone morte GPS connue (suivi FS-253) : GPS perdu à un endroit habituel → ton calme. -->
-              @if (deadZoneHint(); as dz) {
+              <!-- Zone morte GPS connue (suivi FS-253) : GPS perdu à un endroit habituel → ton calme.
+                   Rien de plus si le badge « Au parking souterrain » vient de le dire (06/10/2026). -->
+              @if (!baanoolCard()!.souterrain && deadZoneHint(); as dz) {
                 @if (dz.benign) {
                   <!-- Bleu « parking » et NON vert : le vert se lit comme « actif/en ligne » et prêtait
                        à confusion (le véhicule est à l'arrêt, pas en train de rouler). -->
@@ -1884,6 +1937,13 @@ const RESYNC_RADIUS_M = 150;
         radial-gradient(circle at 76% 76%, var(--texte-alerte) 0 27%, transparent 29%),
         color-mix(in srgb, var(--texte-inactif) 55%, transparent);
       box-shadow: inset 0 0 0 1.5px var(--texte-alerte);
+    }
+    /* Au parking souterrain (06/10/2026) : la pastille grisée, cerclée de bleu, avec le point du « P ». */
+    .fl-pastille--souterrain {
+      background:
+        radial-gradient(circle at 76% 76%, var(--texte-info) 0 27%, transparent 29%),
+        color-mix(in srgb, var(--texte-inactif) 55%, transparent);
+      box-shadow: inset 0 0 0 1.5px var(--texte-info);
     }
     /* Immobilisé : la même pastille grisée, cerclée d'ambre, avec le point du badge « clé ». */
     .fl-pastille--immobilise {
@@ -3016,7 +3076,10 @@ export class MapComponent implements AfterViewInit, OnDestroy {
   protected readonly COULEUR_IMMOBILISE = COULEURS_CARTE.immobilise;
   protected readonly COULEUR_IMMOBILISE_COEUR = IMMOBILIZED_MARKER_COLOR;
   protected readonly COULEUR_ACCIDENT = COULEURS_CARTE.accidente;
+  protected readonly COULEUR_ACCIDENT_PANNEAU = COULEURS_CARTE.accidentePanneau;
   protected readonly COULEUR_ACCIDENT_COEUR = ACCIDENT_MARKER_COLOR;
+  protected readonly COULEUR_SOUTERRAIN = COULEURS_CARTE.souterrain;
+  protected readonly COULEUR_SOUTERRAIN_COEUR = UNDERGROUND_MARKER_COLOR;
   /** L'émeraude des stations de la flotte — celle de `fleetPlaceStyle('FUEL_STATION')`. */
   protected readonly COULEUR_POMPE = fleetPlaceStyle('FUEL_STATION').color;
 
@@ -3523,12 +3586,15 @@ export class MapComponent implements AfterViewInit, OnDestroy {
   protected readonly nbImmobilises = computed(() => nbImmobilisesSurLaCarte(this.scopedSnapshot()));
   /** Même règle pour les accidentés (triangle « ! ») — 06/10/2026. */
   protected readonly nbAccidentes = computed(() => nbAccidentesSurLaCarte(this.scopedSnapshot()));
+  /** Et pour l'anneau « P » des véhicules au parking souterrain — 06/10/2026. */
+  protected readonly nbSouterrains = computed(() => nbSouterrainsSurLaCarte(this.scopedSnapshot()));
 
   /** Libellé d'état d'une ligne — ce qu'on affiche à droite de la plaque. */
   protected ligneEtatLabel(v: LigneFlotte): string {
-    if (v.debranche) return 'Boîtier débranché';
-    if (v.accidente) return 'Accidenté';
-    if (v.immobilise) return 'Immobilisé';
+    // 06/10/2026 — les mots de l'état sont ceux du module partagé (« En maintenance », « Incident
+    // en cours »…), les mêmes partout ; le parking souterrain dit où est le véhicule.
+    if (v.etatDispo) return LIBELLES_ETAT[v.etatDispo].long;
+    if (v.souterrain) return 'Parking souterrain';
     if (v.etat === 'route') return `${v.vitesse} km/h`;
     if (v.etat === 'arret') return 'À l’arrêt';
     switch (v.connectivite) {
@@ -3782,6 +3848,9 @@ export class MapComponent implements AfterViewInit, OnDestroy {
   }
 
   ngAfterViewInit(): void {
+    // 06/10/2026 — les pastilles d'état (fiche, agenda, souterrain) se lisent dans l'instantané :
+    // relu à l'ouverture de la carte s'il date de plus d'une minute.
+    this.realtime.rafraichirEtatsSiAnciens();
     // Charger prefs map
     const prefs = this.preferences.prefs().map;
     this.currentStyle.set(prefs.style);
@@ -3815,6 +3884,7 @@ export class MapComponent implements AfterViewInit, OnDestroy {
         lastSeenAt: snapMeta.lastSeenAt ?? null,
         group: snapMeta.group ?? null,
         outOfServiceReason: v.outOfServiceReason ?? null,
+        immobilisationAgenda: v.immobilisationAgenda ?? null,
       });
     }
 
@@ -3832,6 +3902,7 @@ export class MapComponent implements AfterViewInit, OnDestroy {
           lastSeenAt: v.tracker?.lastSeenAt ?? null,
           group: v.group ?? null,
           outOfServiceReason: v.outOfServiceReason ?? null,
+          immobilisationAgenda: v.immobilisationAgenda ?? null,
         });
       });
       // Re-render apres MAJ meta
@@ -6112,11 +6183,14 @@ export class MapComponent implements AfterViewInit, OnDestroy {
         offline: !live,
         gpsLost,
         parkedDeadZone,
-        // États DÉCLARÉS sur la fiche : débranché (marqueur barré) et immobilisé (badge clé),
-        // prioritaires sur tout le reste. L'instantané fait foi (il suit une remise en service).
-        unplugged: estDebranche(motifHorsService(snap, meta)),
-        accident: estAccidente(motifHorsService(snap, meta)),
-        immobilized: estImmobilise(motifHorsService(snap, meta)),
+        // États DÉCLARÉS — fiche (débranché, accidenté, immobilisé) puis agenda (maintenance,
+        // incident : la clé) — prioritaires sur tout le reste. L'instantané fait foi (il suit une
+        // remise en service). Une seule règle : `etatIndisponibilite`, la même que l'API.
+        ...drapeauxPastille(etatVehicule(snap, meta)),
+        // Parking souterrain (06/10/2026) : présomption du serveur, tant que le boîtier reste muet
+        // ou sans GPS — l'anneau « P » tombe à la première trame valide.
+        underground: estAuSouterrain(snap, nowMs),
+        undergroundLabel: motSouterrain(snap?.presumedParkedZone),
       };
 
       // GPS sanity (live) : rejette les fixes `valid: false` (broadcastes par le
@@ -6576,9 +6650,7 @@ export class MapComponent implements AfterViewInit, OnDestroy {
       lastPositionAt: snap?.lastPositionAt ?? pos.timestamp ?? null,
       lastNoFixAt: snap?.lastNoFixAt ?? null,
       group: meta.group ?? null,
-      debranche: estDebranche(motifHorsService(snap, meta)),
-      accidente: estAccidente(motifHorsService(snap, meta)),
-      immobilise: estImmobilise(motifHorsService(snap, meta)),
+      ...this.etatsDeCard(snap, meta),
       horsServiceDepuis: snap?.outOfServiceSince ?? null,
     });
     this.activePopupTrackerId = trackerId;
@@ -6594,6 +6666,41 @@ export class MapComponent implements AfterViewInit, OnDestroy {
       const z = matchDeadZone(zonesForVehicle, pos.lat, pos.lng);
       if (z) this.deadZoneHint.set({ label: deadZoneNatureLabel(z), benign: z.status === 'CONFIRMED_BENIGN' });
     }
+  }
+
+  /**
+   * Les états de la card, tirés de la MÊME règle que la pastille (`etatVehicule`) : la card ne peut
+   * pas dire « en maintenance » d'un véhicule que le marqueur montre libre, ni l'inverse.
+   */
+  private etatsDeCard(
+    snap: Parameters<typeof etatVehicule>[0],
+    meta: VehicleMeta,
+  ): Pick<BaanoolCardData, 'debranche' | 'accidente' | 'immobilise' | 'etatDispo' | 'immobilisation' | 'souterrain'> {
+    const etat = etatVehicule(snap, meta);
+    const s = snap as (Parameters<typeof estAuSouterrain>[0] & { presumedParkedZone?: string | null }) | undefined;
+    return {
+      debranche: etat === 'DEBRANCHE',
+      accidente: etat === 'ACCIDENTE',
+      immobilise: etat === 'IMMOBILISE',
+      etatDispo: etat,
+      immobilisation: etat === 'MAINTENANCE' || etat === 'INCIDENT' ? immobilisationRetenue(snap, meta) : null,
+      souterrain: !etat && estAuSouterrain(s) ? (s?.presumedParkedZone ?? null) : null,
+    };
+  }
+
+  /** « En maintenance · Pneus » / « Incident en cours · Roue crevée » — le titre saisi dans l'agenda. */
+  protected libelleAgenda(im: ImmobilisationAgendaDto): string {
+    const etat = im.type === 'INCIDENT' ? 'INCIDENT' : 'MAINTENANCE';
+    return `${LIBELLES_ETAT[etat].long} · ${im.title}`;
+  }
+
+  /** Infobulle du badge d'agenda : jusqu'à quand, et ce que l'état suspend. */
+  protected titreAgenda(im: ImmobilisationAgendaDto): string {
+    const fin = im.endAt ? new Date(im.endAt) : null;
+    const quand = fin && !Number.isNaN(fin.getTime())
+      ? `jusqu'au ${fin.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })} à ${fin.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`
+      : 'jusqu’à sa clôture dans l’agenda';
+    return `Posé dans l'agenda, ${quand} — indisponible : ni réservation ni coupe automatique.`;
   }
 
   /** Infobulle du badge « Boîtier débranché » : qui l'a dit, depuis quand, et ce que vaut la position. */

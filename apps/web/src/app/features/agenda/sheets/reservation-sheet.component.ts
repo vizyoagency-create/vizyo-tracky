@@ -442,11 +442,14 @@ function toLocalInput(d: Date): string {
                   <option [value]="vh.id" [selected]="vh.id === vehicleId()">{{ vh.label }} — véhicule actuel de la réservation</option>
                 }
                 @for (v of vehicleOptions(); track v.id) {
-                  <option [value]="v.id" [disabled]="v.disabled" [selected]="v.id === vehicleId()">{{ v.label }}@if (v.aBord) { · à bord : {{ v.aBord }} }@if (v.horsService) { — hors service ({{ v.horsService }}) } @else if (v.silence) { — boîtier muet depuis {{ v.silence }} }</option>
+                  <option [value]="v.id" [disabled]="v.disabled" [selected]="v.id === vehicleId()">{{ v.label }}@if (v.aBord) { · à bord : {{ v.aBord }} }@if (v.horsService) { — hors service ({{ v.horsService }}) } @else if (v.immobilise) { — immobilisé sur ce créneau ({{ v.immobilise }}) } @else if (v.silence) { — boîtier muet depuis {{ v.silence }} }</option>
                 }
               </select>
               @if (horsServiceCount() > 0) {
                 <span class="rs-hint">{{ horsServiceCount() }} véhicule(s) grisé(s) : déclaré(s) hors service. Ils reviennent dès leur remise en service.</span>
+              }
+              @if (immobiliseCount() > 0) {
+                <span class="rs-hint">{{ immobiliseCount() }} véhicule(s) grisé(s) : immobilisé(s) sur ce créneau par l'agenda (maintenance, incident).</span>
               }
               @if (dormantCount() > 0) {
                 <!-- « redeviennent sélectionnables » et non « réapparaissent » : ils n'ont
@@ -819,6 +822,12 @@ export class ReservationSheetComponent {
   readonly startMode = input<'request' | 'validate'>('request');
   /** Réservation à ÉDITER (ouvre la feuille en mode édition). Null = création / validation. */
   readonly editReservation = input<VehicleEventDto | null>(null);
+  /**
+   * 06/10/2026 — les évènements que l'agenda a DÉJÀ chargés : un véhicule immobilisé sur le créneau
+   * (maintenance, incident, mission « Immobilise le véhicule ») se grise au lieu de laisser le serveur
+   * répondre 409. Hors de la plage chargée, rien n'est grisé — le serveur reste l'autorité.
+   */
+  readonly evenements = input<VehicleEventDto[]>([]);
   readonly closed = output<void>();
   readonly created = output<void>();
 
@@ -1137,9 +1146,29 @@ export class ReservationSheetComponent {
    *  - en « réservation déjà effectuée », on consigne une sortie PASSÉE : l'état actuel du
    *    boîtier n'a aucune importance, et refuser l'écriture ferait perdre l'information.
    */
+  /**
+   * Véhicules immobilisés sur le créneau saisi → titre de l'évènement. MÊME règle que le serveur
+   * (`findImmobilized`) : bloquant, actif, fin effective partagée (`effectiveBlockingEndMs`).
+   */
+  private readonly immobilisesSurCreneau = computed(() => {
+    const out = new Map<string, string>();
+    const debut = Date.parse(this.startAt());
+    const fin = Date.parse(this.endAt());
+    if (Number.isNaN(debut) || Number.isNaN(fin) || fin <= debut) return out;
+    for (const ev of this.evenements()) {
+      if (!isImmobilizingEvent(ev)) continue;
+      const st = Date.parse(ev.startAt);
+      if (Number.isNaN(st)) continue;
+      const finEv = effectiveBlockingEndMs(ev.type, st, ev.endAt ? Date.parse(ev.endAt) : null);
+      if (st < fin && finEv > debut) out.set(ev.vehicleId, ev.title);
+    }
+    return out;
+  });
+
   protected readonly vehicleOptions = computed(() => {
     const now = Date.now();
     const selected = this.vehicleId();
+    const immobilises = this.immobilisesSurCreneau();
     const propre = this.mode() === 'edit' ? (this.editReservation()?.vehicleId ?? null) : null;
     const retro = this.retroactive();
     return this.vehicles().map((v) => {
@@ -1155,15 +1184,18 @@ export class ReservationSheetComponent {
       // Hors service DÉCLARÉ : grisé même en édition (le serveur refuserait la réaffectation),
       // sauf s'il est déjà le véhicule de la réservation — sinon la feuille devient inenregistrable.
       const horsService = horsServiceLabel(v.outOfServiceReason);
+      // 06/10/2026 — maintenance / incident de l'agenda sur le créneau : le serveur refuserait (409).
+      const immobilise = horsService ? null : (immobilises.get(v.id) ?? null);
       return {
         id: v.id,
         label: `${v.plate || '—'}${places}${brand}`,
         horsService,
+        immobilise,
         // Sièges auto déjà installés : celui qui choisit le véhicule voit ce qu'il n'aura pas à installer.
         aBord: siegesLabel({ baby: v.childSeatsBaby ?? 0, child: v.childSeatsChild ?? 0 }),
         // On DATE le silence au lieu de dire « indisponible » : l'exploitant sait quoi faire.
         silence: dormant ? formatSilenceLabel(tracker?.lastSeenAt, now) : null,
-        disabled: (!!horsService || dormant) && v.id !== selected && v.id !== propre && !retro,
+        disabled: (!!horsService || dormant || !!immobilise) && v.id !== selected && v.id !== propre && !retro,
       };
     });
   });
@@ -1183,7 +1215,11 @@ export class ReservationSheetComponent {
 
   /** Nombre de véhicules grisés pour DORMANCE — sert la phrase d'explication sous le champ. */
   protected readonly dormantCount = computed(
-    () => this.vehicleOptions().filter((o) => o.disabled && !o.horsService).length,
+    () => this.vehicleOptions().filter((o) => o.disabled && !o.horsService && !o.immobilise).length,
+  );
+  /** 06/10/2026 — nombre de véhicules grisés parce qu'immobilisés sur le créneau (agenda). */
+  protected readonly immobiliseCount = computed(
+    () => this.vehicleOptions().filter((o) => o.disabled && !!o.immobilise).length,
   );
   /** Nombre de véhicules grisés parce que déclarés HORS SERVICE. */
   protected readonly horsServiceCount = computed(

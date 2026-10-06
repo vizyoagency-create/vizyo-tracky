@@ -63,3 +63,5 @@ export * from './utils/plaque';
 export * from './utils/live-motion';
 export * from './utils/tracker-liveness';
 export * from './utils/vitesse-sur-trace';
+// 06/10/2026 — l'état de disponibilité d'un véhicule : une seule règle pour la carte, l'agenda et les horaires.
+export * from './utils/etat-vehicule';

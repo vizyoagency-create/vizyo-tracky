@@ -12,6 +12,7 @@ import {
 } from '../../../core/services/vehicle-schedules.service';
 import { ToastService } from '../../../shared/ui/toast/toast.service';
 import { ConfirmModalComponent } from '../../../shared/ui/confirm-modal/confirm-modal.component';
+import { LIBELLES_ETAT, type EtatIndisponibilite, type ImmobilisationAgendaDto } from '@vizyo/tracky-shared';
 
 interface DayRow {
   key: string;
@@ -104,6 +105,19 @@ const TIMEZONES = [
             <span class="vsched-toggle-knob"></span>
           </button>
         </div>
+
+        <!-- 06/10/2026 — véhicule INDISPONIBLE (hors service, maintenance, incident) : le planificateur
+             suspend ses COUPES ; ses reprises partent toujours. On le dit ici, là où l'on règle les
+             plages — sinon on croirait l'automatisation en panne. -->
+        @if (globalEnabled() && etatDispo(); as etat) {
+          <div class="vsched-override" role="note">
+            <lucide-icon [img]="ZapIcon" [size]="14"></lucide-icon>
+            <span>
+              <strong>Coupes automatiques suspendues</strong> — véhicule {{ motSuspension(etat) }}.
+              Les plages reprendront d'elles-mêmes à sa remise en service ; une reprise moteur due part toujours.
+            </span>
+          </div>
+        }
 
         <!-- Aperçu d'aujourd'hui -->
         @if (todayPreview(); as preview) {
@@ -198,7 +212,7 @@ const TIMEZONES = [
                     />
                   </div>
                 } @else {
-                  <p class="vsched-day-off">Véhicule immobilisé</p>
+                  <p class="vsched-day-off">Coupé toute la journée</p>
                 }
               </div>
             }
@@ -345,7 +359,7 @@ const TIMEZONES = [
       <app-confirm-modal
         [open]="showDisableConfirm()"
         title="Désactiver l'automatisation"
-        description="Ce véhicule est actuellement immobilisé par l'automatisation horaire."
+        description="Le moteur de ce véhicule est actuellement coupé par l'automatisation horaire."
         consequences="Le moteur est rallumé immédiatement, et les plages horaires cessent de le couper. Le véhicule redevient utilisable en dehors des heures déclarées."
         confirmLabel="Désactiver et rallumer"
         cancelLabel="Annuler"
@@ -676,6 +690,20 @@ export class VehicleScheduleComponent {
   readonly hasTracker = input(false);
   /** Incrémenté depuis l'extérieur pour forcer un rechargement des données schedule. */
   readonly reloadTrigger = input(0);
+  /**
+   * 06/10/2026 — l'état de disponibilité du véhicule (fiche puis agenda) : s'il est posé, le
+   * planificateur suspend ses coupes, et l'onglet le dit.
+   */
+  readonly etatDispo = input<EtatIndisponibilite | null>(null);
+  /** L'immobilisation d'agenda qui porte l'état, pour nommer la maintenance. */
+  readonly immobilisation = input<ImmobilisationAgendaDto | null>(null);
+
+  /** « immobilisé », « en maintenance (« Pneus »), … — le mot partagé, et le titre de l'agenda. */
+  protected motSuspension(etat: EtatIndisponibilite): string {
+    const im = this.immobilisation();
+    const mot = LIBELLES_ETAT[etat].court;
+    return im && (etat === 'MAINTENANCE' || etat === 'INCIDENT') ? `${mot} (« ${im.title} »)` : mot;
+  }
 
   private readonly schedulesApi = inject(VehicleSchedulesApiService);
   private readonly auth = inject(AuthService);
@@ -766,7 +794,7 @@ export class VehicleScheduleComponent {
 
     const dayLabel = day.label;
     if (!day.enabled) {
-      return `Aujourd'hui (${dayLabel}) : véhicule immobilisé toute la journée`;
+      return `Aujourd'hui (${dayLabel}) : moteur coupé toute la journée`;
     }
     if (!day.start || !day.end) {
       return `Aujourd'hui (${dayLabel}) : aucune restriction horaire`;

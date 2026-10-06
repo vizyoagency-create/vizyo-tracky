@@ -14,7 +14,8 @@ import {
   // Boîtier débranché déclaré (05/10/2026) — bandeau au-dessus de la mini-carte.
   Unplug,
 } from 'lucide-angular';
-import { estAccidente, estDebranche, estImmobilise } from '../../shared/utils/hors-service';
+import { estAuSouterrain, etatVehicule, immobilisationRetenue } from '../../shared/utils/hors-service';
+import { EtatVehiculeBadgeComponent } from '../../shared/ui/etat-vehicule-badge/etat-vehicule-badge.component';
 
 /** Espace dépôt (2026-08) — la mission en cours affichée en bandeau (A2 § 9). */
 interface MissionEnCours {
@@ -98,7 +99,7 @@ import { VehicleQrDialogComponent } from './vehicle-qr-dialog.component';
     FormsModule, RouterLink, LucideAngularModule, DatePipe, DecimalPipe, GroupBadgeComponent,
     MiniMapComponent, EngineControlButtonComponent, AudioListenButtonComponent,
     VehicleScheduleComponent, VehicleReportsTabComponent, VehicleMaintenanceTabComponent, DriverPickerComponent, DriverDrawerComponent, SurveillancePanelComponent, TripReplayComponent,
-    InstallReviewBadgeComponent, BrandLogoComponent, SpinnerComponent, VehicleQrDialogComponent,
+    InstallReviewBadgeComponent, EtatVehiculeBadgeComponent, BrandLogoComponent, SpinnerComponent, VehicleQrDialogComponent,
   ],
   template: `
     @if (loading()) {
@@ -145,6 +146,8 @@ import { VehicleQrDialogComponent } from './vehicle-qr-dialog.component';
                 <span class="vt-status" [class.vt-status--on]="connectivity() === 'ONLINE'" [class.vt-status--offline]="connectivity() !== 'ONLINE'">
                   <span class="vt-status__dot"></span>{{ heroStatusLabel() }}
                 </span>
+                <!-- 06/10/2026 — l'état de disponibilité, à tous les profils (fiche puis agenda). -->
+                <app-etat-vehicule-badge [etat]="etatDispo()" [immobilisation]="immobilisationAgenda()" />
               </div>
               <div class="vdx-hero-sub">
                 <span class="vdx-hero-plate font-mono">{{ v.plate }}</span>
@@ -684,6 +687,18 @@ import { VehicleQrDialogComponent } from './vehicle-qr-dialog.component';
                   réservation, ni alertes, ni analyse de trajets.
                 </span>
               </p>
+            } @else if (immobilisationAgenda(); as im) {
+              <!-- 06/10/2026 — maintenance ou incident « Immobilise le véhicule » posé dans l'AGENDA :
+                   la clé de la mini-carte, dite en mots, avec l'échéance et le chemin vers l'agenda. -->
+              <p class="vd-carte-immobilise" role="note">
+                <lucide-icon [img]="WrenchIcon" [size]="14"></lucide-icon>
+                <span>
+                  <strong>{{ im.type === 'INCIDENT' ? 'Incident en cours' : 'En maintenance' }}</strong>
+                  &laquo;&nbsp;{{ im.title }}&nbsp;&raquo; {{ echeanceAgenda(im) }} &mdash; indisponible :
+                  ni réservation, ni coupe automatique.
+                  <a routerLink="/agenda" class="vd-carte-lien">Voir dans l'agenda</a>
+                </span>
+              </p>
             }
             <app-mini-map
               [center]="{ lat: pos.lat, lng: pos.lng }"
@@ -696,6 +711,8 @@ import { VehicleQrDialogComponent } from './vehicle-qr-dialog.component';
               [unplugged]="debranche()"
               [immobilized]="immobilise()"
               [accident]="accidente()"
+              [agenda]="immobilisationAgenda()?.type ?? null"
+              [underground]="souterrain()"
               [interactive]="!isWatchman()"
               height="500px"
             />
@@ -860,6 +877,8 @@ import { VehicleQrDialogComponent } from './vehicle-qr-dialog.component';
             [vehicleId]="v.id"
             [hasTracker]="!!v.tracker"
             [reloadTrigger]="scheduleRevision()"
+            [etatDispo]="etatDispo()"
+            [immobilisation]="immobilisationAgenda()"
           />
         }
 
@@ -1351,6 +1370,7 @@ import { VehicleQrDialogComponent } from './vehicle-qr-dialog.component';
       line-height: 1.45;
     }
     .vd-carte-immobilise strong { color: var(--texte-attente); font-weight: 700; }
+    .vd-carte-lien { margin-left: 4px; color: var(--texte-attente); font-weight: 600; text-decoration: underline; white-space: nowrap; }
     .vd-carte-immobilise lucide-icon { color: var(--texte-attente); flex-shrink: 0; margin-top: 2px; }
 
     /* Zones mortes GPS (suivi FS-253) */
@@ -2537,13 +2557,56 @@ export class VehicleDetailComponent implements OnInit {
    * barre alors la pastille, comme la page Carte — et un bandeau dit pourquoi à TOUS les
    * profils : le sélecteur et sa note ne s'affichent qu'au super-admin.
    */
-  protected readonly debranche = computed(() => estDebranche(this.vehicle()?.outOfServiceReason));
+  protected readonly debranche = computed(() => this.etatDispo() === 'DEBRANCHE');
 
   /** Immobilisé DÉCLARÉ sur la fiche (06/10/2026) : pastille à badge « clé » et bandeau, à tous les profils. */
-  protected readonly immobilise = computed(() => estImmobilise(this.vehicle()?.outOfServiceReason));
+  protected readonly immobilise = computed(() => this.etatDispo() === 'IMMOBILISE');
 
-  /** Accidenté DÉCLARÉ sur la fiche (06/10/2026) : pastille à triangle « ! » et bandeau, à tous les profils. */
-  protected readonly accidente = computed(() => estAccidente(this.vehicle()?.outOfServiceReason));
+  /** Accidenté DÉCLARÉ sur la fiche (06/10/2026) : pastille à panneau « ! » et bandeau, à tous les profils. */
+  protected readonly accidente = computed(() => this.etatDispo() === 'ACCIDENTE');
+
+  /** La ligne de l'instantané temps réel de CE véhicule — elle suit l'agenda et la fiche sans recharger. */
+  private readonly ligneInstantane = computed(() => {
+    const id = this.vehicle()?.id;
+    return id ? this.realtime.snapshot().find((s) => s.vehicleId === id) : undefined;
+  });
+
+  /**
+   * L'état de disponibilité (06/10/2026) — fiche puis agenda, la règle partagée de toute
+   * l'application. L'instantané fait foi dès qu'il porte le champ, la fiche REST sinon.
+   */
+  protected readonly etatDispo = computed(() => etatVehicule(this.ligneInstantane(), this.vehicle() ?? undefined));
+
+  /** Maintenance ou incident de l'agenda qui immobilise le véhicule maintenant (null sinon). */
+  protected readonly immobilisationAgenda = computed(() => {
+    const etat = this.etatDispo();
+    return etat === 'MAINTENANCE' || etat === 'INCIDENT'
+      ? immobilisationRetenue(this.ligneInstantane(), this.vehicle() ?? undefined)
+      : null;
+  });
+
+  /** Au parking souterrain (06/10/2026) : anneau « P » sur la mini-carte — un état déclaré l'emporte. */
+  protected readonly souterrain = computed(() => {
+    if (this.etatDispo()) return false;
+    const v = this.vehicle();
+    return estAuSouterrain({
+      presumedParkedZone: this.ligneInstantane()?.presumedParkedZone ?? v?.presumedParkedZone ?? null,
+      trackerId: v?.tracker?.id ?? null,
+      lastSeenAt: this.freshestLastSeen(),
+      lastPositionAt: this.ligneInstantane()?.lastPositionAt ?? v?.tracker?.lastPositionAt ?? null,
+      lastNoFixAt: this.ligneInstantane()?.lastNoFixAt ?? v?.tracker?.lastNoFixAt ?? null,
+      lastIgnition: v?.tracker?.lastKnownIgnition ?? null,
+    });
+  });
+
+  /** « jusqu'au 07/10 à 18:00 » — ou « jusqu'à sa clôture » pour un incident sans fin. */
+  protected echeanceAgenda(im: { endAt: string | null }): string {
+    const fin = im.endAt ? new Date(im.endAt) : null;
+    if (!fin || Number.isNaN(fin.getTime())) return 'jusqu’à sa clôture';
+    const jour = fin.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' });
+    const heure = fin.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+    return `jusqu'au ${jour} à ${heure}`;
+  }
 
   /** « depuis le 31 août 2026 » — rien du tout plutôt que « depuis le une date inconnue ». */
   protected readonly depuisHorsService = computed(() => {
@@ -2715,6 +2778,8 @@ export class VehicleDetailComponent implements OnInit {
   }
 
   async ngOnInit(): Promise<void> {
+    // 06/10/2026 — l'état (fiche, agenda) se lit dans l'instantané : relu s'il date de plus d'une minute.
+    this.realtime.rafraichirEtatsSiAnciens();
     // Sprint 1 — contexte de retour rapide (depuis la vue groupée notamment).
     const qp = this.route.snapshot.queryParams;
     this.backFrom.set(qp['from'] ?? null);
@@ -2949,6 +3014,10 @@ export class VehicleDetailComponent implements OnInit {
         this.vehiclesApi.setOutOfService(vehicleId, { reason: choisi || null, note }),
       );
       this.vehicle.set(maj);
+      // 06/10/2026 — la carte et cette fiche lisent l'instantané EN PREMIER : on y pose l'état
+      // enregistré tout de suite, puis on le relit en entier (l'agenda a pu bouger aussi).
+      this.realtime.appliquerEtatDeclare(vehicleId, maj.outOfServiceReason ?? null, maj.outOfServiceSince ?? null);
+      this.realtime.rafraichirEtats().catch(() => { /* silencieux : la relecture périodique suivra */ });
       this.toast.success(
         choisi ? 'Véhicule déclaré hors service' : 'Véhicule remis en service',
         choisi

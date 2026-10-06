@@ -1,9 +1,11 @@
 import {
   formatSilenceLabel,
   getVehicleConnectivityState,
+  type EtatIndisponibilite,
+  type ImmobilisationAgendaDto,
   type VehicleConnectivityState,
 } from '@vizyo/tracky-shared';
-import { estAccidente, estDebranche, estImmobilise } from '../../shared/utils/hors-service';
+import { estAuSouterrain, etatVehicule } from '../../shared/utils/hors-service';
 
 /** Les quatre puces de la feuille flotte (planche « Carte + flotte »). */
 export type FiltreFlotte = 'tous' | 'route' | 'arret' | 'hors-ligne';
@@ -30,6 +32,13 @@ export interface LigneFlotte {
   immobilise: boolean;
   /** Accidenté DÉCLARÉ sur la fiche (06/10/2026) — la ligne dit « Accidenté » ; rangement inchangé. */
   accidente: boolean;
+  /**
+   * L'état de disponibilité complet (06/10/2026) : fiche puis agenda (`etatIndisponibilite`). Une
+   * maintenance ou un incident de l'agenda posent `immobilise` (la clé) et donnent leur libellé.
+   */
+  etatDispo: EtatIndisponibilite | null;
+  /** Au parking souterrain (06/10/2026) — un état déclaré l'emporte. */
+  souterrain: boolean;
 }
 
 /** Ce dont la ligne a besoin, et rien de plus — sous-ensemble de `VehicleSnapshotDto`. */
@@ -45,6 +54,10 @@ export interface EntreeFlotte {
   lastIgnition?: boolean | null;
   lastSpeedKmh?: number | null;
   outOfServiceReason?: string | null;
+  /** Immobilisation d'agenda en cours (maintenance, incident) — 06/10/2026. */
+  immobilisationAgenda?: ImmobilisationAgendaDto | null;
+  /** TRK-046 — libellé du parking quand le véhicule y est considéré stationné. */
+  presumedParkedZone?: string | null;
 }
 
 const RANG: Record<EtatFlotte, number> = { route: 0, arret: 1, 'hors-ligne': 2 };
@@ -85,7 +98,8 @@ export function construireLignesFlotte(
       );
       // Débranché DÉCLARÉ : rangé « hors ligne », sans vitesse — comme son marqueur barré, la
       // déclaration prime sur une trame qui arriverait encore (boîtier rebranché, fiche pas à jour).
-      const debranche = estDebranche(v.outOfServiceReason);
+      const etatDispo = etatVehicule(v);
+      const debranche = etatDispo === 'DEBRANCHE';
       const enDirect = connectivite === 'ONLINE' && !debranche;
       const vitesse = enDirect
         ? Math.round((v.trackerId ? vitesseEnDirect(v.trackerId) : undefined) ?? v.lastSpeedKmh ?? 0)
@@ -108,8 +122,10 @@ export function construireLignesFlotte(
         connectivite,
         silence: formatSilenceLabel(v.lastSeenAt, maintenant),
         debranche,
-        immobilise: !debranche && estImmobilise(v.outOfServiceReason),
-        accidente: !debranche && estAccidente(v.outOfServiceReason),
+        immobilise: etatDispo === 'IMMOBILISE' || etatDispo === 'MAINTENANCE' || etatDispo === 'INCIDENT',
+        accidente: etatDispo === 'ACCIDENTE',
+        etatDispo,
+        souterrain: !etatDispo && estAuSouterrain(v, maintenant),
       };
     })
     .sort((a, b) => RANG[a.etat] - RANG[b.etat] || a.plate.localeCompare(b.plate));

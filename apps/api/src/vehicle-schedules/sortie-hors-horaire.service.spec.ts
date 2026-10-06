@@ -58,10 +58,13 @@ const EVT = (over: Partial<SortieHorsChampEvent> = {}): SortieHorsChampEvent => 
   ...over,
 });
 
-function build(opts: { schedule?: unknown; restore?: unknown } = {}) {
+function build(opts: { schedule?: unknown; restore?: unknown; motif?: string | null; evenements?: unknown[] } = {}) {
   const prisma = {
     vehicleSchedule: { findFirst: jest.fn().mockResolvedValue(opts.schedule ?? null) },
     engineControlCommand: { findFirst: jest.fn().mockResolvedValue(opts.restore ?? null) },
+    // 06/10/2026 — état de disponibilité : motif de la fiche + immobilisations d'agenda.
+    vehicle: { findUnique: jest.fn().mockResolvedValue({ outOfServiceReason: opts.motif ?? null }) },
+    vehicleEvent: { findMany: jest.fn().mockResolvedValue(opts.evenements ?? []) },
   } as any;
   const alerts = { createSortieHorsHoraireAlert: jest.fn().mockResolvedValue({ id: 'al-1' }) } as any;
   const service = new SortieHorsHoraireService(prisma, alerts);
@@ -115,6 +118,48 @@ describe('SortieHorsHoraireService (TRK-046)', () => {
         status: { notIn: [CommandStatus.REJECTED_SPEED, CommandStatus.FAILED] },
       },
       select: { id: true },
+    });
+  });
+
+  describe('06/10/2026 — véhicule indisponible : son planning est suspendu, sa sortie n’enfreint rien', () => {
+    /** Une maintenance « Immobilise le véhicule » couvrant la trame (01:30 UTC). */
+    const maintenance = (debut: string, fin: string | null) => ({
+      id: 'ev-1', vehicleId: 'veh-1', type: 'MAINTENANCE', status: 'PLANNED', blocksVehicle: true,
+      title: 'Pneus', startAt: new Date(debut), endAt: fin ? new Date(fin) : null,
+    });
+
+    it('s’abstient pour un véhicule déclaré hors service (immobilisé, accidenté, débranché)', async () => {
+      for (const motif of ['IMMOBILIZED', 'ACCIDENT', 'TRACKER_UNPLUGGED']) {
+        const { service, alerts } = build({ schedule: HORS_PLAGE(), motif });
+        await service.onSortieHorsChamp(EVT());
+        expect(alerts.createSortieHorsHoraireAlert).not.toHaveBeenCalled();
+      }
+    });
+
+    it('s’abstient quand une maintenance de l’agenda immobilise le véhicule À L’HEURE DE LA TRAME', async () => {
+      const { service, alerts, prisma } = build({
+        schedule: HORS_PLAGE(),
+        evenements: [maintenance('2026-08-24T06:00:00.000Z', '2026-08-25T18:00:00.000Z')],
+      });
+      await service.onSortieHorsChamp(EVT());
+      expect(alerts.createSortieHorsHoraireAlert).not.toHaveBeenCalled();
+      // L'heure évaluée est celle de la trame (evt.at), pas celle du traitement — leçon TRK-044.
+      expect(prisma.vehicleEvent.findMany.mock.calls[0][0].where.startAt).toEqual({ lte: new Date('2026-08-25T01:30:00.000Z') });
+    });
+
+    it('alerte quand la maintenance était finie avant la trame', async () => {
+      const { service, alerts } = build({
+        schedule: HORS_PLAGE(),
+        evenements: [maintenance('2026-08-24T06:00:00.000Z', '2026-08-24T18:00:00.000Z')],
+      });
+      await service.onSortieHorsChamp(EVT());
+      expect(alerts.createSortieHorsHoraireAlert).toHaveBeenCalledTimes(1);
+    });
+
+    it('ne lit l’état que si une alerte allait partir (un RESTORE né dans l’obscurité suffit à s’abstenir)', async () => {
+      const { service, prisma } = build({ schedule: HORS_PLAGE(), restore: { id: 'cmd-1' } });
+      await service.onSortieHorsChamp(EVT());
+      expect(prisma.vehicle.findUnique).not.toHaveBeenCalled();
     });
   });
 

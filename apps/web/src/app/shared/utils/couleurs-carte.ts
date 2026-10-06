@@ -65,15 +65,33 @@ export const COULEURS_CARTE = {
    */
   immobilise: '#8A6A00',
   /**
-   * L'anneau et le triangle « ! » d'un véhicule ACCIDENTÉ (déclaré sur la fiche, 06/10/2026).
+   * L'anneau d'un véhicule ACCIDENTÉ, et le contour et le « ! » de son panneau (06/10/2026).
    *
-   * Magenta : la seule teinte encore libre sur la carte. Mesuré au validateur de palette (vision
-   * normale / deutéranopie, ΔE OKLab) : 25,5 / 25,5 contre le rouge du débranché, 28,9 / 25,7
-   * contre l'ambre de l'immobilisé, 18,4 / 11,3 contre le violet des stations détectées — tous
-   * au-dessus des planchers de 15 et 8. Contraste : 3,8:1 (fond clair), 3,4:1 (sombre), 4,7:1 au
-   * « ! » blanc. Le triangle, et non un rond, le sépare aussi par la FORME du badge « clé ».
+   * ANTHRACITE, depuis le 06/10 midi. Le magenta du premier jet passait tous les seuils, mais le
+   * propriétaire n'en voulait pas (« j'aime pas trop la couleur violet du truc accidenté »). Aucune
+   * TEINTE ne restait libre : l'orange collait au rouge du débranché (ΔE 8,7, plancher 15), le bleu
+   * est celui du parking souterrain, le vert celui de « en route ». L'accidenté se distingue donc
+   * par la VALEUR — le noir du panneau de danger, avec son jaune (`accidentePanneau`) — et par la
+   * forme triangulaire. Contraste : 14,4:1 sur le fond clair ; sur le fond sombre l'anneau seul
+   * tombe à 1,1:1, c'est le liseré blanc de 6 px (17,7:1) qui le détache, comme pour tous les états.
    */
-  accidente: '#C026D3',
+  accidente: '#111827',
+  /**
+   * Le fond du panneau « ! » d'un véhicule accidenté : le jaune du panneau de danger. 10,6:1 sur le
+   * fond sombre, 11,6:1 sous le « ! » anthracite ; sur le fond clair (1,2:1) c'est le contour
+   * anthracite qui porte la forme. ΔE 32,6 contre l'ocre de la clé : jamais confondus.
+   */
+  accidentePanneau: '#FACC15',
+  /**
+   * L'anneau et le badge « P » d'un véhicule garé au PARKING SOUTERRAIN (06/10/2026, « ajouter même
+   * un rond pour les voitures en souterrain comme la HM-769 »).
+   *
+   * Le bleu ciel des repères « Parking souterrain » de la carte (`#0EA5E9`), assombri d'un cran :
+   * posé en trait fin, `#0EA5E9` ne donnait que 2,25:1 sur le fond clair. `#0284C7` : 3,3:1 (clair),
+   * 4,0:1 (sombre), 4,1:1 au « P » blanc ; ΔE 33,9 / 24,8 contre le rouge et l'ocre, 17,9 contre le
+   * violet des stations détectées.
+   */
+  souterrain: '#0284C7',
 } as const;
 
 /**

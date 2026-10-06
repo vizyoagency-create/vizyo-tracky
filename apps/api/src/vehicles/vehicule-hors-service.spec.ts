@@ -30,6 +30,8 @@ function build(vehiculeExistant: Record<string, unknown> | null = {
       // `findOne` relit la fiche complète après la mise à jour.
       findFirst: jest.fn().mockResolvedValue({ id: 'v1', plate: 'KSR370', fleetId: 'f1', groups: [] }),
     },
+    // 06/10/2026 — `findOne` lit aussi l'immobilisation d'agenda en cours : aucune ici.
+    vehicleEvent: { findMany: jest.fn().mockResolvedValue([]) },
   };
   const cache = { invalidate: jest.fn(), get: jest.fn(), set: jest.fn() };
   const systemActivity = { record: jest.fn() };

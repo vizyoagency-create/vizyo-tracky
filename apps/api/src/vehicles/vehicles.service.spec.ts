@@ -49,6 +49,8 @@ describe('VehiclesService', () => {
     // Lot « dénominateurs » — stats() compte (vehicle/alert), balaie la présence (findMany)
     // et lit les véhicules en mouvement en SQL brut.
     alert: { count: jest.Mock };
+    // 06/10/2026 — immobilisations d'agenda lues en lot (snapshot, liste, fiche, Parc).
+    vehicleEvent: { findMany: jest.Mock };
     $queryRaw: jest.Mock;
     $transaction: jest.Mock;
   };
@@ -80,6 +82,8 @@ describe('VehiclesService', () => {
       // Sprint 10 — synchro véhicule ↔ planning : source = tâche d'installation liée.
       installationTask: { findFirst: jest.fn().mockResolvedValue(null), findMany: jest.fn().mockResolvedValue([]) },
       alert: { count: jest.fn().mockResolvedValue(0) },
+      // 06/10/2026 — immobilisations d'agenda (snapshot, liste, fiche, Parc) : aucune par défaut.
+      vehicleEvent: { findMany: jest.fn().mockResolvedValue([]) },
       // stats() interpole en template taggé : $queryRaw(strings, movingSince, ...). Le mock
       // reçoit donc les valeurs en arguments — c'est ce qui permet d'auditer le seuil utilisé.
       $queryRaw: jest.fn().mockResolvedValue([]),
@@ -396,6 +400,69 @@ describe('VehiclesService', () => {
     const select = prisma.vehicle.findMany.mock.calls.at(-1)[0].select;
     expect(select.outOfServiceReason).toBe(true);
     expect(select.outOfServiceSince).toBe(true);
+  });
+
+  // --- 06/10/2026 — l'état de disponibilité : l'immobilisation d'agenda voyage avec les lectures ---
+  describe('immobilisation d’agenda (maintenance « Immobilise le véhicule », incident)', () => {
+    const H = 60 * 60 * 1000;
+    const evenement = (over: Record<string, unknown> = {}) => ({
+      id: 'ev-1', vehicleId: 'v-maintenance', type: 'MAINTENANCE', status: 'PLANNED', blocksVehicle: true,
+      title: 'Pneus', startAt: new Date(Date.now() - H), endAt: new Date(Date.now() + 2 * H), ...over,
+    });
+
+    it('le snapshot porte la maintenance en cours, et null pour un véhicule libre — UNE requête pour tout le lot', async () => {
+      prisma.vehicle.findMany.mockResolvedValue([
+        { ...vehicleRecord({ id: 'v-maintenance', type: 'VAN' }), outOfServiceReason: null, outOfServiceSince: null, schedule: null, groups: [] },
+        { ...vehicleRecord({ id: 'v-libre', type: 'VAN' }), outOfServiceReason: null, outOfServiceSince: null, schedule: null, groups: [] },
+      ]);
+      prisma.vehicleEvent.findMany.mockResolvedValue([evenement()]);
+
+      const snap = await service.snapshot(fleetAdmin);
+      const byVehicle = new Map(snap.map((x) => [x.vehicleId, x]));
+
+      expect(byVehicle.get('v-maintenance')?.immobilisationAgenda).toMatchObject({ eventId: 'ev-1', type: 'MAINTENANCE', title: 'Pneus' });
+      expect(byVehicle.get('v-libre')?.immobilisationAgenda).toBeNull();
+      expect(prisma.vehicleEvent.findMany).toHaveBeenCalledTimes(1);
+      const where = prisma.vehicleEvent.findMany.mock.calls[0][0].where;
+      expect(where.vehicleId).toEqual({ in: ['v-maintenance', 'v-libre'] });
+      // Le pré-filtre SQL reprend la règle partagée : bloquant, actif, commencé.
+      expect(where.blocksVehicle).toBe(true);
+      expect(where.type).toEqual({ in: ['MAINTENANCE', 'INCIDENT'] });
+      expect(where.status).toEqual({ in: ['PLANNED', 'OPEN', 'IN_PROGRESS'] });
+    });
+
+    it('un rappel de plan d’entretien (non bloquant) ou une maintenance terminée ne rendent RIEN', async () => {
+      prisma.vehicle.findMany.mockResolvedValue([
+        { ...vehicleRecord({ id: 'v-maintenance', type: 'VAN' }), outOfServiceReason: null, outOfServiceSince: null, schedule: null, groups: [] },
+      ]);
+      // La requête filtre déjà en SQL ; la règle partagée re-tranche ce qui passe (24 h sans fin).
+      prisma.vehicleEvent.findMany.mockResolvedValue([
+        evenement({ startAt: new Date(Date.now() - 30 * H), endAt: null }),
+      ]);
+      const snap = await service.snapshot(fleetAdmin);
+      expect(snap[0].immobilisationAgenda).toBeNull();
+    });
+
+    it('la fiche (findOne) et la vue Parc (capacityOverview) disent la même chose que la carte', async () => {
+      prisma.vehicle.findFirst.mockResolvedValue({ ...vehicleRecord({ id: 'v-maintenance' }), groups: [] });
+      prisma.vehicleEvent.findMany.mockResolvedValue([evenement()]);
+      const fiche = await service.findOne('v-maintenance', fleetAdmin);
+      expect(fiche.immobilisationAgenda).toMatchObject({ type: 'MAINTENANCE', title: 'Pneus' });
+
+      prisma.vehicle.findMany.mockResolvedValue([
+        { ...vehicleRecord({ id: 'v-maintenance', features: [] }), groups: [], tracker: null },
+      ]);
+      const parc = await service.capacityOverview(fleetAdmin);
+      expect(parc[0].immobilisationAgenda).toMatchObject({ type: 'MAINTENANCE' });
+    });
+
+    it('une maintenance créée, modifiée ou supprimée vide le cache de l’instantané de SA société', () => {
+      const cache = (service as unknown as { cache: { invalidate: jest.Mock } }).cache;
+      cache.invalidate.mockClear();
+      service.onDisponibiliteModifiee({ fleetId: FLEET_ID, vehicleId: 'v-maintenance' });
+      expect(cache.invalidate).toHaveBeenCalledWith(`snapshot:${FLEET_ID}`);
+      expect(cache.invalidate).toHaveBeenCalledWith('snapshot:super');
+    });
   });
 
   // --- Sprint 10 (Synchro véhicule ↔ planning d'installation) ---

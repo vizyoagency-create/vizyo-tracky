@@ -226,3 +226,80 @@ describe('FleetSchedulesService — dormance (seuil COMPTAGE, 7 j)', () => {
     expect(res.holidayForecast.scheduledCount).toBe(1);
   });
 });
+
+/**
+ * 06/10/2026 — « dans les horaires auto, ça désactive » : un véhicule INDISPONIBLE (hors service
+ * déclaré, maintenance ou incident de l'agenda) a ses coupes automatiques suspendues par le cron.
+ * La page le dit au lieu d'annoncer une « coupe en attente » qui ne partira pas.
+ */
+describe('FleetSchedulesService — véhicule indisponible : coupes suspendues', () => {
+  /** Planning ACTIVÉ, sans override, aucun jour actif → toujours hors plage. */
+  const horsPlage = (vehicleId: string) => ({
+    ...scheduleRow(vehicleId),
+    overrideUntil: null,
+    mondayEnabled: false, tuesdayEnabled: false, wednesdayEnabled: false, thursdayEnabled: false,
+    fridayEnabled: false, saturdayEnabled: false, sundayEnabled: false,
+  });
+  const maintenance = {
+    eventId: 'ev-1', type: 'MAINTENANCE' as const, title: 'Pneus',
+    startAt: iso(HOUR), endAt: new Date(Date.now() + HOUR).toISOString(),
+  };
+
+  function build(snap: VehicleSnapshotDto[]) {
+    const prisma = {
+      vehicleSchedule: { findMany: jest.fn().mockResolvedValue(snap.map((s) => horsPlage(s.vehicleId))) },
+      fleet: { findMany: jest.fn().mockResolvedValue([{ id: FLEET_ID, name: 'CDEF' }]) },
+      position: { findFirst: jest.fn().mockResolvedValue(null) },
+      vehicle: {
+        findMany: jest.fn().mockResolvedValue(snap.map((s) => ({ id: s.vehicleId, plate: s.plate, tracker: { id: s.trackerId } }))),
+      },
+    };
+    const vehicles = { snapshot: jest.fn().mockResolvedValue(snap) };
+    const service = new FleetSchedulesService(
+      prisma as never,
+      vehicles as never,
+      { upsert: jest.fn() } as never,
+      { resolveForVehicles: jest.fn().mockResolvedValue(new Map(snap.map((s) => [s.vehicleId, { schedules_manage: true }]))) } as never,
+      { getAccessibleVehicleIds: jest.fn().mockResolvedValue('ALL') } as never,
+    );
+    return { service };
+  }
+
+  const parc = (): VehicleSnapshotDto[] => [
+    snapRow({ vehicleId: 'v-libre' }),
+    snapRow({ vehicleId: 'HD-998-XY', outOfServiceReason: 'IMMOBILIZED' }),
+    snapRow({ vehicleId: 'v-maintenance', immobilisationAgenda: maintenance }),
+  ];
+
+  it('la ligne dit « coupes suspendues » et n’annonce ni coupe en attente ni prochaine coupe', async () => {
+    const { service } = build(parc());
+    const res = await service.listForFleet(requestedBy);
+    const byId = new Map(res.items.map((r) => [r.vehicleId, r]));
+
+    // Le véhicule libre, hors plage et non coupé : coupe en attente, comme avant.
+    expect(byId.get('v-libre')).toMatchObject({ coupesSuspendues: false, cutPending: true });
+
+    for (const id of ['HD-998-XY', 'v-maintenance']) {
+      const r = byId.get(id)!;
+      expect(r.coupesSuspendues).toBe(true);
+      expect(r.cutPending).toBe(false);
+      expect(r.pendingReason).toBeNull();
+      expect(r.nextTransitionAction).not.toBe('CUT');
+    }
+    // La cause voyage avec la ligne : la page peut dire « immobilisé » ou « en maintenance (Pneus) ».
+    expect(byId.get('HD-998-XY')!.outOfServiceReason).toBe('IMMOBILIZED');
+    expect(byId.get('v-maintenance')!.immobilisationAgenda).toMatchObject({ type: 'MAINTENANCE', title: 'Pneus' });
+  });
+
+  it('l’aperçu d’une application en masse compte à part les véhicules dont la coupe sera suspendue', async () => {
+    const { service } = build(parc());
+    const res = await service.preview(
+      { id: requestedBy.userId, role: UserRole.FLEET_ADMIN, fleetId: FLEET_ID } as never,
+      { schedule: { enabled: true, mondayEnabled: false, tuesdayEnabled: false, wednesdayEnabled: false, thursdayEnabled: false, fridayEnabled: false, saturdayEnabled: false, sundayEnabled: false } } as never,
+    );
+    expect(res.outOfWindowNow).toBe(3);
+    expect(res.wouldSuspend).toBe(2);
+    // Le seul véhicule libre est à l'arrêt, en ligne, sans mouvement récent : coupé maintenant.
+    expect(res.wouldCutNow + res.wouldDeferDwell + res.wouldDeferMoving + res.wouldDeferOffline).toBe(1);
+  });
+});

@@ -84,7 +84,7 @@ describe('VehicleEventsService — scoping tenant (Sprint 7, anti-IDOR)', () => 
     expect(dto.blocksVehicle).toBe(true);
   });
 
-  it('create : MAINTENANCE n\'immobilise pas par défaut, INCIDENT si', async () => {
+  it('create : MAINTENANCE et INCIDENT immobilisent par défaut (06/10/2026), le choix explicite est respecté', async () => {
     const prisma = makePrisma();
     const p = prisma as { vehicle: { findUnique: jest.Mock }; vehicleEvent: { create: jest.Mock } };
     p.vehicle.findUnique.mockResolvedValue({ id: 'v1', fleetId: 'f1', lastOdometerAt: null });
@@ -96,13 +96,18 @@ describe('VehicleEventsService — scoping tenant (Sprint 7, anti-IDOR)', () => 
     });
     const svc = new VehicleEventsService(prisma, access('ALL'));
     const base = { vehicleId: 'v1', title: 'x', startAt: new Date().toISOString() };
+    // Demande du propriétaire du 06/10/2026 : « si on ajoute une maintenance à une voiture, elle doit
+    // passer avec le rond marron et la clé » — une maintenance rend le véhicule indisponible.
     await svc.create(makeUser({ role: UserRole.FLEET_ADMIN }), { ...base, type: 'MAINTENANCE' });
-    expect(p.vehicleEvent.create.mock.calls[0][0].data.blocksVehicle).toBe(false);
+    expect(p.vehicleEvent.create.mock.calls[0][0].data.blocksVehicle).toBe(true);
     await svc.create(makeUser({ role: UserRole.FLEET_ADMIN }), { ...base, type: 'INCIDENT' });
     expect(p.vehicleEvent.create.mock.calls[1][0].data.blocksVehicle).toBe(true);
     // Choix explicite de l'utilisateur respecté (incident mineur non immobilisant).
     await svc.create(makeUser({ role: UserRole.FLEET_ADMIN }), { ...base, type: 'INCIDENT', blocksVehicle: false });
     expect(p.vehicleEvent.create.mock.calls[2][0].data.blocksVehicle).toBe(false);
+    // … et pour une maintenance qui laisse le véhicule disponible (« Immobilise le véhicule » décoché).
+    await svc.create(makeUser({ role: UserRole.FLEET_ADMIN }), { ...base, type: 'MAINTENANCE', blocksVehicle: false });
+    expect(p.vehicleEvent.create.mock.calls[3][0].data.blocksVehicle).toBe(false);
   });
 
   it('create : refuse le type RESERVATION (reserve Sprint 8)', async () => {
@@ -624,5 +629,58 @@ describe('VehicleEventsService — journal métier (29/09)', () => {
     const svc = new VehicleEventsService(prisma, access('ALL'));
 
     await expect(svc.remove(superAdmin(), 'e1')).resolves.toEqual({ ok: true });
+  });
+});
+
+/**
+ * 06/10/2026 — une maintenance ou un incident change l'état de disponibilité du véhicule (carte,
+ * page Horaires, coupes automatiques). Le service le SIGNALE ; `VehiclesService` vide alors le
+ * cache de l'instantané — sans quoi la carte ouverte juste après l'agenda mentirait 15 s.
+ */
+describe('VehicleEventsService — la disponibilité du véhicule est signalée (06/10/2026)', () => {
+  const ligne = (type: string) => ({
+    id: 'e1', fleetId: 'f1', vehicleId: 'v1', vehicle: { plate: 'AA-1' }, type, status: 'PLANNED',
+    severity: null, title: 'Pneus', description: null, startAt: new Date(), endAt: null, allDay: true,
+    blocksVehicle: true, odometerKm: null, planId: null, linkedEventId: null, resolvedAt: null,
+    metadata: null, source: 'MANUAL', createdAt: new Date(), updatedAt: new Date(),
+  });
+  const admin = () => makeUser({ role: UserRole.FLEET_ADMIN });
+  const signalements = (emit: jest.Mock) =>
+    emit.mock.calls.filter((c) => c[0] === 'vehicule.disponibilite.modifiee').map((c) => c[1]);
+
+  it('créer, modifier puis supprimer une maintenance : trois signalements, avec la société du véhicule', async () => {
+    const prisma = makePrisma();
+    const p = prisma as {
+      vehicle: { findUnique: jest.Mock };
+      vehicleEvent: { create: jest.Mock; findFirst: jest.Mock; update: jest.Mock; delete: jest.Mock };
+    };
+    p.vehicle.findUnique.mockResolvedValue({ id: 'v1', fleetId: 'f1', lastOdometerAt: null });
+    p.vehicleEvent.create.mockResolvedValue(ligne('MAINTENANCE'));
+    p.vehicleEvent.findFirst.mockResolvedValue(ligne('MAINTENANCE'));
+    p.vehicleEvent.update.mockResolvedValue(ligne('MAINTENANCE'));
+    p.vehicleEvent.delete.mockResolvedValue({});
+    const emitter = { emit: jest.fn() };
+    const svc = new VehicleEventsService(prisma, access('ALL'), emitter as never);
+
+    await svc.create(admin(), { vehicleId: 'v1', type: 'MAINTENANCE', title: 'Pneus', startAt: new Date().toISOString() });
+    await svc.update(admin(), 'e1', { status: 'IN_PROGRESS' });
+    await svc.remove(admin(), 'e1');
+
+    expect(signalements(emitter.emit)).toEqual([
+      { fleetId: 'f1', vehicleId: 'v1' },
+      { fleetId: 'f1', vehicleId: 'v1' },
+      { fleetId: 'f1', vehicleId: 'v1' },
+    ]);
+  });
+
+  it('un incident signalé par le bouton dédié aussi', async () => {
+    const prisma = makePrisma();
+    const p = prisma as { vehicle: { findUnique: jest.Mock }; vehicleEvent: { create: jest.Mock } };
+    p.vehicle.findUnique.mockResolvedValue({ id: 'v1', fleetId: 'f1' });
+    p.vehicleEvent.create.mockResolvedValue({ ...ligne('INCIDENT'), status: 'OPEN' });
+    const emitter = { emit: jest.fn() };
+    const svc = new VehicleEventsService(prisma, access('ALL'), emitter as never);
+    await svc.reportIncident(admin(), { vehicleId: 'v1', title: 'Roue crevée' });
+    expect(signalements(emitter.emit)).toEqual([{ fleetId: 'f1', vehicleId: 'v1' }]);
   });
 });

@@ -10,6 +10,7 @@ import { NotificationsApiService } from './notifications.service';
 import { PermissionsService } from './permissions.service';
 import { PreferencesService } from './preferences.service';
 import { VisibilityService } from './visibility.service';
+import { EtatsVehiculesBus } from './etats-vehicules.bus';
 import { ToastService } from '../../shared/ui/toast/toast.service';
 import {
   deciderApresTentativeDeRafraichissement,
@@ -567,5 +568,126 @@ describe('alerts_view — le temps réel ne demande pas les alertes à qui ne pe
     user.set(compte('FLEET_MANAGER', false));
     await repondreAcces([]);
     expect(service.alerts()).toEqual([]);
+  });
+});
+
+/**
+ * 06/10/2026 — « un système d'état qui fonctionne dans toute l'app » : l'état d'un véhicule (hors
+ * service déclaré, maintenance de l'agenda, parking souterrain) vit dans l'instantané, que rien ne
+ * relisait hors reconnexion. Une maintenance posée dans l'agenda n'apparaissait sur la carte déjà
+ * ouverte qu'au rechargement de la page.
+ */
+describe('06/10/2026 — relecture des ÉTATS de l’instantané', () => {
+  let service: RealtimeServiceTestable;
+  let httpMock: HttpTestingController;
+
+  const ligne = (over: Record<string, unknown> = {}) => ({
+    vehicleId: 'v-998', fleetId: 'f1', plate: 'HD-998-XY', type: 'VAN', brand: null, model: null,
+    trackerId: 't-998', trackerImei: null, trackerStatus: null,
+    lastSeenAt: '2026-10-06T08:00:00.000Z', lastLat: 43.6, lastLng: 1.44, lastSpeedKmh: 0,
+    lastHeading: 0, lastIgnition: false, lastValid: true, lastPositionAt: '2026-10-06T08:00:00.000Z',
+    lastNoFixAt: null, accConnected: null, trackerCreatedAt: null, engineCutActive: false,
+    engineCutState: 'normal', scheduleEnabled: true, privacyModeEnabled: false, privacyModeSince: null,
+    group: null, presumedParkedZone: null, outOfServiceReason: null, outOfServiceSince: null,
+    immobilisationAgenda: null,
+    ...over,
+  });
+  const maintenance = {
+    eventId: 'ev-1', type: 'MAINTENANCE', title: 'Pneus',
+    startAt: '2026-10-06T07:00:00.000Z', endAt: '2026-10-06T16:00:00.000Z',
+  };
+
+  beforeEach(() => {
+    TestBed.configureTestingModule({
+      providers: [
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        {
+          provide: AuthService,
+          useValue: {
+            tryRefresh: jasmine.createSpy('tryRefresh').and.resolveTo(null),
+            refreshUnavailable: () => false,
+            logout: () => undefined,
+            isDepot: () => false,
+            user: () => null,
+            token: 'jeton-de-test',
+          },
+        },
+        { provide: Router, useValue: { navigate: jasmine.createSpy('navigate').and.resolveTo(true), url: '/map' } },
+        { provide: FleetFilterService, useValue: { matches: () => true, isActive: signal(false), selectedFleetId: signal(null) } },
+        { provide: NotificationsApiService, useValue: { clearAppBadge: () => undefined, setAppBadge: () => undefined } },
+        { provide: PreferencesService, useValue: { prefs: signal({ notifications: {} }) } },
+        { provide: VisibilityService, useValue: { isVisible: signal(true), isUserActive: signal(true), lastHiddenDurationMs: () => null } },
+        { provide: ToastService, useValue: { error: () => undefined, success: () => undefined, info: () => undefined } },
+        { provide: PermissionsService, useValue: { can: () => true } },
+        RealtimeServiceTestable,
+      ],
+    });
+    service = TestBed.inject(RealtimeServiceTestable);
+    httpMock = TestBed.inject(HttpTestingController);
+  });
+
+  afterEach(() => service.disconnect());
+
+  const repondreSnapshot = async (items: unknown[]): Promise<void> => {
+    const req = httpMock.expectOne((r) => r.url.includes('/api/vehicles/snapshot'));
+    req.flush({ items });
+    await Promise.resolve();
+    await Promise.resolve();
+  };
+
+  it('ne recopie QUE les champs d’état : la position tenue par le direct n’est pas écrasée', async () => {
+    service.snapshot.set([ligne() as never]);
+    const p = service.rafraichirEtats();
+    // La réponse REST porte une position plus ancienne : elle ne doit pas gagner sur le direct.
+    await repondreSnapshot([ligne({ immobilisationAgenda: maintenance, lastLat: 1, lastLng: 2 })]);
+    await p;
+    const [l] = service.snapshot();
+    expect(l.immobilisationAgenda).toEqual(maintenance as never);
+    expect(l.lastLat).toBe(43.6);
+    expect(l.lastLng).toBe(1.44);
+  });
+
+  it('rien n’a bougé : le signal n’est pas réémis (la carte ne redessine pas pour rien)', async () => {
+    const avant = [ligne() as never];
+    service.snapshot.set(avant);
+    const p = service.rafraichirEtats();
+    await repondreSnapshot([ligne()]);
+    await p;
+    expect(service.snapshot()).toBe(avant);
+  });
+
+  it('une maintenance terminée (null) remplace bien l’ancienne', async () => {
+    service.snapshot.set([ligne({ immobilisationAgenda: maintenance }) as never]);
+    const p = service.rafraichirEtats();
+    await repondreSnapshot([ligne({ immobilisationAgenda: null })]);
+    await p;
+    expect(service.snapshot()[0].immobilisationAgenda).toBeNull();
+  });
+
+  it('appliquerEtatDeclare : la fiche vient d’enregistrer « immobilisé », la ligne le dit TOUT DE SUITE', () => {
+    service.snapshot.set([ligne() as never]);
+    service.appliquerEtatDeclare('v-998', 'IMMOBILIZED', '2026-10-06T09:30:00.000Z');
+    expect(service.snapshot()[0].outOfServiceReason).toBe('IMMOBILIZED');
+    expect(service.snapshot()[0].outOfServiceSince).toBe('2026-10-06T09:30:00.000Z');
+    // Un véhicule absent de l'instantané : rien à poser, et surtout rien de cassé.
+    expect(() => service.appliquerEtatDeclare('inconnu', null, null)).not.toThrow();
+  });
+
+  it('rafraichirEtatsSiAnciens : rien juste après l’hydratation, une lecture quand elle a vieilli', async () => {
+    service.connect('jeton-de-test');
+    await repondreSnapshot([ligne()]); // hydratation initiale
+    service.rafraichirEtatsSiAnciens();
+    httpMock.expectNone((r) => r.url.includes('/api/vehicles/snapshot'));
+    service.rafraichirEtatsSiAnciens(0);
+    await repondreSnapshot([ligne()]);
+  });
+
+  it('un geste de l’agenda (EtatsVehiculesBus) déclenche une relecture', async () => {
+    service.snapshot.set([ligne() as never]);
+    TestBed.inject(EtatsVehiculesBus).signaler();
+    TestBed.tick();
+    await repondreSnapshot([ligne({ immobilisationAgenda: maintenance })]);
+    expect(service.snapshot()[0].immobilisationAgenda).toEqual(maintenance as never);
   });
 });

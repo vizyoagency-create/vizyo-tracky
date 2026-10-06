@@ -70,8 +70,15 @@ export class MiniMapComponent implements AfterViewInit, OnDestroy {
   readonly unplugged = input(false);
   /** Immobilisé DÉCLARÉ sur la fiche (06/10/2026) : pastille grisée à badge « clé », comme la page Carte. */
   readonly immobilized = input(false);
-  /** Accidenté DÉCLARÉ sur la fiche (06/10/2026) : pastille grisée à triangle « ! », comme la page Carte. */
+  /** Accidenté DÉCLARÉ sur la fiche (06/10/2026) : pastille grisée à panneau « ! », comme la page Carte. */
   readonly accident = input(false);
+  /**
+   * Immobilisé par l'AGENDA (06/10/2026) : maintenance ou incident « Immobilise le véhicule » en
+   * cours — la même clé que l'immobilisé de la fiche, comme la page Carte.
+   */
+  readonly agenda = input<'MAINTENANCE' | 'INCIDENT' | null>(null);
+  /** Au parking souterrain (06/10/2026) : anneau et badge « P » bleus, comme la page Carte. */
+  readonly underground = input(false);
   readonly zoom = input(15);
   readonly height = input('300px');
   /** Sprint 3 — false = carte figée (pan/zoom/rotation désactivés), pour le veilleur de nuit. */
@@ -107,6 +114,8 @@ export class MiniMapComponent implements AfterViewInit, OnDestroy {
     const unplugged = this.unplugged();
     const immobilized = this.immobilized();
     const accident = this.accident();
+    const agenda = this.agenda();
+    const underground = this.underground();
     const ready = this.mapReady(); // tracké par l'effect
 
     if (!this.map || !c || !ready) return;
@@ -123,6 +132,8 @@ export class MiniMapComponent implements AfterViewInit, OnDestroy {
       unplugged,
       immobilized,
       accident,
+      ...(agenda ? { agenda } : {}),
+      underground,
     };
 
     if (this.marker && this.markerEl) {
