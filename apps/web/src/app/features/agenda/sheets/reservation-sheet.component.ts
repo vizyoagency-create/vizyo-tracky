@@ -534,7 +534,7 @@ function toLocalInput(d: Date): string {
               <div class="rs-ai-list">
                 <span class="rs-ai-hint">Proposé par l'IA — touchez pour choisir. Le n°1 est le meilleur compromis besoin / coût :</span>
                 @for (p of aiProposals(); track p.vehicleId; let i = $index) {
-                  <button type="button" class="rs-ai-card" [class.rs-ai-card--on]="vehicleId() === p.vehicleId" (click)="vehicleId.set(p.vehicleId)">
+                  <button type="button" class="rs-ai-card vt-carte-bouton" [class.rs-ai-card--on]="vehicleId() === p.vehicleId" (click)="vehicleId.set(p.vehicleId)">
                     <div class="rs-ai-top">
                       <span class="rs-rank">#{{ i + 1 }}</span>
                       <span class="rs-plate">{{ p.plate || '—' }}</span>

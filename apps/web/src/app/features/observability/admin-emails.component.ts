@@ -236,7 +236,7 @@ const BREAKDOWN_COLORS = ['bg-tracky-light', 'bg-rose-400', 'bg-tracky', 'bg-sky
         <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
           @for (t of templates(); track t.id) {
             <button type="button" (click)="openPreview(t)"
-                    class="relative overflow-hidden text-left bg-bg-secondary border border-border-subtle rounded-[--radius-card] p-[20px_22px] hover:border-tracky-light/40 transition-colors">
+                    class="vt-carte-bouton relative overflow-hidden text-left bg-bg-secondary border border-border-subtle rounded-[--radius-card] p-[20px_22px] hover:border-tracky-light/40 transition-colors">
               <div class="absolute top-0 left-0 right-0 h-[3px]" [class]="toneBar(t.tone)"></div>
               <div class="flex items-start justify-between mb-3.5">
                 <span class="inline-flex items-center justify-center w-10 h-10 rounded-xl" [class]="toneSoft(t.tone) + ' ' + toneText(t.tone)"><lucide-icon [img]="t.icon" [size]="19" aria-hidden="true"></lucide-icon></span>

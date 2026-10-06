@@ -192,7 +192,7 @@ const CHANNEL_META: Record<CommChannel, { label: string; icon: typeof Mail; tone
             <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
               @for (t of byChannel(c); track t.id) {
                 <button type="button" [disabled]="!t.previewable" (click)="openPreview(t)"
-                        class="text-left bg-bg-secondary border border-border-subtle rounded-[--radius-card] p-[16px_18px] transition-colors"
+                        class="vt-carte-bouton text-left bg-bg-secondary border border-border-subtle rounded-[--radius-card] p-[16px_18px] transition-colors"
                         [class.hover:border-tracky-light]="t.previewable"
                         [class.cursor-default]="!t.previewable">
                   <div class="flex items-start justify-between gap-2 mb-2">

@@ -398,7 +398,7 @@ export function lancerPassageAgent(
                 }
                 <div class="ia-cards">
                   @for (c of cartes(); track c.p.vehicleId) {
-                    <button type="button" class="ia-card" [class.ia-card--on]="canApply() && selected().has(c.p.vehicleId)" [disabled]="!canApply()" (click)="toggleSel(c.p.vehicleId)">
+                    <button type="button" class="ia-card vt-carte-bouton" [class.ia-card--on]="canApply() && selected().has(c.p.vehicleId)" [disabled]="!canApply()" (click)="toggleSel(c.p.vehicleId)">
                       <div class="ia-card-top">
                         <span class="ia-plate">{{ c.p.plate || '—' }}@if (c.p.model) { <span class="ia-model">{{ c.p.model }}</span> }</span>
                         <span class="ia-chip" [class.ia-chip--hi]="c.p.confidence >= 0.7" [class.ia-chip--mid]="c.p.confidence >= 0.4 && c.p.confidence < 0.7" [class.ia-chip--lo]="c.p.confidence < 0.4">{{ c.p.confidence * 100 | number:'1.0-0' }}%</span>

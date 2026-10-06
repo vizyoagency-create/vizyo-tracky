@@ -217,7 +217,7 @@ interface GroupeSection {
               </div>
               <div class="s-card-body">
                 <div class="theme-picker">
-                  <button (click)="theme.setTheme('dark')" class="theme-option" [class.active]="theme.theme() === 'dark'">
+                  <button (click)="theme.setTheme('dark')" class="theme-option vt-carte-bouton" [class.active]="theme.theme() === 'dark'">
                     <div class="theme-preview dark-preview">
                       <div class="tp-bar"></div><div class="tp-content"><div class="tp-line"></div><div class="tp-line short"></div></div>
                     </div>
@@ -225,7 +225,7 @@ interface GroupeSection {
                       <lucide-icon [img]="MoonIcon" [size]="12"></lucide-icon> Sombre
                     </div>
                   </button>
-                  <button (click)="theme.setTheme('light')" class="theme-option" [class.active]="theme.theme() === 'light'">
+                  <button (click)="theme.setTheme('light')" class="theme-option vt-carte-bouton" [class.active]="theme.theme() === 'light'">
                     <div class="theme-preview light-preview">
                       <div class="tp-bar"></div><div class="tp-content"><div class="tp-line"></div><div class="tp-line short"></div></div>
                     </div>

@@ -48,7 +48,7 @@ import { roleLabel as roleLabelFr } from '../../shared/utils/role-labels';
             <p class="sa-muted">Aucune donnée de connexion pour l'instant.</p>
           } @else {
             @for (u of users(); track u.userId) {
-              <button class="sa-row" [class.active]="selectedId() === u.userId" (click)="select(u)">
+              <button class="sa-row vt-carte-bouton" [class.active]="selectedId() === u.userId" (click)="select(u)">
                 <div class="sa-row-main">
                   <span class="sa-name">{{ u.name }}</span>
                   <span class="sa-badge" [class.on]="u.twoFactorEnabled">

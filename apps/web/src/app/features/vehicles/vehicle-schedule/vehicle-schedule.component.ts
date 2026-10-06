@@ -498,8 +498,13 @@ const TIMEZONES = [
       display: grid;
       /* Fluide selon le CONTENEUR (drawer étroit OU fiche large), pas le viewport : les 7 jours
          restent toujours visibles/éditables et s'enroulent sur plusieurs lignes si besoin.
-         Corrige le clip de « Dimanche » dans le drawer (repeat(7) forcé par un @media viewport). */
-      grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+         Corrige le clip de « Dimanche » dans le drawer (repeat(7) forcé par un @media viewport).
+         ⚠️ 220 PX AU MOINS (06/10/2026), MESURÉ DANS LE NAVIGATEUR : un champ « 07:00 » demande
+         84 px avec l'horloge native de Chrome (police 12 px, marges 8 px), et la carte en porte
+         deux, plus la flèche, les écarts et son padding. À 140 px, chaque champ tombait à 56 px et
+         l'horloge masquait la moitié de l'heure (« 07 » au lieu de « 07:00 ») — à TOUTES les
+         largeurs, grand écran compris. Le format bureau (≥ 1024 px) se contente de 200 px, plus bas. */
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
       gap: 8px;
     }
     .vsched-day-card {
@@ -611,6 +616,8 @@ const TIMEZONES = [
       .vsched-day-card { padding: 10px }
       .vsched-day-name { font-size: 11px }
       .vsched-time-input { font-size: 11px; padding: 5px 6px }
+      /* Police 11 px, marges 5/6 : 77 px par champ (mesuré), donc 200 px par carte. */
+      .vsched-days-grid { grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)) }
     }
 
     /* V1.6 (P1) — Section avancee */

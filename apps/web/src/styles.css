@@ -310,6 +310,25 @@ body.plat-android {
   }
   a.block { display: flex; align-items: center; }
 
+  /* ⚠️ LES CARTES QUI SE TAPENT — 2026-10-06.
+   *
+   * La règle ci-dessus vise un BOUTON : une ligne de texte, centrée. Un `<button>` qui est une
+   * CARTE (des blocs empilés : titre, valeurs, pied — un modèle d'e-mail, une proposition de
+   * l'agent, une ligne d'utilisateur, l'aperçu d'un thème) se retrouvait aligné EN LIGNE et
+   * centré : titre, compteurs et « Aperçu » côte à côte, illisible (mesuré à 746 px sur la page
+   * des e-mails). Une telle carte porte `vt-carte-bouton` : elle garde son empilement, le même
+   * qu'au-delà de 768 px. La classe l'emporte sur `button` (spécificité de classe), et la hauteur
+   * minimale de 44 px reste acquise — une carte la dépasse de toute façon.
+   *
+   * Comment repérer la suivante : un `<button>` qui contient un `div`, un `p` ou un titre, et dont
+   * aucune classe ne fixe `display`. */
+  .vt-carte-bouton {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: flex-start;
+  }
+
   /* Les exceptions motivées ci-dessus.
    *
    * ⚠️ `.maplibregl-marker` AJOUTÉ LE 2026-09-07, ET C'EST LA FORME QUI COMPTE.

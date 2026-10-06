@@ -10,7 +10,8 @@ import {
   Wrench,
 } from 'lucide-angular';
 import { LucideAngularModule } from 'lucide-angular';
-import { filter, interval, startWith, switchMap, catchError, of, combineLatest, tap } from 'rxjs';
+import { filter, switchMap, catchError, of, combineLatest, tap } from 'rxjs';
+import { cycleVisible } from '../../shared/utils/cycle-visible';
 import { toSignal, toObservable } from '@angular/core/rxjs-interop';
 import { PermissionsService } from '../../core/services/permissions.service';
 import { RealtimeService } from '../../core/services/realtime.service';
@@ -982,14 +983,17 @@ export class DashboardComponent implements OnInit {
   private readonly vehicleMetaMap = signal<Map<string, MetaVehicule>>(new Map());
 
   // V1.10 (Sprint 2 perf) — pause le polling stats si le tab est en arriere-plan.
-  // Au retour visible, on force un fetch immediat via le startWith(0) lors de la
-  // souscription suivante. Reduit la charge backend ~50% sur les utilisateurs
-  // qui laissent l'onglet ouvert sans le regarder.
+  // Reduit la charge backend ~50% sur les utilisateurs qui laissent l'onglet ouvert
+  // sans le regarder.
+  // ⚠️ AU RETOUR VISIBLE, UNE LECTURE IMMÉDIATE — c'est `cycleVisible` qui la fait (06/10/2026).
+  // Avant, `interval(30 s).pipe(startWith(0))` : l'émission de départ d'un onglet ouvert EN
+  // ARRIÈRE-PLAN était filtrée et rien ne la rejouait — les squelettes restaient jusqu'à 30 s
+  // après le retour (vu en recette). Le cycle repart à chaque retour visible, sans s'ajouter.
   // KPI scopés au filtre société : re-fetch au tick 30s ET à chaque changement de
   // société dans le sélecteur (combineLatest émet sur l'un ou l'autre).
   protected readonly stats = toSignal(
     combineLatest([
-      interval(30_000).pipe(startWith(0)),
+      cycleVisible(30_000),
       toObservable(this.fleetFilter.selectedFleetId),
     ]).pipe(
       filter(() => typeof document === 'undefined' || !document.hidden),
