@@ -295,8 +295,11 @@ const CONFIRM_WINDOW_MS = 90_000;
       width: 6px; height: 6px; border-radius: 9999px; flex: none;
       background: currentColor;
     }
-    .ec-etat-coupe { color: var(--texte-danger, #f87171); border-color: color-mix(in srgb, currentColor 35%, transparent); }
-    .ec-etat-attente { color: var(--texte-alerte, #fbbf24); border-color: color-mix(in srgb, currentColor 35%, transparent); }
+    .ec-etat-coupe { color: var(--texte-alerte); border-color: color-mix(in srgb, currentColor 35%, transparent); }
+    /* « Coupure non confirmée » est une ATTENTE, pas une alerte : ambre, pas rouge. Le jeton
+       d'alerte que portait cette ligne faisait sortir les deux pastilles du même rouge — l'écart
+       que la pastille existe pour montrer. */
+    .ec-etat-attente { color: var(--texte-attente); border-color: color-mix(in srgb, currentColor 35%, transparent); }
     .ec-etat-actif { color: var(--texte-succes); border-color: color-mix(in srgb, currentColor 30%, transparent); }
 
     /* Boitier muet : trois etapes numerotees, pas une phrase. */

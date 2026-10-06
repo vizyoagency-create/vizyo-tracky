@@ -788,10 +788,10 @@ type Period = '24h' | '7d' | '30d';
   // super-admin cherche d'abord, le lendemain d'une nuit agitée.
   styles: [
     `
-    .act-urgence { background: color-mix(in srgb, var(--texte-danger, #f87171) 9%, transparent); }
-    .act-urgence .act-ico, .act-urgence .act-desc { color: var(--texte-danger, #f87171); }
+    .act-urgence { background: color-mix(in srgb, var(--danger) 9%, transparent); }
+    .act-urgence .act-ico, .act-urgence .act-desc { color: var(--texte-alerte); }
     .act-urgence .act-desc { font-weight: 600; }
-    .act-assistance .act-ico, .act-assistance .act-desc { color: var(--texte-succes, #34d399); }
+    .act-assistance .act-ico, .act-assistance .act-desc { color: var(--texte-succes); }
     `,
   ],
 })

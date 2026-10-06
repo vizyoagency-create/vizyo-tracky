@@ -732,7 +732,7 @@ export class AiOptimizationService {
     if (items.length) await this.permissions.resolveForVehicles(user, items.map((it) => it.vehicleId));
 
     // L'analyse à noter, par société (un super-admin peut toucher plusieurs sociétés).
-    type AnalyseCible = { id: string; proposals: Map<string, AiCapacityProposalDto>; deja: Set<string> };
+    type AnalyseCible = { id: string; proposals: Map<string, AiCapacityProposalDto>; dejaAppliques: Set<string> };
     const analyses = new Map<string, AnalyseCible | null>();
     const demandee = typeof dto?.analysisId === 'string' && UUID_RE.test(dto.analysisId) ? dto.analysisId : null;
     const analyseDe = async (fleetId: string): Promise<AnalyseCible | null> => {
@@ -749,7 +749,7 @@ export class AiOptimizationService {
                 .filter((p) => !!p?.vehicleId)
                 .map((p) => [p.vehicleId, p]),
             ),
-            deja: new Set(row.appliedVehicleIds ?? []),
+            dejaAppliques: new Set(row.appliedVehicleIds ?? []),
           }
         : null;
       analyses.set(fleetId, cible);
@@ -873,7 +873,7 @@ export class AiOptimizationService {
     // lecture-modification-écriture perdait un des deux lots).
     try {
       for (const [analysisId, ids] of aNoter) {
-        const deja = [...analyses.values()].find((a) => a?.id === analysisId)?.deja ?? new Set<string>();
+        const deja = [...analyses.values()].find((a) => a?.id === analysisId)?.dejaAppliques ?? new Set<string>();
         const nouveaux = [...new Set(ids)].filter((v) => !deja.has(v));
         if (nouveaux.length === 0) continue;
         await this.prisma.aiCapacityAnalysis.update({

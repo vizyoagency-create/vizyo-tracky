@@ -706,8 +706,8 @@ const FENETRE_MS = FENETRE_JOURS * 24 * 60 * 60 * 1000;
     .fa-feed-type { font-size: 11px; text-transform: uppercase; color: var(--text-secondary); }
     .fa-feed-target { color: var(--text-secondary); min-width: 0; overflow: hidden; text-overflow: ellipsis; }
     /* Un appui sur la ligne d'urgence ne se lit pas comme un clic de plus (01/10/2026). */
-    .fa-feed li.fa-feed-urgence { background: color-mix(in srgb, var(--texte-danger, #f87171) 8%, transparent); }
-    .fa-feed-urgence .fa-feed-type, .fa-feed-urgence .fa-feed-target { color: var(--texte-danger, #f87171); font-weight: 600; }
+    .fa-feed li.fa-feed-urgence { background: color-mix(in srgb, var(--danger) 8%, transparent); }
+    .fa-feed-urgence .fa-feed-type, .fa-feed-urgence .fa-feed-target { color: var(--texte-alerte); font-weight: 600; }
   `],
 })
 export class FleetActivityComponent implements OnInit, OnDestroy {
@@ -791,8 +791,8 @@ export class FleetActivityComponent implements OnInit, OnDestroy {
   // ── Societe (super-admin) ─────────────────────────────────────────────────
   private readonly estSuperAdmin = computed(() => this.auth.user()?.role === 'SUPER_ADMIN');
   /**
-   * La societe a interroger : celle du filtre global du bandeau pour un super-admin, rien pour
-   * un administrateur de flotte (le serveur lit la sienne dans son jeton et ignore le parametre).
+   * La société à interroger : celle du filtre global du bandeau pour un super-admin, rien pour
+   * un administrateur de flotte (le serveur lit la sienne dans son jeton et ignore le paramètre).
    */
   private readonly societeCible = computed<string | null>(() =>
     this.estSuperAdmin() ? this.fleetFilter.selectedFleetId() : null,

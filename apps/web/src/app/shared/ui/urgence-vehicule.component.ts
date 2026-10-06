@@ -101,15 +101,19 @@ import { AssistanceApiService } from '../../core/services/assistance.service';
   `,
   styles: [
     `
+    /* Le rouge d'alerte du thème : « --danger » pour les lavis et les liserés, « --texte-alerte »
+       pour ce qui se lit (texte, petites icônes) — cf. styles.css. Il n'existe pas de
+       « --texte-danger » : ce nom inventé, employé dans quatre composants, retombait toujours
+       sur son repli figé — 2,8:1 sur blanc, sous le seuil de lecture en thème clair. */
     /* ── Bandeau (veilleur, liste des véhicules) ───────────────────────────────────────── */
     .urg-bandeau {
       display: flex; align-items: center; gap: 8px; width: 100%;
       min-height: 44px; padding: 8px 12px; border-radius: 10px; text-decoration: none;
-      border: 1px solid color-mix(in srgb, var(--texte-danger, #f87171) 30%, transparent);
-      background: color-mix(in srgb, var(--texte-danger, #f87171) 8%, transparent);
+      border: 1px solid color-mix(in srgb, var(--danger) 30%, transparent);
+      background: color-mix(in srgb, var(--danger) 8%, transparent);
       color: var(--fg-secondary);
     }
-    .urg-bandeau lucide-icon { color: var(--texte-danger, #f87171); }
+    .urg-bandeau lucide-icon { color: var(--texte-alerte); }
     .urg-bandeau-t { font-size: 12.5px; line-height: 1.4; text-wrap: pretty; }
     .urg-bandeau-t strong { color: var(--fg-primary); }
     /* Sur un téléphone étroit, la mention d'horaire passe à la ligne plutôt que de tronquer
@@ -121,15 +125,15 @@ import { AssistanceApiService } from '../../core/services/assistance.service';
     .urg-carte {
       display: flex; flex-direction: column; gap: 12px;
       padding: 14px; border-radius: 12px;
-      border: 1px solid color-mix(in srgb, var(--texte-danger, #f87171) 32%, transparent);
-      background: color-mix(in srgb, var(--texte-danger, #f87171) 7%, transparent);
+      border: 1px solid color-mix(in srgb, var(--danger) 32%, transparent);
+      background: color-mix(in srgb, var(--danger) 7%, transparent);
     }
     .urg-tete { display: flex; gap: 10px; align-items: flex-start; }
     .urg-ico {
       display: inline-flex; align-items: center; justify-content: center; flex: none;
       width: 30px; height: 30px; border-radius: 9px;
-      background: color-mix(in srgb, var(--texte-danger, #f87171) 16%, transparent);
-      color: var(--texte-danger, #f87171);
+      background: color-mix(in srgb, var(--danger) 16%, transparent);
+      color: var(--texte-alerte);
     }
     .urg-titre { margin: 0; font-size: 14.5px; font-weight: 650; color: var(--fg-primary); }
     .urg-sous {
@@ -146,11 +150,11 @@ import { AssistanceApiService } from '../../core/services/assistance.service';
       transition: background-color 120ms ease;
     }
     .urg-btn-1 {
-      background: color-mix(in srgb, var(--texte-danger, #f87171) 20%, transparent);
-      border: 1px solid color-mix(in srgb, var(--texte-danger, #f87171) 42%, transparent);
+      background: color-mix(in srgb, var(--danger) 20%, transparent);
+      border: 1px solid color-mix(in srgb, var(--danger) 42%, transparent);
       color: var(--fg-primary);
     }
-    .urg-btn-1:hover { background: color-mix(in srgb, var(--texte-danger, #f87171) 30%, transparent); }
+    .urg-btn-1:hover { background: color-mix(in srgb, var(--danger) 30%, transparent); }
 
     /* La fiche : présente, secondaire. Elle sert AVANT la panne, pas pendant. */
     .urg-fiche {

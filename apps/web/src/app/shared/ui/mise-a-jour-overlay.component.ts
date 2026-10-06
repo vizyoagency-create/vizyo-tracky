@@ -70,11 +70,17 @@ import { MiseAJourEnCoursService } from '../../core/services/mise-a-jour-en-cour
   `,
   styles: [
     `
+    /* Jetons du thème, SANS repli en dur (06/10/2026). Cet écran est un composant de
+       l'application : il n'existe qu'une fois Angular démarré, et ne s'affiche qu'après 6 s
+       d'API injoignable. La feuille globale est alors chargée — servie avec la page par le
+       conteneur web, qui ne dépend pas de l'API, ou par le service worker, dans le même groupe
+       « app-shell » que le code. Les replis ne pouvaient donc jamais servir ; et ils copiaient
+       un thème sombre qui n'est pas le nôtre, faux en thème clair s'ils avaient servi. */
     .maj-fond {
       position: fixed; inset: 0; z-index: 9999;
       display: flex; align-items: center; justify-content: center;
       padding: 24px;
-      background: var(--bg-primary, #0b0f14);
+      background: var(--bg-primary);
       /* Opaque : rien derrière ne doit être cliquable, ni même lisible — l'écran du dessous
          affiche un état périmé, et c'est précisément ce qui trompe l'opérateur. */
     }
@@ -84,26 +90,26 @@ import { MiseAJourEnCoursService } from '../../core/services/mise-a-jour-en-cour
     }
     .maj-anneau {
       width: 44px; height: 44px; border-radius: 9999px;
-      border: 3px solid var(--border-subtle, #2a3340);
-      border-top-color: var(--texte-succes, #34d399);
+      border: 3px solid var(--border-subtle);
+      border-top-color: var(--texte-succes);
       animation: maj-tourne 900ms linear infinite;
     }
     @keyframes maj-tourne { to { transform: rotate(360deg); } }
     /* Un mouvement perpétuel peut gêner ; le message porte l'information, pas l'animation. */
     @media (prefers-reduced-motion: reduce) {
-      .maj-anneau { animation: none; border-top-color: var(--texte-succes, #34d399); }
+      .maj-anneau { animation: none; border-top-color: var(--texte-succes); }
     }
     .maj-titre {
       margin: 0; font-size: 19px; font-weight: 700; line-height: 1.25;
-      color: var(--fg-primary, #e6edf3);
+      color: var(--fg-primary);
     }
     .maj-texte {
       margin: 0; font-size: 14px; line-height: 1.55; text-wrap: pretty;
-      color: var(--fg-secondary, #9aa7b4);
+      color: var(--fg-secondary);
     }
     .maj-note {
       margin: 0; font-size: 12.5px; line-height: 1.5; text-wrap: pretty;
-      color: var(--fg-tertiary, #7b8794);
+      color: var(--fg-tertiary);
     }
     /* C'est un LIEN, et sur un téléphone il doit se toucher : 44 px de haut, pas une ligne de
        texte de 12 px. C'est le seul geste utile de cet écran. */
@@ -111,10 +117,10 @@ import { MiseAJourEnCoursService } from '../../core/services/mise-a-jour-en-cour
       display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 4px;
       margin: 6px 0 0; padding: 12px 8px 4px; min-height: 44px;
       font-size: 12.5px; line-height: 1.5; text-align: center; text-decoration: none;
-      border-top: 1px solid var(--border-subtle, #2a3340); width: 100%;
-      color: var(--fg-secondary, #9aa7b4);
+      border-top: 1px solid var(--border-subtle); width: 100%;
+      color: var(--fg-secondary);
     }
-    .maj-secours strong { color: var(--fg-primary, #e6edf3); }
+    .maj-secours strong { color: var(--fg-primary); }
     .maj-secours:hover strong { text-decoration: underline; }
     `,
   ],
