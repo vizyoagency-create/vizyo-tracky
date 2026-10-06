@@ -55,13 +55,15 @@ export const COULEURS_CARTE = {
   /**
    * L'anneau et le badge « clé » d'un véhicule IMMOBILISÉ (déclaré sur la fiche, 06/10/2026).
    *
-   * Ambre d'atelier, mais l'ambre 700 et non le 600 : calculé, `#D97706` ne donnait que 2,6:1
-   * sur le fond de carte clair (`#ECE7DF`), sous les 3:1 d'un élément graphique ; celui-ci
-   * donne 4,1:1 (clair), 3,2:1 (sombre `#1D2126`) et 5,0:1 à la clé BLANCHE posée sur le badge.
-   * Distinct du rouge du débranché et de l'ambre 500 de la bande 66-100 km/h, qui teinte le
-   * CŒUR d'un véhicule en mouvement, jamais un anneau.
+   * OCRE, depuis le 06/10 au matin (validé par le propriétaire). L'ambre 700 `#B45309` du premier
+   * jet tenait les contrastes, mais le validateur de palette le jugeait trop proche du rouge du
+   * débranché : ΔE OKLab 9,9 en vision normale (plancher 15), 2,8 en deutéranopie. L'ocre donne
+   * 19,1 et 4,7, garde 4,1:1 sur le fond clair (`#ECE7DF`), 3,2:1 sur le sombre (`#1D2126`) et
+   * 5,1:1 à la clé BLANCHE du badge. Le 4,7 reste sous le plancher de 6 : pour un deutéranope,
+   * c'est la FORME (barre / clé) et l'étiquette qui séparent les deux états, pas la couleur.
+   * (`#D97706`, plus jaune, ne donnait que 2,6:1 sur le fond clair.)
    */
-  immobilise: '#B45309',
+  immobilise: '#8A6A00',
   /**
    * L'anneau et le triangle « ! » d'un véhicule ACCIDENTÉ (déclaré sur la fiche, 06/10/2026).
    *

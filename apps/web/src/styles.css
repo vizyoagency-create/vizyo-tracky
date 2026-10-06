@@ -756,8 +756,8 @@ button, a, [role="button"], input[type="button"], input[type="submit"], label {
      précédents ; `buildVehicleMarkerEl` le repose depuis `COULEURS_CARTE.debranche`, et
      `maplibre-markers.spec` vérifie que la pose a bien lieu. */
   --tracky-barre: #dc2626;
-  /* Ambre de la clé d'un véhicule immobilisé — même discipline (`COULEURS_CARTE.immobilise`). */
-  --tracky-cle: #b45309;
+  /* Ocre de la clé d'un véhicule immobilisé — même discipline (`COULEURS_CARTE.immobilise`). */
+  --tracky-cle: #8a6a00;
   /* Magenta du triangle d'un véhicule accidenté — même discipline (`COULEURS_CARTE.accidente`). */
   --tracky-accident: #c026d3;
   /* La couleur est portée UNE FOIS ici ; toutes les formes la reprennent en
@@ -1068,8 +1068,9 @@ textarea:focus-visible,
 }
 /* Véhicule IMMOBILISÉ — déclaré sur la fiche (au garage, à l'atelier). Demande du propriétaire
    du 06/10/2026 : « pareil que débranché, avec la clé ». Même habillage grisé, mais un anneau
-   et un badge « clé » AMBRE (`--tracky-cle`, depuis `COULEURS_CARTE.immobilise`) à la place de
-   l'« interdit » rouge : le véhicule n'est pas en panne de boîtier, il est indisponible.
+   et un badge « clé » OCRE (`--tracky-cle`, depuis `COULEURS_CARTE.immobilise` — ocre et non plus
+   ambre depuis le 06/10 au matin, l'ambre étant trop proche du rouge) à la place de l'« interdit »
+   rouge : le véhicule n'est pas en panne de boîtier, il est indisponible.
    Choisie sur prototype parmi quatre formes : le badge garde l'icône du véhicule lisible, et
    prend la place de la pastille de contact, masquée sur cet état. */
 .tracky-marker__cle { display: none; }
@@ -1141,7 +1142,7 @@ textarea:focus-visible,
 .tracky-marker--immobilise .tracky-marker__brand { display: none; }
 .tracky-marker--debranche .tracky-marker__plate { border-color: rgba(220, 38, 38, 0.7); }
 .tracky-marker--accidente .tracky-marker__plate { border-color: rgba(192, 38, 211, 0.75); }
-.tracky-marker--immobilise .tracky-marker__plate { border-color: rgba(180, 83, 9, 0.8); }
+.tracky-marker--immobilise .tracky-marker__plate { border-color: rgba(138, 106, 0, 0.8); }
 
 /* ════════════════════════════════════════════════════════════
    Popover marker (info card véhicule) — design tracky cohérent

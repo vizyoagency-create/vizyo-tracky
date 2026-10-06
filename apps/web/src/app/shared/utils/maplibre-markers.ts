@@ -67,7 +67,7 @@ export const GPS_LOST_MARKER_COLOR = '#ef4444';
 export const UNPLUGGED_MARKER_COLOR = OFFLINE_MARKER_COLOR;
 /**
  * Cœur d'un marqueur « immobilisé » (au garage, à l'atelier) : grisé lui aussi — le véhicule
- * n'est pas disponible. L'ambre est porté par l'anneau et le badge « clé » (`--tracky-cle`).
+ * n'est pas disponible. L'ocre est porté par l'anneau et le badge « clé » (`--tracky-cle`).
  */
 export const IMMOBILIZED_MARKER_COLOR = OFFLINE_MARKER_COLOR;
 /**
@@ -237,7 +237,7 @@ export interface VehicleMarkerData {
   unplugged?: boolean;
   /**
    * Véhicule IMMOBILISÉ, déclaré sur la fiche (au garage, à l'atelier). Demande du propriétaire
-   * du 06/10/2026 : « pareil que débranché, avec la clé ». Cœur gris estompé, anneau ambre et
+   * du 06/10/2026 : « pareil que débranché, avec la clé ». Cœur gris estompé, anneau ocre et
    * badge « clé » en bas à droite ; ni flèche de cap, ni contact, ni logo ; étiquette
    * « · immobilisé ». Le débranché l'emporte si les deux sont posés (`etatDeclare`).
    */

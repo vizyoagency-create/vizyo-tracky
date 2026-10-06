@@ -1153,7 +1153,7 @@ const RESYNC_RADIUS_M = 150;
         <path d="M40 22 L56 50 L24 50 Z" [attr.fill]="COULEUR_ACCIDENT" />
       </svg>
     </ng-template>
-    <!-- La clé « Immobilisé » : la pastille grisée, son anneau et son badge « clé » ambre. -->
+    <!-- La clé « Immobilisé » : la pastille grisée, son anneau et son badge « clé » ocre. -->
     <ng-template #cleImmobilise>
       <svg class="mp-cle-debranche" viewBox="0 0 56 56" width="12" height="12" aria-hidden="true" focusable="false">
         <circle cx="28" cy="28" r="15" [attr.fill]="COULEUR_IMMOBILISE_COEUR" fill-opacity="0.55" />
