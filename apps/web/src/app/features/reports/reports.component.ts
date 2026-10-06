@@ -6,9 +6,12 @@ import { DatePipe, DecimalPipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { VehicleLinkDirective } from '../../shared/directives/vehicle-link.directive';
 import { LucideAngularModule, BarChart3, ChevronRight, Route, Clock, Gauge, Play, ChevronDown, Truck, Check, MessageSquare, Pencil, UserRound, Users, Download, Calendar, FileText, Layers, ArrowUp, ArrowDown, ArrowUpDown, FileSpreadsheet, RotateCcw, Link2, X, MousePointerClick, Fuel, AlertTriangle } from 'lucide-angular';
-import { CONDUCTEUR_AUCUN, normaliserFiltreConducteur, libelleTypeAlerte, partLibelle, libelleCarburant as libelleCarburantPartage } from '@vizyo/tracky-shared';
+import { CONDUCTEUR_AUCUN, normaliserFiltreConducteur, libelleTypeAlerte, partLibelle, libelleCarburant as libelleCarburantPartage, LIBELLES_ETAT } from '@vizyo/tracky-shared';
+import { EtatVehiculeBadgeComponent } from '../../shared/ui/etat-vehicule-badge/etat-vehicule-badge.component';
 import type {
   DriverDto,
+  EtatIndisponibilite,
+  ImmobilisationAgendaDto,
   TripAnalysisDto,
   TripDailySummaryDto,
   TripDto,
@@ -166,6 +169,7 @@ export function trajetHorsPerimetreConducteur(
     PeriodReplayComponent,
     PdfExportModalComponent,
     ConfirmModalComponent,
+    EtatVehiculeBadgeComponent,
   ],
   template: `
     <div class="flex flex-col gap-6">
@@ -897,6 +901,13 @@ export function trajetHorsPerimetreConducteur(
                 {{ st.vehicles.hiddenByPrivacy }} véhicule{{ st.vehicles.hiddenByPrivacy > 1 ? 's sont' : ' est' }} en mode vie privée : {{ st.vehicles.hiddenByPrivacy > 1 ? 'ils ne comptent' : 'il ne compte' }} dans aucun chiffre de ce rapport, pas même dans le parc.
               </p>
             }
+            <!-- 06/10/2026 — LES VÉHICULES INDISPONIBLES (garage, accident, maintenance de l'agenda).
+                 La même chose que l'encart du PDF et le courrier du lundi : un véhicule au garage
+                 qui n'a pas roulé n'est pas un véhicule sous-utilisé. Rien n'est retiré des totaux ;
+                 chaque véhicule concerné porte son badge, ici et dans « Par véhicule ». -->
+            @if (noteIndisponibles(); as note) {
+              <p class="rep-synthese-note" role="note">{{ note }}</p>
+            }
             @if (st.vehicles.idleTotal === 0) {
               @if (perimetreParc(); as p) {
                 <p class="rep-synthese-detail rep-synthese-detail--fort">Tout le parc a roulé{{ p }} au moins une fois : aucun véhicule immobile.</p>
@@ -919,7 +930,13 @@ export function trajetHorsPerimetreConducteur(
                     <!-- ⚠️ Les deux situations ne se traitent pas pareil : un véhicule qui
                          n'a pas servi se mutualise, un boîtier muet se répare. Les confondre
                          ferait rendre un véhicule qui roule peut-être très bien. -->
-                    @if (v.silencieux) { <b class="rep-parc-muet">boîtier muet</b> }
+                    <!-- 06/10/2026 — l'état qui EXPLIQUE l'absence de trajet (commencé avant la fin
+                         de la période — le serveur en décide). Débranché : « boîtier muet » dirait
+                         deux fois la même chose, et moins bien. -->
+                    @if (v.etat) {
+                      <app-etat-vehicule-badge [etat]="v.etat" [immobilisation]="immobilisationAuRapport(v.vehicleId)" />
+                    }
+                    @if (v.silencieux && v.etat !== 'DEBRANCHE') { <b class="rep-parc-muet">boîtier muet</b> }
                   </li>
                 }
               </ul>
@@ -1258,7 +1275,14 @@ export function trajetHorsPerimetreConducteur(
                 <div class="rep-vrow" [vehicleLink]="v.vehicleId"
                      [attr.aria-label]="'Voir la fiche du véhicule ' + (vehiclePlate(v.vehicleId) || 'sans plaque')">
                   <div class="rep-vveh">
-                    <div class="rep-vplate">{{ vehiclePlate(v.vehicleId) || '—' }}</div>
+                    <div class="rep-vplate">
+                      {{ vehiclePlate(v.vehicleId) || '—' }}
+                      <!-- 06/10/2026 — indisponible AUJOURD'HUI (fiche puis agenda) : icône seule,
+                           le libellé est lu par les lecteurs d'écran et donné au survol. -->
+                      <app-etat-vehicule-badge [etat]="etatAuRapport(v.vehicleId)"
+                                               [immobilisation]="immobilisationAuRapport(v.vehicleId)"
+                                               [compact]="true" />
+                    </div>
                     <div class="rep-vmodel">{{ vehicleModelLabel(v.vehicleId) }}</div>
                   </div>
                   <span class="rep-vdist">{{ (v.distance / 1000) | number:'1.0-0' }} <span class="rep-vunit">km</span></span>
@@ -3024,7 +3048,8 @@ export function trajetHorsPerimetreConducteur(
     .rep-vrow { border-top: 1px solid var(--border-subtle); transition: background .15s; }
     .rep-vrow:hover { background: var(--bg-tertiary); }
     .rep-vveh { min-width: 0; }
-    .rep-vplate { font-family: var(--font-mono); font-size: 13px; font-weight: 700; color: var(--fg-primary); }
+    .rep-vplate { font-family: var(--font-mono); font-size: 13px; font-weight: 700; color: var(--fg-primary);
+                  display: flex; align-items: center; gap: 6px; }
     .rep-vmodel { font-size: 11px; color: var(--fg-tertiary); margin-top: 1px; }
     .rep-vdist { font-size: 15px; font-weight: 800; color: var(--fg-primary); }
     .rep-vunit { font-size: 10px; font-weight: 600; color: var(--fg-tertiary); }
@@ -4842,6 +4867,46 @@ export class ReportsComponent implements OnInit, OnDestroy {
   }
 
   protected readonly statsPeriode = signal<FleetStatsReportDto | null>(null);
+
+  /**
+   * 06/10/2026 — les véhicules INDISPONIBLES à la date de génération du rapport (fiche puis agenda),
+   * par identifiant : les badges des listes « aucun trajet » et « Par véhicule ».
+   */
+  private readonly indisponiblesParVehicule = computed(
+    () => new Map((this.statsPeriode()?.vehicles.indisponibles ?? []).map((v) => [v.vehicleId, v])),
+  );
+
+  protected etatAuRapport(vehicleId: string): EtatIndisponibilite | null {
+    return this.indisponiblesParVehicule().get(vehicleId)?.etat ?? null;
+  }
+
+  /**
+   * L'immobilisation d'agenda (maintenance, incident) qui porte l'état : le titre et l'échéance de
+   * l'info-bulle du badge. `null` pour un état déclaré sur la fiche.
+   */
+  protected immobilisationAuRapport(vehicleId: string): ImmobilisationAgendaDto | null {
+    const v = this.indisponiblesParVehicule().get(vehicleId);
+    if (!v || (v.etat !== 'MAINTENANCE' && v.etat !== 'INCIDENT')) return null;
+    return { eventId: '', type: v.etat, title: v.titre ?? LIBELLES_ETAT[v.etat].long, startAt: v.depuis ?? '', endAt: v.jusqua };
+  }
+
+  /**
+   * La phrase de la carte « Parc actif » : elle NOMME les véhicules indisponibles aujourd'hui, comme
+   * l'encart du PDF et le courrier du lundi — un véhicule hors des listes affichées (au-delà du
+   * plafond, ou qui a roulé sur une période passée) n'y porte pas de badge. Muette sur un parc
+   * disponible.
+   */
+  protected readonly noteIndisponibles = computed(() => {
+    const liste = this.statsPeriode()?.vehicles.indisponibles ?? [];
+    const k = liste.length;
+    if (k === 0) return null;
+    const s = k > 1 ? 's' : '';
+    const nommes = liste.slice(0, 6).map((v) => `${v.plate} (${LIBELLES_ETAT[v.etat].court})`);
+    const reste = k - nommes.length;
+    return `${k} véhicule${s} indisponible${s} aujourd'hui : ${nommes.join(', ')}`
+      + `${reste > 0 ? `, +${reste} autre${reste > 1 ? 's' : ''}` : ''}. `
+      + `Un véhicule indisponible qui n'a pas roulé n'est pas un véhicule sous-utilisé ; aucun total n'en est retiré.`;
+  });
 
   /**
    * Indicateurs de la période PRÉCÉDENTE, ou `null` tant qu'ils ne sont pas là.

@@ -758,4 +758,40 @@ describe('ReportScheduleService — les non attribués dans les DEUX corps du co
     expect(html).toContain('(&lt; 1 %, 8.2 km)');
     expect(text).not.toContain('(0 %,');
   });
+
+  /**
+   * 06/10/2026 — LES VÉHICULES INDISPONIBLES (garage, accident, maintenance de l'agenda). Même règle
+   * que les non attribués : la MÊME phrase dans les deux corps — celle de l'encart du PDF —, échappée
+   * pour le HTML, et rien du tout sur un parc disponible.
+   */
+  it('véhicules indisponibles : la même phrase dans les deux corps, échappée dans le HTML', async () => {
+    const base = rapport();
+    const { res, html, text } = await courrierHebdo({
+      ...base,
+      vehicles: {
+        ...(base.vehicles as Record<string, unknown>),
+        indisponibles: [
+          { vehicleId: 'v1', plate: 'HD-998-XY', etat: 'IMMOBILISE', depuis: '2026-07-01T08:00:00.000Z', jusqua: null, titre: null, sansTrajet: true },
+          { vehicleId: 'v2', plate: 'BB-222-CC', etat: 'MAINTENANCE', depuis: '2026-07-05T07:00:00.000Z', jusqua: '2026-07-07T16:00:00.000Z', titre: 'Pneus <hiver>', sansTrajet: false },
+        ],
+      },
+    });
+
+    expect(res.sent).toBe(1);
+    const debut = '2 véhicules indisponibles à la date de génération : HD-998-XY (immobilisé depuis le 01/07/2026), '
+      + 'BB-222-CC (en maintenance « Pneus <hiver> » jusqu\'au 07/07/2026)';
+    expect(text).toContain(`Véhicules indisponibles : ${debut}`);
+    expect(text).toContain('n\'est pas un véhicule sous-utilisé');
+    expect(html).toContain('Véhicules indisponibles</div>');
+    expect(html).toContain('BB-222-CC (en maintenance « Pneus &lt;hiver&gt; » jusqu&#039;au 07/07/2026)');
+    expect(html).not.toContain('<hiver>');
+  });
+
+  it('parc disponible : aucun panneau « Véhicules indisponibles », ni dans l’un ni dans l’autre corps', async () => {
+    const { res, html, text } = await courrierHebdo(rapport());
+
+    expect(res.sent).toBe(1);
+    expect(text).not.toContain('indisponible');
+    expect(html).not.toContain('Véhicules indisponibles');
+  });
 });

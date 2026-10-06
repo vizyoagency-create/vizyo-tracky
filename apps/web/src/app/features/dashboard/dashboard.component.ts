@@ -7,6 +7,7 @@ import {
   Truck, Navigation, Activity, AlertTriangle, Map as MapIcon, Plus,
   FileBarChart, Shield, ChevronRight, Bell, Radio, Gauge, Clock,
   Settings2, X, Check, ArrowRight, WifiOff,
+  Wrench,
 } from 'lucide-angular';
 import { LucideAngularModule } from 'lucide-angular';
 import { filter, interval, startWith, switchMap, catchError, of, combineLatest, tap } from 'rxjs';
@@ -21,7 +22,17 @@ import type { AlertEvent } from '@vizyo/tracky-shared';
 import { PreferencesService, type DashboardWidgetKey } from '../../core/services/preferences.service';
 import { MiniMapComponent } from '../../shared/ui/mini-map/mini-map.component';
 import { SkeletonComponent } from '../../shared/ui/skeleton/skeleton.component';
-import { getVehicleConnectivityState, isAcceptableLiveFix, isInstallationToReview, isTrackerOnline } from '@vizyo/tracky-shared';
+import { getVehicleConnectivityState, isAcceptableLiveFix, isTrackerOnline, LIBELLES_ETAT } from '@vizyo/tracky-shared';
+import type { ImmobilisationAgendaDto } from '@vizyo/tracky-shared';
+import {
+  compterEtats,
+  drapeauxPastille,
+  etatVehicule,
+  immobilisationRetenue,
+  installationARevoir,
+  resumeEtats,
+} from '../../shared/utils/hors-service';
+import { EtatVehiculeBadgeComponent } from '../../shared/ui/etat-vehicule-badge/etat-vehicule-badge.component';
 
 interface WidgetMeta {
   key: DashboardWidgetKey;
@@ -29,11 +40,19 @@ interface WidgetMeta {
   description: string;
 }
 
+/** Ce que le tableau de bord garde de la liste des véhicules (repli de l'instantané). */
+interface MetaVehicule {
+  type: string;
+  plate: string;
+  outOfServiceReason?: string | null;
+  immobilisationAgenda?: ImmobilisationAgendaDto | null;
+}
+
 @Component({
   selector: 'app-dashboard',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [LucideAngularModule, DatePipe, RouterLink, MiniMapComponent, SkeletonComponent],
+  imports: [LucideAngularModule, DatePipe, RouterLink, MiniMapComponent, SkeletonComponent, EtatVehiculeBadgeComponent],
   template: `
     <div class="dash-page">
       <!-- Background grid -->
@@ -211,6 +230,30 @@ interface WidgetMeta {
             </a>
           }
 
+          <!--
+            06/10/2026 — VÉHICULES INDISPONIBLES : déclarés sur leur fiche (débranché, accidenté,
+            immobilisé) ou immobilisés par l'agenda (maintenance, incident). Même règle que la carte,
+            la liste et les horaires (« etatIndisponibilite »), calculée sur l'instantané temps réel.
+
+            ⚠️ Ils sont DÉJÀ comptés dans les tuiles ci-dessus (un véhicule au garage est aussi « à
+            l'arrêt » ou « injoignable ») : cette tuile NOMME, elle ne soustrait pas — la somme des
+            compteurs de présence reste égale au total. Affichée seulement si > 0, comme les injoignables.
+          -->
+          @if (indisponibles().total > 0) {
+            <a routerLink="/vehicles" [queryParams]="{ etat: 'indisponibles' }" class="metric-card metric-card--link"
+               title="Déjà comptés dans les compteurs ci-dessus : un véhicule indisponible reste à l'arrêt, en mouvement ou injoignable.">
+              <div class="vt-icon-tile vt-icon-tile--warning">
+                <lucide-icon [img]="Wrench" [size]="18"></lucide-icon>
+              </div>
+              <div class="metric-content">
+                <span class="metric-value metric-value--attente">{{ indisponibles().total }}</span>
+                <span class="metric-label">Indisponibles</span>
+                <span class="metric-sub">{{ resumeIndisponibles() }}</span>
+              </div>
+              <lucide-icon [img]="ChevronRight" [size]="14" class="metric-arrow"></lucide-icon>
+            </a>
+          }
+
           <a routerLink="/alerts" class="metric-card metric-card--link">
             <div class="vt-icon-tile vt-icon-tile--danger">
               <lucide-icon [img]="AlertTriangle" [size]="18"></lucide-icon>
@@ -279,6 +322,10 @@ interface WidgetMeta {
               [speedKmh]="firstVehicleMeta().speedKmh"
               [heading]="firstVehicleMeta().heading"
               [ignition]="firstVehicleMeta().ignition"
+              [unplugged]="pastilleSpotlight().unplugged"
+              [accident]="pastilleSpotlight().accident"
+              [immobilized]="pastilleSpotlight().immobilized"
+              [agenda]="pastilleSpotlight().agenda ?? null"
               height="100%" />
             <div class="widget-map-overlay">
               <div class="widget-map-stat">
@@ -289,7 +336,7 @@ interface WidgetMeta {
               @if (cinemaActive()) {
                 <div class="widget-map-stat widget-map-stat--cinema">
                   <span class="cinema-dot"></span>
-                  <span>{{ firstVehicleMeta().plate || 'en route' }}</span>
+                  <span>{{ firstVehicleMeta().plate || 'en route' }}@if (firstVehicleMeta().etat; as e) { · {{ LIBELLES_ETAT[e].court }} }</span>
                 </div>
               }
             </div>
@@ -328,7 +375,10 @@ interface WidgetMeta {
                 <a [routerLink]="['/vehicles', item.vehicleId]" class="widget-row">
                   <div class="widget-row-indicator" [class]="item.speedKmh > 5 ? 'moving' : 'idle'"></div>
                   <div class="widget-row-info">
-                    <p class="widget-row-title">{{ item.plate || item.trackerId.slice(0, 8) }}</p>
+                    <p class="widget-row-title">
+                      {{ item.plate || item.trackerId.slice(0, 8) }}
+                      <app-etat-vehicule-badge [etat]="item.etat" [immobilisation]="item.immobilisation" [compact]="true" />
+                    </p>
                     <p class="widget-row-sub">{{ item.timestamp | date:'HH:mm:ss' }}</p>
                   </div>
                   <div class="widget-row-speed" [class]="speedClass(item.speedKmh)">
@@ -537,6 +587,13 @@ interface WidgetMeta {
     .metric-content { display: flex; flex-direction: column; min-width: 0; flex: 1 }
     .metric-value { font-size: 24px; font-weight: 800; color: var(--fg-primary); font-family: var(--font-display); letter-spacing: -.02em; line-height: 1 }
     .metric-value--danger { color: var(--danger) }
+    /* 06/10/2026 — « Indisponibles » : le jeton TEXTE de l'attente (contraste du chiffre), comme les badges d'état. */
+    .metric-value--attente { color: var(--texte-attente) }
+    /* Le détail par état sous un libellé (« 4 immobilisés · 3 débranchés ») : sur deux lignes au plus. */
+    .metric-sub {
+      font-size: 10.5px; color: var(--fg-tertiary); margin-top: 2px; line-height: 1.25;
+      display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+    }
     /* Label complet sans tronquer : on autorise le wrap sur 2 lignes */
     .metric-label { font-size: 11px; font-weight: 500; color: var(--fg-secondary); margin-top: 3px; line-height: 1.2 }
     .metric-arrow { color: var(--fg-tertiary); flex-shrink: 0; opacity: 0; transition: opacity .2s, transform .2s }
@@ -830,7 +887,9 @@ export class DashboardComponent implements OnInit {
   protected readonly vehiclesToReview = computed(() =>
     // scopedSnapshot = déjà filtré par le sélecteur société (source centralisée, réactive).
     this.realtime.scopedSnapshot().filter((v) =>
-      isInstallationToReview(
+      // 06/10/2026 — pas pour un véhicule dont le silence est expliqué (même règle que la page Alertes).
+      installationARevoir(
+        etatVehicule(v),
         getVehicleConnectivityState({ trackerId: v.trackerId, lastSeenAt: v.lastSeenAt, lastIgnition: v.lastIgnition }),
         v.trackerCreatedAt,
       ),
@@ -859,6 +918,18 @@ export class DashboardComponent implements OnInit {
   protected readonly X = X;
   protected readonly Check = Check;
   protected readonly ArrowRight = ArrowRight;
+  protected readonly Wrench = Wrench;
+  protected readonly LIBELLES_ETAT = LIBELLES_ETAT;
+
+  /**
+   * 06/10/2026 — les véhicules indisponibles de la société affichée, par état (instantané temps
+   * réel : il suit l'agenda et les fiches sans recharger la page). Cf. la tuile « Indisponibles ».
+   */
+  protected readonly indisponibles = computed(() => compterEtats(this.realtime.scopedSnapshot()));
+  protected readonly resumeIndisponibles = computed(() => resumeEtats(this.indisponibles()));
+
+  /** La ligne de l'instantané de chaque véhicule — pour l'état des lignes « Activité en direct ». */
+  private readonly snapParVehicule = computed(() => new Map(this.realtime.snapshot().map((s) => [s.vehicleId, s])));
 
   protected readonly customizerOpen = signal(false);
 
@@ -873,7 +944,7 @@ export class DashboardComponent implements OnInit {
   protected readonly skThree = [0, 1, 2];
 
   protected readonly widgetMeta: WidgetMeta[] = [
-    { key: 'kpis', label: 'KPIs', description: 'Compteurs Véhicules / En mouvement / Arrêt / Alertes' },
+    { key: 'kpis', label: 'KPIs', description: 'Compteurs Véhicules / En mouvement / Arrêt / Indisponibles / Alertes' },
     { key: 'actions', label: 'Actions rapides', description: 'Boutons Carte / Véhicules / Rapports / Géofences' },
     { key: 'map', label: 'Carte temps réel', description: 'Aperçu live des véhicules sur une mini-carte' },
     { key: 'activity', label: 'Activité en direct', description: 'Top des véhicules les plus actifs' },
@@ -908,7 +979,7 @@ export class DashboardComponent implements OnInit {
   });
 
   private readonly accessibleVehicleIds = signal<Set<string> | 'ALL'>('ALL');
-  private readonly vehicleMetaMap = signal<Map<string, { type: string; plate: string }>>(new Map());
+  private readonly vehicleMetaMap = signal<Map<string, MetaVehicule>>(new Map());
 
   // V1.10 (Sprint 2 perf) — pause le polling stats si le tab est en arriere-plan.
   // Au retour visible, on force un fetch immediat via le startWith(0) lors de la
@@ -936,6 +1007,7 @@ export class DashboardComponent implements OnInit {
   protected readonly enrichedPositions = computed(() => {
     const ids = this.accessibleVehicleIds();
     const meta = this.vehicleMetaMap();
+    const snapParVehicule = this.snapParVehicule();
     return this.realtime.scopedPositionsList()
       .filter((pos) => ids === 'ALL' || ids.has(pos.vehicleId))
       // GPS sanity : ecarte les fixes `valid:false` (broadcastes par le backend
@@ -950,10 +1022,17 @@ export class DashboardComponent implements OnInit {
       // car on affiche son dernier fix comme s'il était live. On ne garde donc que
       // les positions réellement fraîches (< seuil online partagé, 15 min).
       .filter((pos) => isTrackerOnline(pos.timestamp))
-      .map((pos) => ({
-        ...pos,
-        plate: meta.get(pos.vehicleId)?.plate ?? '',
-      }));
+      .map((pos) => {
+        // 06/10/2026 — l'état du véhicule (fiche, agenda) : l'instantané fait foi, la liste REST en repli.
+        const snap = snapParVehicule.get(pos.vehicleId);
+        const m = meta.get(pos.vehicleId);
+        return {
+          ...pos,
+          plate: m?.plate ?? '',
+          etat: etatVehicule(snap, m),
+          immobilisation: immobilisationRetenue(snap, m),
+        };
+      });
   });
 
   protected readonly topActiveVehicles = computed(() => {
@@ -1016,7 +1095,7 @@ export class DashboardComponent implements OnInit {
 
   protected readonly firstVehicleMeta = computed(() => {
     const v = this.spotlightVehicle();
-    if (!v) return { type: 'OTHER', plate: '', speedKmh: 0, heading: 0, ignition: false };
+    if (!v) return { type: 'OTHER', plate: '', speedKmh: 0, heading: 0, ignition: false, etat: null };
     const m = this.vehicleMetaMap().get(v.vehicleId);
     return {
       type: m?.type ?? 'OTHER',
@@ -1024,8 +1103,12 @@ export class DashboardComponent implements OnInit {
       speedKmh: v.speedKmh,
       heading: v.heading,
       ignition: v.ignition,
+      etat: v.etat,
     };
   });
+
+  /** Les drapeaux de la pastille du véhicule mis en avant (barre, clé, panneau) — la carte le montre. */
+  protected readonly pastilleSpotlight = computed(() => drapeauxPastille(this.spotlightVehicle()?.etat ?? null));
 
   protected readonly liveAlerts = this.realtime.alerts;
   // V1.10 (Sprint 2 perf) — un seul fetch initial d'hydratation au lieu d'un
@@ -1114,6 +1197,8 @@ export class DashboardComponent implements OnInit {
   }
 
   async ngOnInit(): Promise<void> {
+    // 06/10/2026 — la tuile « Indisponibles » et les badges lisent l'instantané : relu s'il a vieilli.
+    this.realtime.rafraichirEtatsSiAnciens();
     // Cycle « cinéma » de la vignette carte : 8 s par véhicule en marche. `document.hidden` →
     // on n'avance pas dans un onglet en arrière-plan (sinon on « saute » N vues au retour).
     const cinemaId = setInterval(() => {
@@ -1126,10 +1211,16 @@ export class DashboardComponent implements OnInit {
     try {
       const vehicles = await firstValueFrom(this.vehiclesApi.list());
       this.accessibleVehicleIds.set(new Set(vehicles.map((v) => v.id)));
-      const meta = new Map<string, { type: string; plate: string }>();
+      const meta = new Map<string, MetaVehicule>();
       vehicles.forEach((v) => {
         const cast = v as { id: string; plate: string; type?: string };
-        meta.set(v.id, { type: cast.type ?? 'OTHER', plate: v.plate });
+        meta.set(v.id, {
+          type: cast.type ?? 'OTHER',
+          plate: v.plate,
+          // 06/10/2026 — repli de l'état quand l'instantané ne porte pas encore le véhicule.
+          outOfServiceReason: v.outOfServiceReason ?? null,
+          immobilisationAgenda: v.immobilisationAgenda ?? null,
+        });
       });
       this.vehicleMetaMap.set(meta);
     } catch (err) {

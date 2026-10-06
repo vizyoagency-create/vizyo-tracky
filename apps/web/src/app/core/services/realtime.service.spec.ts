@@ -342,6 +342,7 @@ describe('C2 — incident CDEF31 : la reconnexion re-hydrate', () => {
             refreshUnavailable: () => false,
             logout: () => undefined,
             isDepot: () => false,
+            isDriver: () => false,
             // Sans lui, chaque ouverture de socket levait « this.auth.user is not a function » dans
             // `loadInitialAlerts` — avalé par la promesse, mais imprimé en ERROR à chaque passage.
             user: () => null,
@@ -439,6 +440,7 @@ describe('alerts_view — le temps réel ne demande pas les alertes à qui ne pe
           useValue: {
             user,
             isDepot: () => user()?.role === 'DEPOT',
+            isDriver: () => user()?.role === 'DRIVER',
             tryRefresh: async () => null,
             refreshUnavailable: () => false,
             logout: () => undefined,
@@ -580,6 +582,8 @@ describe('alerts_view — le temps réel ne demande pas les alertes à qui ne pe
 describe('06/10/2026 — relecture des ÉTATS de l’instantané', () => {
   let service: RealtimeServiceTestable;
   let httpMock: HttpTestingController;
+  /** Le compte connecté est-il un conducteur ? (la route de l'instantané le refuse : 403) */
+  let conducteur = false;
 
   const ligne = (over: Record<string, unknown> = {}) => ({
     vehicleId: 'v-998', fleetId: 'f1', plate: 'HD-998-XY', type: 'VAN', brand: null, model: null,
@@ -609,6 +613,7 @@ describe('06/10/2026 — relecture des ÉTATS de l’instantané', () => {
             refreshUnavailable: () => false,
             logout: () => undefined,
             isDepot: () => false,
+            isDriver: () => conducteur,
             user: () => null,
             token: 'jeton-de-test',
           },
@@ -623,6 +628,7 @@ describe('06/10/2026 — relecture des ÉTATS de l’instantané', () => {
         RealtimeServiceTestable,
       ],
     });
+    conducteur = false;
     service = TestBed.inject(RealtimeServiceTestable);
     httpMock = TestBed.inject(HttpTestingController);
   });
@@ -681,6 +687,26 @@ describe('06/10/2026 — relecture des ÉTATS de l’instantané', () => {
     httpMock.expectNone((r) => r.url.includes('/api/vehicles/snapshot'));
     service.rafraichirEtatsSiAnciens(0);
     await repondreSnapshot([ligne()]);
+  });
+
+  it('🔴 un CONDUCTEUR ne demande jamais l’instantané : ni à la connexion, ni en relecture (403 → bandeau)', async () => {
+    conducteur = true;
+    service.connect('jeton-de-test');
+    await service.rafraichirEtats();
+    service.rafraichirEtatsSiAnciens(0);
+    TestBed.inject(EtatsVehiculesBus).signaler();
+    TestBed.tick();
+    await Promise.resolve();
+    httpMock.expectNone((r) => r.url.includes('/api/vehicles/snapshot'));
+  });
+
+  it('la relecture de FOND porte l’en-tête « silencieux » : un échec ne devient jamais un bandeau', async () => {
+    service.snapshot.set([ligne() as never]);
+    const p = service.rafraichirEtats();
+    const req = httpMock.expectOne((r) => r.url.includes('/api/vehicles/snapshot'));
+    expect(req.request.headers.has('X-Quiet-Errors')).toBeTrue();
+    req.flush({ items: [ligne()] });
+    await p;
   });
 
   it('un geste de l’agenda (EtatsVehiculesBus) déclenche une relecture', async () => {

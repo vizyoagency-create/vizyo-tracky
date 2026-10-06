@@ -29,7 +29,7 @@ import { ConnectivityBadgeComponent } from '../../shared/ui/connectivity-badge/c
 import { BrandLogoComponent } from '../../shared/ui/brand-logo/brand-logo.component';
 import { InstallReviewBadgeComponent } from '../../shared/ui/install-review-badge/install-review-badge.component';
 import { EtatVehiculeBadgeComponent } from '../../shared/ui/etat-vehicule-badge/etat-vehicule-badge.component';
-import { etatVehicule, immobilisationRetenue } from '../../shared/utils/hors-service';
+import { etatVehicule, immobilisationRetenue, installationARevoir } from '../../shared/utils/hors-service';
 import { TrackClickDirective } from '../../shared/directives/track-click.directive';
 import { BottomSheetComponent } from '../../shared/ui/bottom-sheet/bottom-sheet.component';
 import { ZoneComponent, type EtatZone } from '../../shared/ui/zone/zone.component';
@@ -39,7 +39,6 @@ import {
   formatSilenceLabel,
   getVehicleConnectivityState,
   getVehiclePresenceState,
-  isInstallationToReview,
   isVehicleDormant,
   overlayPresumedParked,
   type VehicleConnectivityState,
@@ -255,6 +254,20 @@ type FiltreStatut = 'tous' | 'roulage' | 'arret' | 'hors-ligne' | 'sans-boitier'
                   }
                 </select>
               </div>
+            }
+            <!-- 06/10/2026 — « Indisponibles » : débranchés, accidentés, immobilisés, en maintenance.
+                 Une bascule, pas une catégorie : un véhicule au garage reste aussi « à l'arrêt ».
+                 C'est la destination de la tuile du tableau de bord (?etat=indisponibles). -->
+            @if (nbIndisponibles() > 0 || indisponiblesSeuls()) {
+              <button type="button" class="vlist-indispo"
+                      [class.vlist-indispo--actif]="indisponiblesSeuls()"
+                      [attr.aria-pressed]="indisponiblesSeuls()"
+                      (click)="indisponiblesSeuls.set(!indisponiblesSeuls())"
+                      title="N'afficher que les véhicules indisponibles (hors service déclaré, maintenance ou incident de l'agenda)">
+                <lucide-icon [img]="WrenchIcon" [size]="14"></lucide-icon>
+                Indisponibles <span class="vlist-indispo-n">{{ nbIndisponibles() }}</span>
+                @if (indisponiblesSeuls()) { <lucide-icon [img]="XIcon" [size]="13"></lucide-icon> }
+              </button>
             }
             <span class="vlist-count">{{ filteredVehicles().length }} / {{ totalPerimetre() }}</span>
             <!-- Entrée MOBILE des filtres : sur téléphone la barre d'outils ci-dessus
@@ -868,6 +881,20 @@ type FiltreStatut = 'tous' | 'roulage' | 'arret' | 'hors-ligne' | 'sans-boitier'
       font-weight: 600;
       cursor: pointer;
     }
+    /* 06/10/2026 — la puce « Indisponibles » de la barre d'outils (jetons du thème, ton « attente »). */
+    .vlist-indispo {
+      display: inline-flex; align-items: center; gap: 6px;
+      min-height: 36px; padding: 6px 12px; border-radius: 9999px;
+      border: 1px solid color-mix(in srgb, var(--texte-attente) 35%, var(--border-subtle));
+      background: color-mix(in srgb, var(--texte-attente) 8%, var(--bg-tertiary));
+      color: var(--texte-attente);
+      font-size: 12.5px; font-weight: 700; cursor: pointer; white-space: nowrap;
+    }
+    .vlist-indispo--actif {
+      background: color-mix(in srgb, var(--texte-attente) 18%, var(--bg-tertiary));
+      border-color: var(--texte-attente);
+    }
+    .vlist-indispo-n { font-variant-numeric: tabular-nums; opacity: .85; }
     .vf-pastille {
       width: 7px; height: 7px;
       border-radius: 50%;
@@ -1308,12 +1335,23 @@ export class VehiclesListComponent implements OnInit {
     }
     const st = this.statutFiltre();
     if (st !== 'tous') list = list.filter((v) => this.statutDe(v) === st);
+    if (this.indisponiblesSeuls()) list = list.filter((v) => !!this.etatDe(v));
     return list;
   });
 
+  /**
+   * 06/10/2026 — n'afficher que les véhicules INDISPONIBLES (`etatIndisponibilite` : fiche puis agenda).
+   * Posé par la tuile « Indisponibles » du tableau de bord (`?etat=indisponibles`) ou par la puce.
+   */
+  protected readonly indisponiblesSeuls = signal(false);
+  /** Combien de véhicules indisponibles dans la société affichée — la puce les annonce. */
+  protected readonly nbIndisponibles = computed(
+    () => this.vehiculesDuPerimetre().filter((v) => !!this.etatDe(v)).length,
+  );
+
   /** Y a-t-il au moins un filtre posé ? Sert à distinguer « rien ne correspond » de « flotte vide ». */
   protected readonly filtresActifs = computed(
-    () => !!this.search().trim() || !!this.groupFilter() || this.statutFiltre() !== 'tous',
+    () => !!this.search().trim() || !!this.groupFilter() || this.statutFiltre() !== 'tous' || this.indisponiblesSeuls(),
   );
 
   /**
@@ -1416,6 +1454,7 @@ export class VehiclesListComponent implements OnInit {
     this.search.set('');
     this.groupFilter.set('');
     this.statutFiltre.set('tous');
+    this.indisponiblesSeuls.set(false);
   }
 
   /**
@@ -1482,6 +1521,8 @@ export class VehiclesListComponent implements OnInit {
     // les préférences, et les sections sont dépliées par défaut).
     const g = this.route.snapshot.queryParams['group'];
     if (g) this.pendingScrollGroup.set(g);
+    // 06/10/2026 — arrivée depuis la tuile « Indisponibles » du tableau de bord.
+    if (this.route.snapshot.queryParamMap.get('etat') === 'indisponibles') this.indisponiblesSeuls.set(true);
     // Deep-link d'onglet via ?tab= (redirection /groups → /vehicles?tab=groups).
     const tab = this.route.snapshot.queryParamMap.get('tab');
     if ((tab === 'groups' && this.perms.can('groups_view')) || tab === 'capacity') {
@@ -1629,12 +1670,15 @@ export class VehiclesListComponent implements OnInit {
    * recharger la page), la liste REST est le repli.
    */
   protected etatDe(v: VehicleDetailDto) {
-    return etatVehicule(this.realtime.snapshot().find((s) => s.vehicleId === v.id), v);
+    return etatVehicule(this.snapParVehicule().get(v.id), v);
   }
 
   protected immobilisationDe(v: VehicleDetailDto) {
-    return immobilisationRetenue(this.realtime.snapshot().find((s) => s.vehicleId === v.id), v);
+    return immobilisationRetenue(this.snapParVehicule().get(v.id), v);
   }
+
+  /** La ligne de l'instantané de chaque véhicule, indexée une fois par mise à jour de l'instantané. */
+  private readonly snapParVehicule = computed(() => new Map(this.realtime.snapshot().map((s) => [s.vehicleId, s])));
 
   protected lastSeenOf(v: VehicleDetailDto): string | null {
     return this.freshestLastSeen(v);
@@ -1655,7 +1699,8 @@ export class VehiclesListComponent implements OnInit {
    * (a déjà communiqué puis s'est déconnecté) → pose probablement bâclée.
    */
   protected installToReview(v: VehicleDetailDto): boolean {
-    return isInstallationToReview(this.connectivity(v), v.tracker?.createdAt ?? null);
+    // 06/10/2026 — pas pour un véhicule dont le silence est expliqué (débranché, immobilisé, maintenance…).
+    return installationARevoir(this.etatDe(v), this.connectivity(v), v.tracker?.createdAt ?? null);
   }
 
   /**

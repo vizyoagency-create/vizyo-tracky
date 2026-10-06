@@ -12,7 +12,12 @@ import {
   trackerSilenceMs,
   CLE_NON_ATTRIBUE,
   cleImputationTrajet,
+  etatIndisponibilite,
+  type EtatIndisponibilite,
+  type ImmobilisationAgendaDto,
 } from '@vizyo/tracky-shared';
+import { formatFleetDate } from '../common/utils/datetime';
+import { immobilisationsAgendaEnCours } from '../vehicles/immobilisation-agenda';
 import { PrismaService } from '../prisma/prisma.service';
 import { resolveReportVehicleScope } from '../common/report-vehicle-scope';
 import { resolveDriverScope } from '../common/driver-scope';
@@ -49,6 +54,21 @@ const DEFAULT_CONSUMPTION_L100KM: Record<string, number> = {
   CONSTRUCTION: 18,
   OTHER: 8,
 };
+
+/** Un véhicule indisponible à la date de génération du rapport (cf. `vehicles.indisponibles`). */
+export interface VehiculeIndisponibleDuRapport {
+  vehicleId: string;
+  plate: string;
+  etat: EtatIndisponibilite;
+  /** ISO — depuis quand (déclaration sur la fiche, ou début de l'évènement d'agenda). */
+  depuis: string | null;
+  /** ISO — jusqu'à quand, pour une maintenance ou un incident de l'agenda ; null sinon. */
+  jusqua: string | null;
+  /** Le titre de l'évènement d'agenda (« Pneus »), jamais la note libre de la fiche. */
+  titre: string | null;
+  /** Aucun trajet sur la période du rapport. */
+  sansTrajet: boolean;
+}
 
 export interface FleetStatsReport {
   fleet: { id: string; name: string };
@@ -90,8 +110,26 @@ export interface FleetStatsReport {
      *
      * ⚠️ Liste PLAFONNÉE ; `idleTotal` porte le compte réel, pour que la troncature se dise.
      */
-    idleVehicles: { vehicleId: string; plate: string; group: { id: string; name: string } | null; silencieux: boolean }[];
+    idleVehicles: {
+      vehicleId: string;
+      plate: string;
+      group: { id: string; name: string } | null;
+      silencieux: boolean;
+      /**
+       * 06/10/2026 — l'état de disponibilité À LA DATE DE GÉNÉRATION (débranché, accidenté,
+       * immobilisé, en maintenance, incident), posé seulement s'il a COMMENCÉ avant la fin de la
+       * période : « n'a pas roulé » s'explique alors par « il est au garage », et ne se lit plus
+       * comme un véhicule sous-utilisé. Absent sur les rapports d'avant ce champ.
+       */
+      etat?: EtatIndisponibilite | null;
+    }[];
     idleTotal: number;
+    /**
+     * 06/10/2026 — les véhicules du parc VISIBLE indisponibles à la date de génération (fiche puis
+     * agenda, `etatIndisponibilite`), sans plafond : c'est la liste que l'encart du PDF et la ligne
+     * du courrier hebdomadaire nomment (`buildUnavailableNotice`). Rien n'est retiré des totaux.
+     */
+    indisponibles?: VehiculeIndisponibleDuRapport[];
     /**
      * Véhicules du périmètre que le client a mis en MODE VIE PRIVÉE, donc absents de TOUT ce
      * rapport — `total` compris. Rendu pour que les surfaces puissent le DIRE : un parc qui
@@ -399,6 +437,10 @@ export class ReportsStatsService {
         // hebdomadaire ne doit pas coûter une requête de plus par flotte.
         // Sert UNIQUEMENT à décider qui compte dans les moyennes (cf. plus bas).
         tracker: { select: { id: true, lastSeenAt: true } },
+        // 06/10/2026 — le hors service déclaré sur la fiche (motif + date) : l'état du véhicule
+        // à la date de génération (`vehicles.indisponibles`). JAMAIS la note libre.
+        outOfServiceReason: true,
+        outOfServiceSince: true,
         // Groupe (unique de-facto) pour l'afficher dans le rapport / PDF.
         groups: {
           select: { group: { select: { id: true, name: true } } },
@@ -448,6 +490,32 @@ export class ReportsStatsService {
     const vehiclesVisibles = vehicles.filter((v) => !v.privacyModeEnabled);
     const totalVehicles = vehiclesVisibles.length;
     const hiddenByPrivacy = vehicles.length - vehiclesVisibles.length;
+    /**
+     * 06/10/2026 — L'ÉTAT DE DISPONIBILITÉ DE CHAQUE VÉHICULE VISIBLE, à la date de génération : le
+     * motif déclaré sur la fiche, puis la maintenance ou l'incident de l'agenda (règle partagée,
+     * celle de la carte et des horaires). Une requête en lot, et BEST-EFFORT comme les colonnes
+     * accessoires plus bas : un échec rend un rapport sans états, jamais un rapport en erreur.
+     */
+    const immobilisations = await immobilisationsAgendaEnCours(this.prisma, vehiclesVisibles.map((v) => v.id))
+      .catch((e: unknown) => {
+        this.logger.warn(`Immobilisations d'agenda indisponibles : ${e instanceof Error ? e.message : e}`);
+        return new Map<string, ImmobilisationAgendaDto>();
+      });
+    const etatsVisibles = new Map<string, Omit<VehiculeIndisponibleDuRapport, 'sansTrajet'>>();
+    for (const v of vehiclesVisibles) {
+      const im = immobilisations.get(v.id) ?? null;
+      const etat = etatIndisponibilite({ outOfServiceReason: v.outOfServiceReason ?? null, immobilisationAgenda: im });
+      if (!etat) continue;
+      const declare = etat === 'DEBRANCHE' || etat === 'ACCIDENTE' || etat === 'IMMOBILISE';
+      etatsVisibles.set(v.id, {
+        vehicleId: v.id,
+        plate: v.plate,
+        etat,
+        depuis: declare ? (v.outOfServiceSince ? v.outOfServiceSince.toISOString() : null) : (im?.startAt ?? null),
+        jusqua: declare ? null : (im?.endAt ?? null),
+        titre: declare ? null : (im?.title ?? null),
+      });
+    }
     /**
      * ══════════════════════════════════════════════════════════════════════════════════════
      * LE PRIX AU LITRE : CELUI QU'ON A VU EN STATION, CARBURANT PAR CARBURANT
@@ -860,6 +928,14 @@ export class ReportsStatsService {
     // ⚠️ Sur le parc VISIBLE. Un véhicule en mode vie privée n'a AUCUN trajet dans ce
     // rapport par construction : le lister ici l'accuserait de n'avoir pas roulé, plaque à
     // l'appui, sur la foi d'une absence que le client a lui-même demandée.
+    // 06/10/2026 — l'état n'explique « n'a pas roulé » que s'il a COMMENCÉ avant la fin de la
+    // période : une immobilisation posée hier ne dit rien d'un mois où le véhicule était libre.
+    const etatSurLaPeriode = (vehicleId: string): EtatIndisponibilite | null => {
+      const e = etatsVisibles.get(vehicleId);
+      if (!e) return null;
+      const debut = e.depuis ? Date.parse(e.depuis) : Number.NaN;
+      return Number.isFinite(debut) && debut >= to.getTime() ? null : e.etat;
+    };
     const idleVehicles = vehiclesVisibles
       .filter((v) => !activeVehicleIds.has(v.id))
       .map((v) => ({
@@ -867,6 +943,7 @@ export class ReportsStatsService {
         plate: v.plate,
         group: v.groups?.[0]?.group ?? null,
         silencieux: silencieuxIds.has(v.id),
+        etat: etatSurLaPeriode(v.id),
       }))
       .sort((a, b) => Number(b.silencieux) - Number(a.silencieux) || a.plate.localeCompare(b.plate, 'fr'));
 
@@ -1234,6 +1311,9 @@ export class ReportsStatsService {
         idleVehicles: idleVehicles.slice(0, MAX_VEHICULES_IMMOBILES),
         idleTotal: idleVehicles.length,
         hiddenByPrivacy,
+        indisponibles: [...etatsVisibles.values()]
+          .map((e) => ({ ...e, sansTrajet: !activeVehicleIds.has(e.vehicleId) }))
+          .sort((a, b) => ORDRE_ETATS.indexOf(a.etat) - ORDRE_ETATS.indexOf(b.etat) || a.plate.localeCompare(b.plate, 'fr')),
       },
       trips: {
         count: tripCount,
@@ -1322,6 +1402,54 @@ const DORMANT_COUNTING_DAYS = Math.round(DORMANT_STOP_COUNTING_MS / (24 * 3600 *
 /** Nombre de plaques nommées dans la mention avant de basculer sur « +N autres ».
  *  6 tient sur ~2 lignes de PDF ; au-delà la mention noierait le rapport. */
 const NOTICE_MAX_PLATES = 6;
+
+/** L'ordre des états dans les mentions : du plus fort au plus faible (celui de `etatIndisponibilite`). */
+const ORDRE_ETATS: EtatIndisponibilite[] = ['DEBRANCHE', 'ACCIDENTE', 'IMMOBILISE', 'INCIDENT', 'MAINTENANCE'];
+
+/** « HD-998-XY (immobilisé depuis le 05/10/2026) », « BB-222-CC (en maintenance « Pneus » jusqu'au 07/10/2026) ». */
+function libelleIndisponible(v: VehiculeIndisponibleDuRapport): string {
+  const depuis = v.depuis ? ` depuis le ${formatFleetDate(v.depuis)}` : '';
+  switch (v.etat) {
+    case 'DEBRANCHE': return `${v.plate} (boîtier débranché${depuis})`;
+    case 'ACCIDENTE': return `${v.plate} (accidenté${depuis})`;
+    case 'IMMOBILISE': return `${v.plate} (immobilisé${depuis})`;
+    case 'INCIDENT': return `${v.plate} (incident${v.titre ? ` « ${v.titre} »` : ''}${depuis})`;
+    case 'MAINTENANCE': {
+      const quand = v.jusqua ? ` jusqu'au ${formatFleetDate(v.jusqua)}` : depuis;
+      return `${v.plate} (en maintenance${v.titre ? ` « ${v.titre} »` : ''}${quand})`;
+    }
+  }
+}
+
+/**
+ * 06/10/2026 — la mention des VÉHICULES INDISPONIBLES, une seule phrase pour le PDF (encart ambre)
+ * et le courrier hebdomadaire (texte et HTML) : la même chose sur tous les supports, comme
+ * `buildExploitedScopeNotice`.
+ *
+ * Elle dit l'état À LA DATE DE GÉNÉRATION, avec sa date de début — un rapport ré-édité plus tard
+ * reste lisible —, et pourquoi c'est utile : un véhicule au garage qui n'a pas roulé n'est pas un
+ * véhicule sous-utilisé. Aucun total n'en est retiré.
+ *
+ * @returns `null` quand aucun véhicule n'est indisponible — pas de mention sur un parc disponible.
+ */
+export function buildUnavailableNotice(
+  report: FleetStatsReport,
+  options?: { maxPlates?: number },
+): string | null {
+  // Défensif : une mention accessoire ne doit jamais faire échouer un PDF ni un courrier.
+  const liste = report?.vehicles?.indisponibles ?? [];
+  if (liste.length === 0) return null;
+  const maxPlates = options?.maxPlates ?? NOTICE_MAX_PLATES;
+  const nommes = liste.slice(0, Math.max(0, maxPlates)).map(libelleIndisponible);
+  const reste = liste.length - nommes.length;
+  return (
+    `${liste.length} véhicule${plural(liste.length)} indisponible${plural(liste.length)} à la date de génération : ` +
+    `${nommes.join(', ')}${reste > 0 ? `, +${reste} autre${plural(reste)}` : ''} — ` +
+    `déclaré${plural(liste.length)} sur la fiche ou immobilisé${plural(liste.length)} par l'agenda. ` +
+    `Un véhicule indisponible qui n'a pas roulé n'est pas un véhicule sous-utilisé ; ses coupes ` +
+    `automatiques sont suspendues. Totaux et moyennes inchangés.`
+  );
+}
 
 const plural = (n: number): string => (n > 1 ? 's' : '');
 

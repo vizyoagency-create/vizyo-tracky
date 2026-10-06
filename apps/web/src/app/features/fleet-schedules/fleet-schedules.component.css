@@ -73,12 +73,66 @@
 .tile[title] { cursor: help; }
 .tile .l-sub { font-size: 10.5px; line-height: 1.3; color: var(--fs-muted); margin-top: 2px; }
 
-/* Panneau d'aide « Comment lire cette page ? » (pensé pour des opérateurs non-techniques) */
-.help { background: var(--fs-bg); border: 1px solid var(--fs-border); border-radius: 12px; overflow: hidden; }
-.help-toggle { width: 100%; display: flex; align-items: center; gap: 8px; padding: 11px 14px; background: none; border: none; color: var(--fs-text); font-size: 13.5px; font-weight: 700; cursor: pointer; text-align: left; }
-.help-toggle lucide-icon { color: var(--fs-emerald); display: inline-flex; }
-.help-caret { margin-left: auto; color: var(--fs-muted); font-size: 12px; }
-.help-body { padding: 0 16px 14px; }
+/* ─── Cartes REPLIABLES (06/10/2026, demande du propriétaire) ─────────────────
+ *
+ * Jours fériés, action de masse, aide : trois cartes NORMALES — le fond et la bordure de
+ * `.card` — sous les compteurs. Le bandeau des fériés était un aplat vert « trop agressif » :
+ * la couleur ne tient plus qu'à l'icône (teinte discrète sur fond neutre) et au point de la
+ * pastille d'état. L'en-tête résume ce que la carte cache ; le chevron pivote à l'ouverture.
+ */
+.volets { display: flex; flex-direction: column; gap: 10px; }
+.volet { background: var(--fs-bg); border: 1px solid var(--fs-border); border-radius: 12px; overflow: hidden; }
+.volet-h { margin: 0; font: inherit; }
+.volet-tete {
+  width: 100%; min-height: 58px;
+  display: grid; grid-template-columns: 34px minmax(0, 1fr) auto 18px;
+  grid-template-areas: "icone textes pastille chevron";
+  align-items: center; column-gap: 12px;
+  padding: 11px 14px; background: none; border: none; color: var(--fs-text);
+  text-align: left; cursor: pointer; font: inherit;
+}
+.volet-tete:hover { background: color-mix(in srgb, var(--fs-bg-soft) 55%, transparent); }
+.volet-tete:focus-visible { outline: 2px solid var(--fs-emerald-plein); outline-offset: -2px; border-radius: 12px; }
+.volet-icone {
+  grid-area: icone; width: 34px; height: 34px; border-radius: 10px;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--fs-bg-soft); color: var(--fs-muted);
+}
+.volet-icone[data-ton='succes'] { color: var(--fs-emerald); }
+.volet-icone[data-ton='attente'] { color: var(--fs-warn); }
+.volet-icone[data-ton='info'] { color: var(--fs-info); }
+.volet-textes { grid-area: textes; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.volet-titre { font-size: 14px; font-weight: 700; color: var(--fs-text); }
+.volet-resume { font-size: 12.5px; line-height: 1.4; color: var(--fs-muted); }
+/* Pastille d'état : neutre, un POINT de couleur — jamais un aplat. */
+.volet-pastille {
+  grid-area: pastille; display: inline-flex; align-items: center; gap: 6px;
+  padding: 3px 10px; border-radius: 999px; white-space: nowrap;
+  font-size: 12px; font-weight: 600; color: var(--fg-secondary);
+  background: var(--fs-bg-soft); border: 1px solid var(--fs-border);
+}
+.volet-pastille::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: var(--fs-muted); flex: 0 0 auto; }
+.volet-pastille[data-ton='succes']::before { background: var(--fs-emerald-plein); }
+.volet-pastille[data-ton='attente'] { color: var(--fs-warn); }
+.volet-pastille[data-ton='attente']::before { background: var(--fs-warn-plein); }
+.volet-chevron { grid-area: chevron; display: inline-flex; color: var(--fs-muted); transition: transform .2s ease; }
+.volet--ouvert .volet-chevron { transform: rotate(180deg); }
+/* `[hidden]` doit gagner sur tout `display` posé plus bas : le corps reste dans le DOM. */
+.volet-corps[hidden] { display: none; }
+.volet-corps { margin: 0 14px; padding: 12px 0 14px; border-top: 1px solid var(--fs-border); animation: volet-entree .18s ease-out; }
+@keyframes volet-entree { from { opacity: 0; transform: translateY(-3px); } to { opacity: 1; transform: none; } }
+
+/* Corps « Jours fériés » */
+.fer-ligne { display: flex; align-items: flex-start; gap: 8px; margin: 0; font-size: 13px; line-height: 1.5; color: var(--fs-text); }
+/* Une phrase continue (texte + valeur en gras + point) : PAS de flex, sinon chaque morceau devient
+   un élément espacé de 8 px et le point se détache (vu au banc de rendu du 06/10). */
+.fer-ligne--suite { display: block; margin-top: 4px; padding-left: 23px; color: var(--fs-muted); }
+.fer-icone { display: inline-flex; flex: 0 0 auto; margin-top: 2px; }
+.fer-icone[data-ton='succes'] { color: var(--fs-emerald); }
+.fer-icone[data-ton='attente'] { color: var(--fs-warn); }
+.fer-suivants { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 10px; padding-left: 23px; }
+
+/* Aide « Comment lire cette page ? » (pensé pour des opérateurs non-techniques) */
 .help-intro { font-size: 13px; margin: 0 0 8px; color: var(--fs-text); }
 .help-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 7px; font-size: 13px; line-height: 1.5; }
 /* Les pastilles de la légende sont des APLATS de 9 px, sans texte : elles prennent
@@ -89,34 +143,34 @@
 .help-list .dot.chip-warn { background: var(--fs-warn-plein); }
 .help-list .dot.chip-cut { background: var(--fg-tertiary); }
 .help-list .dot.chip-info { background: var(--fs-info-plein); }
-.help-note { font-size: 12.5px; margin: 10px 0 0; padding: 9px 11px; background: var(--fs-emerald-soft); color: var(--fs-emerald); border-radius: 9px; line-height: 1.5; }
+/* Une astuce, pas un succès : fond neutre, l'ampoule SVG seule porte la couleur. */
+.help-note { display: flex; align-items: flex-start; gap: 8px; font-size: 12.5px; margin: 10px 0 0; padding: 9px 11px; background: var(--fs-bg-soft); color: var(--fg-secondary); border-radius: 9px; line-height: 1.5; }
+.help-note-icone { display: inline-flex; flex: 0 0 auto; margin-top: 1px; color: var(--fs-warn); }
 .n.ok { color: var(--fs-emerald); } .n.cut { color: var(--fs-text); } .n.danger { color: var(--fs-danger); } .n.warn { color: var(--fs-warn); }
 
 /* Banners */
 .banner { display: flex; gap: 10px; align-items: flex-start; border-radius: 12px; padding: 12px 14px; font-size: 13px; }
 .banner.danger { background: var(--fs-danger-soft); color: var(--fs-danger); border: 1px solid var(--fs-danger-plein); }
 .banner.info { background: var(--fs-info-soft); color: var(--fs-info); border: 1px solid transparent; }
-/* Aperçu jours fériés (incident 14/07) : vert rassurant si roulent normalement, ambre si coupés.
-   Les hex d'origine (#047857 / #b45309) ne suivaient aucun thème — ce sont les mêmes
-   significations que succès et attente, donc les mêmes jetons. */
-.banner.holiday-ok { background: var(--fs-emerald-soft); color: var(--fs-emerald); border: 1px solid color-mix(in srgb, var(--tracky) 35%, transparent); }
-.banner.holiday-warn { background: var(--fs-warn-soft); color: var(--fs-warn); border: 1px solid color-mix(in srgb, var(--warning) 45%, transparent); }
 /* Bouton « Réactiver » sur une ligne suspendue (efface l'override → rejoint le cycle). */
-.btn-reactivate { margin-top: 5px; padding: 3px 10px; font-size: 11.5px; font-weight: 700; border-radius: 8px; border: 1px solid var(--fs-info-plein); background: transparent; color: var(--fs-info); cursor: pointer; white-space: nowrap; }
+.btn-reactivate { display: inline-flex; align-items: center; gap: 5px; margin-top: 5px; padding: 3px 10px; font-size: 11.5px; font-weight: 700; border-radius: 8px; border: 1px solid var(--fs-info-plein); background: transparent; color: var(--fs-info); cursor: pointer; white-space: nowrap; }
+/* Une ligne de texte précédée d'une icône SVG (jamais un emoji ni un glyphe). */
+.avec-icone { display: flex; align-items: center; gap: 4px; }
 .btn-reactivate:hover:not(:disabled) { background: var(--fs-info-soft); }
 .btn-reactivate:disabled { opacity: .5; cursor: default; }
 /* Vue GROUPÉE par flotte : en-tête de section (super-admin voyant plusieurs sociétés). */
 .fleet-group-head td { background: var(--fs-info-soft); padding: 9px 12px; border-top: 2px solid var(--fs-border); }
-.fg-name { font-weight: 800; font-size: 13px; }
+.fg-name { font-weight: 800; font-size: 13px; display: inline-flex; align-items: center; gap: 6px; }
+.fg-name lucide-icon { display: inline-flex; color: var(--fs-info); }
 /* Était `var(--text-secondary, #64748b)` : un repli hexadécimal gagne dès que le nom
    de tête manque, et fige alors une couleur hors thème (forme refusée n° 2). */
 .fg-meta { margin-left: 10px; font-size: 12px; color: var(--fs-muted); }
 .plates { display: inline-flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
 .plate-chip { background: var(--fs-bg-soft); border-radius: 6px; padding: 1px 6px; font-weight: 600; font-size: 12px; }
 
-/* Bulk */
-.bulk-head h2 { font-size: 15px; margin: 0; }
-.bulk-warn { display: flex; align-items: center; gap: 7px; margin: 8px 0 0; font-size: 12.5px; font-weight: 600; color: var(--fs-warn); background: var(--fs-warn-soft); border: 1px solid var(--fs-warn-plein); border-radius: 8px; padding: 8px 10px; }
+/* Bulk (corps de la carte repliable « Appliquer des horaires à toute la flotte ») */
+.bulk-warn { display: flex; align-items: flex-start; gap: 7px; margin: 0 0 2px; font-size: 12.5px; font-weight: 600; line-height: 1.45; color: var(--fs-warn); background: var(--fs-warn-soft); border: 1px solid var(--fs-warn-plein); border-radius: 8px; padding: 8px 10px; }
+.bulk-warn-icone { display: inline-flex; flex: 0 0 auto; margin-top: 2px; }
 .bulk-form { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-top: 10px; }
 .bulk-form label { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--fs-muted); }
 .bulk-form input[type="time"] { background: var(--fs-bg-soft); border: 1px solid var(--fs-border); border-radius: 8px; padding: 5px 8px; color: var(--fs-text); }
@@ -222,7 +276,7 @@ a.btn.icon { text-decoration: none; color: var(--fs-text); }
 @keyframes ap-slidein { from { transform: translateX(-6px); opacity: .5; } to { transform: translateX(0); opacity: 1; } }
 .ap-plate { font-weight: 700; }
 .ap-state { margin-left: auto; font-size: 12px; color: var(--fs-muted); }
-.ap-state.ok { color: var(--fs-emerald); font-weight: 700; }
+.ap-state.ok { color: var(--fs-emerald); font-weight: 700; display: inline-flex; align-items: center; gap: 4px; }
 .ap-card.done lucide-icon { color: var(--fs-emerald); }
 
 /* Spinner « en attente » */
@@ -235,13 +289,26 @@ a.btn.icon { text-decoration: none; color: var(--fs-text); }
 .ap-chip.okc { background: var(--fs-emerald-soft); color: var(--fs-emerald); }
 .ap-chip.fail { background: var(--fs-danger-soft); color: var(--fs-danger); cursor: help; }
 
+.volet-corps > :first-child { margin-top: 0; }
+
 @media (prefers-reduced-motion: reduce) {
-  .ap-badge, .ap-card.done, .ap-spinner, .spin, .live-dot { animation: none !important; }
+  .ap-badge, .ap-card.done, .ap-spinner, .spin, .live-dot, .volet-corps { animation: none !important; }
+  .volet-chevron { transition: none; }
 }
 
 @media (max-width: 640px) {
   .bulk-actions { margin-left: 0; width: 100%; }
   .fsched-head { flex-direction: column; }
+  /* En-tête de carte repliable au téléphone : la pastille passe SOUS le titre, le chevron reste
+     à droite — sinon le titre se tasse sur deux mots par ligne. */
+  .volet-tete {
+    grid-template-columns: 34px minmax(0, 1fr) 18px;
+    grid-template-areas: "icone textes chevron" ". pastille .";
+    row-gap: 6px;
+  }
+  .volet-pastille { justify-self: start; }
+  .volet-corps { margin: 0 12px; }
+  .fer-ligne--suite, .fer-suivants { padding-left: 0; }
 }
 
 /* ─── Cibles tactiles au doigt (lot B-pages) ─────────────────────────────────
@@ -257,7 +324,7 @@ a.btn.icon { text-decoration: none; color: var(--fs-text); }
 @media (max-width: 768px) {
   .btn,
   .day,
-  .help-toggle {
+  .volet-tete {
     min-width: 44px;
     min-height: 44px;
   }

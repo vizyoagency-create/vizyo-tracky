@@ -751,6 +751,47 @@ describe('Page Rapports — ce que lʼécran REND sous filtre conducteur', () =>
     expect(document.activeElement).not.toBe(document.body);
     expect(fixture.nativeElement.contains(document.activeElement)).toBe(true);
   });
+
+  /**
+   * 06/10/2026 — L'ÉTAT DES VÉHICULES DANS LA CARTE DU PARC. Un véhicule au garage, nommé sous
+   * « n'a fait aucun trajet », se lisait comme un véhicule sous-utilisé — la donnée sur laquelle
+   * se décide une restitution. Sa pastille porte désormais son état, la carte le dit en une
+   * phrase, et « boîtier muet » se tait quand le boîtier est DÉBRANCHÉ (ce serait dire deux fois
+   * la même chose, et moins bien). Un boîtier muet SANS état déclaré reste « boîtier muet ».
+   */
+  it('la carte du parc porte l’état des véhicules indisponibles, et le dit', () => {
+    const [fixture, ecran] = monter(() => Promise.resolve([]));
+    const stats: Record<string, any> = synthese();
+    stats['vehicles'].idleVehicles = [
+      { vehicleId: 'v1', plate: 'AA-111-BB', group: null, silencieux: false, etat: 'IMMOBILISE' },
+      { vehicleId: 'v2', plate: 'CC-222-DD', group: null, silencieux: true, etat: 'DEBRANCHE' },
+      { vehicleId: 'v3', plate: 'EE-333-FF', group: null, silencieux: true, etat: null },
+    ];
+    stats['vehicles'].indisponibles = [
+      { vehicleId: 'v2', plate: 'CC-222-DD', etat: 'DEBRANCHE', depuis: null, jusqua: null, titre: null, sansTrajet: true },
+      { vehicleId: 'v1', plate: 'AA-111-BB', etat: 'IMMOBILISE', depuis: null, jusqua: null, titre: null, sansTrajet: true },
+    ];
+    ecran['statsPeriode'].set(stats);
+    fixture.detectChanges();
+
+    const texte = carteParc(fixture);
+    expect(texte).toContain('2 véhicules indisponibles aujourd\'hui : CC-222-DD (débranché), AA-111-BB (immobilisé).');
+    expect(texte).toContain('n\'est pas un véhicule sous-utilisé');
+
+    const pastilles: HTMLElement[] = Array.from(fixture.nativeElement.querySelectorAll('.rep-parc-liste li'));
+    const de = (plaque: string): HTMLElement => pastilles.find((li) => (li.textContent ?? '').includes(plaque))!;
+    expect(de('AA-111-BB').querySelector('.evb')?.textContent).toContain('Immobilisé');
+    expect(de('CC-222-DD').querySelector('.evb')?.textContent).toContain('Boîtier débranché');
+    expect(de('CC-222-DD').textContent).not.toContain('boîtier muet');
+    expect(de('EE-333-FF').textContent).toContain('boîtier muet');
+    expect(de('EE-333-FF').querySelector('.evb')).toBeNull();
+
+    // Parc disponible (ou serveur d'avant ce champ) : la carte n'en dit pas un mot.
+    ecran['statsPeriode'].set(synthese());
+    fixture.detectChanges();
+    expect(carteParc(fixture)).not.toContain('indisponible');
+    expect(fixture.nativeElement.querySelector('.rep-parc-liste .evb')).toBeNull();
+  });
 });
 
 /**

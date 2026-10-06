@@ -12,6 +12,7 @@ import { httpFailureMessage } from '../services/http-failure';
 import { ToastService } from '../../shared/ui/toast/toast.service';
 import { getOrCreateDeviceId } from '../utils/device-id';
 import { estPagePublique } from '../utils/page-publique';
+import { QUIET_ERRORS_HEADER } from './quiet-errors.header';
 
 /**
  * V1.10 (Sprint 5 stabilite) — toast d'information lors d'un logout force
@@ -20,18 +21,9 @@ import { estPagePublique } from '../utils/page-publique';
  * (sinon plusieurs requetes 401 simultanees afficheraient N toasts).
  */
 let sessionExpiredToastShown = false;
-/**
- * En-tête d'opt-out : une requête qui le porte ne déclenche aucun toast d'erreur.
- *
- * Réservé aux appels de FOND (sondage périodique, sonde de présence) : si l'API tombe,
- * un sondage toutes les 30 s produirait un toast toutes les 30 s. L'utilisateur
- * apprendrait à les ignorer — et n'y prêterait plus attention le jour où il en reçoit un
- * qui compte.
- *
- * ⚠️ À réserver aux appels que l'utilisateur n'a PAS déclenchés. Le poser sur une action
- * (un clic) recréerait exactement le silence corrigé ici.
- */
-export const QUIET_ERRORS_HEADER = 'X-Quiet-Errors';
+// L'en-tête « silencieux » vit dans quiet-errors.header.ts (06/10/2026, cf. ce fichier) ; il est
+// réexporté ici, d'où les services l'importent depuis toujours.
+export { QUIET_ERRORS_HEADER };
 
 /**
  * Cette panne mérite-t-elle un message ?

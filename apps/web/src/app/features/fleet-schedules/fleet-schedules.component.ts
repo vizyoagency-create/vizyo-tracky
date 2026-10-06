@@ -14,16 +14,20 @@ import { RouterLink } from '@angular/router';
 import {
   AlarmClock,
   AlertTriangle,
+  Building2,
   CalendarDays,
   Car,
   Check,
+  ChevronDown,
   ExternalLink,
   Info,
+  Lightbulb,
   LucideAngularModule,
   Pencil,
   Power,
   PowerOff,
   RefreshCw,
+  RotateCw,
   Timer,
   Wrench,
   X,
@@ -53,6 +57,33 @@ const DAY_LABELS: Record<DayKey, string> = {
   monday: 'Lun', tuesday: 'Mar', wednesday: 'Mer', thursday: 'Jeu',
   friday: 'Ven', saturday: 'Sam', sunday: 'Dim',
 };
+
+/**
+ * 06/10/2026 — les cartes REPLIABLES de la page (demande du propriétaire) : jours fériés, action de
+ * masse, aide. Repliées par défaut, sauf l'aide à la première visite (elle explique les états).
+ * Ensuite, ouvert / fermé est retenu sur CE poste : une préférence d'affichage, jamais une donnée —
+ * un stockage illisible (navigation privée, quota) rend simplement les valeurs par défaut.
+ */
+export type VoletHoraires = 'feries' | 'appliquer' | 'aide';
+export const VOLETS_PAR_DEFAUT: Readonly<Record<VoletHoraires, boolean>> = { feries: false, appliquer: false, aide: true };
+export const CLE_VOLETS_HORAIRES = 'tracky.horaires-flotte.volets';
+
+export function lireVoletsHoraires(): Record<VoletHoraires, boolean> {
+  const volets = { ...VOLETS_PAR_DEFAUT };
+  try {
+    const brut: unknown = JSON.parse(localStorage.getItem(CLE_VOLETS_HORAIRES) ?? 'null');
+    if (brut && typeof brut === 'object') {
+      for (const cle of Object.keys(volets) as VoletHoraires[]) {
+        const v = (brut as Record<string, unknown>)[cle];
+        if (typeof v === 'boolean') volets[cle] = v;
+      }
+    }
+  } catch { /* stockage indisponible ou valeur corrompue : les valeurs par défaut */ }
+  return volets;
+}
+
+/** Le jour civil de Paris (« 2026-10-06 ») — le calendrier des fériés est celui de la flotte. */
+const JOUR_PARIS = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Paris', year: 'numeric', month: '2-digit', day: '2-digit' });
 
 type CutDisplay = 'cut' | 'pending' | 'normal';
 type PendingDisplay = 'DRIVING' | 'AWAITING_STOP' | 'OFFLINE' | null;
@@ -93,9 +124,19 @@ export class FleetSchedulesComponent implements OnInit, OnDestroy {
   protected readonly ExternalLinkIcon = ExternalLink;
   protected readonly InfoIcon = Info;
 
-  /** Panneau « Comment lire cette page ? » (ouvert par défaut la 1re fois pour bien expliquer). */
-  protected readonly helpOpen = signal(true);
-  protected toggleHelp(): void { this.helpOpen.update((v) => !v); }
+  protected readonly Building2Icon = Building2;
+  protected readonly ChevronDownIcon = ChevronDown;
+  protected readonly LightbulbIcon = Lightbulb;
+  protected readonly RotateCwIcon = RotateCw;
+
+  /** Cartes repliables : jours fériés, action de masse, aide (cf. `VOLETS_PAR_DEFAUT`). */
+  protected readonly volets = signal(lireVoletsHoraires());
+  protected basculerVolet(cle: VoletHoraires): void {
+    this.volets.update((v) => ({ ...v, [cle]: !v[cle] }));
+    try {
+      localStorage.setItem(CLE_VOLETS_HORAIRES, JSON.stringify(this.volets()));
+    } catch { /* stockage indisponible : le choix vaut pour cette visite */ }
+  }
   protected readonly PowerIcon = Power;
   protected readonly PowerOffIcon = PowerOff;
   protected readonly RefreshCwIcon = RefreshCw;
@@ -552,6 +593,20 @@ export class FleetSchedulesComponent implements OnInit, OnDestroy {
     } finally {
       this.reactivating.update((s) => { const n = new Set(s); n.delete(r.vehicleId); return n; });
     }
+  }
+
+  /**
+   * « aujourd'hui », « demain », « dans 26 jours » : l'échéance d'un férié (`YYYY-MM-DD`) en jours
+   * civils de Paris, sur l'horloge du serveur. Chaîne vide pour une date passée ou illisible.
+   */
+  protected dansCombien(date: string): string {
+    const [a, m, j] = JOUR_PARIS.format(this.nowMs() + this.skew()).split('-').map(Number);
+    const [fa, fm, fj] = date.slice(0, 10).split('-').map(Number);
+    if (![a, m, j, fa, fm, fj].every((x) => Number.isFinite(x))) return '';
+    const n = Math.round((Date.UTC(fa, fm - 1, fj) - Date.UTC(a, m - 1, j)) / 86_400_000);
+    if (n < 0) return '';
+    if (n === 0) return 'aujourd’hui';
+    return n === 1 ? 'demain' : `dans ${n} jours`;
   }
 
   /** Libellé lisible d'un jour férié : « mardi 15 août — Assomption ». */

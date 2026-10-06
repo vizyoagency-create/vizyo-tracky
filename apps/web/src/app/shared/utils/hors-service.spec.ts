@@ -1,5 +1,6 @@
 import type { ImmobilisationAgendaDto } from '@vizyo/tracky-shared';
 import {
+  compterEtats,
   drapeauxPastille,
   estAccidente,
   estAuSouterrain,
@@ -7,6 +8,7 @@ import {
   estImmobilise,
   etatVehicule,
   immobilisationRetenue,
+  installationARevoir,
   motifHorsService,
   motSouterrain,
   MOTIF_ACCIDENT,
@@ -16,6 +18,7 @@ import {
   nbDebranchesSurLaCarte,
   nbImmobilisesSurLaCarte,
   nbSouterrainsSurLaCarte,
+  resumeEtats,
 } from './hors-service';
 
 /**
@@ -223,6 +226,55 @@ describe('état de disponibilité — fiche, agenda, parking souterrain', () => 
         { ...auSousSol, outOfServiceReason: MOTIF_IMMOBILISE },
         { ...position, presumedParkedZone: null },
       ], MAINTENANT)).toBe(1);
+    });
+  });
+});
+
+/** 06/10/2026 (suite) — la synthèse du tableau de bord et la règle « installation à revoir ». */
+describe('compterEtats, resumeEtats et installationARevoir', () => {
+  const maintenance: ImmobilisationAgendaDto = {
+    eventId: 'ev-1', type: 'MAINTENANCE', title: 'Pneus',
+    startAt: '2026-10-06T07:00:00.000Z', endAt: '2026-10-06T16:00:00.000Z',
+  };
+
+  it('compte chaque état, SANS filtre de position (une synthèse de flotte compte un véhicule sans boîtier)', () => {
+    const c = compterEtats([
+      { outOfServiceReason: MOTIF_IMMOBILISE },
+      { outOfServiceReason: MOTIF_IMMOBILISE },
+      { outOfServiceReason: MOTIF_DEBRANCHE },                         // FT-463-TW : jamais eu de boîtier
+      { outOfServiceReason: null, immobilisationAgenda: maintenance },
+      { outOfServiceReason: MOTIF_ACCIDENT, immobilisationAgenda: maintenance }, // la fiche l'emporte
+      { outOfServiceReason: null, immobilisationAgenda: null },
+      {},
+    ]);
+    expect(c).toEqual({ total: 5, DEBRANCHE: 1, ACCIDENTE: 1, IMMOBILISE: 2, MAINTENANCE: 1, INCIDENT: 0 });
+  });
+
+  it('résume en mots, dans l’ordre des états, sans les zéros, au pluriel quand il faut', () => {
+    expect(resumeEtats({ DEBRANCHE: 3, ACCIDENTE: 0, IMMOBILISE: 4, MAINTENANCE: 2, INCIDENT: 1 }))
+      .toBe('3 débranchés · 4 immobilisés · 1 incident · 2 en maintenance');
+    expect(resumeEtats({ DEBRANCHE: 0, ACCIDENTE: 1, IMMOBILISE: 0, MAINTENANCE: 0, INCIDENT: 0 })).toBe('1 accidenté');
+    expect(resumeEtats({ DEBRANCHE: 0, ACCIDENTE: 0, IMMOBILISE: 0, MAINTENANCE: 0, INCIDENT: 0 })).toBe('');
+  });
+
+  describe('installationARevoir — une pose ratée, pas un silence expliqué', () => {
+    const MAINTENANT = Date.parse('2026-10-06T10:00:00.000Z');
+    const POSE_RECENTE = '2026-09-25T08:00:00.000Z';   // 11 jours : dans la fenêtre d’un mois
+
+    it('boîtier posé récemment et hors ligne, véhicule disponible : à revoir (comme avant)', () => {
+      expect(installationARevoir(null, 'OFFLINE', POSE_RECENTE, MAINTENANT)).toBeTrue();
+    });
+
+    it('🔴 PAS pour un véhicule débranché, accidenté, immobilisé ou en maintenance : le silence est expliqué', () => {
+      for (const etat of ['DEBRANCHE', 'ACCIDENTE', 'IMMOBILISE', 'MAINTENANCE', 'INCIDENT'] as const) {
+        expect(installationARevoir(etat, 'OFFLINE', POSE_RECENTE, MAINTENANT)).withContext(etat).toBeFalse();
+      }
+    });
+
+    it('ni pour un boîtier en ligne, ni pour une pose ancienne', () => {
+      expect(installationARevoir(null, 'ONLINE', POSE_RECENTE, MAINTENANT)).toBeFalse();
+      expect(installationARevoir(null, 'OFFLINE', '2026-06-01T08:00:00.000Z', MAINTENANT)).toBeFalse();
+      expect(installationARevoir(null, 'OFFLINE', null, MAINTENANT)).toBeFalse();
     });
   });
 });

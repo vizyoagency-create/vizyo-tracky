@@ -1194,6 +1194,11 @@ La conformité réglementaire reste la responsabilité de l'exploitant. Vizyo fo
     pdfName?: string;
     unattributedNote?: string | null;
     /**
+     * 06/10/2026 — la mention des véhicules indisponibles (`buildUnavailableNotice`), la même que
+     * l'encart du PDF. Muette quand `null`.
+     */
+    unavailableNote?: string | null;
+    /**
      * Chemin INTERNE vers lequel mène le bouton, période comprise. Par défaut le tableau de
      * bord, pour les appelants qui n'en fournissent pas.
      */
@@ -1253,6 +1258,21 @@ La conformité réglementaire reste la responsabilité de l'exploitant. Vizyo fo
           </table>
         </td></tr>`
       : '';
+    /**
+     * 06/10/2026 — les véhicules indisponibles (garage, accident, maintenance) : le même panneau que
+     * les non attribués, un autre titre. Ce n'est pas une alerte — un véhicule au garage qui n'a pas
+     * roulé n'est pas sous-utilisé, c'est tout ce que la ligne veut dire. Texte échappé.
+     */
+    const indisponibles = opts.unavailableNote
+      ? `<tr><td style="padding:16px 36px 0;">
+          <table class="m-panel" role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#F6F9F7;border:1px solid rgba(245,179,61,.35);border-radius:13px;">
+            <tr><td style="padding:14px 18px;">
+              <div class="m-text" style="font-family:${EMAIL_FONT_MONO};font-size:10px;letter-spacing:0.12em;text-transform:uppercase;color:${EMAIL_TEXTE_ATTENTE};margin-bottom:6px;">Véhicules indisponibles</div>
+              <p class="m-text" style="margin:0;font-family:${EMAIL_FONT};font-size:14px;line-height:1.6;color:#56635E;">${escapeHtml(opts.unavailableNote)}</p>
+            </td></tr>
+          </table>
+        </td></tr>`
+      : '';
     return this.shell({
       eyebrow: 'Rapport · Hebdo',
       preheader: 'Distance, trajets et alertes de la semaine, avec le détail par véhicule.',
@@ -1287,7 +1307,7 @@ La conformité réglementaire reste la responsabilité de l'exploitant. Vizyo fo
             </tr>
           </table>
         </td></tr>
-        ${exces}${nonAttribues}
+        ${exces}${nonAttribues}${indisponibles}
         <tr><td style="padding:20px 36px 0;">
           ${chip}
           <table role="presentation" style="margin-top:${opts.pdfName ? '20px' : '0'};"><tr><td style="border-radius:11px;background:#10E0A0;">

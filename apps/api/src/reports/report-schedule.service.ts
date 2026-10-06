@@ -22,7 +22,7 @@ import { buildUnattributedNote, EmailService } from '../email/email.service';
 import { ErrorLogger } from '../observability/error-logger.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { ReportPdfService } from './report-pdf.service';
-import { ReportsStatsService } from './reports-stats.service';
+import { buildUnavailableNotice, ReportsStatsService } from './reports-stats.service';
 
 const ALL_SECTIONS: FleetReportSection[] = ['kpi', 'alerts', 'topVehicles', 'trips'];
 const DAY_MS = 24 * 3600 * 1000;
@@ -354,6 +354,8 @@ export class ReportScheduleService {
            * sans objet.
            */
           const nonAttribues = buildUnattributedNote(report.unattributedTrips, report.trips.count);
+          // 06/10/2026 — la MÊME phrase que l'encart du PDF, muette quand tout le parc est disponible.
+          const indisponibles = buildUnavailableNotice(report);
           /**
            * ── UNE LIGNE POUR LES EXCÈS, ET UNE SEULE ──────────────────────────────────
            *
@@ -371,7 +373,7 @@ export class ReportScheduleService {
           const exces = report.trips.speedingCount > 0
             ? `- ${report.trips.speedingCount} excès de vitesse`
             : null;
-          const text = `Bonjour,\n\nVotre rapport Vizyo Tracky pour la semaine du ${fromStr} au ${toStr} (inclus) est en pièce jointe.\n\nRésumé :\n- ${report.trips.count} trajets, ${report.trips.totalKm.toFixed(1)} km\n- ${report.alerts.total} alertes\n${exces ? `${exces}\n` : ''}- Conso estimée : ${report.consumption.estimatedLiters.toFixed(1)} L (${report.consumption.estimatedCostEur.toFixed(2)} EUR)\n${nonAttribues ? `\nTrajets non attribués : ${nonAttribues}\n` : ''}\nL'équipe Vizyo`;
+          const text = `Bonjour,\n\nVotre rapport Vizyo Tracky pour la semaine du ${fromStr} au ${toStr} (inclus) est en pièce jointe.\n\nRésumé :\n- ${report.trips.count} trajets, ${report.trips.totalKm.toFixed(1)} km\n- ${report.alerts.total} alertes\n${exces ? `${exces}\n` : ''}- Conso estimée : ${report.consumption.estimatedLiters.toFixed(1)} L (${report.consumption.estimatedCostEur.toFixed(2)} EUR)\n${nonAttribues ? `\nTrajets non attribués : ${nonAttribues}\n` : ''}${indisponibles ? `\nVéhicules indisponibles : ${indisponibles}\n` : ''}\nL'équipe Vizyo`;
           const html = this.email.buildWeeklyReportEmail({
             fromStr,
             toStr,
@@ -383,6 +385,7 @@ export class ReportScheduleService {
             costEur: report.consumption.estimatedCostEur,
             pdfName,
             unattributedNote: nonAttribues,
+            unavailableNote: indisponibles,
             /**
              * ── LE BOUTON MÈNE AU RAPPORT, PLUS AU TABLEAU DE BORD ────────────────────
              *

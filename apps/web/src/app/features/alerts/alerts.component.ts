@@ -27,7 +27,8 @@ import {
   XCircle,
 } from 'lucide-angular';
 import type { AlertEvent } from '@vizyo/tracky-shared';
-import { getVehicleConnectivityState, isInstallationToReview, parametresTrajet } from '@vizyo/tracky-shared';
+import { getVehicleConnectivityState, parametresTrajet } from '@vizyo/tracky-shared';
+import { etatVehicule, installationARevoir } from '../../shared/utils/hors-service';
 import { firstValueFrom } from 'rxjs';
 import { InstallReviewBadgeComponent } from '../../shared/ui/install-review-badge/install-review-badge.component';
 import { GroupBadgeComponent } from '../../shared/ui/group-badge/group-badge.component';
@@ -1084,7 +1085,9 @@ export class AlertsComponent implements OnInit {
    */
   protected readonly vehiclesToReview = computed(() =>
     this.realtime.snapshot().filter((v) =>
-      isInstallationToReview(
+      // 06/10/2026 — pas pour un véhicule dont le silence est expliqué (même règle que le tableau de bord).
+      installationARevoir(
+        etatVehicule(v),
         getVehicleConnectivityState({ trackerId: v.trackerId, lastSeenAt: v.lastSeenAt, lastIgnition: v.lastIgnition }),
         v.trackerCreatedAt,
       ),

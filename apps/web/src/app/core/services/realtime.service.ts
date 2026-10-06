@@ -8,6 +8,7 @@ import { firstValueFrom } from 'rxjs';
 import { io, Socket } from 'socket.io-client';
 import { ToastService } from '../../shared/ui/toast/toast.service';
 import { retourSur } from '../auth/retour-interne';
+import { QUIET_ERRORS_HEADER } from '../interceptors/quiet-errors.header';
 import { AuthService } from './auth.service';
 import { EtatsVehiculesBus } from './etats-vehicules.bus';
 import { FleetFilterService } from './fleet-filter.service';
@@ -912,10 +913,23 @@ export class RealtimeService {
   });
 
   private armerRafraichissementEtats(): void {
+    // Pas de garde de rôle ICI : connect() ne doit dépendre de rien de neuf. La relecture elle-même
+    // refuse les rôles interdits (`instantaneInterdit`) — pour eux, le minuteur ne fait rien.
     if (this.etatsTimer) return;
     this.etatsTimer = setInterval(() => {
       if (this.visibility.isVisible()) this.rafraichirEtats().catch(() => { /* silencieux */ });
     }, RAFRAICHISSEMENT_ETATS_MS);
+  }
+
+  /**
+   * Les rôles à qui `GET /api/vehicles/snapshot` répond 403 — le DÉPÔT (lot A3 : il a son propre canal,
+   * `/depot/live`) et le CONDUCTEUR (la route ne liste que FLEET_ADMIN, SUPER_ADMIN, FLEET_MANAGER, VIEWER
+   * et NIGHT_WATCHMAN). On ne leur demande JAMAIS l'instantané : chaque 403 devenait un bandeau
+   * « Action impossible » — une fois par chargement depuis toujours pour un conducteur, puis toutes les
+   * 5 min avec la relecture des états du 06/10 (relevé le jour même, avant tout signalement).
+   */
+  private instantaneInterdit(): boolean {
+    return this.auth.isDepot() || this.auth.isDriver();
   }
 
   /**
@@ -930,9 +944,13 @@ export class RealtimeService {
    * maintenance commence et finit à l'heure dite, sans aucun geste.
    */
   async rafraichirEtats(): Promise<void> {
-    if (this.auth.isDepot()) return;
+    if (this.instantaneInterdit()) return;
     try {
-      const res = await firstValueFrom(this.http.get<FleetSnapshotResponse>('/api/vehicles/snapshot'));
+      // En-tête « silencieux » : une relecture de FOND n'est pas un geste de l'utilisateur — un échec
+      // (réseau, redéploiement, 403) ne doit jamais devenir un bandeau ; la relecture suivante rattrape.
+      const res = await firstValueFrom(
+        this.http.get<FleetSnapshotResponse>('/api/vehicles/snapshot', { headers: { [QUIET_ERRORS_HEADER]: '1' } }),
+      );
       const frais = new Map((res.items ?? []).map((v) => [v.vehicleId, v]));
       let change = false;
       const suivant = this.snapshot().map((s) => {
@@ -985,7 +1003,7 @@ export class RealtimeService {
     //
     // Le dépôt a son propre canal : `DepotLiveStore` lit `/depot/live` et rejoint les
     // salons `depot:mission:<id>`.
-    if (this.auth.isDepot()) return;
+    if (this.instantaneInterdit()) return;
     try {
       // Sprint 3 (revue C1) — capture de l'état coupe AVANT le fetch snapshot. Le snapshot
       // peut être antérieur à un event WS arrivé pendant le round-trip ; on ré-appliquera

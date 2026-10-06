@@ -15,8 +15,10 @@
 import {
   etatIndisponibilite,
   getVehicleConnectivityState,
+  isInstallationToReview,
   type EtatIndisponibilite,
   type ImmobilisationAgendaDto,
+  type VehicleConnectivityState,
 } from '@vizyo/tracky-shared';
 
 /** Les motifs posés par le sélecteur « État d'exploitation » de la fiche. */
@@ -100,6 +102,57 @@ export function drapeauxPastille(etat: EtatIndisponibilite | null): DrapeauxPast
     immobilized: etat === 'IMMOBILISE',
     ...(etat === 'MAINTENANCE' || etat === 'INCIDENT' ? { agenda: etat } : {}),
   };
+}
+
+/**
+ * « Installation à revoir » (boîtier posé il y a moins d'un mois qui se déconnecte : pose
+ * probablement bâclée) — SAUF si le silence est expliqué par un état : un véhicule déclaré
+ * débranché, accidenté ou immobilisé, ou en maintenance dans l'agenda, est hors ligne pour une
+ * raison connue (06/10/2026). Le signaler comme une pose ratée enverrait quelqu'un vérifier un
+ * boîtier qu'on a débranché exprès. Une règle, quatre écrans : liste, fiche, tableau de bord, alertes.
+ */
+export function installationARevoir(
+  etat: EtatIndisponibilite | null,
+  connectivite: VehicleConnectivityState,
+  trackerCreatedAt: string | Date | null | undefined,
+  maintenant: number = Date.now(),
+): boolean {
+  return !etat && isInstallationToReview(connectivite, trackerCreatedAt ?? null, maintenant);
+}
+
+/**
+ * Les états de la flotte, comptés — pour une tuile de synthèse (tableau de bord). Contrairement aux
+ * `nb…SurLaCarte` de la légende, AUCUN filtre de position : un véhicule indisponible sans boîtier ni
+ * position reste indisponible, et une synthèse de flotte le compte.
+ */
+export function compterEtats(vehicules: readonly PorteEtat[]): { total: number } & Record<EtatIndisponibilite, number> {
+  const out = { total: 0, DEBRANCHE: 0, ACCIDENTE: 0, IMMOBILISE: 0, MAINTENANCE: 0, INCIDENT: 0 };
+  for (const v of vehicules) {
+    const etat = etatVehicule(v);
+    if (!etat) continue;
+    out[etat]++;
+    out.total++;
+  }
+  return out;
+}
+
+/**
+ * « 4 immobilisés · 3 débranchés · 1 en maintenance » — le décompte en mots, dans l'ordre des états
+ * (du plus fort au plus faible), sans les zéros. Les mots sont ceux de `LIBELLES_ETAT`.
+ */
+export function resumeEtats(c: Record<EtatIndisponibilite, number>): string {
+  const pluriel: Record<EtatIndisponibilite, [string, string]> = {
+    DEBRANCHE: ['débranché', 'débranchés'],
+    ACCIDENTE: ['accidenté', 'accidentés'],
+    IMMOBILISE: ['immobilisé', 'immobilisés'],
+    INCIDENT: ['incident', 'incidents'],
+    MAINTENANCE: ['en maintenance', 'en maintenance'],
+  };
+  const ordre: EtatIndisponibilite[] = ['DEBRANCHE', 'ACCIDENTE', 'IMMOBILISE', 'INCIDENT', 'MAINTENANCE'];
+  return ordre
+    .filter((e) => c[e] > 0)
+    .map((e) => `${c[e]} ${pluriel[e][c[e] > 1 ? 1 : 0]}`)
+    .join(' · ');
 }
 
 /** Ce que la règle « au parking souterrain » lit d'une ligne de l'instantané. */

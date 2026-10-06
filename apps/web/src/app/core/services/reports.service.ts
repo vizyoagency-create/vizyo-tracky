@@ -5,11 +5,27 @@ import { marqueFichierConducteurDeFiltre } from '@vizyo/tracky-shared';
 import { firstValueFrom } from 'rxjs';
 import { ActivityTrackerService } from './activity-tracker.service';
 import type {
+  EtatIndisponibilite,
   FleetReportDispatchDto,
   FleetReportScheduleDto,
   SendFleetReportNowResultDto,
   SetFleetReportScheduleDto,
 } from '@vizyo/tracky-shared';
+
+/** 06/10/2026 — un véhicule indisponible à la date de génération du rapport (cf. API `VehiculeIndisponibleDuRapport`). */
+export interface VehiculeIndisponibleDuRapportDto {
+  vehicleId: string;
+  plate: string;
+  etat: EtatIndisponibilite;
+  /** ISO — depuis quand (déclaration sur la fiche, ou début de l'évènement d'agenda). */
+  depuis: string | null;
+  /** ISO — jusqu'à quand, pour une maintenance ou un incident de l'agenda ; null sinon. */
+  jusqua: string | null;
+  /** Le titre de l'évènement d'agenda (« Pneus »), jamais la note libre de la fiche. */
+  titre: string | null;
+  /** Aucun trajet sur la période du rapport. */
+  sansTrajet: boolean;
+}
 
 export interface FleetStatsReportDto {
   fleet: { id: string; name: string };
@@ -22,7 +38,18 @@ export interface FleetStatsReportDto {
      * seulement comptés. `silencieux` distingue « il n'a pas servi » de « son boîtier
      * s'est tu » : le premier se mutualise, le second se répare.
      */
-    idleVehicles: { vehicleId: string; plate: string; group: { id: string; name: string } | null; silencieux: boolean }[];
+    idleVehicles: {
+      vehicleId: string;
+      plate: string;
+      group: { id: string; name: string } | null;
+      silencieux: boolean;
+      /**
+       * 06/10/2026 — son état d'INDISPONIBILITÉ (garage, accident, maintenance…), seulement s'il a
+       * commencé AVANT la fin de la période : c'est alors lui qui explique « aucun trajet ». `null`
+       * sinon ; absent d'un serveur d'avant ce champ.
+       */
+      etat?: EtatIndisponibilite | null;
+    }[];
     /** Compte RÉEL des immobiles ; la liste ci-dessus est plafonnée. */
     idleTotal: number;
     /**
@@ -32,6 +59,11 @@ export interface FleetStatsReportDto {
      * question sans réponse.
      */
     hiddenByPrivacy: number;
+    /**
+     * 06/10/2026 — les véhicules du périmètre INDISPONIBLES à la date de génération (fiche puis
+     * agenda), du plus fort au plus faible. Aucun total n'en est retiré. Absent d'un serveur d'avant.
+     */
+    indisponibles?: VehiculeIndisponibleDuRapportDto[];
   };
   trips: {
     count: number;

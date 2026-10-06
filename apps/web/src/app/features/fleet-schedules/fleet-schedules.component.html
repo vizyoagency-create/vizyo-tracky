@@ -41,30 +41,8 @@
       </div>
     }
 
-    <!-- Aperçu JOURS FÉRIÉS (incident 14/07) — anticiper l'effet de l'automatisation les fériés. -->
-    @if (holidayForecast(); as hf) {
-      @if (hf.upcoming.length > 0 && hf.scheduledCount > 0) {
-        <div class="banner" [class.holiday-ok]="hf.cutOnHolidayCount === 0" [class.holiday-warn]="hf.cutOnHolidayCount > 0">
-          <lucide-icon [img]="CalendarDaysIcon" [size]="20" />
-          <div>
-            <strong>Prochain jour férié : {{ holidayLabel(hf.upcoming[0]) }}.</strong>
-            @if (hf.representativeWindow) { L'automatisation horaire est active <strong>{{ hf.representativeWindow }}</strong>. }
-            @if (hf.cutOnHolidayCount === 0) {
-              <div>✅ Vos <strong>{{ hf.scheduledCount }}</strong> véhicule(s) programmé(s) rouleront <strong>normalement</strong> ce jour-là (aucune coupe férié configurée).</div>
-            } @else {
-              <div>⚠️ <strong>{{ hf.cutOnHolidayCount }}</strong> véhicule(s) seront <strong>coupés</strong> ce jour-là (coupe férié activée) ; les autres rouleront.</div>
-            }
-            @if (hf.upcoming.length > 1) {
-              <div class="muted small" style="margin-top:4px">Fériés suivants :
-                @for (h of hf.upcoming.slice(1); track h.date) { <span class="plate-chip">{{ holidayLabel(h) }}</span> }
-              </div>
-            }
-          </div>
-        </div>
-      }
-    }
-
-    <!-- Synthèse (info-bulle au survol de chaque compteur) -->
+    <!-- Synthèse (info-bulle au survol de chaque compteur). Les compteurs restent EN HAUT, avant
+         les jours fériés et l'action de masse (demande du propriétaire, 06/10/2026). -->
     <div class="tiles">
       <div class="tile" title="Nombre total de véhicules de votre périmètre.">
         <span class="n">{{ summary().total }}</span><span class="l">Véhicules</span>
@@ -96,15 +74,124 @@
       }
     </div>
 
-    <!-- Aide : bien expliquer les états pour les opérateurs (non-techniques) -->
-    <div class="help">
-      <button type="button" class="help-toggle" (click)="toggleHelp()">
-        <lucide-icon [img]="InfoIcon" [size]="16" />
-        <span>Comment lire cette page&nbsp;?</span>
-        <span class="help-caret">{{ helpOpen() ? '▾' : '▸' }}</span>
-      </button>
-      @if (helpOpen()) {
-        <div class="help-body">
+    <!-- ══ CARTES REPLIABLES (06/10/2026, demande du propriétaire) ═══════════════════════════
+         Sous les compteurs, trois cartes NORMALES qui se replient : jours fériés, action de masse,
+         aide. Le bandeau vert des fériés était « trop agressif » : la couleur ne tient plus qu'à
+         l'icône et à la pastille d'état. Chaque en-tête RÉSUME ce qu'il cache (le prochain férié et
+         son effet, la société à choisir) : replié, rien d'important n'est perdu.
+         Ouvert / fermé est retenu sur ce poste — une préférence d'affichage, rien de plus.
+         Le corps reste dans le DOM ([hidden]) : aria-controls désigne toujours un élément réel. -->
+    <div class="volets">
+      <!-- Aperçu JOURS FÉRIÉS (incident 14/07) — anticiper l'effet de l'automatisation les fériés. -->
+      @if (holidayForecast(); as hf) {
+        @if (hf.upcoming.length > 0 && hf.scheduledCount > 0) {
+          <section class="volet volet-feries" [class.volet--ouvert]="volets().feries">
+            <h2 class="volet-h">
+              <button type="button" class="volet-tete" id="volet-feries-tete"
+                      (click)="basculerVolet('feries')"
+                      [attr.aria-expanded]="volets().feries" aria-controls="volet-feries">
+                <span class="volet-icone" [attr.data-ton]="hf.cutOnHolidayCount > 0 ? 'attente' : 'succes'">
+                  <lucide-icon [img]="CalendarDaysIcon" [size]="16" />
+                </span>
+                <span class="volet-textes">
+                  <span class="volet-titre">Jours fériés</span>
+                  <span class="volet-resume">Prochain : {{ holidayLabel(hf.upcoming[0]) }}@if (dansCombien(hf.upcoming[0].date); as quand) { · {{ quand }} }</span>
+                </span>
+                <span class="volet-pastille" [attr.data-ton]="hf.cutOnHolidayCount > 0 ? 'attente' : 'succes'">
+                  @if (hf.cutOnHolidayCount === 0) { Roulent normalement } @else { {{ hf.cutOnHolidayCount }} coupé(s) ce jour-là }
+                </span>
+                <lucide-icon class="volet-chevron" [img]="ChevronDownIcon" [size]="18" aria-hidden="true" />
+              </button>
+            </h2>
+            <div class="volet-corps" id="volet-feries" role="region" aria-labelledby="volet-feries-tete" [hidden]="!volets().feries">
+              <p class="fer-ligne">
+                @if (hf.cutOnHolidayCount === 0) {
+                  <lucide-icon class="fer-icone" data-ton="succes" [img]="CheckIcon" [size]="15" aria-hidden="true" />
+                  <span>Vos <strong>{{ hf.scheduledCount }}</strong> véhicule(s) programmé(s) rouleront <strong>normalement</strong> ce jour-là (aucune coupe férié configurée).</span>
+                } @else {
+                  <lucide-icon class="fer-icone" data-ton="attente" [img]="AlertTriangleIcon" [size]="15" aria-hidden="true" />
+                  <span><strong>{{ hf.cutOnHolidayCount }}</strong> véhicule(s) seront <strong>coupés</strong> ce jour-là (coupe férié activée) ; les autres rouleront.</span>
+                }
+              </p>
+              @if (hf.representativeWindow) {
+                <p class="fer-ligne fer-ligne--suite">L'automatisation horaire est active <strong>{{ hf.representativeWindow }}</strong>.</p>
+              }
+              @if (hf.upcoming.length > 1) {
+                <div class="fer-suivants">
+                  <span class="muted small">Fériés suivants :</span>
+                  @for (h of hf.upcoming.slice(1); track h.date) { <span class="plate-chip">{{ holidayLabel(h) }}</span> }
+                </div>
+              }
+            </div>
+          </section>
+        }
+      }
+
+      <!-- Action de masse -->
+      <section class="volet volet-appliquer" [class.volet--ouvert]="volets().appliquer">
+        <h2 class="volet-h">
+          <button type="button" class="volet-tete" id="volet-appliquer-tete"
+                  (click)="basculerVolet('appliquer')"
+                  [attr.aria-expanded]="volets().appliquer" aria-controls="volet-appliquer">
+            <span class="volet-icone" data-ton="succes">
+              <lucide-icon [img]="PowerIcon" [size]="16" />
+            </span>
+            <span class="volet-textes">
+              <span class="volet-titre">Appliquer des horaires à toute la flotte</span>
+              <span class="volet-resume">Active l'automatisation et pose la même plage sur les véhicules de votre périmètre.</span>
+            </span>
+            @if (bulkBlocked()) {
+              <span class="volet-pastille" data-ton="attente">Choisissez une société</span>
+            }
+            <lucide-icon class="volet-chevron" [img]="ChevronDownIcon" [size]="18" aria-hidden="true" />
+          </button>
+        </h2>
+        <div class="volet-corps" id="volet-appliquer" role="region" aria-labelledby="volet-appliquer-tete" [hidden]="!volets().appliquer">
+          @if (bulkBlocked()) {
+            <!-- Le texte dans UN span : sous `display:flex`, chaque morceau (texte, gras, texte) devenait
+                 sa propre colonne — l'avertissement s'affichait en trois colonnes. -->
+            <p class="bulk-warn">
+              <lucide-icon class="bulk-warn-icone" [img]="AlertTriangleIcon" [size]="14" />
+              <span>Vous êtes super-administrateur. <b>Choisissez d'abord une société</b> (sélecteur en haut à droite) : l'action ne s'appliquera qu'à cette flotte, jamais à toutes.</span>
+            </p>
+          }
+          <div class="bulk-form">
+            <label>De <input type="time" [ngModel]="bulkStart()" (ngModelChange)="bulkStart.set($event)" /></label>
+            <label>à <input type="time" [ngModel]="bulkEnd()" (ngModelChange)="bulkEnd.set($event)" /></label>
+            <div class="days">
+              @for (d of DAY_KEYS; track d) {
+                <button type="button" class="day" [class.on]="bulkDays()[d]" (click)="toggleDay(d)">{{ DAY_LABELS[d] }}</button>
+              }
+            </div>
+            <div class="bulk-actions">
+              <button type="button" class="btn primary" (click)="openPreview(false)" [disabled]="previewLoading() || bulkBlocked()">
+                <lucide-icon [img]="PowerIcon" [size]="16" /> Aperçu &amp; appliquer
+              </button>
+              <button type="button" class="btn danger-ghost" (click)="openPreview(true)" [disabled]="previewLoading() || bulkBlocked()">
+                <lucide-icon [img]="PowerOffIcon" [size]="16" /> Désactiver sur la flotte
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Aide : bien expliquer les états pour les opérateurs (non-techniques) -->
+      <section class="volet volet-aide" [class.volet--ouvert]="volets().aide">
+        <h2 class="volet-h">
+          <button type="button" class="volet-tete" id="volet-aide-tete"
+                  (click)="basculerVolet('aide')"
+                  [attr.aria-expanded]="volets().aide" aria-controls="volet-aide">
+            <span class="volet-icone" data-ton="info">
+              <lucide-icon [img]="InfoIcon" [size]="16" />
+            </span>
+            <span class="volet-textes">
+              <span class="volet-titre">Comment lire cette page&nbsp;?</span>
+              <span class="volet-resume">Ce que veut dire chaque état : autorisé, roule encore, en attente d'arrêt, coupé, suspendu.</span>
+            </span>
+            <lucide-icon class="volet-chevron" [img]="ChevronDownIcon" [size]="18" aria-hidden="true" />
+          </button>
+        </h2>
+        <div class="volet-corps" id="volet-aide" role="region" aria-labelledby="volet-aide-tete" [hidden]="!volets().aide">
           <p class="help-intro">Cet écran coupe et rallume le moteur des véhicules selon leurs horaires. Voici ce que veut dire chaque état&nbsp;:</p>
           <ul class="help-list">
             <li><span class="dot chip-ok"></span> <b>Autorisé</b> — le véhicule a le droit de rouler maintenant (on est dans ses horaires). <b>S'il roule, c'est normal</b> : il n'est PAS compté dans « Roulent encore ».</li>
@@ -114,40 +201,9 @@
             <li><span class="dot chip-info"></span> <b>Suspendu</b> — une coupure ou remise en marche manuelle a mis l'automatisation en pause sur ce véhicule.</li>
             <li><span class="dot chip-info"></span> <b>Suspendu · immobilisé / en maintenance / accidenté</b> — le véhicule est indisponible (déclaré sur sa fiche, ou maintenance de l'agenda) : on ne le coupe pas, il reprend le cycle tout seul à sa remise en service.</li>
           </ul>
-          <p class="help-note">💡 Les compteurs « Roulent encore » et « Attente d'arrêt » ne comptent QUE les véhicules <b>hors de leurs horaires</b>. Un véhicule qui roule pendant ses horaires est « Autorisé » — c'est pour ça qu'il peut rouler sans apparaître dans « Roulent encore ».</p>
+          <p class="help-note"><lucide-icon class="help-note-icone" [img]="LightbulbIcon" [size]="15" aria-hidden="true" /><span>Les compteurs « Roulent encore » et « Attente d'arrêt » ne comptent QUE les véhicules <b>hors de leurs horaires</b>. Un véhicule qui roule pendant ses horaires est « Autorisé » — c'est pour ça qu'il peut rouler sans apparaître dans « Roulent encore ».</span></p>
         </div>
-      }
-    </div>
-
-    <!-- Action de masse -->
-    <div class="card bulk">
-      <div class="bulk-head">
-        <h2>Appliquer des horaires à toute la flotte</h2>
-        <p class="muted small">Active l'automatisation et pose la même plage sur les véhicules de votre périmètre.</p>
-        @if (bulkBlocked()) {
-          <p class="bulk-warn">
-            <lucide-icon [img]="AlertTriangleIcon" [size]="14" />
-            Vous êtes super-administrateur. <b>Choisissez d'abord une société</b> (sélecteur en haut à droite) : l'action ne s'appliquera qu'à cette flotte, jamais à toutes.
-          </p>
-        }
-      </div>
-      <div class="bulk-form">
-        <label>De <input type="time" [ngModel]="bulkStart()" (ngModelChange)="bulkStart.set($event)" /></label>
-        <label>à <input type="time" [ngModel]="bulkEnd()" (ngModelChange)="bulkEnd.set($event)" /></label>
-        <div class="days">
-          @for (d of DAY_KEYS; track d) {
-            <button type="button" class="day" [class.on]="bulkDays()[d]" (click)="toggleDay(d)">{{ DAY_LABELS[d] }}</button>
-          }
-        </div>
-        <div class="bulk-actions">
-          <button type="button" class="btn primary" (click)="openPreview(false)" [disabled]="previewLoading() || bulkBlocked()">
-            <lucide-icon [img]="PowerIcon" [size]="16" /> Aperçu &amp; appliquer
-          </button>
-          <button type="button" class="btn danger-ghost" (click)="openPreview(true)" [disabled]="previewLoading() || bulkBlocked()">
-            <lucide-icon [img]="PowerOffIcon" [size]="16" /> Désactiver sur la flotte
-          </button>
-        </div>
-      </div>
+      </section>
     </div>
 
     @if (truncated()) {
@@ -176,7 +232,7 @@
               @if (multiFleet()) {
                 <tr class="fleet-group-head">
                   <td colspan="5">
-                    <span class="fg-name">🏢 {{ grp.fleetName }}</span>
+                    <span class="fg-name"><lucide-icon [img]="Building2Icon" [size]="14" aria-hidden="true" />{{ grp.fleetName }}</span>
                     <span class="fg-meta">{{ grp.rows.length }} véhicule(s) · {{ grp.enabled }} automatisé(s)@if (grp.cut) { · {{ grp.cut }} coupé(s) }</span>
                   </td>
                 </tr>
@@ -217,13 +273,13 @@
                     <div class="xsmall warn-txt">Coupe possible dans {{ awaitingCountdown(r) }}</div>
                   }
                   @if (r.overrideActive && overrideResume(r); as resume) {
-                    <div class="xsmall muted">↻ {{ resume }}</div>
+                    <div class="xsmall muted avec-icone"><lucide-icon [img]="RotateCwIcon" [size]="12" aria-hidden="true" />{{ resume }}</div>
                   }
                   @if (r.overrideActive && canEdit(r)) {
                     <button type="button" class="btn-reactivate" (click)="reactivate(r)"
                             [disabled]="reactivating().has(r.vehicleId)"
                             title="Efface la suspension : le véhicule rejoint le cycle horaire (coupé au prochain créneau, comme les autres).">
-                      ↻ Réactiver
+                      <lucide-icon [img]="RotateCwIcon" [size]="12" aria-hidden="true" /> Réactiver
                     </button>
                   }
                 </td>
@@ -353,7 +409,7 @@
                 @if (pendingResolved(r.vehicleId)) {
                   <lucide-icon [img]="PowerOffIcon" [size]="15" />
                   <span class="ap-plate">{{ r.plate }}</span>
-                  <span class="ap-state ok">✓ coupée</span>
+                  <span class="ap-state ok"><lucide-icon [img]="CheckIcon" [size]="13" aria-hidden="true" /> coupée</span>
                 } @else {
                   <span class="ap-spinner" aria-hidden="true"></span>
                   <span class="ap-plate">{{ r.plate }}</span>

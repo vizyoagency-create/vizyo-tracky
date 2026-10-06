@@ -14,7 +14,7 @@ import {
   // Boîtier débranché déclaré (05/10/2026) — bandeau au-dessus de la mini-carte.
   Unplug,
 } from 'lucide-angular';
-import { estAuSouterrain, etatVehicule, immobilisationRetenue } from '../../shared/utils/hors-service';
+import { estAuSouterrain, etatVehicule, immobilisationRetenue, installationARevoir } from '../../shared/utils/hors-service';
 import { EtatVehiculeBadgeComponent } from '../../shared/ui/etat-vehicule-badge/etat-vehicule-badge.component';
 
 /** Espace dépôt (2026-08) — la mission en cours affichée en bandeau (A2 § 9). */
@@ -64,7 +64,6 @@ import {
   getVehicleConnectivityState,
   getVehiclePresenceState,
   overlayPresumedParked,
-  isInstallationToReview,
   isVehicleDormant,
   type VehicleConnectivityState,
   type VehiclePresenceState,
@@ -2721,7 +2720,8 @@ export class VehicleDetailComponent implements OnInit {
 
   /** « Installation à revoir » : pose < 1 mois + hors-ligne (a déjà communiqué). */
   protected readonly installToReview = computed(() =>
-    isInstallationToReview(this.connectivity(), this.vehicle()?.tracker?.createdAt ?? null),
+    // 06/10/2026 — pas pour un véhicule dont le silence est expliqué (débranché, immobilisé, maintenance…).
+    installationARevoir(this.etatDispo(), this.connectivity(), this.vehicle()?.tracker?.createdAt ?? null),
   );
 
   private readonly geofencesApi = inject(GeofencesApiService);

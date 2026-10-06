@@ -8,7 +8,8 @@ import {
   formatFleetDateTime,
   formatFleetTime,
 } from '../common/utils/datetime';
-import { buildExploitedScopeNotice, FleetStatsReport } from './reports-stats.service';
+import { buildExploitedScopeNotice,
+  buildUnavailableNotice, FleetStatsReport } from './reports-stats.service';
 // `partLibelle` vient du contrat partagé, et n'a pas de copie ici : le gestionnaire ouvre
 // son PDF à côté de son écran, et « 99 % » d'un côté contre « 100 % » de l'autre sur les
 // MÊMES trajets se lit comme une erreur de calcul, pas comme une nuance d'arrondi.
@@ -205,6 +206,10 @@ export class ReportPdfService {
         // un lecteur qui ouvre une page de zéros doit lire pourquoi avant de lire comment.
         this.renderEtatVide(doc, report, options?.driverLabel);
         this.renderExploitedScopeNotice(doc, report, options?.driverLabel);
+        // 06/10/2026 — les véhicules indisponibles (garage, accident, maintenance) : ce qui explique
+        // un véhicule à 0 km avant qu'on le croie sous-utilisé. Même encart ambre, même règle.
+        const indisponibles = buildUnavailableNotice(report);
+        if (indisponibles) this.renderEncartAmbre(doc, indisponibles);
         if (sections.has('kpi')) this.renderKpis(doc, report, options?.driverLabel);
         if (sections.has('alerts')) this.renderAlerts(doc, report, options?.driverLabel);
         if (sections.has('topVehicles')) {
@@ -374,9 +379,12 @@ export class ReportPdfService {
      * le cas des boîtiers absents dans son encart ; on ne l'écrit ici que s'il se taira.
      */
     const encartAmbrePrendraLeRelais = !!buildExploitedScopeNotice(report, { filtreConducteur: !!driverLabel });
+    // 06/10/2026 — tout le parc est indisponible (garage, accident…) : « vérifiez les boîtiers » serait
+    // un mauvais conseil, l'encart des indisponibles dit déjà pourquoi rien n'a roulé.
+    const toutIndisponible = parc > 0 && (report.vehicles.indisponibles?.length ?? 0) >= parc;
     const cause = driverLabel
       ? 'Vérifiez que les trajets de la période lui sont bien attribués, sur la page Véhicules.'
-      : !encartAmbrePrendraLeRelais && sansBoitier === 0 && parc > 0
+      : !encartAmbrePrendraLeRelais && sansBoitier === 0 && parc > 0 && !toutIndisponible
         ? 'Si vos véhicules ont roulé sur cette période, vérifiez l’alimentation et la connexion de leurs boîtiers.'
         : null;
 
