@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 /**
- * `pnpm verify` — les quatre gardes, TOUJOURS jusqu'au bout, et un verdict qui ne ment pas.
+ * `pnpm verify` — toutes les gardes, TOUJOURS jusqu'au bout, et un verdict qui ne ment pas.
+ * (Quatre à l'origine ; treize depuis le 07/10/2026 : `ETAPES` ci-dessous fait foi.)
  *
  * ┌───────────────────────────────────────────────────────────────────────────────────────────┐
  * │ Pourquoi ce lanceur existe — mesuré le 2026-09-23.                                        │
@@ -12,8 +13,8 @@
  * │ un souci de migration » alors que c'est « rien n'a été vérifié ».                          │
  * │                                                                                            │
  * │ Deux règles, donc :                                                                        │
- * │   1. on exécute les QUATRE étapes, quoi qu'il arrive — un obstacle sur l'une ne doit pas  │
- * │      coûter le signal des trois autres ;                                                   │
+ * │   1. on exécute TOUTES les étapes, quoi qu'il arrive — un obstacle sur l'une ne doit pas  │
+ * │      coûter le signal des autres ;                                                         │
  * │   2. le récapitulatif final distingue ÉCHEC (un défaut trouvé) de NON VÉRIFIÉ (on n'a pas │
  * │      pu regarder). Les confondre, c'est ce qui fait croire qu'on a vérifié.                │
  * └───────────────────────────────────────────────────────────────────────────────────────────┘
@@ -43,6 +44,19 @@ const ETAPES = [
   // 06/10/2026 — « une icône est un SVG, jamais un emoji » (demande du propriétaire). Moins
   // d'une seconde : la règle tient dans le temps sans que personne ait à y penser.
   { cle: 'icones', titre: 'Icônes en SVG (aucun emoji)', script: 'verif:icones' },
+  // 07/10/2026 — les huit contrôles maison ne tournaient dans AUCUNE chaîne : `verif:accents`,
+  // `verif:couleurs-kit` et `verif:variables` sont restés rouges sur main du 27/09 au 06/10
+  // sans que personne ne le voie (un jeton de couleur inventé, `--texte-danger`, retombait sur
+  // un repli à 2,8:1). Quelques secondes chacun ; lancés depuis la racine — `carte-gardes`
+  // résout ses chemins depuis le répertoire courant.
+  { cle: 'accents', titre: 'Accents (textes affichés)', script: 'verif:accents' },
+  { cle: 'couleurs-kit', titre: 'Couleurs (aucune en dur)', script: 'verif:couleurs-kit' },
+  { cle: 'variables', titre: 'Variables CSS (aucune inexistante)', script: 'verif:variables' },
+  { cle: 'contraste', titre: 'Contrastes ≥ 4,5:1 (clair et sombre)', script: 'verif:contraste' },
+  { cle: 'litteraux', titre: 'Littéraux de gabarit (accent grave)', script: 'verif:litteraux' },
+  { cle: 'confirmations', titre: 'Modales de danger (ce qui est perdu)', script: 'verif:confirmations' },
+  { cle: 'numero-urgence', titre: 'Numéro d’urgence (un seul endroit)', script: 'verif:numero-urgence' },
+  { cle: 'carte-gardes', titre: 'Carte (sources MapLibre gardées)', script: 'verif:carte-gardes' },
   { cle: 'tests', titre: 'Tests', script: 'test' },
 ];
 
