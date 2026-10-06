@@ -1,7 +1,7 @@
 {
   "_comment": "Ce que le POSTE DE COMMANDE montre en plus des tâches. Les tâches, elles, viennent de docs/centre-alerte/app/taches.json et ne se recopient JAMAIS ici — voir generer.mjs. Ce fichier ne porte que ce qu'aucune tâche ne décrit : les mesures de tête, les mécaniques qui tournent seules, les décisions posées au propriétaire, et ce qui est prouvé.",
   "version": 1,
-  "releve": "5 octobre 2026, 08h47 Paris",
+  "releve": "6 octobre 2026, 03h14 Paris",
   "machines": [
     {
       "nom": "Rattrapage du recalage des tracés",
@@ -20,23 +20,23 @@
       "pied2": "s’éteint seule"
     },
     {
-      "nom": "Coupe-circuit automatique — 20 nuits sur le chantier : 3 propres, 1 retardée de 53 min depuis le 01/10",
-      "texte": "Du 01 au 05/10 : preuve SMS 3 sur 3 chaque jour, toutes les reprises acquittées (33 ce matin), aucun déploiement depuis le 01/10. Samedi 03/10 le téléphone passerelle (S21) s’est tu 6 h 40 (13:59 → ~20:40 Paris) : les 6 coupes MH Cars de 20:00 Paris ont été retenues par l’interlock puis sont parties à 20:52–20:54 ; CDEF31 (22:00 Paris) n’a rien subi — 26 coupes à l’heure. La garde a tenu, mais c’est le plus long silence de la série.",
+      "nom": "Coupe-circuit automatique — nuit du 05/10 : 30 coupes sur 32 confirmées, 2 non confirmées (déploiement dans la vague)",
+      "texte": "Le 05/10 : preuve SMS 3 sur 3, 37 reprises toutes acquittées, 0 refus d’interlock, le téléphone passerelle (S21) n’a pas décroché depuis le 03/10. Mais un déploiement lancé en attente a recréé l’API à 22:05 Paris, au milieu de la vague de coupe CDEF31 : 39 boîtiers se sont reconnectés d’un coup et deux coupes (HD-603-XY, HD-686-QX) sont restées « non confirmées », sans aucune alerte. Leur état réel se lit à la reprise de ce matin (05:00 Paris pour MH Cars, 07:00 pour CDEF31).",
       "fait": null,
       "total": null,
-      "pied": "9 silences du téléphone en 18 jours (le dernier : 6 h 40, le plus long) — 26 alertes critiques pour un seul épisode (T76) ; 2 reprises par SMS le 02/10, accusées sans erreur (T85, volet donnée exercé)",
-      "pied2": "T55 (second téléphone) + T76 (une alerte par épisode) ; T85 côté code ; T78 ; T86 ; T84 ; T80 ; T38 ; 🆕 T87 (accès CLI Claude des agents du poste) et T88 (acharnement = essais de pose)"
+      "pied": "9 silences du téléphone en 18 jours, 0 depuis 55 h ; 12 déploiements le 05/10 dont 3 forcés (2 passages d’automatisation tués)",
+      "pied2": "🆕 T89 (une coupe « non confirmée » ne dit rien) ; T86 remontée (le script de déploiement ne protège pas la vague de coupe : 2ᵉ occurrence) ; T55 + T76 ; T85 côté code ; T78 ; T84 ; T80 ; T38 ; T88 (acharnement = essais de pose)"
     }
   ],
   "chiffres": [
     {
-      "v": "0",
-      "t": "reprise non prouvée sur 5 matins (33 reprises ce matin, toutes acquittées) ; preuve SMS 3 sur 3 ; samedi 03/10 le téléphone passerelle s’est tu 6 h 40 — 6 coupes MH Cars retenues 53 min, CDEF31 intact ; 208 CRITICAL actives (+50 en 4 jours) ; 2 signatures nouvelles : agents du poste à l’arrêt depuis le 01/10 (aucun récit de trajet n’est plus écrit) et « acharnement » = tes essais de pose",
+      "v": "2",
+      "t": "coupes du 05/10 non confirmées (HD-603-XY et HD-686-QX) : un déploiement a recréé l’API en pleine vague de coupe CDEF31 ; 0 reprise non prouvée, preuve SMS 3 sur 3 ; 197 CRITICAL actives (208 hier : les agents du poste ont repris le 05/10, 964 récits de trajet écrits)",
       "alerte": true
     },
     {
-      "v": "659/660",
-      "t": "trajets des 01, 02 et 03/10 recalés — trois journées figées (T28), 1 trajet sans recalage le 03/10 (non instruit) ; le 04/10 est à 86/86, fenêtre encore ouverte"
+      "v": "543/544",
+      "t": "trajets des 02, 03 et 04/10 recalés — trois journées figées (T28), 1 trajet sans recalage le 03/10 (non instruit) ; le 05/10 est à 228/228, fenêtre encore ouverte"
     },
     {
       "v": "auto",
