@@ -197,7 +197,7 @@ const ROLE_LABELS: Record<string, string> = {
             @if (saving()) {
               <span class="text-xs text-fg-secondary">Enregistrement…</span>
             } @else if (savedAt()) {
-              <span class="text-xs text-tracky-light">✓ Enregistré</span>
+              <span class="text-xs text-tracky-light inline-flex items-center gap-1"><lucide-icon [img]="Check" [size]="12" aria-hidden="true"></lucide-icon>Enregistré</span>
             }
           </div>
 

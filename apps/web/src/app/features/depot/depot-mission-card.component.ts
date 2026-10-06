@@ -1,6 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, input, output } from '@angular/core';
 import type { DepotMissionDto } from '@vizyo/tracky-shared';
-import { History, LucideAngularModule, Phone, Truck } from 'lucide-angular';
+import { ArrowRight, History, LucideAngularModule, Phone, Truck } from 'lucide-angular';
 
 /**
  * Espace dépôt (2026-08) — la carte d'une mission (A3 § 1).
@@ -36,7 +36,7 @@ import { History, LucideAngularModule, Phone, Truck } from 'lucide-angular';
         </span>
       </header>
 
-      <p class="dmc-trajet">{{ mission().origin }} <span aria-hidden="true">→</span> {{ mission().destination }}</p>
+      <p class="dmc-trajet">{{ mission().origin }} <lucide-icon class="dmc-fleche" [img]="ArrowRight" [size]="13" aria-hidden="true"></lucide-icon> {{ mission().destination }}</p>
 
       <!-- A6 / T8 — la tournee, quand il y en a une. Le depot doit savoir que son
            camion passe ailleurs avant chez lui : c'est ce qui explique une heure
@@ -126,6 +126,7 @@ import { History, LucideAngularModule, Phone, Truck } from 'lucide-angular';
     .dmc-tete { display: flex; align-items: center; justify-content: space-between; gap: 10px }
     .dmc-ref { font-family: var(--font-mono); font-size: 12px; font-weight: 700; color: var(--text-primary) }
     .dmc-trajet { margin: 0; font-size: 14px; font-weight: 600; line-height: 1.35; color: var(--text-primary) }
+    .dmc-fleche { display: inline-flex; vertical-align: -2px; color: var(--text-secondary) }
     .dmc-etapes { margin: 6px 0 0; padding: 0 0 0 15px; list-style: none;
                   display: flex; flex-direction: column; gap: 3px;
                   border-left: 2px dotted var(--border-strong-color) }
@@ -181,6 +182,7 @@ export class DepotMissionCardComponent {
   protected readonly Truck = Truck;
   protected readonly History = History;
   protected readonly Phone = Phone;
+  protected readonly ArrowRight = ArrowRight;
 
   /** Le bouton d'appel n'existe que pendant le suivi : hors fenêtre, l'endpoint
    *  refuse de toute façon, et un bouton qui échoue vaut moins qu'un bouton absent. */

@@ -4,7 +4,7 @@ import { httpFailureMessage } from '../../core/services/http-failure';
 import { ChangeDetectionStrategy, Component, HostListener, computed, inject, OnInit, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
-import { LucideAngularModule, Archive, Users, Shield, Pencil, KeyRound, Send, XCircle, Mail, UserPlus, MoreVertical, Check, AlertTriangle } from 'lucide-angular';
+import { LucideAngularModule, Archive, Users, Shield, Pencil, KeyRound, Send, XCircle, Mail, UserPlus, MoreVertical, Check, AlertTriangle, Diamond, Circle, ArrowRight } from 'lucide-angular';
 import { firstValueFrom } from 'rxjs';
 import { getDefaultPermissions, PERMISSION_GROUP_ORDER, PERMISSION_LABELS, type UserPermissions } from '@vizyo/tracky-shared';
 import { AudioMonitoringService } from '../../core/services/audio-monitoring.service';
@@ -80,7 +80,7 @@ type AppRole = 'FLEET_ADMIN' | 'FLEET_MANAGER' | 'VIEWER' | 'NIGHT_WATCHMAN' | '
               <h3 class="m-title">Matrice de permissions</h3>
               <p class="m-desc">Le rôle n'est qu'un <strong>point de départ</strong>. Chaque permission ci-dessous s'active ou se coupe <strong>par utilisateur</strong> (et par groupe / véhicule) via « Détail par utilisateur » — aucune n'est définitivement bloquée par le rôle.</p>
             </div>
-            <a routerLink="/users/overview" class="m-detail-link">Détail par utilisateur →</a>
+            <a routerLink="/users/overview" class="m-detail-link">Détail par utilisateur <lucide-icon [img]="ArrowRightIcon" [size]="13" aria-hidden="true"></lucide-icon></a>
           </div>
           <div class="m-grid m-grid-head">
             <span></span>
@@ -101,14 +101,14 @@ type AppRole = 'FLEET_ADMIN' | 'FLEET_MANAGER' | 'VIEWER' | 'NIGHT_WATCHMAN' | '
                            l'inquiétude inverse : le Fleet Admin croirait ouvrir sa
                            flotte. C'est cette distinction visuelle qui lui permet de
                            comprendre en trois secondes (A5 § 4). -->
-                      <span class="chk-depot" title="Accordé, mais limité à ses propres missions — non modifiable">◆</span>
+                      <span class="chk-depot" role="img" aria-label="Accordé, mais limité à ses propres missions" title="Accordé, mais limité à ses propres missions — non modifiable"><lucide-icon [img]="DiamondIcon" [size]="12" aria-hidden="true"></lucide-icon></span>
                     } @else if (isDefaultOn(p.key, r.role)) {
                       <span class="chk" title="Activé par défaut"><lucide-icon [img]="CheckIcon" [size]="13"></lucide-icon></span>
                     } @else if (r.role === 'DEPOT') {
                       <!-- Le rôle est FERMÉ : la case est grisée, pas « activable ». -->
                       <span class="chk-fige" title="Le périmètre d'un dépôt est fixé par ses missions">—</span>
                     } @else {
-                      <span class="chk-part" title="Désactivé par défaut — activable par utilisateur">○</span>
+                      <span class="chk-part" role="img" aria-label="Désactivé par défaut, activable par utilisateur" title="Désactivé par défaut — activable par utilisateur"><lucide-icon [img]="CircleIcon" [size]="11" aria-hidden="true"></lucide-icon></span>
                     }
                   </span>
                 }
@@ -117,14 +117,14 @@ type AppRole = 'FLEET_ADMIN' | 'FLEET_MANAGER' | 'VIEWER' | 'NIGHT_WATCHMAN' | '
           }
           <div class="m-legend">
             <span><span class="chk chk-sm"><lucide-icon [img]="CheckIcon" [size]="11"></lucide-icon></span> Activé par défaut</span>
-            <span><span class="chk-part chk-sm">○</span> Désactivé par défaut — activable par utilisateur</span>
-            <span><span class="chk-depot chk-sm">◆</span> Limité à ses propres missions</span>
+            <span><span class="chk-part chk-sm"><lucide-icon [img]="CircleIcon" [size]="10" aria-hidden="true"></lucide-icon></span> Désactivé par défaut — activable par utilisateur</span>
+            <span><span class="chk-depot chk-sm"><lucide-icon [img]="DiamondIcon" [size]="10" aria-hidden="true"></lucide-icon></span> Limité à ses propres missions</span>
           </div>
           <!-- La légende du ◆, en toutes lettres. Sans elle, le marqueur intrigue
                sans rassurer — et c'est précisément la question que se pose un Fleet
                Admin avant d'ouvrir un accès à une société extérieure. -->
           <p class="m-legend-depot">
-            <strong>◆ Limité à ses propres missions</strong> — le dépôt n'a aucun droit
+            <strong><lucide-icon [img]="DiamondIcon" [size]="11" aria-hidden="true"></lucide-icon> Limité à ses propres missions</strong> — le dépôt n'a aucun droit
             d'action : son accès est en lecture seule, borné à la fenêtre horaire de chaque
             mission. Ses cases ne sont pas modifiables : son périmètre est fixé par les
             missions que vous lui assignez, pas par cette matrice.
@@ -388,7 +388,8 @@ type AppRole = 'FLEET_ADMIN' | 'FLEET_MANAGER' | 'VIEWER' | 'NIGHT_WATCHMAN' | '
     .m-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; padding: 16px 18px 14px; border-bottom: 1px solid var(--border-subtle) }
     .m-title { font-size: 15px; font-weight: 700; color: var(--fg-primary) }
     .m-desc { margin-top: 5px; font-size: 12.5px; color: var(--fg-tertiary); max-width: 62ch }
-    .m-detail-link { font-size: 12px; font-weight: 600; color: var(--tracky-light); white-space: nowrap; flex-shrink: 0 }
+    .m-detail-link { font-size: 12px; font-weight: 600; color: var(--tracky-light); white-space: nowrap; flex-shrink: 0;
+                     display: inline-flex; align-items: center; gap: 3px }
     .m-detail-link:hover { text-decoration: underline }
     .m-grid { display: grid; grid-template-columns: minmax(180px,2fr) repeat(5,1fr); align-items: center; gap: 10px; padding: 11px 18px; border-top: 1px solid var(--border-subtle) }
     .m-group-h { padding: 13px 18px 5px; font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .06em; color: var(--fg-tertiary); border-top: 1px solid var(--border-subtle) }
@@ -417,6 +418,8 @@ type AppRole = 'FLEET_ADMIN' | 'FLEET_MANAGER' | 'VIEWER' | 'NIGHT_WATCHMAN' | '
                       background: color-mix(in srgb, var(--violet) 7%, transparent);
                       font-size: 11.5px; line-height: 1.6; color: var(--fg-secondary) }
     .m-legend-depot strong { color: var(--violet) }
+    /* 06/10/2026 — le losange en SVG (plus de glyphe ◆), aligné sur la ligne du texte. */
+    .m-legend-depot strong lucide-icon { display: inline-flex; vertical-align: -1px }
     .m-legend { display: flex; flex-wrap: wrap; gap: 16px; padding: 12px 18px; border-top: 1px solid var(--border-subtle); background: var(--bg-secondary); font-size: 11.5px; color: var(--fg-tertiary) }
     .m-legend > span { display: inline-flex; align-items: center; gap: 7px }
     .chk-sm { width: 18px; height: 18px }
@@ -694,6 +697,9 @@ export class UsersListComponent implements OnInit {
   protected readonly UserPlusIcon = UserPlus;
   protected readonly MoreVerticalIcon = MoreVertical;
   protected readonly CheckIcon = Check;
+  protected readonly DiamondIcon = Diamond;
+  protected readonly CircleIcon = Circle;
+  protected readonly ArrowRightIcon = ArrowRight;
 
   async ngOnInit(): Promise<void> {
     // Deep-link d'onglet via ?tab=drivers|roles (redirection /drivers → /users?tab=drivers).

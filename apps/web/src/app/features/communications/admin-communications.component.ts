@@ -2,7 +2,7 @@ import { DatePipe } from '@angular/common';
 import { ChangeDetectionStrategy, Component, computed, inject, OnInit, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
-import { Bell, LucideAngularModule, Mail, MessageSquare, RefreshCw, X } from 'lucide-angular';
+import { ArrowLeft, ArrowRight, Bell, LucideAngularModule, Mail, MessageSquare, RefreshCw, X } from 'lucide-angular';
 import { firstValueFrom } from 'rxjs';
 import {
   AdminCommunicationsService,
@@ -16,11 +16,14 @@ import { ToastService } from '../../shared/ui/toast/toast.service';
 
 type Tab = 'overview' | 'journal' | 'templates';
 
-/** Présentation par canal — un seul endroit à maintenir. */
-const CHANNEL_META: Record<CommChannel, { label: string; icon: string; tone: string; soft: string }> = {
-  EMAIL: { label: 'E-mails', icon: '✉', tone: 'text-tracky-light', soft: 'bg-tracky-light/10' },
-  SMS: { label: 'SMS', icon: '💬', tone: 'text-sky-400', soft: 'bg-sky-400/10' },
-  PUSH: { label: 'Notifications', icon: '🔔', tone: 'text-violet-400', soft: 'bg-violet-400/10' },
+/**
+ * Présentation par canal — un seul endroit à maintenir. Les icônes sont des SVG lucide, plus des
+ * emoji (06/10/2026 : une icône est un SVG, jamais un emoji).
+ */
+const CHANNEL_META: Record<CommChannel, { label: string; icon: typeof Mail; tone: string; soft: string }> = {
+  EMAIL: { label: 'E-mails', icon: Mail, tone: 'text-tracky-light', soft: 'bg-tracky-light/10' },
+  SMS: { label: 'SMS', icon: MessageSquare, tone: 'text-sky-400', soft: 'bg-sky-400/10' },
+  PUSH: { label: 'Notifications', icon: Bell, tone: 'text-violet-400', soft: 'bg-violet-400/10' },
 };
 
 /**
@@ -43,8 +46,8 @@ const CHANNEL_META: Record<CommChannel, { label: string; icon: string; tone: str
                Le retrait négatif garde le titre à sa place — la zone grandit, pas la mise
                en page. -->
           <a routerLink="/admin"
-             class="inline-flex items-center font-mono text-[10px] tracking-[0.14em] uppercase text-fg-tertiary hover:text-fg-secondary"
-             style="min-height:44px;margin-top:-12px">← Administration</a>
+             class="inline-flex items-center gap-1 font-mono text-[10px] tracking-[0.14em] uppercase text-fg-tertiary hover:text-fg-secondary"
+             style="min-height:44px;margin-top:-12px"><lucide-icon [img]="ArrowLeftIcon" [size]="12" aria-hidden="true"></lucide-icon>Administration</a>
           <h1 class="font-display text-[26px] font-extrabold tracking-[-0.025em] text-fg-primary -mt-2">Communications</h1>
           <p class="text-[13px] text-fg-tertiary mt-0.5">
             Tout ce que Tracky envoie — e-mails, SMS et notifications — au même endroit.
@@ -68,7 +71,7 @@ const CHANNEL_META: Record<CommChannel, { label: string; icon: string; tone: str
                  sa pilule. Tronquer donnait « NOTI… » — un badge dont le seul rôle est de
                  nommer le canal, et qui ne le nomme plus. Il descend d'une ligne. -->
             <div class="flex items-center justify-between gap-2 flex-wrap mb-3">
-              <span class="inline-flex items-center justify-center w-9 h-9 rounded-xl text-[17px] shrink-0" [class]="meta(c.channel).soft">{{ meta(c.channel).icon }}</span>
+              <span class="inline-flex items-center justify-center w-9 h-9 rounded-xl shrink-0" [class]="meta(c.channel).soft + ' ' + meta(c.channel).tone"><lucide-icon [img]="meta(c.channel).icon" [size]="17" aria-hidden="true"></lucide-icon></span>
               <span class="font-mono text-[9px] tracking-[0.12em] uppercase px-2 py-1 rounded-md whitespace-nowrap" [class]="meta(c.channel).soft + ' ' + meta(c.channel).tone">{{ meta(c.channel).label }}</span>
             </div>
             <div class="font-mono text-[26px] font-semibold text-fg-primary leading-none">{{ c.sent }}</div>
@@ -123,7 +126,7 @@ const CHANNEL_META: Record<CommChannel, { label: string; icon: string; tone: str
           <div class="text-[12px] text-fg-tertiary mb-4">Les 12 modèles les plus envoyés, tous canaux confondus.</div>
           @for (t of overview()?.byTemplate ?? []; track t.channel + t.template) {
             <div class="flex items-center gap-3 py-2 border-b border-border-subtle/60 last:border-0">
-              <span class="w-[22px] text-center text-[13px]">{{ meta(t.channel).icon }}</span>
+              <span class="w-[22px] inline-flex justify-center text-fg-tertiary" role="img" [attr.aria-label]="meta(t.channel).label"><lucide-icon [img]="meta(t.channel).icon" [size]="14" aria-hidden="true"></lucide-icon></span>
               <span class="flex-1 text-[13px] text-fg-secondary truncate">{{ t.label }}</span>
               <span class="font-mono text-[12px] font-semibold text-fg-primary">{{ t.count }}</span>
             </div>
@@ -145,10 +148,10 @@ const CHANNEL_META: Record<CommChannel, { label: string; icon: string; tone: str
                   [class]="!channel() ? 'border-tracky-light text-tracky-light bg-tracky-light/10' : 'border-border-subtle text-fg-tertiary'">Tous</button>
           @for (c of CHANNEL_KEYS; track c) {
             <button type="button" (click)="setChannel(c)"
-                    class="px-3 rounded-lg text-[12px] font-semibold border"
+                    class="inline-flex items-center gap-1.5 px-3 rounded-lg text-[12px] font-semibold border"
                     style="min-height:44px"
                     [class]="channel() === c ? 'border-tracky-light text-tracky-light bg-tracky-light/10' : 'border-border-subtle text-fg-tertiary'">
-              {{ meta(c).icon }} {{ meta(c).label }}
+              <lucide-icon [img]="meta(c).icon" [size]="13" aria-hidden="true"></lucide-icon> {{ meta(c).label }}
             </button>
           }
           <input [(ngModel)]="search" (keyup.enter)="reloadLogs()" placeholder="Rechercher…"
@@ -159,7 +162,7 @@ const CHANNEL_META: Record<CommChannel, { label: string; icon: string; tone: str
         <div class="bg-bg-secondary border border-border-subtle rounded-[--radius-card] overflow-hidden">
           @for (l of logs(); track l.channel + l.id) {
             <div class="flex items-center gap-3 px-4 py-2.5 border-b border-border-subtle/60 last:border-0">
-              <span class="w-[22px] text-center text-[13px] shrink-0" [title]="meta(l.channel).label">{{ meta(l.channel).icon }}</span>
+              <span class="w-[22px] inline-flex justify-center shrink-0 text-fg-tertiary" [title]="meta(l.channel).label" role="img" [attr.aria-label]="meta(l.channel).label"><lucide-icon [img]="meta(l.channel).icon" [size]="14" aria-hidden="true"></lucide-icon></span>
               <div class="min-w-0 flex-1">
                 <div class="text-[13px] text-fg-primary truncate">{{ l.subject || l.templateLabel }}</div>
                 <div class="text-[11px] text-fg-tertiary truncate">{{ l.templateLabel }} · {{ l.target }}</div>
@@ -182,7 +185,7 @@ const CHANNEL_META: Record<CommChannel, { label: string; icon: string; tone: str
         @for (c of CHANNEL_KEYS; track c) {
           <div class="mb-6">
             <div class="flex items-center gap-2 mb-2.5">
-              <span class="text-[14px]">{{ meta(c).icon }}</span>
+              <lucide-icon [img]="meta(c).icon" [size]="15" class="text-fg-tertiary" aria-hidden="true"></lucide-icon>
               <span class="font-display text-[15px] font-bold text-fg-primary">{{ meta(c).label }}</span>
               <span class="font-mono text-[10px] text-fg-tertiary">{{ byChannel(c).length }}</span>
             </div>
@@ -200,7 +203,7 @@ const CHANNEL_META: Record<CommChannel, { label: string; icon: string; tone: str
                   <div class="text-[11px] text-fg-tertiary mb-2.5"><span class="text-fg-secondary">Déclencheur :</span> {{ t.trigger }}</div>
                   <div class="flex items-center justify-between">
                     <span class="font-mono text-[10.5px] text-fg-tertiary">30 j · <span class="text-fg-primary font-semibold">{{ t.sent30d }}</span>@if (t.failed30d) { <span class="text-rose-400"> · {{ t.failed30d }} KO</span> }</span>
-                    @if (t.previewable) { <span class="text-[11px] font-semibold text-tracky-light">Aperçu →</span> }
+                    @if (t.previewable) { <span class="inline-flex items-center gap-1 text-[11px] font-semibold text-tracky-light">Aperçu <lucide-icon [img]="ArrowRightIcon" [size]="11" aria-hidden="true"></lucide-icon></span> }
                   </div>
                 </button>
               }
@@ -240,6 +243,8 @@ export class AdminCommunicationsComponent implements OnInit {
   protected readonly Mail = Mail;
   protected readonly MessageSquare = MessageSquare;
   protected readonly Bell = Bell;
+  protected readonly ArrowLeftIcon = ArrowLeft;
+  protected readonly ArrowRightIcon = ArrowRight;
 
   protected readonly TABS: { key: Tab; label: string }[] = [
     { key: 'overview', label: 'Vue d\'ensemble' },

@@ -1,7 +1,7 @@
 import { swallow } from '../../../core/error/swallow';
 import { Component, computed, effect, inject, input, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { LucideAngularModule, Clock, Save, X, Shield, Briefcase, Calendar, Settings2, Zap } from 'lucide-angular';
+import { LucideAngularModule, Clock, Save, X, Shield, Briefcase, Calendar, Settings2, Zap, ArrowRight, ChevronRight } from 'lucide-angular';
 import { firstValueFrom } from 'rxjs';
 import { AuthService } from '../../../core/services/auth.service';
 import { PermissionsService } from '../../../core/services/permissions.service';
@@ -31,11 +31,11 @@ interface CustomDateRow {
 
 const COUNTRY_CHOICES: { value: string; label: string }[] = [
   { value: '', label: 'Aucun (ignorer)' },
-  { value: 'FR', label: '🇫🇷 France' },
-  { value: 'MA', label: '🇲🇦 Maroc' },
-  { value: 'BE', label: '🇧🇪 Belgique' },
-  { value: 'LU', label: '🇱🇺 Luxembourg' },
-  { value: 'CH', label: '🇨🇭 Suisse' },
+  { value: 'FR', label: 'France' },
+  { value: 'MA', label: 'Maroc' },
+  { value: 'BE', label: 'Belgique' },
+  { value: 'LU', label: 'Luxembourg' },
+  { value: 'CH', label: 'Suisse' },
 ];
 
 const DAY_KEYS = [
@@ -86,9 +86,9 @@ const TIMEZONES = [
               <h3 class="vsched-header-title">Automatisation horaire</h3>
               <p class="vsched-header-sub">
                 @if (globalEnabled()) {
-                  <span class="vsched-status vsched-status--on">● Activée</span>
+                  <span class="vsched-status vsched-status--on"><span class="vsched-point" aria-hidden="true"></span>Activée</span>
                 } @else {
-                  <span class="vsched-status vsched-status--off">○ Désactivée</span>
+                  <span class="vsched-status vsched-status--off"><span class="vsched-point" aria-hidden="true"></span>Désactivée</span>
                 }
                 · {{ enabledDaysCount() }} jour{{ enabledDaysCount() > 1 ? 's' : '' }} actif{{ enabledDaysCount() > 1 ? 's' : '' }}
               </p>
@@ -202,7 +202,7 @@ const TIMEZONES = [
                       [disabled]="readonly()"
                       class="vsched-time-input"
                     />
-                    <span class="vsched-time-arrow">→</span>
+                    <lucide-icon class="vsched-time-arrow" [img]="ArrowRightIcon" [size]="12" aria-hidden="true"></lucide-icon>
                     <input
                       type="time"
                       [ngModel]="day.end"
@@ -260,8 +260,8 @@ const TIMEZONES = [
         <div class="vsched-advanced">
           <button type="button" class="vsched-advanced-toggle" (click)="toggleAdvanced()">
             <lucide-icon [img]="Settings2Icon" [size]="14"></lucide-icon>
-            Options avancees
-            <span class="vsched-advanced-arrow" [class.vsched-advanced-arrow--open]="advancedExpanded()">▶</span>
+            Options avancées
+            <lucide-icon class="vsched-advanced-arrow" [class.vsched-advanced-arrow--open]="advancedExpanded()" [img]="ChevronRightIcon" [size]="13" aria-hidden="true"></lucide-icon>
           </button>
 
           @if (advancedExpanded()) {
@@ -393,7 +393,10 @@ const TIMEZONES = [
     }
     .vsched-header-title { font-size: 15px; font-weight: 700; color: var(--fg-primary); line-height: 1.2 }
     .vsched-header-sub { font-size: 11px; color: var(--fg-tertiary); margin-top: 3px; line-height: 1.2 }
-    .vsched-status { font-weight: 700 }
+    .vsched-status { font-weight: 700; display: inline-flex; align-items: center; gap: 5px }
+    /* 06/10/2026 — la pastille d'état en CSS (plus de glyphe ● / ○) : pleine si activée, creuse sinon. */
+    .vsched-point { width: 7px; height: 7px; border-radius: 50%; background: currentColor; flex-shrink: 0 }
+    .vsched-status--off .vsched-point { background: transparent; box-shadow: inset 0 0 0 1.5px currentColor }
     .vsched-status--on { color: var(--tracky-light) }
     .vsched-status--off { color: var(--fg-tertiary) }
 
@@ -552,7 +555,7 @@ const TIMEZONES = [
     }
     .vsched-time-input:focus { border-color: var(--tracky) }
     .vsched-time-input:disabled { opacity: .5 }
-    .vsched-time-arrow { color: var(--fg-tertiary); font-size: 11px; flex-shrink: 0 }
+    .vsched-time-arrow { color: var(--fg-tertiary); display: inline-flex; flex-shrink: 0 }
     .vsched-day-off { font-size: 11px; color: var(--fg-tertiary); font-style: italic }
 
     /* Override warning */
@@ -620,7 +623,7 @@ const TIMEZONES = [
       cursor: pointer;
     }
     .vsched-advanced-toggle:hover { background: var(--bg-tertiary) }
-    .vsched-advanced-arrow { margin-left: auto; transition: transform .2s; font-size: 9px }
+    .vsched-advanced-arrow { margin-left: auto; transition: transform .2s; display: inline-flex }
     .vsched-advanced-arrow--open { transform: rotate(90deg) }
     .vsched-advanced-body {
       padding: 12px 16px 16px;
@@ -718,6 +721,8 @@ export class VehicleScheduleComponent {
   protected readonly CalendarIcon = Calendar;
   protected readonly Settings2Icon = Settings2;
   protected readonly ZapIcon = Zap;
+  protected readonly ArrowRightIcon = ArrowRight;
+  protected readonly ChevronRightIcon = ChevronRight;
   protected readonly timezones = TIMEZONES;
 
   protected readonly loading = signal(true);

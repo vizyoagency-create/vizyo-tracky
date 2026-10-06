@@ -22,6 +22,7 @@
     "verif:confirmations": "node scripts/verif-confirmations.mjs",
     "verif:couleurs-kit": "node scripts/verif-couleurs-kit.mjs",
     "verif:variables": "node scripts/verif-variables.mjs",
+    "verif:icones": "node scripts/verif-icones.mjs",
     "verif:numero-urgence": "node scripts/verif-numero-urgence.mjs",
     "verif:migrations": "node scripts/verif-migrations.mjs",
     "verify": "node scripts/verify.mjs",

@@ -10,7 +10,7 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
-import { AlertTriangle, LucideAngularModule, Route, Warehouse, X } from 'lucide-angular';
+import { AlertTriangle, ArrowDown, ArrowUp, LucideAngularModule, Route, Warehouse, X } from 'lucide-angular';
 import { corpsErreur } from '../../../core/interceptors/auth.interceptor';
 import { swallow } from '../../../core/error/swallow';
 import { FleetFilterService } from '../../../core/services/fleet-filter.service';
@@ -107,14 +107,14 @@ interface ConflitMission {
                 <button type="button" class="md-etape-b"
                         [disabled]="i === 0"
                         (click)="monterEtape(i)"
-                        [attr.aria-label]="'Remonter la livraison ' + (i + 1)">↑</button>
+                        [attr.aria-label]="'Remonter la livraison ' + (i + 1)"><lucide-icon [img]="ArrowUpIcon" [size]="15" aria-hidden="true"></lucide-icon></button>
                 <button type="button" class="md-etape-b"
                         [disabled]="i === etapes().length - 1"
                         (click)="descendreEtape(i)"
-                        [attr.aria-label]="'Descendre la livraison ' + (i + 1)">↓</button>
+                        [attr.aria-label]="'Descendre la livraison ' + (i + 1)"><lucide-icon [img]="ArrowDownIcon" [size]="15" aria-hidden="true"></lucide-icon></button>
                 <button type="button" class="md-etape-b md-etape-b--x"
                         (click)="retirerEtape(i)"
-                        [attr.aria-label]="'Retirer la livraison ' + (i + 1)">×</button>
+                        [attr.aria-label]="'Retirer la livraison ' + (i + 1)"><lucide-icon [img]="X" [size]="15" aria-hidden="true"></lucide-icon></button>
               </div>
             }
             <button type="button" class="md-etape-ajout" (click)="ajouterEtape()">
@@ -350,7 +350,8 @@ interface ConflitMission {
     .md-etape-b {
       flex: 0 0 auto; width: 32px; height: 32px; border-radius: 9px; cursor: pointer;
       background: var(--surface-tertiary); border: 1px solid var(--border-color);
-      color: var(--text-secondary); font-size: 15px; line-height: 1; font-family: inherit; }
+      color: var(--text-secondary); font-size: 15px; line-height: 1; font-family: inherit;
+      display: inline-flex; align-items: center; justify-content: center; }
     .md-etape-b:disabled { opacity: .35; cursor: not-allowed; }
     .md-etape-b--x { color: var(--texte-alerte); }
     .md-etape-ajout {
@@ -535,6 +536,8 @@ export class MissionDialogComponent {
 
   protected readonly Route = Route;
   protected readonly X = X;
+  protected readonly ArrowUpIcon = ArrowUp;
+  protected readonly ArrowDownIcon = ArrowDown;
   protected readonly Warehouse = Warehouse;
   protected readonly AlertTriangle = AlertTriangle;
 

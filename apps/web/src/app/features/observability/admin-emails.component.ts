@@ -4,7 +4,11 @@ import { ChangeDetectionStrategy, Component, computed, inject, OnInit, signal } 
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { DomSanitizer, type SafeHtml } from '@angular/platform-browser';
-import { ArrowLeft, LucideAngularModule, RefreshCw, Send, X } from 'lucide-angular';
+import {
+  AlertTriangle, ArrowLeft, ArrowRight, BarChart3, Check, CircleCheck, FilePen, Hand, Handshake, Headphones,
+  KeyRound, LucideAngularModule, Mail, Receipt, RefreshCw, Search, Send, ShieldAlert, Smartphone, Target,
+  Volume2, X,
+} from 'lucide-angular';
 import { firstValueFrom } from 'rxjs';
 import {
   AdminEmailsService,
@@ -18,21 +22,27 @@ import { ToastService } from '../../shared/ui/toast/toast.service';
 
 type Tab = 'suivi' | 'templates' | 'deliver';
 
-/** Présentation client (icône + teinte) par modèle — le reste vient du backend. */
-const TPL_PRESENT: Record<string, { icon: string; tone: 'green' | 'red' | 'amber'; desc: string }> = {
-  invitation: { icon: '✉', tone: 'green', desc: 'Invitation à rejoindre une flotte avec création de mot de passe.' },
-  password_reset: { icon: '🔐', tone: 'green', desc: 'Lien sécurisé de réinitialisation, valable 30 minutes.' },
-  device_verification: { icon: '📱', tone: 'green', desc: 'Code de connexion à la vérification d’un nouvel appareil (2FA).' },
-  two_factor_disable: { icon: '⚠', tone: 'amber', desc: 'Code de confirmation pour désactiver la double authentification.' },
-  weekly_report: { icon: '📊', tone: 'green', desc: 'Synthèse hebdomadaire de flotte, chaque lundi 08:00.' },
-  alert: { icon: '⚠', tone: 'red', desc: 'Notification temps réel (excès, sortie de zone, coupure).' },
-  lead: { icon: '🎯', tone: 'green', desc: 'Notification interne équipe Vizyo à chaque prospect LP.' },
-  lead_welcome: { icon: '👋', tone: 'green', desc: 'E-mail de bienvenue personnel au prospect (présentation + contact).' },
-  quote_signed: { icon: '📝', tone: 'green', desc: 'Notification interne : un prospect a signé un devis en ligne.' },
-  quote_client: { icon: '🧾', tone: 'green', desc: 'Copie du récapitulatif de devis envoyée au prospect.' },
-  audio_activation: { icon: '🔊', tone: 'amber', desc: 'Rappel des obligations légales à l’activation du micro.' },
-  audio_info: { icon: '🎧', tone: 'green', desc: 'Présentation de la fonction d’assistance en cas d’accident.' },
-  partner_consent_invitation: { icon: '🤝', tone: 'amber', desc: 'Demande d’autorisation de partage vers une application partenaire. Le lien ne donne aucun accès.' },
+/** Une icône lucide (le type n'est pas exporté : on le dérive d'une icône réelle). */
+type IconeLucide = typeof Mail;
+
+/**
+ * Présentation client (icône + teinte) par modèle — le reste vient du backend. Les icônes sont des
+ * SVG lucide, plus des emoji (06/10/2026 : une icône est un SVG, jamais un emoji).
+ */
+const TPL_PRESENT: Record<string, { icon: IconeLucide; tone: 'green' | 'red' | 'amber'; desc: string }> = {
+  invitation: { icon: Mail, tone: 'green', desc: 'Invitation à rejoindre une flotte avec création de mot de passe.' },
+  password_reset: { icon: KeyRound, tone: 'green', desc: 'Lien sécurisé de réinitialisation, valable 30 minutes.' },
+  device_verification: { icon: Smartphone, tone: 'green', desc: 'Code de connexion à la vérification d’un nouvel appareil (2FA).' },
+  two_factor_disable: { icon: ShieldAlert, tone: 'amber', desc: 'Code de confirmation pour désactiver la double authentification.' },
+  weekly_report: { icon: BarChart3, tone: 'green', desc: 'Synthèse hebdomadaire de flotte, chaque lundi 08:00.' },
+  alert: { icon: AlertTriangle, tone: 'red', desc: 'Notification temps réel (excès, sortie de zone, coupure).' },
+  lead: { icon: Target, tone: 'green', desc: 'Notification interne équipe Vizyo à chaque prospect LP.' },
+  lead_welcome: { icon: Hand, tone: 'green', desc: 'E-mail de bienvenue personnel au prospect (présentation + contact).' },
+  quote_signed: { icon: FilePen, tone: 'green', desc: 'Notification interne : un prospect a signé un devis en ligne.' },
+  quote_client: { icon: Receipt, tone: 'green', desc: 'Copie du récapitulatif de devis envoyée au prospect.' },
+  audio_activation: { icon: Volume2, tone: 'amber', desc: 'Rappel des obligations légales à l’activation du micro.' },
+  audio_info: { icon: Headphones, tone: 'green', desc: 'Présentation de la fonction d’assistance en cas d’accident.' },
+  partner_consent_invitation: { icon: Handshake, tone: 'amber', desc: 'Demande d’autorisation de partage vers une application partenaire. Le lien ne donne aucun accès.' },
 };
 
 const STATUS_FILTERS: { id: string; label: string }[] = [
@@ -174,7 +184,7 @@ const BREAKDOWN_COLORS = ['bg-tracky-light', 'bg-rose-400', 'bg-tracky', 'bg-sky
                 }
               </div>
               <div class="flex items-center gap-2 px-3 py-2 bg-bg-primary border border-border-subtle rounded-lg min-w-[230px]">
-                <span class="text-fg-tertiary text-sm">⌕</span>
+                <lucide-icon [img]="SearchIcon" [size]="14" class="text-fg-tertiary shrink-0" aria-hidden="true"></lucide-icon>
                 <input [(ngModel)]="search" (keyup.enter)="reloadLogs()" (blur)="reloadLogs()"
                        placeholder="Rechercher un destinataire, une flotte…"
                        class="bg-transparent border-0 outline-none text-[12.5px] text-fg-primary placeholder:text-fg-tertiary w-full" />
@@ -212,8 +222,8 @@ const BREAKDOWN_COLORS = ['bg-tracky-light', 'bg-rose-400', 'bg-tracky', 'bg-sky
               <span class="text-[11.5px] text-fg-tertiary font-mono">{{ logs().length }} envoi(s) affiché(s)</span>
               @if (nextCursor()) {
                 <button (click)="loadMore()" [disabled]="loadingMore()"
-                        class="text-[12px] font-semibold text-tracky-light hover:underline disabled:opacity-50">
-                  Charger plus →
+                        class="inline-flex items-center gap-1 text-[12px] font-semibold text-tracky-light hover:underline disabled:opacity-50">
+                  Charger plus <lucide-icon [img]="ArrowRightIcon" [size]="12" aria-hidden="true"></lucide-icon>
                 </button>
               }
             </div>
@@ -229,7 +239,7 @@ const BREAKDOWN_COLORS = ['bg-tracky-light', 'bg-rose-400', 'bg-tracky', 'bg-sky
                     class="relative overflow-hidden text-left bg-bg-secondary border border-border-subtle rounded-[--radius-card] p-[20px_22px] hover:border-tracky-light/40 transition-colors">
               <div class="absolute top-0 left-0 right-0 h-[3px]" [class]="toneBar(t.tone)"></div>
               <div class="flex items-start justify-between mb-3.5">
-                <span class="inline-flex items-center justify-center w-10 h-10 rounded-xl text-[19px]" [class]="toneSoft(t.tone)">{{ t.icon }}</span>
+                <span class="inline-flex items-center justify-center w-10 h-10 rounded-xl" [class]="toneSoft(t.tone) + ' ' + toneText(t.tone)"><lucide-icon [img]="t.icon" [size]="19" aria-hidden="true"></lucide-icon></span>
                 <span class="font-mono text-[9px] tracking-[0.12em] uppercase px-2 py-1 rounded-md" [class]="toneSoft(t.tone) + ' ' + toneText(t.tone)">{{ t.category }}</span>
               </div>
               <div class="font-display text-[15.5px] font-bold text-fg-primary mb-1.5">{{ t.label }}</div>
@@ -248,7 +258,7 @@ const BREAKDOWN_COLORS = ['bg-tracky-light', 'bg-rose-400', 'bg-tracky', 'bg-sky
               </div>
               <div class="flex items-center justify-between">
                 <span class="text-[11px] text-fg-tertiary font-mono">Dernier · {{ t.lastSentAt ? (t.lastSentAt | date: 'dd/MM HH:mm') : 'jamais' }}</span>
-                <span class="text-[12px] font-bold text-tracky-light">Aperçu →</span>
+                <span class="inline-flex items-center gap-1 text-[12px] font-bold text-tracky-light">Aperçu <lucide-icon [img]="ArrowRightIcon" [size]="12" aria-hidden="true"></lucide-icon></span>
               </div>
             </button>
           }
@@ -268,28 +278,29 @@ const BREAKDOWN_COLORS = ['bg-tracky-light', 'bg-rose-400', 'bg-tracky', 'bg-sky
                 </div>
                 <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11.5px] font-bold border"
                       [class]="d.verified ? 'bg-tracky-light/[0.08] text-tracky-light border-tracky-light/20' : 'bg-amber-500/10 text-amber-400 border-amber-500/25'">
-                  {{ d.verified ? '✓ Domaine vérifié' : '! Non vérifié' }}
+                  <lucide-icon [img]="d.verified ? CircleCheckIcon : AlertTriangleIcon" [size]="13" aria-hidden="true"></lucide-icon>
+                  {{ d.verified ? 'Domaine vérifié' : 'Non vérifié' }}
                 </span>
               </div>
               <div class="grid sm:grid-cols-3 gap-3">
                 <div class="bg-bg-primary rounded-xl p-[15px_17px] border" [class]="d.spf === 'pass' ? 'border-tracky-light/20' : 'border-amber-500/25'">
                   <div class="flex items-center justify-between mb-2">
                     <span class="font-mono text-xs font-semibold text-fg-primary">SPF</span>
-                    <span class="text-[15px]" [class]="d.spf === 'pass' ? 'text-tracky-light' : 'text-amber-400'">{{ d.spf === 'pass' ? '✓' : '!' }}</span>
+                    <lucide-icon [img]="d.spf === 'pass' ? CheckIcon : AlertTriangleIcon" [size]="15" [class]="d.spf === 'pass' ? 'text-tracky-light' : 'text-amber-400'" aria-hidden="true"></lucide-icon>
                   </div>
                   <div class="text-[11px] text-fg-tertiary leading-relaxed">{{ d.spf === 'pass' ? 'Enregistrement présent et aligné.' : 'À vérifier côté DNS.' }}</div>
                 </div>
                 <div class="bg-bg-primary rounded-xl p-[15px_17px] border" [class]="d.dkim === 'pass' ? 'border-tracky-light/20' : 'border-amber-500/25'">
                   <div class="flex items-center justify-between mb-2">
                     <span class="font-mono text-xs font-semibold text-fg-primary">DKIM</span>
-                    <span class="text-[15px]" [class]="d.dkim === 'pass' ? 'text-tracky-light' : 'text-amber-400'">{{ d.dkim === 'pass' ? '✓' : '!' }}</span>
+                    <lucide-icon [img]="d.dkim === 'pass' ? CheckIcon : AlertTriangleIcon" [size]="15" [class]="d.dkim === 'pass' ? 'text-tracky-light' : 'text-amber-400'" aria-hidden="true"></lucide-icon>
                   </div>
                   <div class="text-[11px] text-fg-tertiary leading-relaxed">Clé <span class="font-mono">resend._domainkey</span> {{ d.dkim === 'pass' ? 'signée.' : 'à configurer.' }}</div>
                 </div>
                 <div class="bg-bg-primary rounded-xl p-[15px_17px] border" [class]="d.dmarc === 'pass' ? 'border-tracky-light/20' : 'border-amber-500/25'">
                   <div class="flex items-center justify-between mb-2">
                     <span class="font-mono text-xs font-semibold text-fg-primary">DMARC</span>
-                    <span class="text-[15px]" [class]="d.dmarc === 'pass' ? 'text-tracky-light' : 'text-amber-400'">{{ d.dmarc === 'pass' ? '✓' : '!' }}</span>
+                    <lucide-icon [img]="d.dmarc === 'pass' ? CheckIcon : AlertTriangleIcon" [size]="15" [class]="d.dmarc === 'pass' ? 'text-tracky-light' : 'text-amber-400'" aria-hidden="true"></lucide-icon>
                   </div>
                   <div class="text-[11px] text-fg-tertiary leading-relaxed">{{ d.dmarc === 'pass' ? 'Politique alignée.' : 'Politique à renforcer (quarantine).' }}</div>
                 </div>
@@ -305,7 +316,7 @@ const BREAKDOWN_COLORS = ['bg-tracky-light', 'bg-rose-400', 'bg-tracky', 'bg-sky
                 <div class="font-display text-[15px] font-bold text-fg-primary mb-1">Motifs d'échec · 30 j</div>
                 <div class="text-[11.5px] text-fg-tertiary mb-4.5">{{ bounceTotal(d) }} e-mail(s) non délivré(s)</div>
                 @if (d.bounceReasons.length === 0) {
-                  <div class="text-[12px] text-fg-tertiary py-2">Aucun échec sur la période. 🎉</div>
+                  <div class="inline-flex items-center gap-1.5 text-[12px] text-fg-tertiary py-2"><lucide-icon [img]="CircleCheckIcon" [size]="13" class="text-tracky-light" aria-hidden="true"></lucide-icon>Aucun échec sur la période.</div>
                 }
                 @for (b of d.bounceReasons; track b.code) {
                   <div class="flex items-center justify-between py-2.5 border-b border-border-subtle/70">
@@ -404,6 +415,11 @@ export class AdminEmailsComponent implements OnInit {
   protected readonly RefreshCw = RefreshCw;
   protected readonly X = X;
   protected readonly Send = Send;
+  protected readonly SearchIcon = Search;
+  protected readonly ArrowRightIcon = ArrowRight;
+  protected readonly CheckIcon = Check;
+  protected readonly CircleCheckIcon = CircleCheck;
+  protected readonly AlertTriangleIcon = AlertTriangle;
 
   protected readonly tabs: { key: Tab; label: string }[] = [
     { key: 'suivi', label: 'Suivi des envois' },
@@ -427,7 +443,7 @@ export class AdminEmailsComponent implements OnInit {
   protected readonly sending = signal(false);
 
   protected readonly previewOpen = signal(false);
-  protected readonly selected = signal<(EmailTemplateMeta & { icon: string; tone: string }) | null>(null);
+  protected readonly selected = signal<(EmailTemplateMeta & { icon: IconeLucide; tone: string }) | null>(null);
   protected readonly previewHtml = signal<SafeHtml | null>(null);
 
   protected readonly logs = this.logsList;
@@ -469,7 +485,7 @@ export class AdminEmailsComponent implements OnInit {
   protected readonly templates = computed(() =>
     this.templatesRaw().map((t) => ({
       ...t,
-      icon: TPL_PRESENT[t.id]?.icon ?? '✉',
+      icon: TPL_PRESENT[t.id]?.icon ?? Mail,
       tone: TPL_PRESENT[t.id]?.tone ?? 'green',
       desc: TPL_PRESENT[t.id]?.desc ?? '',
     })),
@@ -538,7 +554,7 @@ export class AdminEmailsComponent implements OnInit {
     void this.reloadLogs();
   }
 
-  async openPreview(t: EmailTemplateMeta & { icon: string; tone: string }): Promise<void> {
+  async openPreview(t: EmailTemplateMeta & { icon: IconeLucide; tone: string }): Promise<void> {
     this.selected.set(t);
     this.previewHtml.set(null);
     this.previewOpen.set(true);

@@ -13,6 +13,8 @@ import {
   Eye,
   // Boîtier débranché déclaré (05/10/2026) — bandeau au-dessus de la mini-carte.
   Unplug,
+  // 06/10/2026 — icônes SVG à la place des glyphes « → », « ✓ », « ✗ ».
+  ArrowRight,
 } from 'lucide-angular';
 import { estAuSouterrain, etatVehicule, immobilisationRetenue, installationARevoir } from '../../shared/utils/hors-service';
 import { EtatVehiculeBadgeComponent } from '../../shared/ui/etat-vehicule-badge/etat-vehicule-badge.component';
@@ -747,7 +749,7 @@ import { VehicleQrDialogComponent } from './vehicle-qr-dialog.component';
                 (change)="onCustomFromChange($any($event.target).value)"
                 aria-label="Date de début"
               />
-              <span class="vd-date-sep">→</span>
+              <lucide-icon class="vd-date-sep" [img]="ArrowRightIcon" [size]="14" aria-hidden="true"></lucide-icon>
               <input
                 type="date"
                 class="vd-date-input"
@@ -783,9 +785,9 @@ import { VehicleQrDialogComponent } from './vehicle-qr-dialog.component';
                         <span class="vd-history-flag vd-history-flag--off">Contact OFF</span>
                       }
                       @if (pos.valid) {
-                        <span class="vd-history-flag vd-history-flag--ok">Fix ✓</span>
+                        <span class="vd-history-flag vd-history-flag--ok">Fix<lucide-icon [img]="CheckIcon" [size]="10" aria-hidden="true"></lucide-icon><span class="sr-only">valide</span></span>
                       } @else {
-                        <span class="vd-history-flag vd-history-flag--ko">Fix ✗</span>
+                        <span class="vd-history-flag vd-history-flag--ko">Fix<lucide-icon [img]="XIcon" [size]="10" aria-hidden="true"></lucide-icon><span class="sr-only">invalide</span></span>
                       }
                     </span>
                   </div>
@@ -1454,7 +1456,7 @@ import { VehicleQrDialogComponent } from './vehicle-qr-dialog.component';
       color: var(--tracky-light);
     }
     .vd-date-input { font-family: var(--font-mono, monospace); font-size: 12px; }
-    .vd-date-sep { color: var(--fg-tertiary); font-size: 13px; font-weight: 600; flex-shrink: 0; }
+    .vd-date-sep { color: var(--fg-tertiary); display: inline-flex; flex-shrink: 0; }
 
     /* ─── Historique : cards mobile-first ─── */
     .vd-history-list {
@@ -1508,6 +1510,9 @@ import { VehicleQrDialogComponent } from './vehicle-qr-dialog.component';
       flex-shrink: 0;
     }
     .vd-history-flag {
+      display: inline-flex;
+      align-items: center;
+      gap: 2px;
       font-size: 9px;
       font-weight: 700;
       padding: 2px 6px;
@@ -2082,6 +2087,7 @@ export class VehicleDetailComponent implements OnInit {
   protected readonly UserPlusIcon = UserPlus;
   protected readonly PlayIcon = Play;
   protected readonly CheckIcon = Check;
+  protected readonly ArrowRightIcon = ArrowRight;
   protected readonly CopyIcon = Copy;
   protected readonly relativeTime = relativeTime;
 

@@ -144,7 +144,7 @@ type Period = '7d' | '30d' | 'custom';
                     <div class="ar-peruser">
                       <span class="ar-peruser-n">{{ p.name }}</span>
                       <span class="ar-peruser-h">{{ p.highlight }}</span>
-                      @if (p.mainFriction) { <span class="ar-peruser-f">⚠ {{ p.mainFriction }}</span> }
+                      @if (p.mainFriction) { <span class="ar-peruser-f"><lucide-icon [img]="AlertIcon" [size]="11" aria-hidden="true"></lucide-icon> {{ p.mainFriction }}</span> }
                     </div>
                   }
                 </div>
@@ -273,6 +273,7 @@ type Period = '7d' | '30d' | 'custom';
     .ar-peruser-n { font-size: 12.5px; font-weight: 700; color: var(--fg-primary); }
     .ar-peruser-h { font-size: 12px; color: var(--fg-secondary); line-height: 1.5; }
     .ar-peruser-f { font-size: 11.5px; color: var(--texte-attente); }
+    .ar-peruser-f lucide-icon { display: inline-flex; vertical-align: -1px; }
     .ar-item-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
     .ar-item-title { font-size: 12.5px; font-weight: 700; color: var(--fg-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .ar-item-sub { font-size: 11px; color: var(--fg-tertiary); }

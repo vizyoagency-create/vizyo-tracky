@@ -1,7 +1,7 @@
 import { Component, DestroyRef, inject, input, OnInit, output, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
-import { CalendarClock, Eye, EyeOff, LoaderCircle, LucideAngularModule, X } from 'lucide-angular';
+import { ArrowRight, CalendarClock, Eye, EyeOff, LoaderCircle, LucideAngularModule, X } from 'lucide-angular';
 import { PermissionsService } from '../../core/services/permissions.service';
 import { ToastService } from '../../shared/ui/toast/toast.service';
 import { ETATS_VIE_PRIVEE, type EtatViePrivee, WorkScheduleApiService } from '../../core/services/work-schedule.service';
@@ -120,7 +120,7 @@ const REASON_LABEL: Record<string, string> = {
                     @if (d.enabled) {
                       <div class="ws-times">
                         <input type="time" [(ngModel)]="d.start" [disabled]="!enabled" aria-label="Début" />
-                        <span>→</span>
+                        <lucide-icon class="ws-fleche" [img]="ArrowRight" [size]="13" aria-hidden="true"></lucide-icon>
                         <input type="time" [(ngModel)]="d.end" [disabled]="!enabled" aria-label="Fin" />
                       </div>
                     } @else {
@@ -230,6 +230,7 @@ const REASON_LABEL: Record<string, string> = {
     .ws-times { display:flex; align-items:center; gap:6px; }
     .ws-times input { background:var(--bg-tertiary); border:1px solid var(--border-subtle); border-radius:8px; color:var(--fg-primary); min-height:44px; padding:5px 7px; font-size:13px; }
     .ws-times span { color:var(--fg-secondary); }
+    .ws-fleche { display:inline-flex; flex-shrink:0; color:var(--fg-secondary); }
     .ws-rest { display:inline-flex; align-items:center; gap:4px; font-size:11.5px; color:var(--fg-secondary); }
     .ws-foot { display:flex; gap:10px; margin-top:18px; }
     .ws-btn { flex:1; min-height:44px; padding:11px; border-radius:11px; border:1px solid var(--border-subtle); background:transparent; color:var(--fg-secondary); font-size:14px; font-weight:600; cursor:pointer; }
@@ -248,7 +249,7 @@ export class WorkScheduleEditorComponent implements OnInit {
   readonly close = output<void>();
   readonly changed = output<void>();
 
-  protected readonly CalendarClock = CalendarClock; protected readonly X = X;
+  protected readonly CalendarClock = CalendarClock; protected readonly X = X; protected readonly ArrowRight = ArrowRight;
   protected readonly Eye = Eye; protected readonly EyeOff = EyeOff; protected readonly LoaderCircle = LoaderCircle;
   protected readonly canManage = this.perms.can('schedules_manage');
 

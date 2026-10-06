@@ -32,7 +32,9 @@ import {
   // Espace dépôt (2026-08) — `Route` = la mission (design/ICONS.md, décision D-I3).
   Route,
   // Lot A3 — les trois autres onglets de l'espace dépôt.
-  History, FileText } from 'lucide-angular';
+  History, FileText,
+  // 06/10/2026 — la flèche du « Découvrir » en SVG (plus le glyphe « → »).
+  ArrowRight } from 'lucide-angular';
 import { ThemeService } from '../core/theme/theme.service';
 import { AlertsBellComponent } from '../shared/ui/alerts-bell/alerts-bell.component';
 import { FleetSelectorComponent } from '../shared/ui/super-admin-context/fleet-selector.component';
@@ -155,7 +157,7 @@ interface NavGroup {
                 <span>Agent IA</span>
               </span>
               <span class="ai-promo-text">Optimisez vos tournées et réaffectations.</span>
-              <span class="ai-promo-cta">Découvrir →</span>
+              <span class="ai-promo-cta">Découvrir <lucide-icon [img]="ArrowRightIcon" [size]="11" aria-hidden="true"></lucide-icon></span>
             </a>
           </div>
         }
@@ -511,7 +513,8 @@ interface NavGroup {
     .ai-promo-head lucide-icon { color: var(--tracky-light); display: flex }
     .ai-promo-text { display: block; margin: 7px 0 9px; font-size: 12px; color: var(--fg-secondary); line-height: 1.45 }
     /* Libelle de 10 px : --texte-succes, le vert de marque rend 3,2:1 en clair. */
-    .ai-promo-cta { font-family: var(--font-mono); font-size: 10px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--texte-succes) }
+    .ai-promo-cta { font-family: var(--font-mono); font-size: 10px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--texte-succes);
+                    display: inline-flex; align-items: center; gap: 4px }
 
     /* ─── MOBILE DRAWER ─── */
     /* Anciens drawers mobiles supprimes (remplaces par <app-bottom-sheet>). */
@@ -1069,6 +1072,7 @@ export class DashboardLayoutComponent {
   protected readonly SettingsIcon = Settings;
   protected readonly TerminalIcon = Terminal;
   protected readonly SparklesIcon = Sparkles;
+  protected readonly ArrowRightIcon = ArrowRight;
 
   private readonly aiStatus = inject(AiStatusService);
   /** La carte promo « Agent IA » du pied de sidebar PEUT-elle s'afficher ? L'agent IA est une

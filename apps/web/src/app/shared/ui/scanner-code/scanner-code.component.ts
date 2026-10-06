@@ -10,7 +10,7 @@ import {
   signal,
   viewChild,
 } from '@angular/core';
-import { Camera, Keyboard, LucideAngularModule, X, Zap, ZapOff } from 'lucide-angular';
+import { Camera, Check, Keyboard, LucideAngularModule, X, Zap, ZapOff } from 'lucide-angular';
 import { candidatsDepuisScan, type CandidatIdentifiant } from '@vizyo/tracky-shared';
 
 /**
@@ -83,7 +83,7 @@ type DetecteurCode = {
 
         @if (etat() === 'lu') {
           <div class="sc-msg sc-msg--ok">
-            <span class="sc-check" aria-hidden="true">✓</span>
+            <span class="sc-check" aria-hidden="true"><lucide-icon [img]="Check" [size]="22"></lucide-icon></span>
             <p class="sc-code">{{ dernierCode() }}</p>
           </div>
         }
@@ -238,6 +238,7 @@ export class ScannerCodeComponent implements OnInit, OnDestroy {
   protected readonly torcheOn = signal(false);
 
   protected readonly X = X;
+  protected readonly Check = Check;
   protected readonly Camera = Camera;
   protected readonly Keyboard = Keyboard;
   protected readonly Zap = Zap;

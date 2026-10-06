@@ -542,7 +542,7 @@ function groupeReservationId(ev: VehicleEventDto): string | null {
                les valeurs SOMBRES de --blue et --violet, donc les glyphes gardaient
                la teinte du theme sombre en clair (2,08:1 et 2,65:1). Les jetons
                --texte-* portent la meme signification et basculent. -->
-          <span class="inline-flex items-center gap-1.5"><span class="ag-leg-glyphe ag-leg-glyphe--reel">●</span>Activité réelle</span>
+          <span class="inline-flex items-center gap-1.5"><span class="ag-leg-point" aria-hidden="true"></span>Activité réelle</span>
           <span class="inline-flex items-center gap-1.5"><span class="ag-leg-glyphe ag-leg-glyphe--prevu">~</span>Usage prévu</span>
           <!-- Lot 3a — sans cette entrée, le pointillé violet de la grille n'a pas de nom.
                29/09 : IA coupée, la grille n'a plus de pointillé — et la légende plus d'entrée. -->
@@ -1279,7 +1279,8 @@ function groupeReservationId(ev: VehicleEventDto): string | null {
     .ag-stat--danger .ag-stat-value { color: var(--texte-alerte); }
     /* Glyphes de legende (● et ~) — etaient en style en ligne, cf. le gabarit. */
     .ag-leg-glyphe { font-weight: 800; }
-    .ag-leg-glyphe--reel { color: var(--texte-info); }
+    /* 06/10/2026 — la pastille de l'activité réelle en CSS, comme celle du calendrier (plus de glyphe ●). */
+    .ag-leg-point { width: 7px; height: 7px; border-radius: 50%; background: var(--texte-info); flex-shrink: 0; }
     .ag-leg-glyphe--prevu { color: var(--texte-violet); }
     /* ── Panneau jour : la proposition. Encadré POINTILLÉ, comme sa pastille. ── */
     .ag-sec-titr--fantome { color: var(--texte-violet); }

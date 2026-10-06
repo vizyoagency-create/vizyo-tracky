@@ -40,6 +40,9 @@ const ETAPES = [
     sortieNonVerifie: 2,
   },
   { cle: 'smoke', titre: 'Smoke-boot (graphe d’injection)', script: 'smoke' },
+  // 06/10/2026 — « une icône est un SVG, jamais un emoji » (demande du propriétaire). Moins
+  // d'une seconde : la règle tient dans le temps sans que personne ait à y penser.
+  { cle: 'icones', titre: 'Icônes en SVG (aucun emoji)', script: 'verif:icones' },
   { cle: 'tests', titre: 'Tests', script: 'test' },
 ];
 

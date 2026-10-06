@@ -183,7 +183,7 @@ export class ConsentGateComponent {
       'NOTE D’INFORMATION AUX CONDUCTEURS',
       'Géolocalisation des véhicules de la société',
       '',
-      '⚠️ MODÈLE À ADAPTER. Les champs entre crochets doivent être complétés, et le contenu',
+      'ATTENTION — MODÈLE À ADAPTER. Les champs entre crochets doivent être complétés, et le contenu',
       'vérifié au regard de votre situation (accords collectifs, registre des traitements,',
       'consultation du CSE le cas échéant). Ce modèle ne constitue pas un conseil juridique.',
       '',

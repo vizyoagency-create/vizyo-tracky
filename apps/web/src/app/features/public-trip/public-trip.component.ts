@@ -13,6 +13,7 @@ import {
   viewChild,
 } from '@angular/core';
 import { ActivatedRoute } from '@angular/router';
+import { LucideAngularModule, Timer } from 'lucide-angular';
 import type { PartageTrajetPublicDto } from '@vizyo/tracky-shared';
 import * as maplibregl from 'maplibre-gl';
 import type { Map as MlMap } from 'maplibre-gl';
@@ -51,7 +52,7 @@ type Etat = 'chargement' | 'actif' | 'ferme';
 @Component({
   selector: 'app-public-trip',
   standalone: true,
-  imports: [DecimalPipe, LegendeVitesseComponent],
+  imports: [DecimalPipe, LegendeVitesseComponent, LucideAngularModule],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="pj">
@@ -70,7 +71,7 @@ type Etat = 'chargement' | 'actif' | 'ferme';
             mène nulle part est pire qu'une phrase claire.
           -->
           <div class="pj-centre">
-            <div class="pj-ico" aria-hidden="true">⏱</div>
+            <lucide-icon class="pj-ico" [img]="TimerIcon" [size]="34" aria-hidden="true"></lucide-icon>
             <h1 class="pj-titre">Ce lien n'est plus valide</h1>
             <p class="pj-texte">
               Les liens de partage sont temporaires. Demandez-en un nouveau à la personne
@@ -133,7 +134,8 @@ type Etat = 'chargement' | 'actif' | 'ferme';
     @media (prefers-reduced-motion: reduce) { .pj-rond { animation: none } }
 
     .pj-attente { margin: 0; font-size: 13.5px; color: var(--fg-secondary) }
-    .pj-ico { font-size: 34px; line-height: 1 }
+    /* Le chronomètre en SVG (lucide), plus en emoji ⏱ : même dessin sur tous les systèmes. */
+    .pj-ico { display: inline-flex; color: var(--fg-tertiary) }
     .pj-titre { margin: 0; font-size: 19px; font-weight: 700; color: var(--fg-primary) }
     .pj-texte { margin: 0; max-width: 34ch; font-size: 14px; line-height: 1.6; color: var(--fg-secondary) }
 
@@ -184,6 +186,7 @@ export class PublicTripComponent implements OnInit, AfterViewInit, OnDestroy {
   private readonly http = inject(HttpClient);
   private readonly mapSvc = inject(MapService);
   private readonly conteneur = viewChild<ElementRef<HTMLDivElement>>('carte');
+  protected readonly TimerIcon = Timer;
 
   protected readonly etat = signal<Etat>('chargement');
   protected readonly trajet = signal<PartageTrajetPublicDto | null>(null);

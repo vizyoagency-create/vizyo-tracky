@@ -170,7 +170,7 @@ export class ReservationQrDialogComponent implements OnInit {
     const lien = links.find((l) => l.active) ?? links[0];
     if (!lien) {
       this.error.set(
-        "Aucun lien public de réservation pour cette société. Un administrateur peut le créer dans « Paramètres de l'agenda » (⚙️), puis ce QR sera disponible.",
+        "Aucun lien public de réservation pour cette société. Un administrateur peut le créer dans « Paramètres de l'agenda » (le bouton en forme d'engrenage), puis ce QR sera disponible.",
       );
       this.loading.set(false);
       return;

@@ -2,7 +2,7 @@ import { swallow } from '../../core/error/swallow';
 import { ChangeDetectionStrategy, Component, computed, inject, OnInit, signal } from '@angular/core';
 import { DatePipe, DecimalPipe } from '@angular/common';
 import { ActivatedRoute, RouterLink } from '@angular/router';
-import { LucideAngularModule, ArrowLeft, Cpu, Wifi, WifiOff, Gauge, Sliders } from 'lucide-angular';
+import { LucideAngularModule, ArrowLeft, ArrowRight, Cpu, Wifi, WifiOff, Gauge, Sliders } from 'lucide-angular';
 import { firstValueFrom } from 'rxjs';
 import { isTrackerOnline } from '@vizyo/tracky-shared';
 import { TrackersApiService, type TrackerDetail } from '../../core/services/trackers.service';
@@ -86,7 +86,7 @@ import { relativeTime } from '../../shared/utils/relative-time';
             } @else {
               <p class="text-sm text-fg-tertiary">Pas de numéro SIM</p>
             }
-            <a routerLink="/admin/sims" class="inline-block mt-2 text-xs text-tracky-light hover:underline">Parc SIM →</a>
+            <a routerLink="/admin/sims" class="inline-flex items-center gap-1 mt-2 text-xs text-tracky-light hover:underline">Parc SIM <lucide-icon [img]="ArrowRight" [size]="12" aria-hidden="true"></lucide-icon></a>
           </div>
         </div>
 
@@ -121,6 +121,7 @@ export class AdminTrackerDetailComponent implements OnInit {
   protected readonly online = computed(() => isTrackerOnline(this.tracker()?.lastSeenAt ?? null));
 
   protected readonly ArrowLeft = ArrowLeft;
+  protected readonly ArrowRight = ArrowRight;
   protected readonly Cpu = Cpu;
   protected readonly Wifi = Wifi;
   protected readonly WifiOff = WifiOff;

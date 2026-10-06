@@ -104,6 +104,34 @@ describe('DrivingScoresComponent — portée « conducteur, sinon groupe »', ()
     expect(el.querySelector('.ds-podium-cap')!.textContent).toContain('top 3 des conducteurs et groupes');
   });
 
+  /**
+   * 06/10/2026 — « une icône est un SVG, jamais un emoji ». Les médailles 🥇 🥈 🥉 du podium et des
+   * trois premières lignes sont des SVG (lucide), colorées par rang ; le RANG reste lu par les
+   * lecteurs d'écran — la médaille, elle, est décorative.
+   */
+  it('podium et trois premières lignes : des médailles SVG, aucun emoji', async () => {
+    parPortee.attribution = reponse('attribution', {
+      rows: [
+        ligne('driver:d1', 'Sohaib Hamanni', 'conducteur', 91),
+        ligne('driver:d2', 'Ada Lovelace', 'conducteur', 84),
+        ligne('driver:d3', 'Alan Turing', 'conducteur', 77),
+        ligne('driver:d4', 'Grace Hopper', 'conducteur', 70),
+      ],
+      rankedCount: 4, totalTrips: 100,
+    });
+    const el = await afficher('attribution');
+    const medailles = Array.from(el.querySelectorAll('.ds-pod-medal'));
+    expect(medailles.length).toBe(3);
+    for (const m of medailles) expect(m.querySelector('svg')).withContext('médaille du podium sans SVG').not.toBeNull();
+    const rangs = Array.from(el.querySelectorAll('.ds-row .ds-rank'));
+    expect(rangs.slice(0, 3).every((r) => !!r.querySelector('svg'))).toBe(true);
+    expect(rangs[0].getAttribute('data-rang')).toBe('1');
+    expect(rangs[0].textContent!.trim()).toBe('1');
+    expect(rangs[3].querySelector('svg')).toBeNull();
+    expect(rangs[3].textContent!.trim()).toBe('4');
+    expect(/[\u{1F300}-\u{1FAFF}]/u.test(el.textContent ?? '')).toBe(false);
+  });
+
   it('classement vide + rien d’imputé : l’état vide n’invite PAS à analyser des trajets', async () => {
     parPortee.attribution = reponse('attribution', {
       unattributed: { tripCount: 0, totalTripCount: 866, periodTripCount: 886, distanceKm: 9000 },

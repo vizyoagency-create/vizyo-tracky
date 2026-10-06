@@ -349,8 +349,13 @@ const SCOPE_CATALOGUE: PartnerScopeOption[] = PARTNER_SCOPES.map((key) => ({
         position: relative; padding-left: 1.15rem; font-size: 0.8rem; line-height: 1.45;
         color: var(--fg-secondary); text-wrap: pretty;
       }
+      /* La coche est le tracé SVG de l'icône lucide « check », posé en MASQUE et teinté par le
+         jeton du thème — plus le glyphe « ✓ » (06/10/2026 : une icône est un SVG). */
       .ig-garanties li::before {
-        content: '✓'; position: absolute; left: 0; top: 0; color: var(--texte-succes); font-weight: 800;
+        content: ''; position: absolute; left: 0; top: 0.22em; width: 0.85rem; height: 0.85rem;
+        background: var(--texte-succes);
+        -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 6 9 17l-5-5'/%3E%3C/svg%3E") center / contain no-repeat;
+                mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 6 9 17l-5-5'/%3E%3C/svg%3E") center / contain no-repeat;
       }
       .ig-garanties strong { color: var(--fg-primary); }
       /* Le libellé que le client LIT pour décider : couleur explicite, obligatoire. */

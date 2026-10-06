@@ -5,7 +5,7 @@ import { RouterLink } from '@angular/router';
 import { HttpErrorResponse } from '@angular/common/http';
 import {
   LucideAngularModule, ChevronLeft, Zap, Wallet, Users, Building2, Layers, TrendingUp, Laptop,
-  RefreshCw, AlertTriangle, Loader, Check, Save, Cpu, Calendar, Power, Tag,
+  RefreshCw, AlertTriangle, Loader, Check, Save, Cpu, Calendar, Power, Tag, Sparkles,
 } from 'lucide-angular';
 import { firstValueFrom } from 'rxjs';
 import type {
@@ -240,7 +240,7 @@ type BreakdownTab = 'user' | 'fleet' | 'action';
                       [disabled]="savingProvider() !== null || !prov.mixteAvailable"
                       (click)="switchProvider('both')">
                 <div class="au-prov-top">
-                  <span class="au-prov-name">Les 2 — Mixte ✨</span>
+                  <span class="au-prov-name">Les 2 — Mixte <lucide-icon [img]="SparklesIcon" [size]="13" aria-hidden="true" class="au-prov-etincelle"></lucide-icon></span>
                   @if (savingProvider() === 'both') {
                     <lucide-icon [img]="LoaderIcon" [size]="13" class="au-spin"></lucide-icon>
                   } @else if (prov.provider === 'both') {
@@ -557,6 +557,8 @@ type BreakdownTab = 'user' | 'fleet' | 'action';
     @media (max-width: 720px) { .au-prov-grid { grid-template-columns: 1fr; } }
     .au-prov--mixte.on { border-color: var(--violet); background: color-mix(in srgb, var(--violet) 9%, var(--bg-tertiary)); }
     .au-prov--mixte .au-prov-name { color: var(--fg-primary); }
+    /* L'étincelle du mode mixte : un SVG (lucide), plus l'emoji « ✨ » (06/10/2026). */
+    .au-prov-etincelle { display: inline-flex; vertical-align: -2px; color: var(--texte-violet); }
     .au-prov { text-align: left; display: flex; flex-direction: column; gap: 5px; padding: 13px 14px; border-radius: 12px; border: 1.5px solid var(--border-subtle); background: var(--bg-tertiary); cursor: pointer; transition: border-color .15s, background .15s; }
     .au-prov:hover:not(:disabled) { border-color: color-mix(in srgb, var(--tracky-light, #10E0A0) 45%, transparent); }
     .au-prov.on { border-color: var(--tracky-light, #10E0A0); background: color-mix(in srgb, var(--tracky-light, #10E0A0) 8%, var(--bg-tertiary)); }
@@ -709,6 +711,7 @@ export class AdminAiUsageComponent implements OnInit {
   protected readonly TrendIcon = TrendingUp;
   protected readonly RefreshIcon = RefreshCw;
   protected readonly AlertIcon = AlertTriangle;
+  protected readonly SparklesIcon = Sparkles;
   protected readonly LoaderIcon = Loader;
   protected readonly CheckIcon = Check;
   protected readonly SaveIcon = Save;

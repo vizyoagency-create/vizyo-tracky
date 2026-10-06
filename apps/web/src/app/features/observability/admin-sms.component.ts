@@ -160,7 +160,7 @@ type Tab = 'status' | 'logs' | 'allowlist' | 'backup';
                   </div>
                   @if (gw.sim.configuredPresent === false) {
                     <div class="font-semibold">
-                      ⚠️ SIM {{ gw.sim.configuredNumber }} configurée absente du téléphone
+                      <lucide-icon [img]="AlertTriangle" [size]="12" class="inline-block align-[-2px]" aria-hidden="true"></lucide-icon> SIM {{ gw.sim.configuredNumber }} configurée absente du téléphone
                     </div>
                   }
                   <div>

@@ -150,6 +150,22 @@ describe('Modale dʼexport PDF — la promesse lue juste avant le clic', () => {
    * concatènent la même réserve — en oublier une la ferait disparaître pour un compte
    * particulier, exactement le genre d'angle mort que ce lot ferme ailleurs.
    */
+  /**
+   * 06/10/2026 — « une icône est un SVG, jamais un emoji ». La réserve portait un « ⚠️ » au milieu
+   * de la phrase : elle a désormais SA ligne, une icône SVG en tête, et rien sans filtre.
+   */
+  it('la réserve des alertes a sa ligne et son icône SVG — sans emoji, et rien sans filtre', () => {
+    ouvrir(SOHAIB, 12);
+    const reserve: HTMLElement | null = fixture.nativeElement.querySelector('.pem-reserve');
+    expect(reserve).withContext('réserve absente sous filtre conducteur').not.toBeNull();
+    expect(reserve!.querySelector('svg')).withContext('réserve sans icône SVG').not.toBeNull();
+    expect(reserve!.textContent).toContain('appartiennent à un véhicule');
+    expect(/[\u{1F300}-\u{1FAFF}\u{26A0}]/u.test(fixture.nativeElement.textContent ?? '')).toBe(false);
+
+    ouvrir(null, 12);
+    expect(fixture.nativeElement.querySelector('.pem-reserve')).toBeNull();
+  });
+
   it('lʼindice de la section Alertes porte sa réserve dans les quatre branches', () => {
     for (const n of [null, 0, 1, 12]) {
       ouvrir(null, n);

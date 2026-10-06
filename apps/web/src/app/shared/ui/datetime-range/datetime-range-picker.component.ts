@@ -8,7 +8,7 @@ import {
   signal,
   untracked,
 } from '@angular/core';
-import { LucideAngularModule, CalendarDays, Clock } from 'lucide-angular';
+import { LucideAngularModule, ArrowRight, CalendarDays, Clock } from 'lucide-angular';
 
 /* ── Helpers de date natifs, heure LOCALE (self-contained : un composant partagé
    ne doit pas dépendre d'une feature). ────────────────────────────────────── */
@@ -120,7 +120,7 @@ export function resumeCreneau(
                    aria-label="Heure de début" (input)="setStartTime($any($event.target).value)">
           </div>
         </div>
-        <span class="dtr-arrow" aria-hidden="true">→</span>
+        <lucide-icon class="dtr-arrow" [img]="ArrowRightIcon" [size]="15" aria-hidden="true"></lucide-icon>
         <div class="dtr-f">
           <span class="dtr-lbl"><lucide-icon [img]="ClockIcon" [size]="12"></lucide-icon> Fin</span>
           <div class="dtr-pair">
@@ -173,7 +173,7 @@ export function resumeCreneau(
       transition: border-color .15s, box-shadow .15s;
     }
     .dtr-in:focus { outline: none; border-color: var(--tracky-light); box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-tracky-light) 14%, transparent); }
-    .dtr-arrow { padding-bottom: 11px; color: var(--fg-tertiary); font-size: 15px; font-weight: 700; flex-shrink: 0; }
+    .dtr-arrow { display: inline-flex; padding-bottom: 11px; color: var(--fg-tertiary); flex-shrink: 0; }
     .dtr-chips { display: flex; flex-wrap: wrap; gap: 6px; }
     .dtr-chip {
       padding: 5px 10px; border-radius: 999px; font-size: 11.5px; font-weight: 700;
@@ -214,6 +214,7 @@ export class DateTimeRangePickerComponent {
 
   protected readonly CalendarIcon = CalendarDays;
   protected readonly ClockIcon = Clock;
+  protected readonly ArrowRightIcon = ArrowRight;
 
   // État interne en chaînes → égalité par valeur (pas de boucle avec les entrées).
   protected readonly startDayIso = signal(''); // YYYY-MM-DD

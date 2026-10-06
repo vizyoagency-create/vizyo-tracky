@@ -2,7 +2,7 @@ import { swallow } from '../../core/error/swallow';
 import { ChangeDetectionStrategy, Component, computed, effect, inject, input, signal } from '@angular/core';
 import { DecimalPipe } from '@angular/common';
 import { RouterLink } from '@angular/router';
-import { LucideAngularModule, Gauge, Trophy, TrendingUp, TrendingDown, ChevronRight, Unplug } from 'lucide-angular';
+import { LucideAngularModule, Gauge, Trophy, TrendingUp, TrendingDown, ChevronRight, Unplug, Medal, PartyPopper, ThumbsUp, Star, Smile, Lightbulb } from 'lucide-angular';
 import { firstValueFrom } from 'rxjs';
 import type { DrivingScoreDetailDto, DrivingScoreScope } from '@vizyo/tracky-shared';
 import { formatSilenceLabel, isVehicleDormant } from '@vizyo/tracky-shared';
@@ -42,7 +42,7 @@ import { RealtimeService } from '../../core/services/realtime.service';
                      des trajets d'il y a trois mois, et il pousserait mécaniquement les autres
                      d'un cran. On retire le RANG, pas la NOTE (l'historique reste vrai). -->
                 @if (d.rank != null && d.total > 1 && !isDormant()) {
-                  <span class="dsc-rank" [class.dsc-rank--podium]="d.rank <= 3">{{ medal(d.rank) }} {{ d.rank }}<sup>{{ d.rank === 1 ? 'er' : 'e' }}</sup> / {{ d.total }}</span>
+                  <span class="dsc-rank" [class.dsc-rank--podium]="d.rank <= 3">@if (d.rank <= 3) {<lucide-icon class="dsc-medaille" [attr.data-rang]="d.rank" [img]="MedalIcon" [size]="13" aria-hidden="true"></lucide-icon>}{{ d.rank }}<sup>{{ d.rank === 1 ? 'er' : 'e' }}</sup> / {{ d.total }}</span>
                 }
               </div>
               @if (!isDormant() && d.total > 1 && d.vsOverall != null && d.overallScore != null) {
@@ -68,7 +68,12 @@ import { RealtimeService } from '../../core/services/realtime.service';
               </span>
             </p>
           } @else {
-            <p class="dsc-motiv" [attr.data-tier]="tier()">{{ motivation() }}</p>
+            <p class="dsc-motiv" [attr.data-tier]="tier()">
+              @if (motivation(); as m) {
+                <lucide-icon class="dsc-motiv-icone" [img]="m.icone" [size]="15" aria-hidden="true"></lucide-icon>
+                <span>{{ m.texte }}</span>
+              }
+            </p>
           }
 
           <div class="dsc-stats">
@@ -122,10 +127,17 @@ import { RealtimeService } from '../../core/services/realtime.service';
     .dsc-score small { font-size: 13px; color: var(--fg-tertiary); font-weight: 600; }
     .dsc-rank { font-size: 13px; font-weight: 800; color: var(--fg-secondary); white-space: nowrap; }
     .dsc-rank sup { font-size: 9px; }
+    /* 06/10/2026 — la médaille du podium en SVG (plus d'emoji) : or, argent, bronze — jetons du thème. */
+    .dsc-medaille { display: inline-flex; vertical-align: -2px; margin-right: 3px; }
+    .dsc-medaille[data-rang="1"] { color: var(--texte-attente); }
+    .dsc-medaille[data-rang="2"] { color: var(--texte-inactif); }
+    .dsc-medaille[data-rang="3"] { color: var(--texte-orange); }
     .dsc-rank--podium { color: var(--texte-succes); }
     .dsc-vs { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 700; }
     .dsc-vs.up { color: var(--texte-succes); } .dsc-vs.down { color: var(--texte-attente); }
-    .dsc-motiv { margin: 0; font-size: 13px; font-weight: 700; line-height: 1.4; padding: 9px 12px; border-radius: 10px; }
+    .dsc-motiv { margin: 0; font-size: 13px; font-weight: 700; line-height: 1.4; padding: 9px 12px; border-radius: 10px;
+                 display: flex; align-items: flex-start; gap: 7px; }
+    .dsc-motiv-icone { display: inline-flex; flex: 0 0 auto; margin-top: 1px; }
     .dsc-motiv[data-tier="great"] { background: color-mix(in srgb, var(--tracky-light) 12%, transparent); color: var(--texte-succes); }
     .dsc-motiv[data-tier="good"] { background: color-mix(in srgb, var(--lime) 12%, transparent); color: var(--texte-lime); }
     .dsc-motiv[data-tier="mid"] { background: color-mix(in srgb, var(--warning) 12%, transparent); color: var(--texte-attente); }
@@ -160,6 +172,7 @@ export class DrivingScoreCardComponent {
   protected readonly loading = signal(true);
 
   protected readonly GaugeIcon = Gauge;
+  protected readonly MedalIcon = Medal;
   protected readonly TrophyIcon = Trophy;
   protected readonly UpIcon = TrendingUp;
   protected readonly DownIcon = TrendingDown;
@@ -203,10 +216,6 @@ export class DrivingScoreCardComponent {
     });
   }
 
-  protected medal(rank: number): string {
-    return rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : '';
-  }
-
   protected subject(): string {
     return this.scope() === 'driver' ? 'ce conducteur' : this.scope() === 'group' ? 'ce groupe' : 'ce véhicule';
   }
@@ -222,21 +231,25 @@ export class DrivingScoreCardComponent {
     return s >= 85 ? 'great' : s >= 70 ? 'good' : s >= 55 ? 'mid' : s >= 40 ? 'low' : 'bad';
   });
 
-  protected readonly motivation = computed<string>(() => {
+  /**
+   * La phrase d'encouragement et son icône — un SVG lucide, jamais un emoji (06/10/2026 : un emoji
+   * ne suit ni le thème ni la taille du texte, et chaque système le dessine à sa façon).
+   */
+  protected readonly motivation = computed<{ icone: typeof Trophy; texte: string } | null>(() => {
     const d = this.data();
     const r = d?.row;
-    if (!d || !r) return '';
+    if (!d || !r) return null;
     // Garde de sûreté doublant le `@if` du template : trois des six phrases ci-dessous
     // s'appuient sur le rang ou la moyenne. Si un jour quelqu'un rebranche ce texte sans
-    // regarder, « 🏆 En tête du classement » ne doit pas ressortir sur un véhicule disparu.
-    if (this.isDormant()) return '';
+    // regarder, « En tête du classement » ne doit pas ressortir sur un véhicule disparu.
+    if (this.isDormant()) return null;
     const solo = d.total <= 1; // seul évalué : pas de « classement », on encourage sur la note brute.
-    if (!solo && d.rank === 1) return '🏆 En tête du classement — quel exemple, continuez comme ça !';
-    if (!solo && d.rank != null && d.rank <= 3 && d.total > 3) return '🎉 Sur le podium ! Excellente conduite.';
-    if (!solo && d.vsOverall != null && d.vsOverall > 0) return '👍 Au-dessus de la moyenne de la flotte — bravo, gardez le cap.';
-    if (r.score >= 85) return '🌟 Conduite exemplaire — continuez comme ça !';
-    if (r.score >= 70) return '🙂 Bonne conduite. Un cran de plus et vous visez le haut du classement.';
-    return '💡 Quelques trajets plus souples (anticiper, lever le pied) et la note remonte vite.';
+    if (!solo && d.rank === 1) return { icone: Trophy, texte: 'En tête du classement — quel exemple, continuez comme ça !' };
+    if (!solo && d.rank != null && d.rank <= 3 && d.total > 3) return { icone: PartyPopper, texte: 'Sur le podium ! Excellente conduite.' };
+    if (!solo && d.vsOverall != null && d.vsOverall > 0) return { icone: ThumbsUp, texte: 'Au-dessus de la moyenne de la flotte — bravo, gardez le cap.' };
+    if (r.score >= 85) return { icone: Star, texte: 'Conduite exemplaire — continuez comme ça !' };
+    if (r.score >= 70) return { icone: Smile, texte: 'Bonne conduite. Un cran de plus et vous visez le haut du classement.' };
+    return { icone: Lightbulb, texte: 'Quelques trajets plus souples (anticiper, lever le pied) et la note remonte vite.' };
   });
 
   private async load(scope: DrivingScoreScope, id: string): Promise<void> {

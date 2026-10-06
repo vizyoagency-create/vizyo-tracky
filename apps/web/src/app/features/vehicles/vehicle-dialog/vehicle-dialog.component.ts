@@ -250,7 +250,7 @@ import { BrandLogoComponent } from '../../../shared/ui/brand-logo/brand-logo.com
                     <label class="field-label">Équipements</label>
                     <div class="vd-chips">
                       @for (f of features; track f) {
-                        <span class="vd-chip">{{ f }}<button type="button" class="vd-chip-x" (click)="removeFeature(f)" aria-label="Retirer">×</button></span>
+                        <span class="vd-chip">{{ f }}<button type="button" class="vd-chip-x" (click)="removeFeature(f)" [attr.aria-label]="'Retirer ' + f"><lucide-icon [img]="XIcon" [size]="12" aria-hidden="true"></lucide-icon></button></span>
                       }
                       <input type="text" [(ngModel)]="featureInput" (keydown.enter)="addFeature($event)" placeholder="Ajouter (Entrée)…" class="vd-chip-input" />
                     </div>

@@ -5,7 +5,7 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { RouterLink } from '@angular/router';
 import {
   LucideAngularModule, Bot, ChevronLeft, Loader, Play, Save, Info, CheckCircle2, Gauge,
-  History, ChevronDown, Truck, ArrowUpRight, Sparkles, ListChecks, RefreshCw,
+  History, ChevronDown, ChevronRight, Truck, ArrowUpRight, Sparkles, ListChecks, RefreshCw,
 } from 'lucide-angular';
 import { firstValueFrom } from 'rxjs';
 import type { SetTripAutomationSettingsDto, TripAutomationBacklogDto, TripAutomationRunDto, TripAutomationRunStats, TripAutomationRunStatus, TripAutomationSettingsDto } from '@vizyo/tracky-shared';
@@ -141,8 +141,10 @@ export function etatPassage(
             <input type="checkbox" [checked]="d.narrateEnabled" (change)="patch('narrateEnabled', $any($event.target).checked)">
           </label>
 
-          <button type="button" class="ta-adv-toggle" (click)="showAdvanced.set(!showAdvanced())">
-            {{ showAdvanced() ? '▾' : '▸' }} Réglages avancés (fenêtre & plafonds)
+          <button type="button" class="ta-adv-toggle" (click)="showAdvanced.set(!showAdvanced())"
+                  [attr.aria-expanded]="showAdvanced()">
+            <lucide-icon [img]="showAdvanced() ? ChevronDownIcon : ChevronRightIcon" [size]="13" aria-hidden="true"></lucide-icon>
+            Réglages avancés (fenêtre & plafonds)
           </button>
           @if (showAdvanced()) {
             <div class="ta-adv">
@@ -348,7 +350,8 @@ export function etatPassage(
     .ta-seg button { padding: 7px 14px; border: none; background: transparent; color: var(--fg-tertiary); font-size: 12.5px; font-weight: 700; border-radius: 7px; cursor: pointer; }
     .ta-seg button.on { background: var(--tracky, #10E0A0); color: var(--accent-ink, #04130D); }
 
-    .ta-adv-toggle { margin-top: 12px; background: none; border: none; color: var(--fg-tertiary); font-size: 12px; font-weight: 700; cursor: pointer; padding: 4px 0; }
+    .ta-adv-toggle { margin-top: 12px; background: none; border: none; color: var(--fg-tertiary); font-size: 12px; font-weight: 700; cursor: pointer; padding: 4px 0;
+                     display: inline-flex; align-items: center; gap: 4px; }
     .ta-adv-toggle:hover { color: var(--fg-secondary); }
     .ta-adv { border-top: 1px dashed var(--border-subtle); margin-top: 4px; }
 
@@ -497,6 +500,7 @@ export class TripAutomationComponent implements OnInit {
   protected readonly GaugeIcon = Gauge;
   protected readonly HistoryIcon = History;
   protected readonly ChevronDownIcon = ChevronDown;
+  protected readonly ChevronRightIcon = ChevronRight;
   protected readonly TruckIcon = Truck;
   protected readonly LinkIcon = ArrowUpRight;
   protected readonly SparklesIcon = Sparkles;

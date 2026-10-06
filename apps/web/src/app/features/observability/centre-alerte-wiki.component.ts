@@ -27,6 +27,7 @@ import {
   ShieldAlert,
   Wrench,
   X,
+  ArrowRight,
 } from 'lucide-angular';
 import { firstValueFrom } from 'rxjs';
 import {
@@ -299,8 +300,8 @@ const STATUT_STYLE_DEFAUT = { bord: 'border-l-slate-600', puce: 'bg-slate-500/15
                       @if (f.doc) {
                         <div class="mt-3 flex justify-end">
                           <button (click)="openDoc(f.doc!, f.ancre)"
-                                  class="text-[11px] text-tracky-light hover:underline cursor-pointer">
-                            Ouvrir la fiche complète →
+                                  class="inline-flex items-center gap-1 text-[11px] text-tracky-light hover:underline cursor-pointer">
+                            Ouvrir la fiche complète <lucide-icon [img]="ArrowRight" [size]="11" aria-hidden="true"></lucide-icon>
                           </button>
                         </div>
                       }
@@ -327,8 +328,8 @@ const STATUT_STYLE_DEFAUT = { bord: 'border-l-slate-600', puce: 'bg-slate-500/15
                         }
                         @if (p.rapport) {
                           <button (click)="openDoc(p.rapport!)"
-                                  class="ml-auto text-[11px] text-tracky-light hover:underline cursor-pointer">
-                            Lire le rapport →
+                                  class="ml-auto inline-flex items-center gap-1 text-[11px] text-tracky-light hover:underline cursor-pointer">
+                            Lire le rapport <lucide-icon [img]="ArrowRight" [size]="11" aria-hidden="true"></lucide-icon>
                           </button>
                         }
                       </div>
@@ -434,6 +435,7 @@ export class CentreAlerteWikiComponent {
   readonly close = output<void>();
 
   protected readonly BookOpen = BookOpen;
+  protected readonly ArrowRight = ArrowRight;
   protected readonly ChevronLeft = ChevronLeft;
   protected readonly CircleAlert = CircleAlert;
   protected readonly Clock = Clock;

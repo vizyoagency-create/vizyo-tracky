@@ -25,6 +25,7 @@ import {
   Smartphone,
   Trash2,
   XCircle,
+  ArrowRight,
 } from 'lucide-angular';
 import type { AlertEvent } from '@vizyo/tracky-shared';
 import { getVehicleConnectivityState, parametresTrajet } from '@vizyo/tracky-shared';
@@ -335,7 +336,7 @@ interface AlertCluster {
                          trajet → », constaté en production le 2026-09-07. Le reste de la ligne
                          (message, horodatage) sépare déjà ses membres de la même façon. -->
                     @if (cluster.vehicleId) { <span class="al-sep">·</span> }
-                    <a [routerLink]="['/vehicles', lt.vehicleId]" [queryParams]="lt.params" class="al-trip">Voir le trajet →</a>
+                    <a [routerLink]="['/vehicles', lt.vehicleId]" [queryParams]="lt.params" class="al-trip">Voir le trajet <lucide-icon [img]="ArrowRightIcon" [size]="14" aria-hidden="true"></lucide-icon></a>
                   }
                   @if (cluster.lead.message) { <span class="al-sep">·</span> {{ cluster.lead.message }} }
                   <span class="al-sep">·</span> {{ relativeTime(cluster.newestAt) }}
@@ -352,7 +353,7 @@ interface AlertCluster {
                         <div class="al-occ" [class.acked]="isAcknowledged(it)">
                           <span class="al-occ-time">{{ occTime(it.createdAt) }}</span>
                           @if (alertSpeed(it); as sp) { <span class="al-occ-speed">{{ sp }} km/h</span> }
-                          @if (lienTrajet(it); as lt) { <a [routerLink]="['/vehicles', lt.vehicleId]" [queryParams]="lt.params" class="al-occ-trip">trajet →</a> }
+                          @if (lienTrajet(it); as lt) { <a [routerLink]="['/vehicles', lt.vehicleId]" [queryParams]="lt.params" class="al-occ-trip">trajet <lucide-icon [img]="ArrowRightIcon" [size]="11" aria-hidden="true"></lucide-icon></a> }
                           @if (isAcknowledged(it)) { <lucide-icon [img]="Check" [size]="10" class="al-occ-ack"></lucide-icon> }
                         </div>
                       }
@@ -851,9 +852,9 @@ interface AlertCluster {
     .al-meta { font-size: 11.5px; color: var(--fg-tertiary); margin-top: 4px; line-height: 1.5 }
     .al-plate { color: var(--fg-secondary); font-weight: 600 }
     /* Lot V5 — une alerte née d'un trajet mène au trajet, pas seulement au véhicule. */
-    .al-trip { display: inline-flex; align-items: center; min-height: 44px; color: var(--texte-succes); font-weight: 700; white-space: nowrap }
+    .al-trip { display: inline-flex; align-items: center; gap: 3px; min-height: 44px; color: var(--texte-succes); font-weight: 700; white-space: nowrap }
     .al-trip:hover, .al-occ-trip:hover { text-decoration: underline }
-    .al-occ-trip { color: var(--texte-succes); font-weight: 700; font-size: 11px }
+    .al-occ-trip { color: var(--texte-succes); font-weight: 700; font-size: 11px; display: inline-flex; align-items: center; gap: 2px }
     .al-plate:hover { color: var(--texte-succes) }
     .al-sep { color: var(--fg-tertiary); opacity: .6; margin: 0 4px }
     .al-expand { display: inline-flex; align-items: center; gap: 5px; margin-top: 8px; padding: 4px 9px; border-radius: 8px; border: 1px solid var(--border-subtle); background: transparent; color: var(--fg-tertiary); font-size: 11px; font-weight: 600; cursor: pointer; transition: color .15s, border-color .15s }
@@ -1128,6 +1129,7 @@ export class AlertsComponent implements OnInit {
   protected readonly AlertCircle = AlertCircle;
   protected readonly Info = Info;
   protected readonly Check = Check;
+  protected readonly ArrowRightIcon = ArrowRight;
   protected readonly CheckCheck = CheckCheck;
   protected readonly GaugeIcon = Gauge;
   protected readonly ChevronDownIcon = ChevronDown;

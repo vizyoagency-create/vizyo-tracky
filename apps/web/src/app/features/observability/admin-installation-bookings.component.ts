@@ -4,8 +4,8 @@ import { NgTemplateOutlet } from '@angular/common';
 import { ChangeDetectionStrategy, Component, computed, inject, OnInit, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import {
-  ArrowLeft, Ban, Bot, Building2, CalendarClock, Check, ChevronDown, ChevronUp, Copy, ExternalLink, Eye, Link2,
-  LucideAngularModule, Monitor, Pencil, Plus, Smartphone, Tablet, Trash2, UserCheck, X,
+  ArrowLeft, Ban, Bot, Building2, CalendarClock, Car, Check, ChevronDown, ChevronUp, CircleCheck, CircleX, Copy, ExternalLink, Eye, Link2,
+  LucideAngularModule, MapPin, MessageSquare, Monitor, Pencil, Plus, Smartphone, Tablet, Trash2, UserCheck, X,
 } from 'lucide-angular';
 import { firstValueFrom } from 'rxjs';
 import type {
@@ -102,15 +102,15 @@ const MANAGER_NOUVEAU_CLIENT = 'https://manager.vizyoagency.com/admin/clients/ne
                 </div>
                 <div class="ib-client">{{ b.clientName }} · <a href="mailto:{{ b.clientEmail }}">{{ b.clientEmail }}</a>@if (b.clientPhone) { · <a [href]="telHref(b.clientPhone)">{{ b.clientPhone }}</a> }</div>
                 @for (v of b.vehicles; track v.id) {
-                  <div class="ib-meta">🚗 {{ vehiculeLisible(v, b.vehicleCount > 1 ? v.position + 1 : null) }}</div>
+                  <div class="ib-meta ib-meta--icone"><lucide-icon [img]="Car" [size]="13" aria-hidden="true"></lucide-icon>{{ vehiculeLisible(v, b.vehicleCount > 1 ? v.position + 1 : null) }}</div>
                 }
-                @if (b.clientAddress) { <div class="ib-meta">📍 {{ b.clientAddress }}</div> }
-                @if (b.notes) { <div class="ib-meta">💬 {{ b.notes }}</div> }
+                @if (b.clientAddress) { <div class="ib-meta ib-meta--icone"><lucide-icon [img]="MapPin" [size]="13" aria-hidden="true"></lucide-icon>{{ b.clientAddress }}</div> }
+                @if (b.notes) { <div class="ib-meta ib-meta--icone"><lucide-icon [img]="MessageSquare" [size]="13" aria-hidden="true"></lucide-icon>{{ b.notes }}</div> }
                 <div class="ib-meta">Lien : {{ b.linkLabel || '(supprimé)' }}@if (b.planId) { · <a class="ib-a" [routerLink]="['/admin/installations', b.planId]">planning</a> }</div>
                 @if (b.status === 'CONFIRMED') {
-                  <div class="ib-meta">✔ Validée{{ b.confirmedByName ? ' par ' + b.confirmedByName : '' }}@if (b.confirmedAt) { le {{ formatDateTime(b.confirmedAt) }} } · {{ b.poses.length }} pose{{ b.poses.length > 1 ? 's' : '' }}@if (posesFaites(b) > 0) { ({{ posesFaites(b) }} faite{{ posesFaites(b) > 1 ? 's' : '' }}) }</div>
+                  <div class="ib-meta ib-meta--icone"><lucide-icon class="ib-ok" [img]="CircleCheck" [size]="13" aria-hidden="true"></lucide-icon>Validée{{ b.confirmedByName ? ' par ' + b.confirmedByName : '' }}@if (b.confirmedAt) { le {{ formatDateTime(b.confirmedAt) }} } · {{ b.poses.length }} pose{{ b.poses.length > 1 ? 's' : '' }}@if (posesFaites(b) > 0) { ({{ posesFaites(b) }} faite{{ posesFaites(b) > 1 ? 's' : '' }}) }</div>
                 } @else if (b.status === 'CANCELLED') {
-                  <div class="ib-meta">✖ Annulée{{ b.cancelledByName ? ' par ' + b.cancelledByName : '' }}@if (b.cancelledAt) { le {{ formatDateTime(b.cancelledAt) }} }@if (b.cancelReason) { — {{ b.cancelReason }} }</div>
+                  <div class="ib-meta ib-meta--icone"><lucide-icon class="ib-ko" [img]="CircleX" [size]="13" aria-hidden="true"></lucide-icon>Annulée{{ b.cancelledByName ? ' par ' + b.cancelledByName : '' }}@if (b.cancelledAt) { le {{ formatDateTime(b.cancelledAt) }} }@if (b.cancelReason) { — {{ b.cancelReason }} }</div>
                 }
               </div>
               <span class="ib-status ib-status--{{ b.status.toLowerCase() }}">{{ statusLabel(b.status) }}</span>
@@ -445,6 +445,11 @@ const MANAGER_NOUVEAU_CLIENT = 'https://manager.vizyoagency.com/admin/clients/ne
     .ib-client { font-size:13px; color:var(--fg-secondary,#9BA5A1); margin-top:5px; }
     .ib-client a { color:var(--tracky,#10E0A0); text-decoration:none; }
     .ib-meta { font-size:12.5px; color:var(--fg-tertiary,#69736E); margin-top:4px; }
+    /* 06/10/2026 — une ligne précédée d'une icône SVG (plus d'emoji 🚗 📍 💬 ✔ ✖). */
+    .ib-meta--icone { display:flex; align-items:flex-start; gap:6px; }
+    .ib-meta--icone lucide-icon { display:inline-flex; flex-shrink:0; margin-top:2px; }
+    .ib-ok { color:var(--texte-succes); }
+    .ib-ko { color:var(--texte-alerte); }
     .ib-opens { display:inline-flex; align-items:center; gap:5px; color:var(--texte-succes); flex-wrap:wrap; }
     .ib-opens--none { color:var(--fg-tertiary,#69736E); }
     .ib-lien { background:none; border:none; padding:0 0 0 6px; color:var(--tracky,#10E0A0); font-size:12.5px; font-weight:600; cursor:pointer; display:inline-flex; align-items:center; gap:3px; font-family:inherit; }
@@ -550,6 +555,8 @@ export class AdminInstallationBookingsComponent implements OnInit {
   protected readonly Trash2 = Trash2; protected readonly Plus = Plus; protected readonly Link2 = Link2;
   protected readonly Eye = Eye; protected readonly Pencil = Pencil; protected readonly Bot = Bot;
   protected readonly ChevronDown = ChevronDown; protected readonly ChevronUp = ChevronUp; protected readonly UserCheck = UserCheck;
+  protected readonly Car = Car; protected readonly MapPin = MapPin; protected readonly MessageSquare = MessageSquare;
+  protected readonly CircleCheck = CircleCheck; protected readonly CircleX = CircleX;
 
   protected readonly jours = JOURS;
   protected readonly durees = DUREES;

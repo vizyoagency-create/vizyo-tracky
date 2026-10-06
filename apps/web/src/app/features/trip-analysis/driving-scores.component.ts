@@ -3,7 +3,7 @@ import { ChangeDetectionStrategy, Component, computed, effect, inject, OnInit, s
 import { PlanUpsellComponent } from '../../shared/ui/plan-upsell/plan-upsell.component';
 import { DecimalPipe } from '@angular/common';
 import { RouterLink } from '@angular/router';
-import { LucideAngularModule, ChevronLeft, Gauge, Car, UserRound, Layers, RefreshCw, AlertTriangle, TrendingUp, Info, Trophy, Users } from 'lucide-angular';
+import { LucideAngularModule, ChevronLeft, Gauge, Car, UserRound, Layers, RefreshCw, AlertTriangle, TrendingUp, Info, Trophy, Users, Medal, ArrowRight } from 'lucide-angular';
 import { firstValueFrom } from 'rxjs';
 import { partLibelle } from '@vizyo/tracky-shared';
 import type { DrivingScoreRowDto, DrivingScoreScope, DrivingScoresDto } from '@vizyo/tracky-shared';
@@ -86,7 +86,7 @@ type Period = '7d' | '30d' | '90d';
             <div class="ds-podium">
               @for (p of pod; track p.rank) {
                 <div class="ds-pod" [attr.data-rank]="p.rank">
-                  <span class="ds-pod-medal">{{ medal(p.rank) }}</span>
+                  <span class="ds-pod-medal" [attr.data-rang]="p.rank"><lucide-icon [img]="MedalIcon" [size]="p.rank === 1 ? 30 : 24" aria-hidden="true"></lucide-icon></span>
                   <span class="ds-pod-name" [title]="p.row.label">
                     @if (p.row.color) { <span class="ds-dot" [style.background]="p.row.color"></span> }
                     {{ p.row.label }}
@@ -134,7 +134,13 @@ type Period = '7d' | '30d' | '90d';
           <div class="ds-list">
             @for (r of d.rows; track r.id; let i = $index) {
               <article class="ds-row" [class.ds-row--podium]="i < 3">
-                <span class="ds-rank" [class.ds-rank--medal]="i < 3">{{ i < 3 ? medal(i + 1) : (i + 1) }}</span>
+                <span class="ds-rank" [class.ds-rank--medal]="i < 3" [attr.data-rang]="i < 3 ? i + 1 : null">
+                  @if (i < 3) {
+                    <lucide-icon [img]="MedalIcon" [size]="17" aria-hidden="true"></lucide-icon><span class="sr-only">{{ i + 1 }}</span>
+                  } @else {
+                    {{ i + 1 }}
+                  }
+                </span>
                 <span class="ds-grade" [attr.data-grade]="r.grade" [title]="'Note ' + r.grade">{{ r.grade }}</span>
                 <div class="ds-row-main">
                   <div class="ds-row-top">
@@ -175,7 +181,7 @@ type Period = '7d' | '30d' | '90d';
                       @if (r.speedingTripRefs.length > 0) {
                         <a [routerLink]="['/vehicles', r.speedingTripRefs[0].vehicleId]"
                            [queryParams]="{ tab: 'reports', trip: r.speedingTripRefs[0].tripId, tripDate: r.speedingTripRefs[0].startedAt }"
-                           class="ds-warn ds-warn-link" [title]="speedingTitle(r)">{{ r.speedingTrips }} avec excès →</a>
+                           class="ds-warn ds-warn-link" [title]="speedingTitle(r)">{{ r.speedingTrips }} avec excès <lucide-icon [img]="ArrowRightIcon" [size]="12" aria-hidden="true"></lucide-icon></a>
                       } @else {
                         <span class="ds-warn">{{ r.speedingTrips }} avec excès</span>
                       }
@@ -304,8 +310,11 @@ type Period = '7d' | '30d' | '90d';
     .ds-podium-cap lucide-icon { color: #F5B301; }
     .ds-podium { display: flex; justify-content: center; align-items: flex-end; gap: 10px; }
     .ds-pod { flex: 1 1 0; max-width: 30%; display: flex; flex-direction: column; align-items: center; gap: 4px; text-align: center; min-width: 0; }
-    .ds-pod-medal { font-size: 25px; line-height: 1; }
-    .ds-pod[data-rank="1"] .ds-pod-medal { font-size: 32px; }
+    /* 06/10/2026 — médailles en SVG (plus d'emoji) : or, argent, bronze — jetons du thème. */
+    .ds-pod-medal { display: inline-flex; line-height: 1; }
+    .ds-pod-medal[data-rang="1"], .ds-rank[data-rang="1"] { color: var(--texte-attente); }
+    .ds-pod-medal[data-rang="2"], .ds-rank[data-rang="2"] { color: var(--texte-inactif); }
+    .ds-pod-medal[data-rang="3"], .ds-rank[data-rang="3"] { color: var(--texte-orange); }
     .ds-pod-name { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; font-size: 12px; font-weight: 700; color: var(--fg-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .ds-pod-score { font-size: 15px; font-weight: 800; color: var(--fg-secondary); }
     .ds-pod-score small { font-size: 9px; color: var(--fg-tertiary); font-weight: 600; }
@@ -320,7 +329,7 @@ type Period = '7d' | '30d' | '90d';
     .ds-row { display: flex; align-items: center; gap: 11px; padding: 12px 14px; border-radius: 13px; background: var(--bg-secondary); border: 1px solid var(--border-subtle); }
     .ds-row--podium { border-color: color-mix(in srgb, #F5B301 30%, var(--border-subtle)); }
     .ds-rank { font-size: 13px; font-weight: 800; color: var(--fg-tertiary); width: 18px; text-align: center; flex-shrink: 0; }
-    .ds-rank--medal { font-size: 17px; }
+    .ds-rank--medal { display: inline-flex; justify-content: center; }
     .ds-row-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 5px; }
     .ds-row-top { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
     .ds-row-label { display: inline-flex; align-items: center; gap: 6px; font-size: 13.5px; font-weight: 700; color: var(--fg-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -334,7 +343,7 @@ type Period = '7d' | '30d' | '90d';
     .ds-row-stats { display: flex; flex-wrap: wrap; gap: 4px 10px; font-size: 11px; color: var(--fg-tertiary); }
     .ds-row-sub { font-weight: 600; }
     .ds-warn { color: var(--texte-alerte); font-weight: 700; }
-    a.ds-warn-link { text-decoration: none; cursor: pointer; white-space: nowrap; }
+    a.ds-warn-link { text-decoration: none; cursor: pointer; white-space: nowrap; display: inline-flex; align-items: center; gap: 3px; }
     a.ds-warn-link:hover { text-decoration: underline; }
     .ds-non-attribue {
       display: flex; align-items: flex-start; gap: 10px; margin-bottom: 12px; padding: 12px 14px;
@@ -386,6 +395,8 @@ export class DrivingScoresComponent implements OnInit {
   protected readonly TrendIcon = TrendingUp;
   protected readonly InfoIcon = Info;
   protected readonly TrophyIcon = Trophy;
+  protected readonly MedalIcon = Medal;
+  protected readonly ArrowRightIcon = ArrowRight;
 
   protected periodLabel(): string {
     return this.period() === '7d' ? '7 derniers jours' : this.period() === '90d' ? '90 derniers jours' : '30 derniers jours';
@@ -432,10 +443,6 @@ export class DrivingScoresComponent implements OnInit {
       { row: rows[2], rank: 3 },
     ];
   });
-
-  protected medal(rank: number): string {
-    return rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : '';
-  }
 
   /**
    * Part des trajets réellement analysés, en pourcentage entier.

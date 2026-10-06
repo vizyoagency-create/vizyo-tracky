@@ -18,6 +18,7 @@ import { HttpClient } from '@angular/common/http';
 import { ActivatedRoute, Router } from '@angular/router';
 import * as maplibregl from 'maplibre-gl';
 import type { Map as MlMap, Marker as MlMarker, Popup, GeoJSONSource } from 'maplibre-gl';
+import { ChevronDown, ChevronRight, LucideAngularModule, X } from 'lucide-angular';
 import type { FuelStationMapPointDto, GeofenceDto, PositionUpdateEvent } from '@vizyo/tracky-shared';
 import {
   deriveMotion,
@@ -309,7 +310,7 @@ const RESYNC_RADIUS_M = 150;
 @Component({
   selector: 'app-map',
   standalone: true,
-  imports: [DecimalPipe, NgTemplateOutlet, FormsModule, EngineControlButtonComponent, SaFleetBadgeComponent, GroupBadgeComponent, ConnectivityBadgeComponent, TrackClickDirective, BottomSheetComponent, ZoneComponent, LegendeVitesseComponent],
+  imports: [DecimalPipe, NgTemplateOutlet, FormsModule, EngineControlButtonComponent, SaFleetBadgeComponent, GroupBadgeComponent, ConnectivityBadgeComponent, TrackClickDirective, BottomSheetComponent, ZoneComponent, LegendeVitesseComponent, LucideAngularModule],
   template: `
     <div #mapContainer style="position:absolute;top:0;left:0;width:100%;height:100%"></div>
 
@@ -623,7 +624,7 @@ const RESYNC_RADIUS_M = 150;
             (blur)="onSearchBlur()"
             autofocus />
           <button type="button" (click)="mobileSearchOpen.set(false); searchQuery.set('')"
-                  class="tracky-mobile-search-close" aria-label="Fermer">×</button>
+                  class="tracky-mobile-search-close" aria-label="Fermer"><lucide-icon [img]="IconeFermer" [size]="16" aria-hidden="true"></lucide-icon></button>
         </div>
         @if (searchFocused() && vehicleMatches().length > 0) {
           <div class="tracky-mobile-search-results">
@@ -1025,7 +1026,7 @@ const RESYNC_RADIUS_M = 150;
             <div class="tracky-vehicle-picker">
               <p class="tracky-vehicle-picker-title">
                 Choisir un véhicule à suivre
-                <button (click)="cancelVehiclePicker()" class="tracky-vehicle-picker-cancel">×</button>
+                <button type="button" (click)="cancelVehiclePicker()" class="tracky-vehicle-picker-cancel" aria-label="Annuler le choix du véhicule"><lucide-icon [img]="IconeFermer" [size]="14" aria-hidden="true"></lucide-icon></button>
               </p>
               @if (cameraPickerVehicles().length === 0) {
                 <p class="tracky-vehicle-picker-empty">Aucun véhicule disponible</p>
@@ -1208,7 +1209,7 @@ const RESYNC_RADIUS_M = 150;
         <button type="button" class="mp-legende-b" (click)="basculerLegende()"
                 [attr.aria-expanded]="!legendeRepliee()" aria-controls="mp-legende-contenu">
           <span class="text-[10px] font-semibold text-fg-secondary uppercase tracking-wider">Légende</span>
-          <span class="mp-legende-chevron" aria-hidden="true">{{ legendeRepliee() ? '▸' : '▾' }}</span>
+          <lucide-icon class="mp-legende-chevron" [img]="legendeRepliee() ? IconeChevronDroite : IconeChevronBas" [size]="13" aria-hidden="true"></lucide-icon>
         </button>
         @if (!legendeRepliee()) {
         <div id="mp-legende-contenu" class="mp-legende-contenu">
@@ -1709,7 +1710,7 @@ const RESYNC_RADIUS_M = 150;
       background: transparent; border: 0; cursor: pointer; color: var(--fg-secondary);
     }
     .mp-legende-b:hover { background: color-mix(in srgb, var(--fg-primary) 6%, transparent); }
-    .mp-legende-chevron { font-size: 11px; line-height: 1; color: var(--fg-tertiary); }
+    .mp-legende-chevron { display: inline-flex; color: var(--fg-tertiary); }
     .mp-legende-contenu { margin-top: 6px; }
     .mp-cle-debranche { flex-shrink: 0; display: block; overflow: visible; }
     .mp-cle-pompe {
@@ -2484,6 +2485,7 @@ const RESYNC_RADIUS_M = 150;
       justify-content: space-between;
     }
     .tracky-vehicle-picker-cancel {
+      display: inline-flex; align-items: center; justify-content: center;
       width: 24px; height: 24px;
       border-radius: 50%;
       background: var(--bg-secondary);
@@ -2703,6 +2705,7 @@ const RESYNC_RADIUS_M = 150;
       }
       .tracky-mobile-search-inner input::placeholder { color: var(--fg-tertiary); }
       .tracky-mobile-search-close {
+        display: inline-flex; align-items: center; justify-content: center;
         width: 28px; height: 28px;
         border-radius: 50%;
         background: var(--bg-tertiary);
@@ -3082,6 +3085,10 @@ export class MapComponent implements AfterViewInit, OnDestroy {
   protected readonly COULEUR_SOUTERRAIN_COEUR = UNDERGROUND_MARKER_COLOR;
   /** L'émeraude des stations de la flotte — celle de `fleetPlaceStyle('FUEL_STATION')`. */
   protected readonly COULEUR_POMPE = fleetPlaceStyle('FUEL_STATION').color;
+  /** Icônes SVG (lucide) du gabarit — plus de glyphes « × », « ▸ », « ▾ » (06/10/2026). */
+  protected readonly IconeFermer = X;
+  protected readonly IconeChevronDroite = ChevronRight;
+  protected readonly IconeChevronBas = ChevronDown;
 
   protected readonly realtime = inject(RealtimeService);
   /** Filtre société global (sélecteur super-admin). matches() = true pour un non-super. */
@@ -5764,15 +5771,16 @@ export class MapComponent implements AfterViewInit, OnDestroy {
   private openDeadZonePopup(z: GpsDeadZoneMapDto): void {
     if (!this.map || !this.carteUtilisable()) return;
     const esc = (s: unknown) => String(s ?? '').replace(/[<>&]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;' }[c] as string));
-    const statusLabel = z.status === 'CONFIRMED_BENIGN'
-      ? '🅿️ Parking souterrain confirmé'
+    // L'icône en SVG lucide (plus d'emoji 🅿️ / ⚠️, 06/10/2026), le libellé échappé à part.
+    const [statusIcone, statusLabel] = z.status === 'CONFIRMED_BENIGN'
+      ? [PARKING_LUCIDE, 'Parking souterrain confirmé']
       : z.status === 'SUSPECT'
-        ? '⚠️ Zone suspecte (brouilleur ?)'
-        : 'Perte GPS récurrente';
+        ? [ALERTE_LUCIDE, 'Zone suspecte (brouilleur ?)']
+        : ['', 'Perte GPS récurrente'];
     const html = `<div style="font-size:12px;line-height:1.55;min-width:180px">`
       + `<strong style="font-size:13px">${esc(z.plate) || 'Véhicule'}</strong><br>`
       + (z.placeLabel ? `<span style="color:#9ca3af">${esc(z.placeLabel)}</span><br>` : '')
-      + `<b>${esc(statusLabel)}</b><br>`
+      + `<b style="display:inline-flex;align-items:center;gap:4px">${statusIcone ? svgLucide(statusIcone, 'currentColor', 14) : ''}${esc(statusLabel)}</b><br>`
       + `${esc(deadZoneNatureLabel(z))} · perte GPS ${esc(z.occurrences)} fois ici`
       + `</div>`;
     this.deadZonePopup?.remove();
@@ -5857,8 +5865,11 @@ export class MapComponent implements AfterViewInit, OnDestroy {
       // La pompe en SVG, à l'ENCRE SOMBRE de l'émeraude (11:1, contre 1,7:1 au blanc) : l'émoji
       // ⛽ qu'elle remplace est dessiné ROUGE par Windows (demande du propriétaire, 06/10/2026).
       el.innerHTML = svgPompe(markerInk(color), Math.round(g.taille * 0.62));
-    } else {
+    } else if (glyph) {
       el.textContent = glyph;
+    } else {
+      // Lieu « autre » : l'étoile en SVG lucide (06/10/2026 — c'était le glyphe « ★ »).
+      el.innerHTML = svgLucide(ETOILE_LUCIDE, markerInk(color), Math.round(g.taille * 0.6));
     }
     el.setAttribute('aria-label', p.name);
     // Plus de « glissez pour déplacer » : le repère ne se déplace plus depuis la carte (cf.
@@ -6935,7 +6946,8 @@ function fleetPlaceStyle(kind: FleetPlaceKind): { color: string; glyph: string }
     case 'DEPOT':
       return { color: '#f59e0b', glyph: 'D' };
     default:
-      return { color: '#94a3b8', glyph: '★' };
+      // Pas de glyphe texte : l'étoile est un SVG (`ETOILE_LUCIDE`), cf. `buildFleetPlaceEl`.
+      return { color: '#94a3b8', glyph: '' };
   }
 }
 
@@ -6949,12 +6961,35 @@ const POMPE_LUCIDE =
   '<path d="M14 22V4a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v18"/>' +
   '<path d="M14 13h2a2 2 0 0 1 2 2v2a2 2 0 0 0 2 2a2 2 0 0 0 2-2V9.83a2 2 0 0 0-.59-1.42L18 5"/>';
 
-/** La pompe à la taille du repère (17 px en « discrets », 26 px sinon), trait plus épais en petit. */
-function svgPompe(encre: string, taille: number): string {
+/** L'étoile des lieux « autres » — l'icône `Star` de Lucide (c'était le glyphe « ★ »). */
+const ETOILE_LUCIDE =
+  '<path d="M11.525 2.295a.53.53 0 0 1 .95 0l2.31 4.679a2.123 2.123 0 0 0 1.595 1.16l5.166.756a.53.53 0 0 1 .294.904' +
+  'l-3.736 3.638a2.123 2.123 0 0 0-.611 1.878l.882 5.14a.53.53 0 0 1-.771.56l-4.618-2.428a2.122 2.122 0 0 0-1.973 0' +
+  'L6.396 21.01a.53.53 0 0 1-.77-.56l.881-5.139a2.122 2.122 0 0 0-.611-1.879L2.16 9.795a.53.53 0 0 1 .294-.906' +
+  'l5.165-.755a2.122 2.122 0 0 0 1.597-1.16z"/>';
+
+/** Le parking souterrain confirmé des zones GPS — l'icône `SquareParking` de Lucide (c'était 🅿️). */
+const PARKING_LUCIDE = '<rect width="18" height="18" x="3" y="3" rx="2"/><path d="M9 17V7h4a3 3 0 0 1 0 6H9"/>';
+
+/** La zone suspecte — l'icône `TriangleAlert` de Lucide (c'était ⚠️). */
+const ALERTE_LUCIDE =
+  '<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/>' +
+  '<path d="M12 9v4"/><path d="M12 17h.01"/>';
+
+/**
+ * Une icône Lucide en SVG brut, pour ce que la carte construit en code (repères, popups) — là où
+ * le composant `lucide-icon` ne peut pas aller. Trait plus épais en petit.
+ */
+function svgLucide(contenu: string, encre: string, taille: number): string {
   const trait = taille < 14 ? 2.6 : 2.2;
   return `<svg viewBox="0 0 24 24" width="${taille}" height="${taille}" fill="none" stroke="${encre}"` +
     ` stroke-width="${trait}" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">` +
-    `${POMPE_LUCIDE}</svg>`;
+    `${contenu}</svg>`;
+}
+
+/** La pompe à la taille du repère (17 px en « discrets », 26 px sinon), trait plus épais en petit. */
+function svgPompe(encre: string, taille: number): string {
+  return svgLucide(POMPE_LUCIDE, encre, taille);
 }
 
 /** Sprint F.2 — feature GeoJSON pour un polygone defini par ses sommets. */

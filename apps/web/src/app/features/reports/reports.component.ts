@@ -1138,6 +1138,7 @@ export function trajetHorsPerimetreConducteur(
                     [attr.aria-pressed]="vueRecap() === 'vehicule'"
                     (click)="setVueRecap('vehicule')"
                     trackClick="rapport-recap-vue-vehicule">
+              @if (vueRecap() === 'vehicule') { <lucide-icon class="rep-vseg-coche" [img]="Check" [size]="12" aria-hidden="true"></lucide-icon> }
               <lucide-icon [img]="TruckIcon" [size]="14" aria-hidden="true"></lucide-icon>
               Par véhicule
             </button>
@@ -1149,6 +1150,7 @@ export function trajetHorsPerimetreConducteur(
                     [attr.aria-describedby]="attributionDisponible() ? null : 'rep-vseg-motif'"
                     (click)="setVueRecap('attribution')"
                     trackClick="rapport-recap-vue-attribution">
+              @if (vueRecap() === 'attribution') { <lucide-icon class="rep-vseg-coche" [img]="Check" [size]="12" aria-hidden="true"></lucide-icon> }
               <lucide-icon [img]="UsersIcon" [size]="14" aria-hidden="true"></lucide-icon>
               Par conducteur ou groupe
             </button>
@@ -1190,7 +1192,7 @@ export function trajetHorsPerimetreConducteur(
                   <span class="rep-vmeta">{{ formatDuration(l.duration) }}</span>
                   <span class="rep-vmeta rep-vt-hide">{{ l.trips }}</span>
                   <span class="rep-vmeta rep-vt-hide" [class.rep-vspeed-warn]="l.avgSpeed >= 50">
-                    @if (l.avgSpeed >= 50) { <span class="sr-only">Vitesse moyenne élevée : </span> }
+                    @if (l.avgSpeed >= 50) { <lucide-icon class="rep-vspeed-icone" [img]="AlertTriangleIcon" [size]="11" aria-hidden="true"></lucide-icon><span class="sr-only">Vitesse moyenne élevée : </span> }
                     {{ l.avgSpeed }} km/h
                   </span>
                   <!-- Même compte que la vue par véhicule : les excès ÉTABLIS de la règle
@@ -1293,7 +1295,7 @@ export function trajetHorsPerimetreConducteur(
                        dit au lecteur d'écran — un aria-label sur un span générique n'est pas
                        restitué de façon fiable, une mention masquée l'est. -->
                   <span class="rep-vmeta rep-vt-hide" [class.rep-vspeed-warn]="v.avgSpeed >= 50">
-                    @if (v.avgSpeed >= 50) { <span class="sr-only">Vitesse moyenne élevée : </span> }
+                    @if (v.avgSpeed >= 50) { <lucide-icon class="rep-vspeed-icone" [img]="AlertTriangleIcon" [size]="11" aria-hidden="true"></lucide-icon><span class="sr-only">Vitesse moyenne élevée : </span> }
                     {{ v.avgSpeed }} km/h
                   </span>
                   <!-- EXCÈS DE LA PÉRIODE (F06) ═══════════════════════════════════════════
@@ -3060,7 +3062,8 @@ export function trajetHorsPerimetreConducteur(
        lisible de la ligne. Le triangle double la couleur, pour ne pas reposer sur elle
        seule. */
     .rep-vspeed-warn { color: var(--texte-attente); font-weight: 600; }
-    .rep-vspeed-warn::before { content: '▲'; font-size: 9px; margin-right: 3px; }
+    /* Le triangle est un SVG (lucide) posé dans le gabarit — plus le glyphe « ▲ » en content (06/10/2026). */
+    .rep-vspeed-icone { display: inline-flex; vertical-align: -1px; margin-right: 3px; }
     /* « Voir › » écrit en toutes lettres : le chevron seul n'était l'indice de rien, et
        l'en-tête de la section promettait un contrôle nommé « Voir » qui n'existait pas. */
     .rep-vgo {
@@ -3131,7 +3134,8 @@ export function trajetHorsPerimetreConducteur(
     .rep-vseg-btn:hover:not(:disabled) { color: var(--fg-primary); }
     .rep-vseg-btn[aria-pressed="true"] { background: var(--bg-secondary); color: var(--fg-primary);
                                          border-color: var(--border-subtle); }
-    .rep-vseg-btn[aria-pressed="true"]::before { content: '✓'; font-size: 11px; font-weight: 800; color: var(--texte-succes); }
+    /* La coche de la vue choisie : un SVG (lucide) dans le gabarit — plus le glyphe « ✓ » en content. */
+    .rep-vseg-coche { display: inline-flex; color: var(--texte-succes); }
     /* Indisponible, jamais masqué : le motif est écrit juste dessous. */
     .rep-vseg-btn:disabled { opacity: .55; cursor: not-allowed; }
     /* Au doigt : 44 px de haut sur TOUTE la bande tactile, pas seulement sous 480 px. La

@@ -445,7 +445,12 @@ function joinFr(parts: string[]): string {
                     class="text-fg-tertiary shrink-0"></lucide-icon>
                   <span class="flex-1 min-w-0">
                     <span class="text-sm font-medium text-fg-primary block">Alertes</span>
-                    <span class="text-xs text-fg-tertiary block">{{ alertsHint() }}</span>
+                    <span class="text-xs text-fg-tertiary block">{{ alertsHintBase() }}</span>
+                    <!-- La réserve sous filtre conducteur : sur sa ligne, avec une icône SVG (elle
+                         portait un emoji « ⚠️ » au milieu de la phrase — 06/10/2026). -->
+                    @if (alertsReserve(); as reserve) {
+                      <span class="pem-reserve"><lucide-icon [img]="InfoIcon" [size]="12" aria-hidden="true"></lucide-icon><span>{{ reserve }}</span></span>
+                    }
                   </span>
                 </label>
 
@@ -766,6 +771,9 @@ function joinFr(parts: string[]): string {
       border: 1px solid var(--border-subtle);
       border-radius: 12px;
     }
+    /* La réserve des alertes sous filtre conducteur : une ligne à part, icône SVG en tête. */
+    .pem-reserve { display: flex; align-items: flex-start; gap: 5px; margin-top: 3px; font-size: 12px; line-height: 1.45; color: var(--fg-secondary); }
+    .pem-reserve lucide-icon { display: inline-flex; flex-shrink: 0; margin-top: 2px; color: var(--texte-info); }
     .pem-row--option:has(input:checked) {
       background: color-mix(in srgb, var(--color-tracky-light) 6%, transparent);
       border-color: color-mix(in srgb, var(--color-tracky-light) 25%, transparent);
@@ -1269,17 +1277,23 @@ export class PdfExportModalComponent {
    * accusation — et sur du papier qui circule, elle n'a pas de démenti. Le document porte la
    * même phrase (`report-pdf.service`), l'écran aussi.
    */
-  protected readonly alertsHint = computed(() => {
+  protected readonly alertsHintBase = computed(() => {
     const n = this.alertCount();
     const detail = 'total, répartition par type et par sévérité';
-    const exception = this.conducteurAffiche()
-      ? ' ⚠️ Les alertes appartiennent à un véhicule, pas à un conducteur : cette section ne suit pas le filtre et porte sur les véhicules du périmètre.'
-      : '';
-    if (n == null) return 'Sur la période : ' + detail + '.' + exception;
-    if (n === 0) return 'Aucune alerte sur la période — la section le dira noir sur blanc.' + exception;
-    if (n === 1) return '1 alerte sur la période — ' + detail + '.' + exception;
-    return n + ' alertes sur la période — ' + detail + '.' + exception;
+    if (n == null) return 'Sur la période : ' + detail + '.';
+    if (n === 0) return 'Aucune alerte sur la période — la section le dira noir sur blanc.';
+    if (n === 1) return '1 alerte sur la période — ' + detail + '.';
+    return n + ' alertes sur la période — ' + detail + '.';
   });
+
+  /** La réserve, sous filtre conducteur seulement — affichée sur sa ligne, icône SVG en tête. */
+  protected readonly alertsReserve = computed(() => this.conducteurAffiche()
+    ? 'Les alertes appartiennent à un véhicule, pas à un conducteur : cette section ne suit pas le filtre et porte sur les véhicules du périmètre.'
+    : '');
+
+  /** L'indice complet (base + réserve), tel qu'il se lit : les quatre branches portent la réserve. */
+  protected readonly alertsHint = computed(() =>
+    this.alertsHintBase() + (this.alertsReserve() ? ' ' + this.alertsReserve() : ''));
 
   /**
    * ⚠️ CETTE CASE COMMANDE DEUX TABLEAUX, PAS UN — et le second est NOMINATIF.
