@@ -103,9 +103,9 @@ export interface ProvisioningParams {
   fixIntervalS?: number; // defaut 20 (plancher firmware Coban)
   ackTimeoutS?: number; // defaut 15
   /**
-   * Mot de passe ACTUEL du boitier. Defaut : la valeur d'usine — un boitier neuf n'en a pas
-   * d'autre, et `begin<mdp>` ne passe qu'avec le bon. A renseigner pour reprovisionner un
-   * boitier dont le mot de passe a deja ete change (2026-09-30).
+   * Mot de passe ACTUEL du boîtier. Défaut : la valeur d'usine — un boîtier neuf n'en a pas
+   * d'autre, et `begin<mdp>` ne passe qu'avec le bon. À renseigner pour reprovisionner un
+   * boîtier dont le mot de passe a déjà été changé (2026-09-30).
    */
   devicePassword?: string;
 }
