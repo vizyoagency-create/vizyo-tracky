@@ -1784,6 +1784,47 @@ if [ -s "$JDEP" ]; then
     fi
   done < "$JDEP"
   [ "$NDEP" -eq 0 ] && echo "  (aucune ligne depuis $SEUIL_48H — aucun deploiement journalise sur 48 h)"
+  # ⚠️ AJOUTE LE 2026-10-06 (VPS-M137 — angle mort n° 3 du 29/09, reporte 3 fois, et le 05/10 en a fait
+  # la demonstration). Le bloc ci-dessus dit « un passage a-t-il ete tue ? » et ne repond jamais : la
+  # reponse etait un SQL tape a la main. Le 05/10, DEUX `force=true` (09:37Z, 10:58Z) ont tue DEUX passages
+  # (08:45 et 10:45, `interrupted`, `finishedAt` NUL) — vu seulement parce que le rapport l a requete.
+  # On croise ici, en lecture seule, borne par `timeout 20` (V34) : chaque passage non `done` de 48 h,
+  # de plus de 60 min (un passage tout juste parti n est pas « bloque »), avec les deploiements du
+  # journal tombes dans l heure qui a suivi son depart. Un passage `interrupted` SANS deploiement en
+  # regard n est PAS attribue a un deploiement : c est dit, pas devine.
+  _INT=$(timeout 20 docker exec tracky-postgres psql -U tracky -d tracky_prod -At -F'|' -c \
+    "SELECT extract(epoch from \"startedAt\")::bigint, status, to_char(\"startedAt\" AT TIME ZONE 'UTC','MM-DD HH24:MI')
+       FROM trip_automation_runs
+      WHERE \"startedAt\" > now() - interval '48 hours' AND \"startedAt\" < now() - interval '60 minutes'
+        AND (status <> 'done' OR \"finishedAt\" IS NULL) ORDER BY 1;" 2>/dev/null)
+  _INT_RC=$?
+  echo "  ── Passages d automatisation NON termines sur 48 h, croises avec les deploiements (VPS-M137) ──"
+  if [ "$_INT_RC" -ne 0 ]; then
+    echo "     ⚠️ requete SQL en echec/expiree (code $_INT_RC) — mesure NON FAITE (VPS-M02), PAS « aucun passage tue »"
+  elif [ -z "$_INT" ]; then
+    echo "     ✅ aucun passage non termine de plus de 60 min sur 48 h"
+  else
+    while IFS='|' read -r _ep _st _lib; do
+      [ -z "$_ep" ] && continue
+      _cause=""
+      while IFS= read -r _l2; do
+        _at2=$(printf '%s' "$_l2" | sed -n 's/.*"at":"\([^"]*\)".*/\1/p')
+        _ep2=$(date -u -d "$_at2" +%s 2>/dev/null) || continue
+        _f2=$(printf '%s' "$_l2" | sed -n 's/.*"force":\([a-z]*\).*/\1/p')
+        if [ "$_ep2" -ge "$_ep" ] && [ "$_ep2" -le $((_ep + 3600)) ]; then
+          _cause="${_cause} ${_at2}(force=${_f2})"
+        fi
+      done < "$JDEP"
+      if [ -n "$_cause" ]; then
+        printf '     🔴 passage du %s UTC : %s — deploiement(s) dans l heure :%s\n' "$_lib" "$_st" "$_cause"
+      else
+        printf '     🟠 passage du %s UTC : %s — AUCUN deploiement journalise dans l heure (cause NON etablie)\n' "$_lib" "$_st"
+      fi
+    done <<EOF_INT
+$_INT
+EOF_INT
+    echo "     ⚠️ « dans l heure » = correlation, pas preuve : le centre d alerte (TRK-077) tranche."
+  fi
   # Builds de tracky-api sur 24 h (par date de creation d image, meme source que le bloc
   # precedent) contre lignes de journal sur 24 h : plus de builds que de lignes = un build qui
   # n a PAS ete deploye. ⚠️ 24 h et pas 48 : le menage de 00:40 supprime les images de repli
@@ -4464,7 +4505,14 @@ for cont in $(db_conteneurs "$MOTEURS_TOUS"); do
   # 04/09, que la table affichait seuls. Corrige : variante a souligne + un alias explicite pour capcom6.
   cle_u=$(echo "$cle" | tr '-' '_')
   case "$cle" in capcom6) cle_alias="sms" ;; *) cle_alias="@@aucun@@" ;; esac
-  for d in /var/backups/*/; do
+  # ⚠️ AJOUTE LE 2026-10-06 (VPS-M136) — UN 🔴 « AUCUNE SAUVEGARDE » FAUX SUR UNE BASE DE PRODUCTION NEUVE.
+  # `maestroo-prod-postgres` (en ligne depuis le 05/10 23:56) est sauvegardee chaque nuit a 02:15 par un
+  # cron root (`maestroo-prod/deploy/scripts/backup.sh prod`) vers `/opt/backups/maestroo-prod/` (base
+  # relue : « 59 tables, 176377 octets » dans /var/log/maestroo-backup.log) — et ce balayage ne lisait que
+  # `/var/backups`. Une deuxieme racine de sauvegarde existait deja (`/opt/backups`, 58 Mo) sans que la
+  # couverture la connaisse. On balaie donc les DEUX racines ; `/opt/backups/tracky` (copie de juillet)
+  # peut s ajouter a la liste des dossiers de `tracky-postgres` : bruit assume, le plus RECENT gagne.
+  for d in /var/backups/*/ /opt/backups/*/; do
     case "$(basename "$d")" in
       *"$cle"*|*"$cle_u"*|"$cle_alias")
         t=$(find "$d" -maxdepth 1 -type f \( -name '*.gz' -o -name '*.gpg' \) -printf '%T@\n' 2>/dev/null | sort -rn | head -1)
