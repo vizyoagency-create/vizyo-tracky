@@ -697,3 +697,12 @@ retard qu'un déploiement mal placé, mais cette fois signalé partout où il do
   indisponible (délai 3 s dépassé) » dans le volet navigateur masqué, alors que la carte est
   rendue derrière. C'est le banc (aucun rAF tant que le volet ne capture pas, cf. mémoire
   « volet masqué = page gelée »), le même faux positif que pour la carte blanche.
+
+---
+
+## Archives rangées le 07/10/2026
+
+Deux notes de ce chantier vivaient hors du dépôt (`reprise-cartes/`), sans copie :
+
+- [`CONSTATS-RECETTE-2026-09-07.md`](./CONSTATS-RECETTE-2026-09-07.md) — les six défauts vus en recette sur la production le 07/09, tous corrigés (tableau en tête du fichier).
+- [`PREPARATION-REPRISE-2026-09-07.md`](./PREPARATION-REPRISE-2026-09-07.md) — le dossier de reprise (pièges, commandes, environnement) écrit avant le chantier.
