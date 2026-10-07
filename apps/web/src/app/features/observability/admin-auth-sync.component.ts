@@ -1,4 +1,5 @@
 import { swallow } from '../../core/error/swallow';
+import { apiErrorMessage } from '../../core/error/api-error';
 import { computed, Component, inject, OnInit, signal } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { DatePipe } from '@angular/common';
@@ -363,8 +364,7 @@ export class AdminAuthSyncComponent implements OnInit {
       swallow('admin-auth-sync:realign', err);
       // Le message du serveur porte le motif reel : le jeter laisserait l'administrateur
       // devant un echec opaque, exactement ce que cet ecran existe pour supprimer.
-      const msg = (err as { error?: { message?: string } })?.error?.message;
-      this.toast.error(msg ?? 'Echec du realignement.');
+      this.toast.error(apiErrorMessage(err, 'Echec du realignement.'));
     } finally {
       this.busy.set(null);
     }

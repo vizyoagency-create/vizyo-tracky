@@ -13,6 +13,7 @@ import {
 import type {
   InstallationEnergy, InstallationPlanDto, InstallationTaskDto, InstallationTaskStatus,
 } from '@vizyo/tracky-shared';
+import { motifErreurApi } from '../../core/error/api-error';
 import { InstallationsApiService } from '../../core/services/installations.service';
 import { ToastService } from '../../shared/ui/toast/toast.service';
 import { ConfirmModalComponent } from '../../shared/ui/confirm-modal/confirm-modal.component';
@@ -1058,9 +1059,7 @@ export class InstallationEditorComponent implements OnInit {
   }
 
   private errMsg(err: unknown): string {
-    const e = err as { error?: { message?: string | string[] }; message?: string };
-    const m = e?.error?.message;
-    if (Array.isArray(m)) return m.join(', ');
-    return m ?? e?.message ?? 'Erreur inconnue';
+    const e = err as { message?: string } | null | undefined;
+    return motifErreurApi(err) ?? e?.message ?? 'Erreur inconnue';
   }
 }

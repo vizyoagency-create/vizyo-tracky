@@ -1,4 +1,5 @@
 import { swallow } from '../../core/error/swallow';
+import { apiErrorMessage, motifErreurApi } from '../../core/error/api-error';
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, effect, inject, OnInit, signal } from '@angular/core';
 import { DatePipe, DecimalPipe } from '@angular/common';
@@ -2443,7 +2444,7 @@ export class VehicleDetailComponent implements OnInit {
       swallow('vehicle-detail:refetchRange', err);
       this.toast.error(
         'Erreur de chargement',
-        err instanceof HttpErrorResponse ? err.error?.message : String(err),
+        err instanceof HttpErrorResponse ? apiErrorMessage(err, '') : String(err),
       );
     } finally {
       this.rangeLoading.set(false);
@@ -2777,7 +2778,7 @@ export class VehicleDetailComponent implements OnInit {
       this.incidentOpen.set(false);
     } catch (err) {
       swallow('vehicle-detail:submitIncident', err);
-      this.toast.error('Échec', err instanceof HttpErrorResponse ? err.error?.message : 'Signalement impossible.');
+      this.toast.error('Échec', apiErrorMessage(err, 'Signalement impossible.'));
     } finally {
       this.savingIncident.set(false);
     }
@@ -2897,7 +2898,7 @@ export class VehicleDetailComponent implements OnInit {
       this.vehicleTrips.set((tripsRes as any).items ?? []);
     } catch (err) {
       swallow('vehicle-detail:loadAll', err);
-      this.toast.error('Erreur de chargement', err instanceof HttpErrorResponse ? err.error?.message : String(err));
+      this.toast.error('Erreur de chargement', err instanceof HttpErrorResponse ? apiErrorMessage(err, '') : String(err));
       this.router.navigate(['/vehicles']);
     } finally {
       this.loading.set(false);
@@ -2944,7 +2945,7 @@ export class VehicleDetailComponent implements OnInit {
     } catch (err) {
       swallow('vehicle-detail:setGroup', err);
       this.vehicle.set({ ...v, group: previous }); // rollback
-      this.toast.error('Échec', err instanceof HttpErrorResponse ? err.error?.message : 'Impossible de changer le groupe.');
+      this.toast.error('Échec', apiErrorMessage(err, 'Impossible de changer le groupe.'));
     } finally {
       this.groupSaving.set(false);
     }
@@ -3039,7 +3040,7 @@ export class VehicleDetailComponent implements OnInit {
             ? 'Action réservée au super-admin.'
             : err.status === 404
               ? 'Véhicule introuvable.'
-              : (err.error?.message ?? err.message ?? 'Erreur inconnue')
+              : (motifErreurApi(err) ?? err.message ?? 'Erreur inconnue')
           : err instanceof Error
             ? err.message
             : 'Erreur inconnue';
@@ -3100,7 +3101,7 @@ export class VehicleDetailComponent implements OnInit {
       const message = err instanceof HttpErrorResponse
         ? (err.status === 403
             ? 'Action réservée au SUPER_ADMIN'
-            : err.error?.message ?? err.message ?? 'Erreur inconnue')
+            : motifErreurApi(err) ?? err.message ?? 'Erreur inconnue')
         : (err instanceof Error ? err.message : 'Erreur inconnue');
 
       this.toast.error('Échec mise à jour ACC', message);
@@ -3172,7 +3173,7 @@ export class VehicleDetailComponent implements OnInit {
     } catch (err) {
       swallow('vehicle-detail:saveTripNote', err);
       const msg = err instanceof HttpErrorResponse
-        ? err.error?.message ?? 'Erreur inconnue'
+        ? apiErrorMessage(err, 'Erreur inconnue')
         : err instanceof Error ? err.message : 'Erreur inconnue';
       this.toast.error('Échec enregistrement note', msg);
     } finally {
@@ -3218,7 +3219,7 @@ export class VehicleDetailComponent implements OnInit {
       this.toast.success('Tracker détaché');
     } catch (err) {
       swallow('vehicle-detail:detachTracker', err);
-      this.toast.error('Échec', err instanceof HttpErrorResponse ? err.error?.message : '');
+      this.toast.error('Échec', apiErrorMessage(err, ''));
     }
   }
 
@@ -3235,7 +3236,7 @@ export class VehicleDetailComponent implements OnInit {
       this.vehicle.set(updated);
     } catch (err) {
       swallow('vehicle-detail:createAndAssignTracker', err);
-      this.toast.error('Echec', err instanceof HttpErrorResponse ? err.error?.message : '');
+      this.toast.error('Echec', apiErrorMessage(err, ''));
     }
   }
 
@@ -3251,7 +3252,7 @@ export class VehicleDetailComponent implements OnInit {
       this.vehicle.set(updated);
     } catch (err) {
       swallow('vehicle-detail:assignTracker', err);
-      this.toast.error('Échec', err instanceof HttpErrorResponse ? err.error?.message : '');
+      this.toast.error('Échec', apiErrorMessage(err, ''));
     }
   }
 
@@ -3302,7 +3303,7 @@ export class VehicleDetailComponent implements OnInit {
       );
     } catch (err) {
       swallow('vehicle-detail:onTripDriverPicked', err);
-      this.toast.error('Échec', err instanceof HttpErrorResponse ? err.error?.message : '');
+      this.toast.error('Échec', apiErrorMessage(err, ''));
     }
   }
 
@@ -3336,7 +3337,7 @@ export class VehicleDetailComponent implements OnInit {
       );
     } catch (err) {
       swallow('vehicle-detail:onDriverPicked', err);
-      this.toast.error('Échec assignation', err instanceof HttpErrorResponse ? err.error?.message : '');
+      this.toast.error('Échec assignation', apiErrorMessage(err, ''));
     } finally {
       this.assigningDriver.set(false);
     }
@@ -3382,7 +3383,7 @@ export class VehicleDetailComponent implements OnInit {
       this.toast.success('Conducteur cree et assigne', `${created.firstName} ${created.lastName}`);
     } catch (err) {
       swallow('vehicle-detail:onDriverDrawerSave', err);
-      this.toast.error('Echec', err instanceof HttpErrorResponse ? err.error?.message : 'Erreur inconnue');
+      this.toast.error('Echec', apiErrorMessage(err, 'Erreur inconnue'));
     } finally {
       this.driverDrawerLoading.set(false);
       this.assigningDriver.set(false);

@@ -12,6 +12,7 @@ import {
 import { FormsModule } from '@angular/forms';
 import { ArrowDown, ArrowUp, History, LucideAngularModule, Plus, Trash2, TriangleAlert } from 'lucide-angular';
 import { swallow } from '../../core/error/swallow';
+import { motifErreurApi } from '../../core/error/api-error';
 import { montantEuros } from '../../core/services/mission-requests.api';
 import { DepotModalComponent } from '../depot/modals/depot-modal.component';
 import { ToastService } from '../../shared/ui/toast/toast.service';
@@ -459,7 +460,7 @@ export class MissionStopsModalComponent implements OnInit {
       this.fermer.emit();
     } catch (err) {
       swallow('mission-stops-modal:enregistrer', err);
-      const brut = (err as { error?: { message?: unknown } })?.error?.message;
+      const brut = motifErreurApi(err);
       this.toast.show({
         kind: 'error',
         title: 'Modification impossible',

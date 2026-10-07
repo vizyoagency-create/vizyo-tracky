@@ -1,4 +1,5 @@
 import { swallow } from '../../core/error/swallow';
+import { apiErrorMessage } from '../../core/error/api-error';
 import { DatePipe } from '@angular/common';
 import { Component, DestroyRef, inject, OnInit, signal, computed } from '@angular/core';
 import { FormsModule } from '@angular/forms';
@@ -273,7 +274,7 @@ export class AdminUnknownTrackersComponent implements OnInit {
       this.entries.update((list) => list.filter((x) => x.imei !== entry.imei));
     } catch (e: unknown) {
       swallow('admin-unknown-trackers:confirmCreate', e);
-      const msg = (e as { error?: { message?: string } })?.error?.message ?? 'Échec de la création';
+      const msg = apiErrorMessage(e, 'Échec de la création');
       this.toast.error(msg);
     } finally {
       this.creating.set(false);

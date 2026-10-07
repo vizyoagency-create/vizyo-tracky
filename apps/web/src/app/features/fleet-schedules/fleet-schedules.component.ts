@@ -1,4 +1,5 @@
 import { swallow } from '../../core/error/swallow';
+import { apiErrorMessage } from '../../core/error/api-error';
 import { CommonModule } from '@angular/common';
 import {
   ChangeDetectionStrategy,
@@ -312,7 +313,7 @@ export class FleetSchedulesComponent implements OnInit, OnDestroy {
       this.error.set(null);
     } catch (e) {
       swallow('fleet-schedules:load', e);
-      const msg = (e as { error?: { message?: string } })?.error?.message ?? 'Chargement impossible';
+      const msg = apiErrorMessage(e, 'Chargement impossible');
       this.error.set(msg);
       if (isRefresh) {
         // Silencieux sur un poll de fond raté ; on garde les dernières données.
@@ -500,7 +501,7 @@ export class FleetSchedulesComponent implements OnInit, OnDestroy {
       this.previewData.set(res);
     } catch (e) {
       swallow('fleet-schedules:openPreview', e);
-      const msg = (e as { error?: { message?: string } })?.error?.message ?? 'Aperçu impossible';
+      const msg = apiErrorMessage(e, 'Aperçu impossible');
       this.toast.error('Aperçu', msg);
     } finally {
       this.previewLoading.set(false);
@@ -535,7 +536,7 @@ export class FleetSchedulesComponent implements OnInit, OnDestroy {
       }
     } catch (e) {
       swallow('fleet-schedules:confirmApply', e);
-      const msg = (e as { error?: { message?: string } })?.error?.message ?? 'Application impossible';
+      const msg = apiErrorMessage(e, 'Application impossible');
       this.toast.error('Application', msg);
     } finally {
       this.applying.set(false);

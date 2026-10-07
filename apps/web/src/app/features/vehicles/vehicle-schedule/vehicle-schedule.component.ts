@@ -1,4 +1,5 @@
 import { swallow } from '../../../core/error/swallow';
+import { apiErrorMessage } from '../../../core/error/api-error';
 import { Component, computed, effect, inject, input, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { LucideAngularModule, Clock, Save, X, Shield, Briefcase, Calendar, Settings2, Zap, ArrowRight, ChevronRight } from 'lucide-angular';
@@ -940,7 +941,7 @@ export class VehicleScheduleComponent {
       swallow('vehicle-schedule:save', err);
       this.toast.error(
         'Erreur',
-        err?.error?.message ?? 'Impossible de sauvegarder',
+        apiErrorMessage(err, 'Impossible de sauvegarder'),
       );
     } finally {
       this.saving.set(false);

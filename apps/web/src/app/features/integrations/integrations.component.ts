@@ -3,6 +3,7 @@ import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@a
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute } from '@angular/router';
 import { Observable } from 'rxjs';
+import { apiErrorMessage } from '../../core/error/api-error';
 import {
   PARTNER_SCOPES,
   PARTNER_SCOPES_DEFAULT_ON,
@@ -557,8 +558,7 @@ export class IntegrationsComponent {
       },
       error: (err: unknown) => {
         this.busy.set(false);
-        const message = (err as { error?: { message?: string } })?.error?.message;
-        this.error.set(message ?? 'Opération impossible.');
+        this.error.set(apiErrorMessage(err, 'Opération impossible.'));
       },
     });
   }

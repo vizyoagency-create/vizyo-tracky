@@ -1,4 +1,5 @@
 import { swallow } from '../../../core/error/swallow';
+import { apiErrorMessage } from '../../../core/error/api-error';
 import { CommonModule } from '@angular/common';
 import {
   ChangeDetectionStrategy, Component, computed, inject,
@@ -261,7 +262,7 @@ export class BackgroundTasksComponent implements OnInit, OnDestroy {
       this.error.set(null);
     } catch (e) {
       swallow('background-tasks:load', e);
-      this.error.set((e as { error?: { message?: string } })?.error?.message ?? 'Chargement impossible');
+      this.error.set(apiErrorMessage(e, 'Chargement impossible'));
     } finally {
       this.loading.set(false);
       this.refreshing.set(false);
@@ -284,7 +285,7 @@ export class BackgroundTasksComponent implements OnInit, OnDestroy {
       await this.load(true);
     } catch (e) {
       swallow('background-tasks:reprendre', e);
-      this.repriseErreur.set((e as { error?: { message?: string } })?.error?.message ?? 'La pause n’a pas pu être levée');
+      this.repriseErreur.set(apiErrorMessage(e, 'La pause n’a pas pu être levée'));
     } finally {
       this.reprise.set(false);
     }

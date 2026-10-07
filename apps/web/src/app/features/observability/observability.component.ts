@@ -1,4 +1,5 @@
 import { swallow } from '../../core/error/swallow';
+import { motifErreurApi } from '../../core/error/api-error';
 import { Component, inject, OnInit, signal } from '@angular/core';
 import { DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -817,7 +818,7 @@ export class ObservabilityComponent implements OnInit {
       }
     } catch (err: unknown) {
       const status = (err as { status?: number }).status;
-      const apiMsg = (err as { error?: { message?: string } }).error?.message;
+      const apiMsg = motifErreurApi(err);
       const message = apiMsg ?? (status === 400 ? 'Aucun device abonne — clique sur Activer d\'abord.' : 'Echec de l\'envoi.');
       this.testLastResult.set({
         ok: false,

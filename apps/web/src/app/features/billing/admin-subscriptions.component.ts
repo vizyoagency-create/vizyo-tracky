@@ -3,6 +3,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { DatePipe, DecimalPipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { BadgeEuro, Building2, Gift, LoaderCircle, LucideAngularModule, Save, Sparkles } from 'lucide-angular';
+import { motifErreurApi } from '../../core/error/api-error';
 import {
   SubscriptionsAdminApiService,
   type PricingGridDto,
@@ -244,7 +245,7 @@ export class AdminSubscriptionsComponent implements OnInit {
       .subscribe({
         next: () => { this.toast.success('Abonnement enregistré', r.fleetName); this.savingId.set(null); this.load(); },
         error: (err: unknown) => {
-          const msg = (err as { error?: { message?: string } })?.error?.message;
+          const msg = motifErreurApi(err);
           this.toast.error('Enregistrement impossible', typeof msg === 'string' ? msg : 'Réessayez.');
           this.savingId.set(null);
         },
@@ -258,7 +259,7 @@ export class AdminSubscriptionsComponent implements OnInit {
     this.api.updateGrid(g).pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
       next: () => { this.toast.success('Grille enregistrée', 'La LP affichera les nouveaux prix sous 5 min.'); this.savingGrid.set(false); },
       error: (err: unknown) => {
-        const msg = (err as { error?: { message?: string } })?.error?.message;
+        const msg = motifErreurApi(err);
         this.toast.error('Grille refusée', typeof msg === 'string' ? msg : 'Vérifiez les prix saisis.');
         this.savingGrid.set(false);
       },

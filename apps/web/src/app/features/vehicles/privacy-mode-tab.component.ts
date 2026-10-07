@@ -1,4 +1,5 @@
 import { swallow } from '../../core/error/swallow';
+import { motifErreurApi } from '../../core/error/api-error';
 import { ChangeDetectionStrategy, Component, computed, inject, input, output, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { DatePipe } from '@angular/common';
@@ -181,7 +182,7 @@ export class PrivacyModeTabComponent {
       this.close();
     } catch (e: unknown) {
       swallow('privacy-mode-tab:confirm', e);
-      const msg = (e as { error?: { message?: string } })?.error?.message;
+      const msg = motifErreurApi(e);
       this.toast.error('Action impossible', typeof msg === 'string' ? msg : 'Réessayez.');
     } finally {
       this.busyId.set(null);

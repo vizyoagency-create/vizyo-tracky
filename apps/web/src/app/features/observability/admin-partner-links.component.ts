@@ -3,6 +3,7 @@ import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@a
 import { FormsModule } from '@angular/forms';
 import { HttpClient } from '@angular/common/http';
 import { Observable } from 'rxjs';
+import { apiErrorMessage } from '../../core/error/api-error';
 
 interface AdminPartnerLink {
   id: string;
@@ -517,7 +518,7 @@ export class AdminPartnerLinksComponent {
       },
       error: (err: unknown) => {
         this.busy.set(false);
-        this.error.set((err as { error?: { message?: string } })?.error?.message ?? 'Opération impossible.');
+        this.error.set(apiErrorMessage(err, 'Opération impossible.'));
       },
     });
   }

@@ -23,7 +23,6 @@ import type {
   VehicleEventDto,
 } from '@vizyo/tracky-shared';
 import { firstValueFrom, type Observable } from 'rxjs';
-import { HttpErrorResponse } from '@angular/common/http';
 import { apiErrorMessage } from '../../core/error/api-error';
 import { AgendaApiService } from '../../core/services/agenda.service';
 import { PermissionsService } from '../../core/services/permissions.service';
@@ -625,7 +624,7 @@ export class VehicleMaintenanceTabComponent implements OnInit {
       this.toast.success('Entretien marqué terminé');
     } catch (err) {
       swallow('vehicle-maintenance-tab:markEventDone', err);
-      this.toast.error('Échec', err instanceof HttpErrorResponse ? err.error?.message : '');
+      this.toast.error('Échec', apiErrorMessage(err, ''));
     } finally {
       this.busyId.set(null);
     }
@@ -691,7 +690,7 @@ export class VehicleMaintenanceTabComponent implements OnInit {
       this.planEditorOpen.set(false);
     } catch (err) {
       swallow('vehicle-maintenance-tab:savePlan', err);
-      this.toast.error('Échec', err instanceof HttpErrorResponse ? err.error?.message : 'Enregistrement impossible.');
+      this.toast.error('Échec', apiErrorMessage(err, 'Enregistrement impossible.'));
     } finally {
       this.savingPlan.set(false);
     }
@@ -706,7 +705,7 @@ export class VehicleMaintenanceTabComponent implements OnInit {
       this.toast.success('Plan supprimé');
     } catch (err) {
       swallow('vehicle-maintenance-tab:deletePlan', err);
-      this.toast.error('Échec suppression', err instanceof HttpErrorResponse ? err.error?.message : '');
+      this.toast.error('Échec suppression', apiErrorMessage(err, ''));
     }
   }
 
@@ -741,7 +740,7 @@ export class VehicleMaintenanceTabComponent implements OnInit {
       void this.refreshEventsAndOdometer();
     } catch (err) {
       swallow('vehicle-maintenance-tab:saveDone', err);
-      this.toast.error('Échec', err instanceof HttpErrorResponse ? err.error?.message : 'Enregistrement impossible.');
+      this.toast.error('Échec', apiErrorMessage(err, 'Enregistrement impossible.'));
     } finally {
       this.savingDone.set(false);
     }

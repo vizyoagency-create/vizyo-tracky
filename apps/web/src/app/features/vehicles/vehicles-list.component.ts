@@ -1,4 +1,5 @@
 import { swallow } from '../../core/error/swallow';
+import { apiErrorMessage } from '../../core/error/api-error';
 import { ChangeDetectionStrategy, Component, computed, inject, OnInit, signal } from '@angular/core';
 import { DomSanitizer, type SafeHtml } from '@angular/platform-browser';
 import { FormsModule } from '@angular/forms';
@@ -1874,8 +1875,7 @@ export class VehiclesListComponent implements OnInit {
       await this.loadVehicles();
     } catch (err: unknown) {
       swallow('vehicles-list:onAssignTracker', err);
-      const msg = (err as { error?: { message?: string } })?.error?.message ?? 'Erreur';
-      this.assignError.set(typeof msg === 'string' ? msg : String(msg));
+      this.assignError.set(apiErrorMessage(err, 'Erreur'));
     } finally { this.assignLoading.set(false); }
   }
 

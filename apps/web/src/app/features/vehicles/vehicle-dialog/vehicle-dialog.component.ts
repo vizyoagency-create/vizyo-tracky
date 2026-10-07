@@ -1,4 +1,5 @@
 import { swallow } from '../../../core/error/swallow';
+import { motifErreurApi } from '../../../core/error/api-error';
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, effect, HostListener, inject, input, output, signal } from '@angular/core';
 import { DomSanitizer, type SafeHtml } from '@angular/platform-browser';
@@ -797,8 +798,7 @@ export class VehicleDialogComponent {
 
   private extractError(err: unknown): string {
     if (err instanceof HttpErrorResponse) {
-      const msg = err.error?.message;
-      return Array.isArray(msg) ? msg.join(', ') : msg ?? err.message ?? 'Erreur inconnue';
+      return motifErreurApi(err) ?? err.message ?? 'Erreur inconnue';
     }
     return String(err);
   }

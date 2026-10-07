@@ -4,6 +4,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import { LucideAngularModule, Calculator, Plus, Save, Trash2, TriangleAlert } from 'lucide-angular';
 import { swallow } from '../../core/error/swallow';
+import { motifErreurApi } from '../../core/error/api-error';
 import { AuthService } from '../../core/services/auth.service';
 import { FleetFilterService } from '../../core/services/fleet-filter.service';
 import { httpFailureMessage } from '../../core/services/http-failure';
@@ -574,7 +575,7 @@ export class MissionPricingTabComponent implements OnInit {
           swallow('pricing:enregistrer', err);
           // Le message du SERVEUR d'abord : il nomme la tranche en cause, là où un
           // repli générique laisserait relire les neuf lignes.
-          const brut = (err as { error?: { message?: unknown } })?.error?.message;
+          const brut = motifErreurApi(err);
           this.messageEnregistrement.set(
             typeof brut === 'string' && brut.trim()
               ? brut

@@ -11,6 +11,7 @@ import {
 import { FormsModule } from '@angular/forms';
 import { LucideAngularModule, Truck } from 'lucide-angular';
 import { swallow } from '../../core/error/swallow';
+import { motifErreurApi } from '../../core/error/api-error';
 import {
   libelleStatut,
   MissionRequestsApi,
@@ -306,7 +307,7 @@ export class MissionRequestModalComponent {
       });
     } catch (err) {
       swallow('mission-request-modal:affecter', err);
-      const brut = (err as { error?: { message?: unknown } })?.error?.message;
+      const brut = motifErreurApi(err);
       this.toast.show({
         kind: 'error',
         title: 'Affectation impossible',

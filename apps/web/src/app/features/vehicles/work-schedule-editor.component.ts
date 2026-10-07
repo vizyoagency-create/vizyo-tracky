@@ -2,6 +2,7 @@ import { Component, DestroyRef, inject, input, OnInit, output, signal } from '@a
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import { ArrowRight, CalendarClock, Eye, EyeOff, LoaderCircle, LucideAngularModule, X } from 'lucide-angular';
+import { motifErreurApi } from '../../core/error/api-error';
 import { PermissionsService } from '../../core/services/permissions.service';
 import { ToastService } from '../../shared/ui/toast/toast.service';
 import { ETATS_VIE_PRIVEE, type EtatViePrivee, WorkScheduleApiService } from '../../core/services/work-schedule.service';
@@ -364,7 +365,7 @@ export class WorkScheduleEditorComponent implements OnInit {
           this.close.emit();
         },
         error: (e: unknown) => {
-          const msg = (e as { error?: { message?: string } })?.error?.message;
+          const msg = motifErreurApi(e);
           this.toast.error('Enregistrement impossible', typeof msg === 'string' ? msg : 'Réessayez.');
           this.saving.set(false);
         },

@@ -1,3 +1,4 @@
+import { HttpErrorResponse } from '@angular/common/http';
 import { messageDePanne } from './missions-panel.component';
 
 /**
@@ -18,6 +19,16 @@ describe('messageDePanne', () => {
     expect(messageDePanne({ status: 403, error: { message: 'Aucune flotte associée' } })).toBe(
       'Aucune flotte associée',
     );
+  });
+
+  it('⚠️ lit le motif là où l’API le met : l’enveloppe `{ error: { message } }` (07/10/2026)', () => {
+    // La forme RÉELLE : le `error` d'une `HttpErrorResponse` est le corps, et l'API l'enveloppe.
+    // Le cas ci-dessus (à plat) n'a jamais existé en production : il passait, l'écran non.
+    const reelle = new HttpErrorResponse({
+      status: 403,
+      error: { error: { code: 'FORBIDDEN', message: 'Aucune flotte associée', requestId: 'r1' } },
+    });
+    expect(messageDePanne(reelle)).toBe('Aucune flotte associée');
   });
 
   it('ne laisse jamais l’écran muet quand la réponse ne dit rien', () => {

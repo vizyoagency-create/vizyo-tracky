@@ -1,4 +1,5 @@
 import { swallow } from '../../core/error/swallow';
+import { apiErrorMessage } from '../../core/error/api-error';
 import { DatePipe } from '@angular/common';
 import { Component, inject, OnInit, signal, computed } from '@angular/core';
 import { FormsModule } from '@angular/forms';
@@ -453,7 +454,7 @@ export class AdminTrackersComponent implements OnInit {
       this.reload();
     } catch (e: any) {
       swallow('admin-trackers:saveSim', e);
-      this.toast.error(e?.error?.message ?? 'Echec de la mise à jour SIM');
+      this.toast.error(apiErrorMessage(e, 'Echec de la mise à jour SIM'));
     }
   }
 
@@ -504,7 +505,7 @@ export class AdminTrackersComponent implements OnInit {
       this.reload();
     } catch (e: any) {
       swallow('admin-trackers:confirmAssign', e);
-      this.toast.error(e?.error?.message ?? 'Echec de l\'assignation');
+      this.toast.error(apiErrorMessage(e, 'Echec de l\'assignation'));
     }
   }
 }

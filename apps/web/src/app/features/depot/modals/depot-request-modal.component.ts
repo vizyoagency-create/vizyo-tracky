@@ -10,6 +10,7 @@ import {
 import { FormsModule } from '@angular/forms';
 import { ArrowDown, ArrowUp, LucideAngularModule, Plus, RotateCcw, Trash2, TriangleAlert } from 'lucide-angular';
 import { swallow } from '../../../core/error/swallow';
+import { motifErreurApi } from '../../../core/error/api-error';
 import { MissionRequestsApi } from '../../../core/services/mission-requests.api';
 import { ToastService } from '../../../shared/ui/toast/toast.service';
 import { calculerDevis, euros, type GrilleTarifaire } from '../devis-tarifaire';
@@ -830,7 +831,7 @@ export class DepotRequestModalComponent implements OnInit {
       this.fermer.emit();
     } catch (err) {
       swallow('depot-request-modal:envoyer', err);
-      const brut = (err as { error?: { message?: unknown } })?.error?.message;
+      const brut = motifErreurApi(err);
       this.toast.show({
         kind: 'error',
         title: 'Demande non envoyée',

@@ -1,4 +1,5 @@
 import { swallow } from '../../../core/error/swallow';
+import { apiErrorMessage } from '../../../core/error/api-error';
 import { HttpErrorResponse } from '@angular/common/http';
 import {
   AfterViewInit, Component, effect, ElementRef, HostListener,
@@ -383,7 +384,7 @@ export class GeofenceDrawDialogComponent implements AfterViewInit, OnDestroy {
       swallow('geofence-draw-dialog:onSubmit', err);
       this.errorMessage.set(
         err instanceof HttpErrorResponse
-          ? (Array.isArray(err.error?.message) ? err.error.message.join(', ') : err.error?.message ?? 'Erreur')
+          ? apiErrorMessage(err, 'Erreur')
           : String(err),
       );
     } finally { this.isLoading.set(false); }

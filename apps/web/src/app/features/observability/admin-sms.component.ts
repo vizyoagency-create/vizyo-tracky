@@ -1,4 +1,5 @@
 import { swallow } from '../../core/error/swallow';
+import { motifErreurApi } from '../../core/error/api-error';
 import { DatePipe } from '@angular/common';
 import { Component, computed, inject, OnDestroy, OnInit, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
@@ -773,10 +774,7 @@ export class AdminSmsComponent implements OnInit, OnDestroy {
   }
 
   private errMsg(e: unknown): string | null {
-    if (e && typeof e === 'object' && 'error' in e) {
-      return (e as { error?: { message?: string } }).error?.message ?? null;
-    }
-    return null;
+    return motifErreurApi(e) ?? null;
   }
 
   provBadgeClass(status: ProvisioningDto['status']): string {

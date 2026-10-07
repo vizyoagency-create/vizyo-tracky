@@ -3,6 +3,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { DatePipe } from '@angular/common';
 import { CalendarClock, Eye, EyeOff, LoaderCircle, LucideAngularModule, ShieldCheck, X } from 'lucide-angular';
 import type { PrivacyModeEventDto } from '@vizyo/tracky-shared';
+import { motifErreurApi } from '../../core/error/api-error';
 import { PrivacyModeApiService } from '../../core/services/privacy-mode.service';
 import { WorkScheduleApiService } from '../../core/services/work-schedule.service';
 import { ToastService } from '../../shared/ui/toast/toast.service';
@@ -201,7 +202,7 @@ export class DriverPrivacyPanelComponent implements OnInit {
           .subscribe({ next: (h) => this.history.set(h ?? []), error: () => undefined });
       },
       error: (e: unknown) => {
-        const msg = (e as { error?: { message?: string } })?.error?.message;
+        const msg = motifErreurApi(e);
         this.toast.error('Action impossible', typeof msg === 'string' ? msg : 'Réessayez.');
         this.busy.set(false);
       },

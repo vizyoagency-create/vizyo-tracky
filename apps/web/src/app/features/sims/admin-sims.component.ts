@@ -28,6 +28,7 @@ import {
   type SimEventDto,
   type SimStatsDto,
 } from '@vizyo/tracky-shared';
+import { motifErreurApi } from '../../core/error/api-error';
 import { FleetsApiService, type FleetSummary } from '../../core/services/fleets.service';
 import { FleetFilterService } from '../../core/services/fleet-filter.service';
 import { SimsApiService } from '../../core/services/sims.service';
@@ -689,9 +690,7 @@ export class AdminSimsComponent implements OnInit {
   }
 
   private errMsg(err: unknown): string {
-    const e = err as { error?: { message?: string | string[] }; message?: string };
-    const m = e?.error?.message;
-    if (Array.isArray(m)) return m.join(', ');
-    return m ?? e?.message ?? 'Erreur inconnue';
+    const e = err as { message?: string } | null | undefined;
+    return motifErreurApi(err) ?? e?.message ?? 'Erreur inconnue';
   }
 }

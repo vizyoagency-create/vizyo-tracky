@@ -1,4 +1,5 @@
 import { swallow } from '../../core/error/swallow';
+import { motifErreurApi } from '../../core/error/api-error';
 import { Component, computed, inject, input, OnInit, signal } from '@angular/core';
 import { DatePipe, DecimalPipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -1245,8 +1246,8 @@ export class SurveillancePanelComponent implements OnInit {
 
   private extractErrorMessage(err: unknown): string {
     if (typeof err === 'object' && err !== null) {
-      const e = err as { error?: { message?: string }; message?: string };
-      return e.error?.message ?? e.message ?? 'Erreur inconnue';
+      const e = err as { message?: string };
+      return motifErreurApi(err) ?? e.message ?? 'Erreur inconnue';
     }
     return String(err);
   }

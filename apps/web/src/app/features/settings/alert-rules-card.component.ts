@@ -3,6 +3,7 @@ import { Component, computed, inject, OnInit, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { AlertTriangle, Bell, Edit2, LucideAngularModule, Mail, MessageCircle, Plus, Trash2, XCircle } from 'lucide-angular';
 import { firstValueFrom } from 'rxjs';
+import { motifErreurApi } from '../../core/error/api-error';
 import { AuthService } from '../../core/services/auth.service';
 import { FleetsApiService } from '../../core/services/fleets.service';
 import { AlertRuleDto, NotificationsApiService } from '../../core/services/notifications.service';
@@ -519,17 +520,11 @@ export class AlertRulesCardComponent implements OnInit {
 /**
  * Extrait le message porté par une réponse d'erreur HTTP.
  *
- * Nest renvoie `{ message }` — parfois une chaîne, parfois un tableau (erreurs de
- * validation). Exporté pour être testé : c'est ce qui transforme un échec opaque en
- * information exploitable.
+ * L'API l'enveloppe : `{ error: { message } }` — et c'est ce niveau que cette fonction ne lisait
+ * pas : elle cherchait `{ message }` à plat et rendait `null` sur toute erreur réelle depuis sa
+ * création (28/07), relevé le 07/10/2026. La lecture vit désormais dans `motifErreurApi`.
+ * Exporté pour être testé : c'est ce qui transforme un échec opaque en information exploitable.
  */
 export function serverMessage(e: unknown): string | null {
-  const err = e as { error?: { message?: unknown } } | undefined;
-  const raw = err?.error?.message;
-  if (typeof raw === 'string' && raw.trim()) return raw.trim();
-  if (Array.isArray(raw)) {
-    const joined = raw.filter((m) => typeof m === 'string').join(' · ').trim();
-    if (joined) return joined;
-  }
-  return null;
+  return motifErreurApi(e) ?? null;
 }

@@ -3,6 +3,7 @@ import { ChangeDetectionStrategy, Component, DestroyRef, effect, inject, OnInit,
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { LucideAngularModule, Plus, Route, Truck, Warehouse } from 'lucide-angular';
 import { swallow } from '../../core/error/swallow';
+import { motifErreurApi } from '../../core/error/api-error';
 import { FleetFilterService } from '../../core/services/fleet-filter.service';
 import { httpFailureMessage } from '../../core/services/http-failure';
 import { MissionDialogComponent } from './mission-dialog/mission-dialog.component';
@@ -18,7 +19,7 @@ import { MissionStopsModalComponent } from './mission-stops-modal.component';
  * sert que lorsque la reponse ne dit rien.
  */
 export function messageDePanne(err: unknown): string {
-  const brut = (err as { error?: { message?: unknown } } | null)?.error?.message;
+  const brut = motifErreurApi(err);
   const duServeur = typeof brut === 'string' ? brut.trim() : '';
   return duServeur || httpFailureMessage(err, 'les missions');
 }

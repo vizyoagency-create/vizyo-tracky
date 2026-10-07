@@ -11,6 +11,7 @@ import {
 import { FormsModule } from '@angular/forms';
 import { Check, LucideAngularModule, MessageSquare, TriangleAlert, X } from 'lucide-angular';
 import { swallow } from '../../core/error/swallow';
+import { motifErreurApi } from '../../core/error/api-error';
 import {
   aLaMain,
   estNegociable,
@@ -633,7 +634,7 @@ export class MissionRequestThreadComponent implements OnInit {
       this.toast.show({ kind: 'success', title: titre, message });
     } catch (err) {
       swallow('mission-request-thread:agir', err);
-      const brut = (err as { error?: { message?: unknown } })?.error?.message;
+      const brut = motifErreurApi(err);
       this.toast.show({
         kind: 'error',
         title: 'Action impossible',

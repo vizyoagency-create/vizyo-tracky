@@ -1,3 +1,4 @@
+import { HttpErrorResponse } from '@angular/common/http';
 import { serverMessage } from './alert-rules-card.component';
 
 /**
@@ -13,6 +14,16 @@ import { serverMessage } from './alert-rules-card.component';
 describe('serverMessage', () => {
   it('rend le message d’une erreur Nest classique', () => {
     expect(serverMessage({ error: { message: 'fleetId requis' } })).toBe('fleetId requis');
+  });
+
+  it('⚠️ lit le motif là où l’API le met : l’enveloppe `{ error: { message } }` (07/10/2026)', () => {
+    // La forme RÉELLE du 400 du 28/07 : le `error` d'une `HttpErrorResponse` est le corps, et
+    // l'API l'enveloppe. Le cas ci-dessus (à plat) passait — l'écran, lui, jetait toujours le motif.
+    const reelle = new HttpErrorResponse({
+      status: 400,
+      error: { error: { code: 'BAD_REQUEST', message: 'fleetId requis', requestId: 'r1' } },
+    });
+    expect(serverMessage(reelle)).toBe('fleetId requis');
   });
 
   it('joint les messages de validation (Nest en renvoie un tableau)', () => {

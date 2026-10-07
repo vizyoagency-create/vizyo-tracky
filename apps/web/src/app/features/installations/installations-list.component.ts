@@ -1,4 +1,5 @@
 import { swallow } from '../../core/error/swallow';
+import { motifErreurApi } from '../../core/error/api-error';
 import { ChangeDetectionStrategy, Component, computed, inject, OnInit, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
@@ -276,9 +277,7 @@ export class InstallationsListComponent implements OnInit {
   }
 
   private errMsg(err: unknown): string {
-    const e = err as { error?: { message?: string | string[] }; message?: string };
-    const m = e?.error?.message;
-    if (Array.isArray(m)) return m.join(', ');
-    return m ?? e?.message ?? 'Erreur inconnue';
+    const e = err as { message?: string } | null | undefined;
+    return motifErreurApi(err) ?? e?.message ?? 'Erreur inconnue';
   }
 }

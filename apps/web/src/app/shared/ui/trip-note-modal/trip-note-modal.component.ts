@@ -1,4 +1,5 @@
 import { swallow } from '../../../core/error/swallow';
+import { apiErrorMessage } from '../../../core/error/api-error';
 import { Component, HostListener, computed, effect, inject, input, output, signal } from '@angular/core';
 import { HttpErrorResponse } from '@angular/common/http';
 import { FormsModule } from '@angular/forms';
@@ -176,7 +177,7 @@ export class TripNoteModalComponent {
     } catch (err) {
       swallow('trip-note-modal:onSave', err);
       const msg = err instanceof HttpErrorResponse
-        ? err.error?.message ?? 'Erreur inconnue'
+        ? apiErrorMessage(err, 'Erreur inconnue')
         : err instanceof Error ? err.message : 'Erreur inconnue';
       this.toast.error('Échec enregistrement note', msg);
     } finally {
@@ -197,7 +198,7 @@ export class TripNoteModalComponent {
     } catch (err) {
       swallow('trip-note-modal:onClear', err);
       const msg = err instanceof HttpErrorResponse
-        ? err.error?.message ?? 'Erreur inconnue'
+        ? apiErrorMessage(err, 'Erreur inconnue')
         : err instanceof Error ? err.message : 'Erreur inconnue';
       this.toast.error('Échec suppression note', msg);
     } finally {
