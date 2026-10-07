@@ -7,7 +7,7 @@
 > vivant » n'a plus été tenu après cette date. La « Phase 7 SMS Gateway » annoncée comme
 > prochaine action a été couverte autrement (passerelle Vizyo Texto, pas Twilio) ; le
 > suivi du projet a continué dans les roadmaps 09-17 puis `docs/TACHES.md` et
-> `ROADMAP-AGENTS-LOCAUX.md`.
+> `docs/roadmaps/ROADMAP-AGENTS-LOCAUX.md`.
 
 > **Fichier vivant** — à mettre à jour après CHAQUE retour de Claude Code ou session bench.
 > Dernière mise à jour : _2026-04-15 par Claude Code (session bench terrain + scheduling)_

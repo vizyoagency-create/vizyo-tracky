@@ -21,7 +21,7 @@
 | [`centre-alerte/REFERENCE-ERREURS.md`](./centre-alerte/REFERENCE-ERREURS.md) | Le référentiel `TRK-nnn` : pourquoi chaque erreur existe. |
 | [`vps-audit/REFERENCE-CONSTATS.md`](./vps-audit/REFERENCE-CONSTATS.md) | Le référentiel `VPS-nnn`. |
 | [`DEPLOYMENT-VPS.md`](./DEPLOYMENT-VPS.md) | La procédure de déploiement courante. |
-| [`REARCHITECTURE-ARBORESCENCE.md`](./REARCHITECTURE-ARBORESCENCE.md) | Le plan de rangement du dépôt. **Écrit, pas exécuté** (tâche R1). |
+| [`REARCHITECTURE-ARBORESCENCE.md`](./REARCHITECTURE-ARBORESCENCE.md) | Le plan de rangement du dépôt (tâche R1). **Lot 1 exécuté le 07/10/2026** : les `.md` de la racine sont dans [`campagnes/`](./campagnes/) et [`roadmaps/`](./roadmaps/) ; les lots 2 à 4 restent à faire. |
 | [`chantier-cartes/SUIVI-CARTES-2026-09-07.md`](./chantier-cartes/SUIVI-CARTES-2026-09-07.md) | Le chantier cartes, terminé et prouvé. |
 | [`environnement-demo/`](./environnement-demo/) | La démo en ligne : plan et exploitation. |
 | [`rdv-installation/`](./rdv-installation/) | La prise de RDV d'installation (`/book/:token`) : week-end, visites (qui, quand, depuis quoi), liens de découverte, entretien quotidien (14/09) ; conception v2 (16/09), son **lot A** (17/09, en prod : lien prospect sans flotte, contact obligatoire, multi-véhicules, validation avec rattachement, annulation, suppression « conserver / effacer ») et le **cahier de lancement du lot D** (Manager × Tracky : création d'un client en un clic, synchronisation). |

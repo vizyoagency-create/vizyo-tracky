@@ -48,7 +48,7 @@ Deux blocs indépendants, à traiter dans cet ordre :
 > liste de `B1-PAGES.md`) · **`Video Depot.dc.html` n'est pas livrée** — elle était
 > notée « support commercial, pas une spec », son absence ne bloque rien ·
 > **le piège n° 1 de l'index est périmé** : il annonce une traduction Manrope → Poppins,
-> or l'application tourne déjà en Manrope. Cf. « Écart 2 » de `REFONTE-TRACKY-V2.md`,
+> or l'application tourne déjà en Manrope. Cf. « Écart 2 » de `docs/campagnes/REFONTE-TRACKY-V2.md`,
 > tranché à l'étape 0. Il n'y a pas de risque de débordement à mesurer.
 
 Toutes dans le projet de design, à copier dans `design/` du dépôt avant de commencer.

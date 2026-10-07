@@ -161,6 +161,16 @@ ne recrée un `.md` à la racine. Même règle dans la mémoire de l'agent.
 
 ### Lot 1 — Les 13 `.md` de la racine → `docs/campagnes/` *(risque : FAIBLE · durée : 1 h · réversible)*
 
+> ✅ **EXÉCUTÉ le 07/10/2026** (élément E12 de `docs/menage-depot-2026-10/00-ELEMENTS-GARDES.md`).
+> - Les 12 restants sont déplacés par `git mv`, historique conservé : 11 dans `docs/campagnes/`,
+>   `ROADMAP-AGENTS-LOCAUX.md` dans `docs/roadmaps/`.
+> - 99 renvois sont réécrits dans 22 fichiers, dans le même commit, en chemins complets depuis la
+>   racine du dépôt.
+> - Le tableau ci-dessous décrit l'état AVANT ; il n'a pas été réécrit.
+> - Vérification refaite après coup : **0** mention de l'ancien chemin, **0** lien mort nouveau (65
+>   avant, 58 après). À la racine ne restent que `README.md` et `CLAUDE.md`.
+> - `docs/DEPLOYMENT-VPS.md.md` (§ 6, point 1) reste à trancher par le propriétaire.
+
 | Fichier | Lignes | Dernier commit |
 |---|---:|---|
 | `SUIVI-REFONTE.md` | 1 684 | 22/08 |

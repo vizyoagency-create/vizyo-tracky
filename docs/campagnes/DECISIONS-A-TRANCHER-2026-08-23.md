@@ -1,9 +1,9 @@
 > ⛔ **ARCHIVE — ne pas suivre.** Ce document décrit un chantier terminé (dernier travail : 23/08/2026).
-> Ce qu'il reste à faire vit dans [`SUIVI.md`](./docs/SUIVI.md). Conservé pour l'histoire.
+> Ce qu'il reste à faire vit dans [`SUIVI.md`](../SUIVI.md). Conservé pour l'histoire.
 
 # Décisions à trancher — tableau de bord
 
-> Créé le 2026-08-23 à partir de `ETAT-RESTE-A-FAIRE-2026-08-22.md` (qui garde le détail et les sources).
+> Créé le 2026-08-23 à partir de `docs/campagnes/ETAT-RESTE-A-FAIRE-2026-08-22.md` (qui garde le détail et les sources).
 > **Mode d'emploi en 3 étapes :**
 > 1. Remplis chaque ligne **Réponse** (A / B / plus tard).
 > 2. Chaque décision marquée ⚡ se lance **dans un chat séparé** avec le modèle de prompt en bas de page.
@@ -163,9 +163,9 @@ Dans le dépôt vizyo-tracky, worktree D:\www\vizyo-agency\vizyo-tracky\wt-allow
 (ou un worktree isolé) — git fetch + rebase sur origin/main d'abord, d'autres
 sessions poussent sur ce dépôt.
 
-Applique la décision n° <N> du fichier DECISIONS-A-TRANCHER-2026-08-23.md :
+Applique la décision n° <N> du fichier docs/campagnes/DECISIONS-A-TRANCHER-2026-08-23.md :
 « <titre> » — décision du propriétaire : <A/B/C + précisions>.
-Le contexte détaillé et les sources sont dans ETAT-RESTE-A-FAIRE-2026-08-22.md § 2 (même n°).
+Le contexte détaillé et les sources sont dans docs/campagnes/ETAT-RESTE-A-FAIRE-2026-08-22.md § 2 (même n°).
 
 Règles du chantier : NE DÉPLOIE PAS. Ne modifie aucun DTO/contrat d'API sans demander.
 Aucun backtick dans un commentaire de template:/styles:. Les cinq gardes bloquants
@@ -173,8 +173,8 @@ Aucun backtick dans un commentaire de template:/styles:. Les cinq gardes bloquan
 passer. Tout écran touché se vérifie DANS LE NAVIGATEUR à 375 px (session locale :
 voir apps/web/e2e/helpers/session-locale.ts). N'écris jamais de fausses données,
 n'efface rien sans regarder. À la fin : git fetch + rebase, committe et pousse,
-et consigne le résultat dans DECISIONS-A-TRANCHER-2026-08-23.md (statut sur la
-ligne Réponse) + le registre de ROADMAP-AGENTS-LOCAUX.md si pertinent.
+et consigne le résultat dans docs/campagnes/DECISIONS-A-TRANCHER-2026-08-23.md (statut sur la
+ligne Réponse) + le registre de docs/roadmaps/ROADMAP-AGENTS-LOCAUX.md si pertinent.
 ```
 
 ## La réunion finale (dernier chat)
@@ -189,4 +189,4 @@ reste un geste du propriétaire**.
 - **Geste 3** — vérifier la chaîne analyse-lieux : après le cycle du 23/08 (07:10).
 - **Déploiement** : après les modifs, sur ton ordre.
 - **Boîtiers `GS-014-NY` / `HD-686-QX`** sans position : peut-être simplement en parking couvert — à vérifier, pas urgent.
-- **Recette manuelle** (`RECETTE-A-FAIRE.md` + mode veilleur + `/driver` + `/places` à 375 px) : en cours par le propriétaire.
+- **Recette manuelle** (`docs/campagnes/RECETTE-A-FAIRE.md` + mode veilleur + `/driver` + `/places` à 375 px) : en cours par le propriétaire.

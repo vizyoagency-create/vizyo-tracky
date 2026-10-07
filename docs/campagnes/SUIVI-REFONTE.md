@@ -1,5 +1,5 @@
 > ⛔ **ARCHIVE — ne pas suivre.** Ce document décrit un chantier terminé (dernier travail : 22/08/2026).
-> Ce qu'il reste à faire vit dans [`SUIVI.md`](./docs/SUIVI.md). Conservé pour l'histoire.
+> Ce qu'il reste à faire vit dans [`SUIVI.md`](../SUIVI.md). Conservé pour l'histoire.
 
 # Suivi de la refonte Tracky v2
 
@@ -9,7 +9,7 @@
 > depuis. Les compteurs de ce fichier (« 35 commits non poussés », « PROD 0/28 — le seul
 > lot restant ») ne décrivent plus l'état courant. Le reliquat réel (écran veilleur et
 > `/driver` jamais mesurés, décisions d'écran en attente, `pnpm lint` cassé) est repris
-> dans `ETAT-RESTE-A-FAIRE-2026-08-22.md`.
+> dans `docs/campagnes/ETAT-RESTE-A-FAIRE-2026-08-22.md`.
 
 > **À quoi sert ce fichier.** C'est le point d'entrée unique pour reprendre le chantier
 > dans une nouvelle session, sans rien réapprendre et sans repayer un piège déjà payé.
@@ -22,10 +22,10 @@
 > | Fichier | Rôle |
 > |---|---|
 > | `design/B1-PAGES.md` | La spec des pages, bloc par bloc. **L'ordre des blocs y est imposé.** |
-> | `REPRISE-B-PAGES.md` | Le journal détaillé, séance par séance. Les découvertes y sont racontées. |
-> | `REFONTE-TRACKY-V2.md` | La feuille de route générale + le journal de bord global. |
+> | `docs/campagnes/REPRISE-B-PAGES.md` | Le journal détaillé, séance par séance. Les découvertes y sont racontées. |
+> | `docs/campagnes/REFONTE-TRACKY-V2.md` | La feuille de route générale + le journal de bord global. |
 >
-> ⚠️ Le compteur « B-pages 23/57 » du tableau de `REFONTE-TRACKY-V2.md` est **périmé** :
+> ⚠️ Le compteur « B-pages 23/57 » du tableau de `docs/campagnes/REFONTE-TRACKY-V2.md` est **périmé** :
 > **B-pages est clos au 2026-08-14**, les 7 blocs sont livrés et mesurés (§ 5.2).
 >
 > ⚠️ Ce compteur compte des **lignes de `B1-PAGES.md`**, pas des pages, et il a été tenu
@@ -43,7 +43,7 @@
 
 > Reprends le lot **B-pages** de la refonte Tracky, branche `feat/refonte-tracky-v2`
 > (worktree `D:\www\vizyo-agency\vizyo-tracky\vizyo-tracky`).
-> Lis d'abord `SUIVI-REFONTE.md` à la racine — il contient tout l'état.
+> Lis d'abord `docs/campagnes/SUIVI-REFONTE.md` à la racine — il contient tout l'état.
 >
 > **Trois règles non négociables :**
 >
@@ -455,7 +455,7 @@ n'est pas un vide et prime sur lui. Vérifié après coup, au navigateur :
 
 ### 6bis.4 `verif:accents` est verte et le défaut est à l'écran
 
-[`login.component.ts:126`](apps/web/src/app/features/auth/login.component.ts) écrit
+[`login.component.ts:126`](../../apps/web/src/app/features/auth/login.component.ts) écrit
 « Mot de passe **oublie** ? » — sans accent — alors que `forgot-password.component.ts:62`
 écrit « oublié » correctement, à deux écrans d'écart.
 
@@ -792,7 +792,7 @@ rien ne le signale côté navigateur, sinon des 500 partout.
 ## 6septies. 🚦 AUDIT PRÉ-PROD — la liste complète, vérifiée point par point
 
 > Passe demandée « sans rien laisser en suspens ». Chaque ligne a été **exécutée**, pas
-> supposée. La checklist de référence est celle de `REFONTE-TRACKY-V2.md` § Mise en
+> supposée. La checklist de référence est celle de `docs/campagnes/REFONTE-TRACKY-V2.md` § Mise en
 > production, et `docs/VERIFIER-AVANT-DE-DEPLOYER.md` a été relu et appliqué.
 
 ### 6septies.1 ✅ Ce qui est vert — « avant le push », les 10 points
@@ -1422,7 +1422,7 @@ corriger la source** — un `ng-template` unique rendu par `ngTemplateOutlet`.
 
 ### 9.1 Sonde de recette (cibles, coupes, débordement)
 
-Le code complet est dans `REPRISE-B-PAGES.md` § « La sonde de recette ».
+Le code complet est dans `docs/campagnes/REPRISE-B-PAGES.md` § « La sonde de recette ».
 
 ⚠️ **Trois angles morts à connaître :**
 1. Elle **écarte tout ce qui est `position: fixed`** — sur une carte, presque toute
@@ -1555,7 +1555,7 @@ doit rester en modifications locales non commitées.
       - [ ] **Pousser** les **35 commits** (rien n'est poussé aujourd'hui)
       - [ ] **Sauvegarder la base** avant migrations — `surveillance_horaires_locaux`
             transforme des données et n'est pas rejouable (§ 6septies.2)
-      - [ ] Dérouler le déploiement et la recette (`REFONTE-TRACKY-V2.md` § Mise en
+      - [ ] Dérouler le déploiement et la recette (`docs/campagnes/REFONTE-TRACKY-V2.md` § Mise en
             production, 7 + 13 points)
 
       ⚠️ **Trois choses à savoir avant** (§ 6septies.6) : `verif:accents` sera **rouge
@@ -1682,6 +1682,6 @@ resoudre('var(--text-tertiary)') === getComputedStyle(document.querySelector('.m
 
 ## 14. Journal de bord
 
-`REFONTE-TRACKY-V2.md` se termine par un tableau « Journal de bord », une ligne par
+`docs/campagnes/REFONTE-TRACKY-V2.md` se termine par un tableau « Journal de bord », une ligne par
 séance. **Le tenir à jour** : c'est lui qui porte les décisions d'une séance à l'autre.
-Le détail des découvertes va dans `REPRISE-B-PAGES.md`.
+Le détail des découvertes va dans `docs/campagnes/REPRISE-B-PAGES.md`.

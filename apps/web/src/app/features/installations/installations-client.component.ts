@@ -269,7 +269,7 @@ export class InstallationsClientComponent implements OnInit {
 
   /**
    * Le `catch` qui laisse l'ecran mentir — 6e occurrence, 6e ecran sans rapport
-   * (SUIVI-REFONTE.md § 8.5), et une VARIANTE : il n'ecrasait pas un tableau, il
+   * (docs/campagnes/SUIVI-REFONTE.md § 8.5), et une VARIANTE : il n'ecrasait pas un tableau, il
    * ne posait RIEN. `plans` restait a sa valeur initiale `[]` et l'erreur partait
    * dans un `toast.error` EPHEMERE.
    *

@@ -17,7 +17,7 @@
 > 3. **L'agent ajoute, l'humain tranche.** L'agent n'a pas le droit de passer une tâche à
 >    `écarté` ; seul un humain le fait.
 > 4. **Pas de recopie des registres existants.** Les décisions déjà tracées vivent dans
->    `DECISIONS-A-TRANCHER-2026-08-23.md` (n° 1-26) et `ETAT-RESTE-A-FAIRE-2026-08-22.md` —
+>    `docs/campagnes/DECISIONS-A-TRANCHER-2026-08-23.md` (n° 1-26) et `docs/campagnes/ETAT-RESTE-A-FAIRE-2026-08-22.md` —
 >    ici, seulement des pointeurs (§ Pointeurs). Recopier = faire diverger.
 >
 > Format d'une entrée : gravité `[critique|important|moyen|mineur]` · horizon
@@ -304,13 +304,13 @@ Statut : **à faire** · vu le 2026-08-23
 
 ## Pointeurs — déjà tracé ailleurs, ne pas recopier
 
-- **Décisions n° 1-26** : `DECISIONS-A-TRANCHER-2026-08-23.md` (l'audit du 23/08 confirme en
+- **Décisions n° 1-26** : `docs/campagnes/DECISIONS-A-TRANCHER-2026-08-23.md` (l'audit du 23/08 confirme en
   particulier l'urgence des n° 7 — API muette, 8-9 — clé SMS/.bak, 10 — DELETE/TRUNCATE,
   26 — CI ; et recommande de re-vérifier le n° 12 avant chantier, cf. § Corrections).
-- **Vérifications dues** (V3, V4, terrain, recette manuelle) : `ETAT-RESTE-A-FAIRE-2026-08-22.md` § 1 et 3.
+- **Vérifications dues** (V3, V4, terrain, recette manuelle) : `docs/campagnes/ETAT-RESTE-A-FAIRE-2026-08-22.md` § 1 et 3.
 - **Chantiers agents** (retrofit passages, triage agenda, rapport d'activité, coaching) :
-  `ETAT-RESTE-A-FAIRE-2026-08-22.md` § 4 + `ROADMAP-AGENTS-LOCAUX.md`.
-- **Dette assumée** (lint API, budgets CSS, O4, O5) : `ETAT-RESTE-A-FAIRE-2026-08-22.md` § 5.
+  `docs/campagnes/ETAT-RESTE-A-FAIRE-2026-08-22.md` § 4 + `docs/roadmaps/ROADMAP-AGENTS-LOCAUX.md`.
+- **Dette assumée** (lint API, budgets CSS, O4, O5) : `docs/campagnes/ETAT-RESTE-A-FAIRE-2026-08-22.md` § 5.
 
 ## Journal des passages de l'agent (à remplir par AM-033)
 

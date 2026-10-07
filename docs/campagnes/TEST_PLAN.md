@@ -1,12 +1,12 @@
 > ⛔ **ARCHIVE — ne pas suivre.** Ce document décrit un chantier terminé (dernier travail : 22/08/2026).
-> Ce qu'il reste à faire vit dans [`SUIVI.md`](./docs/SUIVI.md). Conservé pour l'histoire.
+> Ce qu'il reste à faire vit dans [`SUIVI.md`](../SUIVI.md). Conservé pour l'histoire.
 
 # TEST PLAN — Refonte permissions V1.11 Phase 1
 
 > ⚠️ **Historique — campagne terminée** *(bandeau posé le 2026-08-22)*. La validation
 > V1.11 phase 1 s'est conclue « TOUT VALIDÉ » (cf. section finale). Les « findings V1.12
 > non bloquants » (permissions UI-only sans enforcement backend, DTO trop permissif)
-> n'ont pas de trace de résolution — repris dans `ETAT-RESTE-A-FAIRE-2026-08-22.md`.
+> n'ont pas de trace de résolution — repris dans `docs/campagnes/ETAT-RESTE-A-FAIRE-2026-08-22.md`.
 
 > Suivi en direct des tests de validation de la refonte permissions Tracky.
 > Mis a jour au fur et a mesure des verifications par Claude.

@@ -423,7 +423,7 @@ export class GeofencesListComponent implements OnInit {
 
   /**
    * ⚠️ LE `catch` QUI POSE UN TABLEAU VIDE — 7e occurrence dans l'app, et sur
-   * l'ecran ou il coute le plus cher (SUIVI-REFONTE.md § 8.5).
+   * l'ecran ou il coute le plus cher (docs/campagnes/SUIVI-REFONTE.md § 8.5).
    *
    * Il faisait `this.geofences.set([])`. Verifie au navigateur, API en panne, en
    * partant d'une liste NON vide : la liste tombait a 0 et la page annoncait

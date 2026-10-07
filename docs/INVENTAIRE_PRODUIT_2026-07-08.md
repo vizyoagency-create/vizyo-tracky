@@ -287,7 +287,7 @@ Ces points sont vérifiés dans le code et ont un impact direct sur ce que tu pe
 
 # Section 2 — Rôles & permissions
 
-> Source unique : `packages/shared/src/permissions/permissions.ts` (502 l.). Enforcement backend réel via `PermissionsGuard` (`apps/api/src/auth/guards/permissions.guard.ts`) + `PermissionsResolverService`. **⚠️ `PERMISSIONS_AUDIT.md` (racine repo) est PÉRIMÉ** (décrit un ancien modèle 13 perms UI-only) — ne pas s'y fier.
+> Source unique : `packages/shared/src/permissions/permissions.ts` (502 l.). Enforcement backend réel via `PermissionsGuard` (`apps/api/src/auth/guards/permissions.guard.ts`) + `PermissionsResolverService`. **⚠️ `docs/campagnes/PERMISSIONS_AUDIT.md` (racine repo) est PÉRIMÉ** (décrit un ancien modèle 13 perms UI-only) — ne pas s'y fier.
 
 ## 2.1 Les 5 rôles (`enum UserRole`, `schema.prisma:12`)
 

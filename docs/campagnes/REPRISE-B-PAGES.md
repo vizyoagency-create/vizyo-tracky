@@ -1,5 +1,5 @@
 > ⛔ **ARCHIVE — ne pas suivre.** Ce document décrit un chantier terminé (dernier travail : 22/08/2026).
-> Ce qu'il reste à faire vit dans [`SUIVI.md`](./docs/SUIVI.md). Conservé pour l'histoire.
+> Ce qu'il reste à faire vit dans [`SUIVI.md`](../SUIVI.md). Conservé pour l'histoire.
 
 # Reprise — lot B-pages
 
@@ -7,19 +7,19 @@
 > augmentée jusqu'au 2026-08-14 — **le lot est clos depuis le 2026-08-14** et la refonte
 > fusionnée dans `main` le 2026-08-16. L'en-tête ci-dessous (« 46/57 », « rien en
 > attente ») décrit la séance du 11/08, pas l'état courant. Les décisions restées
-> ouvertes ici sont reprises dans `ETAT-RESTE-A-FAIRE-2026-08-22.md`.
+> ouvertes ici sont reprises dans `docs/campagnes/ETAT-RESTE-A-FAIRE-2026-08-22.md`.
 
 > Écrit le 2026-08-11, à la fin de la séance qui a livré les maquettes, **B0′**, **B-kit** et
 > les 23 premières lignes de **B-pages**.
 > Branche `feat/refonte-tracky-v2`, **40 commits**, poussée sur `origin`, rien en attente.
-> Feuille de route unique : `REFONTE-TRACKY-V2.md` — **496 / 604**.
+> Feuille de route unique : `docs/campagnes/REFONTE-TRACKY-V2.md` — **496 / 604**.
 
 ---
 
 ## Le prompt à coller en première demande
 
 > Reprends le lot **B-pages** de la refonte Tracky, sur la branche `feat/refonte-tracky-v2`.
-> Lis d'abord `REPRISE-B-PAGES.md` à la racine, puis `REFONTE-TRACKY-V2.md` § « Bloc B ».
+> Lis d'abord `docs/campagnes/REPRISE-B-PAGES.md` à la racine, puis `docs/campagnes/REFONTE-TRACKY-V2.md` § « Bloc B ».
 >
 > **Trois règles non négociables :**
 >
@@ -633,7 +633,7 @@ La page est livrée et vérifiée, mais **trois choses ont été volontairement 
 
 ## Séance du 2026-08-14 — les 13 pages « présumées », et O5 enfin tranché
 
-> Le détail chiffré page par page est dans **`SUIVI-REFONTE.md` § 6bis**. Ici, ce que la
+> Le détail chiffré page par page est dans **`docs/campagnes/SUIVI-REFONTE.md` § 6bis**. Ici, ce que la
 > séance a appris — ce qui ne se déduit d'aucun tableau.
 
 ### O5 est mort, et il valait bien ce qu'on en disait
@@ -736,7 +736,7 @@ complète, donc ce plancher s'applique bel et bien dans nos mesures. Corrigé da
 
 ## Fin de séance — `/places`, `/alerts`, bloc G : B-pages est clos
 
-> Le détail est dans `SUIVI-REFONTE.md § 6ter`. Ici, ce que la fin du lot a appris.
+> Le détail est dans `docs/campagnes/SUIVI-REFONTE.md § 6ter`. Ici, ce que la fin du lot a appris.
 
 ### Le motif qui revient est un motif de kit, pas une série de bugs
 
@@ -783,7 +783,7 @@ compilation** (mon accent grave, 6ᵉ fois) **et continuait de servir le bundle 
 
 ## B-mails — ce que le dernier lot a appris
 
-> Détail au § 6quinquies de `SUIVI-REFONTE.md`. Ici, les trois leçons.
+> Détail au § 6quinquies de `docs/campagnes/SUIVI-REFONTE.md`. Ici, les trois leçons.
 
 ### Un e-mail se mesure, comme une page
 
@@ -1042,6 +1042,6 @@ est une décision d'écran, pas de kit : **demander avant de la brancher**.
 
 ## Le journal de bord
 
-`REFONTE-TRACKY-V2.md` se termine par un tableau « Journal de bord », une ligne par séance.
+`docs/campagnes/REFONTE-TRACKY-V2.md` se termine par un tableau « Journal de bord », une ligne par séance.
 **Le tenir à jour** : c'est lui qui porte les décisions et les points ouverts d'une séance à
 l'autre.

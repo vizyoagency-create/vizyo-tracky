@@ -1,10 +1,10 @@
 > ⛔ **ARCHIVE — ne pas suivre.** Ce document décrit un chantier terminé (dernier travail : 22/08/2026).
-> Ce qu'il reste à faire vit dans [`SUIVI.md`](./docs/SUIVI.md). Conservé pour l'histoire.
+> Ce qu'il reste à faire vit dans [`SUIVI.md`](../SUIVI.md). Conservé pour l'histoire.
 
 # Reprise — Lot A3 : l'espace dépôt
 
 > ⚠️ **Historique — passation consommée** *(bandeau posé le 2026-08-22)*. A3 et A4 ont été
-> **livrés** (97/98 et 97/98 au tableau de bord de `REFONTE-TRACKY-V2.md`), le bloc B a
+> **livrés** (97/98 et 97/98 au tableau de bord de `docs/campagnes/REFONTE-TRACKY-V2.md`), le bloc B a
 > été débloqué le 2026-08-10, et la refonte est fusionnée dans `main` depuis le
 > 2026-08-16. Le prompt de démarrage ci-dessous ne doit plus être exécuté.
 
@@ -12,7 +12,7 @@
 > l'Étape 0, A1, A2 et A5. **Tout ce qu'il faut pour reprendre sans relire 20 commits.**
 >
 > Branche : `feat/refonte-tracky-v2`, poussée sur `origin`.
-> Roadmap complète : `REFONTE-TRACKY-V2.md` (590 cases à cocher).
+> Roadmap complète : `docs/campagnes/REFONTE-TRACKY-V2.md` (590 cases à cocher).
 > Spécifications : `design/*.md`.
 
 ---
@@ -22,12 +22,12 @@
 ```
 Reprends la refonte Tracky sur la branche feat/refonte-tracky-v2.
 
-Lis REPRISE-A3.md en entier — il contient l'état du chantier, l'environnement,
+Lis docs/campagnes/REPRISE-A3.md en entier — il contient l'état du chantier, l'environnement,
 les pièges déjà payés et ce qu'il faut réutiliser. Puis lis design/A3-ESPACE-DEPOT.md,
 qui est la spécification du lot à implémenter.
 
 Implémente le lot A3 (l'espace dépôt : route /depot, 4 onglets, 6 modales, en
-3 déclinaisons PC / iOS / Android). Coche les tâches dans REFONTE-TRACKY-V2.md
+3 déclinaisons PC / iOS / Android). Coche les tâches dans docs/campagnes/REFONTE-TRACKY-V2.md
 au fur et à mesure. Termine par les 10 critères de recette de la section 9 d'A3,
 puis commite.
 

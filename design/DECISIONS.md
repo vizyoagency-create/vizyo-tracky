@@ -140,7 +140,7 @@ les règles métier et 45 critères de recette — aucune dépendance visuelle. 
 la livraison des `.dc.html`.
 
 **Condition de déblocage.** Les 27 fichiers présents dans `design/maquettes/`. Les tâches
-B-kit, B-pages et B-mails de `REFONTE-TRACKY-V2.md` restent marquées 🔴 jusque-là.
+B-kit, B-pages et B-mails de `docs/campagnes/REFONTE-TRACKY-V2.md` restent marquées 🔴 jusque-là.
 
 **Exception.** Le lot B0′ (les 4 défauts de code relevés par B0 § « Les 4 défauts de code à
 corriger au passage ») ne dépend d'aucune maquette et n'est pas bloqué.

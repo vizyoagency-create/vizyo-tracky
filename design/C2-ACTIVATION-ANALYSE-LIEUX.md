@@ -8,7 +8,7 @@
 >   `/admin/place-automation`.
 > - **Geste 3 (vérification de bout en bout) : DÛ le 23/08 après 07:10** — ne pas le
 >   faire avant que le cycle 03:10 → 06:30 → 07:10 soit passé. Consigné en **V4** au
->   registre de `ROADMAP-AGENTS-LOCAUX.md` ; requêtes de vérification au § 4 ci-dessous.
+>   registre de `docs/roadmaps/ROADMAP-AGENTS-LOCAUX.md` ; requêtes de vérification au § 4 ci-dessous.
 
 *Écrit le 2026-08-22. Tout ce qui suit est **mesuré en production**, pas estimé.*
 
@@ -159,7 +159,7 @@ peut-être de la valeur.
 ## 7. Contexte utile
 
 - `design/C1-TRAVAUX-IA-LOCAUX.md` — la file de travaux locaux, son contrat, ses garanties.
-- `ROADMAP-AGENTS-LOCAUX.md` § « Registre des points ouverts » — décisions en attente et
+- `docs/roadmaps/ROADMAP-AGENTS-LOCAUX.md` § « Registre des points ouverts » — décisions en attente et
   vérifications dues. **Y inscrire le résultat**, sinon il se perd.
 - Les gardes : `apps/api/src/vehicles/hors-service-surfaces.spec.ts` et
   `apps/api/src/background-tasks/catalogue-exhaustif.spec.ts` figent ce qui ne doit pas régresser.

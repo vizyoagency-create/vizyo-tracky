@@ -1,5 +1,5 @@
 > ⛔ **ARCHIVE — ne pas suivre.** Ce document décrit un chantier terminé (dernier travail : 22/08/2026).
-> Ce qu'il reste à faire vit dans [`SUIVI.md`](./docs/SUIVI.md). Conservé pour l'histoire.
+> Ce qu'il reste à faire vit dans [`SUIVI.md`](../SUIVI.md). Conservé pour l'histoire.
 
 # État du reste-à-faire — 2026-08-22 (au soir)
 
@@ -22,11 +22,11 @@
 
 | Échéance | Quoi | Source |
 |---|---|---|
-| **23/08 après 07:10** | **V4 — chaîne analyse-lieux de bout en bout, sur des faits** : travail dans `travaux_ia_locaux` après 03:10, livré par le courrier après 06:30, rangé après 07:10 avec `costEur = 0` et `executor = local`, résumé qui parle des vrais passages — puis l'écran `/places` à **375 px**. Ne pas conclure avant le cycle. Requêtes prêtes. | `ROADMAP-AGENTS-LOCAUX.md` registre V4 ; `design/C2-ACTIVATION-ANALYSE-LIEUX.md` § 4 geste 3 |
+| **23/08 après 07:10** | **V4 — chaîne analyse-lieux de bout en bout, sur des faits** : travail dans `travaux_ia_locaux` après 03:10, livré par le courrier après 06:30, rangé après 07:10 avec `costEur = 0` et `executor = local`, résumé qui parle des vrais passages — puis l'écran `/places` à **375 px**. Ne pas conclure avant le cycle. Requêtes prêtes. | `docs/roadmaps/ROADMAP-AGENTS-LOCAUX.md` registre V4 ; `design/C2-ACTIVATION-ANALYSE-LIEUX.md` § 4 geste 3 |
 | Dès que possible (terrain) | **V3 — deux boîtiers vivants SANS position GPS** : `GS-014-NY` (IMEI 864035054756169) et `HD-686-QX` — antenne débranchée, mal placée ou HS. Accès physique requis. | registre V3 |
 | Dès que possible (terrain) | **Antennes intermittentes** : `FZ-862-VY` et `FS-253-HR` (épisodes qui se rouvrent), plus `KSR370` (bruit de vitesse jusqu'à 256 km/h annoncés). Le contrôle terrain reste à faire. | `docs/centre-alerte/REFERENCE-ERREURS.md:1271` ; registre § KSR370 |
-| Suivi continu | **Convergence du recalcul des trajets** : vérifier que les tranches « 7-30 j » (854) et « 30-50 j » (1 190) baissent ; 4 845 trajets sans analyse au 19/08 (2 158 → 1 339 trajets bruts au 20/08 — ça converge). | `ROADMAP-AGENTS-LOCAUX.md:74-76`, `:710-712` |
-| Au prochain déploiement | **Migration `20260820180000_passages_agents_locaux`** : marquée « à déployer » le 20/08 ; les déploiements des 21-22/08 l'ont probablement embarquée — **à confirmer** sur `/admin/background-tasks` (le traitement `agent-qualite-gps` ne doit plus afficher « inconnu »). | `ROADMAP-AGENTS-LOCAUX.md:228`, `:713-716` |
+| Suivi continu | **Convergence du recalcul des trajets** : vérifier que les tranches « 7-30 j » (854) et « 30-50 j » (1 190) baissent ; 4 845 trajets sans analyse au 19/08 (2 158 → 1 339 trajets bruts au 20/08 — ça converge). | `docs/roadmaps/ROADMAP-AGENTS-LOCAUX.md:74-76`, `:710-712` |
+| Au prochain déploiement | **Migration `20260820180000_passages_agents_locaux`** : marquée « à déployer » le 20/08 ; les déploiements des 21-22/08 l'ont probablement embarquée — **à confirmer** sur `/admin/background-tasks` (le traitement `agent-qualite-gps` ne doit plus afficher « inconnu »). | `docs/roadmaps/ROADMAP-AGENTS-LOCAUX.md:228`, `:713-716` |
 
 ## 2. Décisions du propriétaire en attente
 
@@ -45,18 +45,18 @@
 
 4. **Vitesses physiquement impossibles acceptées à l'ingestion** (`valid = true` jusqu'à
    255,7 km/h sur KSR370) : rejeter, ou marquer `valid = false`, au-delà d'un seuil par
-   type de véhicule ? Chemin le plus critique de l'app — prudence. — `ROADMAP-AGENTS-LOCAUX.md:532-550`
+   type de véhicule ? Chemin le plus critique de l'app — prudence. — `docs/roadmaps/ROADMAP-AGENTS-LOCAUX.md:532-550`
 5. **Commandes tracker : honorer `availableVia`.** `dispatch()` envoie tout en TCP alors
    que 19 gabarits (dont les 3 du capteur de choc) sont déclarés `['sms']` — c'est
    pourquoi aucune alerte ACCIDENT/COLLISION n'a jamais existé. Chantier : router par
    SMS + réconcilier le statut `queued` (défaut d'observabilité, pas de livraison).
-   — `ROADMAP-AGENTS-LOCAUX.md:552-620`
+   — `docs/roadmaps/ROADMAP-AGENTS-LOCAUX.md:552-620`
 6. **Cadence TCP : valider la trame `**,imei:<IMEI>,C,05m;` sur UN boîtier** avant de
    généraliser (obtenir enfin les 300 s → batterie + forfait 2G, 36 boîtiers). Test non
    destructif décrit. — `docs/centre-alerte/REFERENCE-ERREURS.md:2504-2515`
 7. **API muette si base injoignable au démarrage** (`$connect()` dans `onModuleInit` +
    `bufferLogs: true` = aucun journal, port fermé) : délai maximum avec message
-   explicite, ou vidage du tampon avant l'init des modules ? — registre, `ROADMAP-AGENTS-LOCAUX.md:505-514`
+   explicite, ou vidage du tampon avant l'init des modules ? — registre, `docs/roadmaps/ROADMAP-AGENTS-LOCAUX.md:505-514`
 
 ### Sécurité / infra VPS
 
@@ -80,17 +80,17 @@
     seulement ; `privacy_view_private_trips` explicitement signalée « indispensable ») et
     **`groups_manage` défini mais jamais lu**. Questions posées en avril, sans trace de
     décision (vérifié le 22/08 : aucun `privacy_view_private_trips` côté `apps/api/src`).
-    — `PERMISSIONS_AUDIT.md` § 8 (Q1, Q7) ; `TEST_PLAN.md` § findings V1.12
+    — `docs/campagnes/PERMISSIONS_AUDIT.md` § 8 (Q1, Q7) ; `docs/campagnes/TEST_PLAN.md` § findings V1.12
 
 ### UI / design (refonte v2 — restes identifiés, jamais tranchés)
 
 13. **`/vehicles` en liste groupée par groupe avec en-têtes** — décision de comportement
-    non tranchée. — `SUIVI-REFONTE.md:1534` ; `REPRISE-B-PAGES.md:305`
-14. **Étiquettes de plaque masquées sur téléphone** (choix de la planche) — à trancher. — `REPRISE-B-PAGES.md:228`
-15. **Poignée `.bs-handle-wrap` de la feuille basse** — à trancher au niveau du kit. — `REPRISE-B-PAGES.md:408`
-16. **Zoom MapLibre : cible de 29 px** — à revoir en recette sur le VPS. — `SUIVI-REFONTE.md:1083`
+    non tranchée. — `docs/campagnes/SUIVI-REFONTE.md:1534` ; `docs/campagnes/REPRISE-B-PAGES.md:305`
+14. **Étiquettes de plaque masquées sur téléphone** (choix de la planche) — à trancher. — `docs/campagnes/REPRISE-B-PAGES.md:228`
+15. **Poignée `.bs-handle-wrap` de la feuille basse** — à trancher au niveau du kit. — `docs/campagnes/REPRISE-B-PAGES.md:408`
+16. **Zoom MapLibre : cible de 29 px** — à revoir en recette sur le VPS. — `docs/campagnes/SUIVI-REFONTE.md:1083`
 17. **Trois décisions sur `/admin/ai-usage`** (ratio de marge, compteurs de résultat,
-    O5), volontairement laissées de côté. — `REPRISE-B-PAGES.md:606-624`
+    O5), volontairement laissées de côté. — `docs/campagnes/REPRISE-B-PAGES.md:606-624`
 18. **O5 — `--text-tertiary` sous 4,5:1 dans LES DEUX thèmes** : trois options chiffrées
     (assombrir le jeton / créer `--texte-discret` / reprendre page par page). Tant que ce
     n'est pas tranché, la mesure au navigateur est le seul juge — `verif:contraste` ne
@@ -103,7 +103,7 @@
     couleur. Rien n'a été modifié en attendant. — sortie de `node scripts/verif-couleurs-kit.mjs` du 22/08
 20. **`update-required-modal` + `push-prompt` + `trip-note-modal`** : « trois usages, un
     seul squelette », reporté à B-pages puis sans trace de réalisation — unifier ou y
-    renoncer explicitement. — `REFONTE-TRACKY-V2.md:1208`
+    renoncer explicitement. — `docs/campagnes/REFONTE-TRACKY-V2.md:1208`
 
 ### Chantiers ouverts à prioriser (ou à geler explicitement)
 
@@ -125,7 +125,7 @@
 
 ## 3. Recette manuelle humaine — de vrais clics, de vrais yeux
 
-- **`RECETTE-A-FAIRE.md` en entier** (sections A → H : cas spécial véhicule, effets
+- **`docs/campagnes/RECETTE-A-FAIRE.md` en entier** (sections A → H : cas spécial véhicule, effets
   différés, notifications GPS réservées super-admin). Vérifié le 22/08 : ses points
   **correspondent toujours aux écrans actuels** (carte « Cas spécial · super-admin »,
   options Accidenté / Boîtier débranché / Immobilisé — `apps/web/src/app/features/vehicles/vehicle-detail.component.ts:441-467` ;
@@ -134,7 +134,7 @@
 - **L'écran du mode veilleur n'a JAMAIS été mesuré** (bloqué à l'époque par le panneau
   navigateur — le client l'a lui-même réclamé en recette le 16/08) et **`/driver` n'a
   jamais été vu**. À 375 px, sur données réelles.
-  — `SUIVI-REFONTE.md:630-637`, `:258-259`, `:957-959`, `:1607`
+  — `docs/campagnes/SUIVI-REFONTE.md:630-637`, `:258-259`, `:957-959`, `:1607`
 - **`/places` à 375 px** après le cycle V4 du 23/08. — `design/C2-ACTIVATION-ANALYSE-LIEUX.md` § 4
 - Reliquat Maestroo : **démo visuelle de bout en bout** des 3 écrans, **T9 sur une vraie
   base**, et la vérification visuelle **au premier allumage**. — `docs/23-integration-maestroo-phase0-spec.md:1010,1012` ; `docs/24-integration-maestroo-deploiement.md:198`
@@ -143,11 +143,11 @@
 
 ## 4. Chantiers techniques restants (côté agents locaux)
 
-Dans l'ordre du catalogue de `ROADMAP-AGENTS-LOCAUX.md` :
+Dans l'ordre du catalogue de `docs/roadmaps/ROADMAP-AGENTS-LOCAUX.md` :
 
 - **Point 2 — retirer le bouton « Recalculer » de `/reports`** : ⏸ EN ATTENTE
   **volontaire** tant que la convergence du point 1 n'est pas prouvée (tranche 30-50 j
-  vidée). Contrôle navigateur 375 px obligatoire à la fin. — `ROADMAP-AGENTS-LOCAUX.md:78-86`
+  vidée). Contrôle navigateur 375 px obligatoire à la fin. — `docs/roadmaps/ROADMAP-AGENTS-LOCAUX.md:78-86`
 - **Agent triage des propositions d'agenda** (priorité 4) : 1 328 propositions en
   attente qu'aucun humain ne triera. — `:327-334`
 - **Agent rapport d'activité** (priorité 5) : sans objet tant que
@@ -168,9 +168,9 @@ Dans l'ordre du catalogue de `ROADMAP-AGENTS-LOCAUX.md` :
 
 - **`pnpm lint` API cassé** — vérifié le 22/08 : `eslint` n'est pas installé dans
   `apps/api` (« 'eslint' n'est pas reconnu »). Connu depuis la refonte
-  (`SUIVI-REFONTE.md:725`). Réparer ou retirer le script.
+  (`docs/campagnes/SUIVI-REFONTE.md:725`). Réparer ou retirer le script.
 - **Trois budgets CSS dépassés au build production** (constat du 14/08, non re-mesuré
-  depuis). — `SUIVI-REFONTE.md:733`
+  depuis). — `docs/campagnes/SUIVI-REFONTE.md:733`
 - **O4 — couleurs de couche de carte en dur, volontairement** (MapLibre ne résout pas
   les variables CSS ; le fond de carte est un choix utilisateur séparé du thème). Reste :
   une dizaine de valeurs dans `map.component.ts` à reprendre. — `design/TOKENS.md` § O4
@@ -179,7 +179,7 @@ Dans l'ordre du catalogue de `ROADMAP-AGENTS-LOCAUX.md` :
   est rouge, sur le viseur caméra (cf. décision n° 19).
 - **`narrateEnabled` reste à `false` et le restera** (l'agent local produit les récits) ;
   8 973/10 070 analyses sans récit au 20/08 — attendu, le rattrapage est nocturne.
-  — `ROADMAP-AGENTS-LOCAUX.md:724-726`
+  — `docs/roadmaps/ROADMAP-AGENTS-LOCAUX.md:724-726`
 - **Limite assumée de l'agent qualité GPS** : corrélation PAR SOCIÉTÉ uniquement. — `:717-719`
 - **La base de connaissances de l'assistance est un engagement d'entretien** — à mettre
   à jour à chaque fonctionnalité livrée, comme une doc d'API publique. — `:312-314`
@@ -190,7 +190,7 @@ Dans l'ordre du catalogue de `ROADMAP-AGENTS-LOCAUX.md` :
   en `docs/INSTALLATION-VPS-INITIALE.md` (c'est un guide d'installation initiale, pas un
   doublon de `DEPLOYMENT-VPS.md` — 3 lignes communes sur ~1 140). **Pas renommé sans
   accord** ; bandeau posé en attendant.
-- **`ROADMAP-AGENTS-LOCAUX.md`** s'annonce « à supprimer quand tout est livré » — pas
+- **`docs/roadmaps/ROADMAP-AGENTS-LOCAUX.md`** s'annonce « à supprimer quand tout est livré » — pas
   encore : D1/D2/D4, V3/V4 et quatre agents restent ouverts.
 - **`docs/09-roadmap-v2.md`** § 3-4 : backlog basse priorité d'avril + « décisions à
   prendre » jamais reprises — réévaluer ou clore.
@@ -213,13 +213,13 @@ qui en reste vit dans `REFERENCE-ERREURS.md` et est repris ci-dessus. Beaucoup d
 |---|---|
 | `design/C2-ACTIVATION-ANALYSE-LIEUX.md:86` (les trois gestes) | gestes 1-2 **faits le 22/08** ; geste 3 **dû le 23/08** (V4) |
 | `design/A1-ROLE-DEPOT.md:85` | descriptif (« le veilleur reste à zéro ») — pas une tâche |
-| `ROADMAP-AGENTS-LOCAUX.md:78` (bouton Recalculer) | **encore dû**, bloqué volontairement (§ 4) |
-| `ROADMAP-AGENTS-LOCAUX.md:321` (à intégrer au direct) | **fait le 19/08** — écrans `6a83ec61`, notification `ac171fae` (table d'avancement corrigée ce jour) |
-| `ROADMAP-AGENTS-LOCAUX.md:701` (`narrateEnabled`) | décision actée — pas une tâche |
-| `SUIVI-REFONTE.md:517`, `:808` | prose de journal — pas des tâches |
-| `SUIVI-REFONTE.md:1607` (écran veilleur à mesurer) | **encore dû** (§ 3) |
-| `REFONTE-TRACKY-V2.md:1208` (3 modales, un squelette) | **à trancher** (§ 2 n° 20) |
-| `REFONTE-TRACKY-V2.md:1647` | ligne de journal — pas une tâche |
+| `docs/roadmaps/ROADMAP-AGENTS-LOCAUX.md:78` (bouton Recalculer) | **encore dû**, bloqué volontairement (§ 4) |
+| `docs/roadmaps/ROADMAP-AGENTS-LOCAUX.md:321` (à intégrer au direct) | **fait le 19/08** — écrans `6a83ec61`, notification `ac171fae` (table d'avancement corrigée ce jour) |
+| `docs/roadmaps/ROADMAP-AGENTS-LOCAUX.md:701` (`narrateEnabled`) | décision actée — pas une tâche |
+| `docs/campagnes/SUIVI-REFONTE.md:517`, `:808` | prose de journal — pas des tâches |
+| `docs/campagnes/SUIVI-REFONTE.md:1607` (écran veilleur à mesurer) | **encore dû** (§ 3) |
+| `docs/campagnes/REFONTE-TRACKY-V2.md:1208` (3 modales, un squelette) | **à trancher** (§ 2 n° 20) |
+| `docs/campagnes/REFONTE-TRACKY-V2.md:1647` | ligne de journal — pas une tâche |
 | `docs/03-protocol-coban-gps403d.md:898` (TODO Wireshark) | **obsolète de fait** — couvert par `wire_logs` (§ 6) |
 | `docs/07-sms-gateway.md:278` (SOS SMS → Alert) | **obsolète** — plan Twilio abandonné ; le mapping SOS TCP existe (`apps/api/src/alerts/alert-mapping.ts:19`) |
 | `docs/14-tests-runbook.md:48,119,158,221` (TODO V1.6) | **faits autrement** — la suite compte ~2 500 tests ; les seuils/flows V1.6 n'ont jamais été repris tels quels |

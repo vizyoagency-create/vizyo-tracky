@@ -383,7 +383,7 @@ Contrôle du **22/08** (audit des restes) : **D1, D2 et D4 restent en attente** 
 commit ne les tranche. L'état du code correspond à leur description : pour D1, le
 commentaire de `assistance.controller.ts:31-35` documente l'écart et « un décorateur
 suffit à l'ouvrir » reste vrai. La liste complète des décisions en attente est
-consolidée dans `ETAT-RESTE-A-FAIRE-2026-08-22.md`.
+consolidée dans `docs/campagnes/ETAT-RESTE-A-FAIRE-2026-08-22.md`.
 
 ### Vérifications dues — rien ne les remplace
 
@@ -398,15 +398,15 @@ consolidée dans `ETAT-RESTE-A-FAIRE-2026-08-22.md`.
 
 **Fait** : chaque entrée du registre confrontée au code (D3 tranché sans objet ; D1, D2,
 D4, V3, V4 confirmés en attente), bandeaux d'état datés posés sur les documents
-historiques qui se présentaient comme courants (racine : `SUIVI-REFONTE.md`,
-`REFONTE-TRACKY-V2.md`, `REPRISE-A3.md`, `REPRISE-B-PAGES.md`, `TEST_PLAN.md`,
-`DEPLOY_AUDIT_V1.10.md`, `PERMISSIONS_AUDIT.md` ; et une douzaine sous `docs/`),
+historiques qui se présentaient comme courants (racine : `docs/campagnes/SUIVI-REFONTE.md`,
+`docs/campagnes/REFONTE-TRACKY-V2.md`, `docs/campagnes/REPRISE-A3.md`, `docs/campagnes/REPRISE-B-PAGES.md`, `docs/campagnes/TEST_PLAN.md`,
+`docs/campagnes/DEPLOY_AUDIT_V1.10.md`, `docs/campagnes/PERMISSIONS_AUDIT.md` ; et une douzaine sous `docs/`),
 `design/TOKENS.md` complété (règle `--tracky-light` jamais en fond, bornes de lavis
 bleu ≤ 12 % / violet ≤ 10 %, jetons `--texte-lime`/`--texte-orange`, garde à 168 couples),
 `design/C2-ACTIVATION-ANALYSE-LIEUX.md` daté (gestes 1-2 faits le 22/08, geste 3 dû le
 23/08 = V4), et les ~70 marqueurs « à faire » des `.md` classés fait / obsolète / encore dû.
 
-**Résultat consolidé** : **`ETAT-RESTE-A-FAIRE-2026-08-22.md`** à la racine — la synthèse
+**Résultat consolidé** : **`docs/campagnes/ETAT-RESTE-A-FAIRE-2026-08-22.md`** à la racine — la synthèse
 priorisée de tout ce qui reste (décisions du propriétaire, vérifications datées, recette
 humaine, dette assumée, docs à trancher). C'est ce fichier qui fait foi sur « que
 reste-t-il ? » à cette date.

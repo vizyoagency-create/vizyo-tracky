@@ -5,7 +5,7 @@
 
 > ⚠️ **Historique — figé au 2026-04-15** *(bandeau posé le 2026-08-22)*. La promesse de
 > mise à jour « à la fin de chaque session » n'a plus été tenue après V1.3 ; le suivi a
-> continué dans les roadmaps 09 à 17, puis `docs/TACHES.md` et `ROADMAP-AGENTS-LOCAUX.md`.
+> continué dans les roadmaps 09 à 17, puis `docs/TACHES.md` et `docs/roadmaps/ROADMAP-AGENTS-LOCAUX.md`.
 
 > **Statut :** V1.3 — 2026-04-15
 > **Perimetre :** plan de route produit et technique pour les deux volets (application + landing page), avec suivi d'avancement, backlog priorise et decisions d'architecture.
