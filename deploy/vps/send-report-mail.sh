@@ -57,7 +57,10 @@ PAYLOAD=$(jq -n \
   --arg text "$CORPS" \
   '{from:$from, to:[$to], subject:$subject, text:$text}')
 
-REPONSE=$(curl -s -w '\n%{http_code}' -X POST https://api.resend.com/emails \
+# Borné (07/10/2026, repris de ba2a4045 resté sur une branche jamais fusionnée) : ce script est
+# appelé par une session SSH des agents d'audit. Sans borne, un Resend muet garde la session —
+# et l'agent — bloqués sans fin. 10 s pour se connecter, 30 s au total.
+REPONSE=$(curl -s --max-time 30 --connect-timeout 10 -w '\n%{http_code}' -X POST https://api.resend.com/emails \
   -H "Authorization: Bearer $KEY" \
   -H "Content-Type: application/json" \
   -d "$PAYLOAD" 2>&1)
