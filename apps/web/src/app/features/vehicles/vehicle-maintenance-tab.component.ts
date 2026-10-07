@@ -8,6 +8,7 @@ import {
   input,
   OnInit,
   signal,
+  type WritableSignal,
 } from '@angular/core';
 import { DatePipe, DecimalPipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -21,11 +22,13 @@ import type {
   UpsertMaintenancePlanDto,
   VehicleEventDto,
 } from '@vizyo/tracky-shared';
-import { firstValueFrom } from 'rxjs';
+import { firstValueFrom, type Observable } from 'rxjs';
 import { HttpErrorResponse } from '@angular/common/http';
+import { apiErrorMessage } from '../../core/error/api-error';
 import { AgendaApiService } from '../../core/services/agenda.service';
 import { PermissionsService } from '../../core/services/permissions.service';
 import { ToastService } from '../../shared/ui/toast/toast.service';
+import { ZoneComponent } from '../../shared/ui/zone/zone.component';
 import {
   eventColor,
   eventStatusLabel,
@@ -34,6 +37,9 @@ import {
   severityLabel,
   urgencyColor,
 } from '../agenda/agenda.utils';
+
+/** Ce que rend une lecture de l'onglet : la valeur, ou le motif de l'échec à afficher. */
+type Lecture<T> = { ok: true; valeur: T } | { ok: false; motif: string };
 
 /**
  * Sprint 7 — Onglet « Maintenance » du détail véhicule. Auto-suffisant
@@ -47,7 +53,7 @@ import {
   selector: 'app-vehicle-maintenance-tab',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [FormsModule, LucideAngularModule, DatePipe, DecimalPipe],
+  imports: [FormsModule, LucideAngularModule, DatePipe, DecimalPipe, ZoneComponent],
   template: `
     @if (loading()) {
       <div class="flex items-center justify-center h-32">
@@ -55,25 +61,32 @@ import {
       </div>
     } @else {
       <div class="flex flex-col gap-4 sm:gap-5">
-        <!-- Estimation kilométrique -->
-        <div class="vmt-odo">
-          <div class="vmt-odo-icon"><lucide-icon [img]="GaugeIcon" [size]="18"></lucide-icon></div>
-          <div class="vmt-odo-body">
-            <span class="vmt-odo-label">Kilométrage estimé</span>
-            @if (odometer()?.estimatedKm != null) {
-              <span class="vmt-odo-value">{{ odometer()!.estimatedKm | number:'1.0-0' }} <span class="vmt-odo-unit">km</span></span>
-              <span class="vmt-odo-hint">
-                estimation GPS
-                @if (odometer()?.lastOdometerKm != null) {
-                  · relevé {{ odometer()!.lastOdometerKm | number:'1.0-0' }} km + {{ odometer()!.gpsDistanceSinceKm | number:'1.0-0' }} km GPS
-                }
-              </span>
-            } @else {
-              <span class="vmt-odo-value vmt-odo-value--empty">—</span>
-              <span class="vmt-odo-hint">Aucun relevé ni distance GPS disponible.</span>
-            }
+        <!-- Estimation kilométrique. Une lecture en échec le dit (07/10/2026) : « aucun relevé »
+             n'est pas « relevé illisible ». -->
+        @if (odometerError(); as motif) {
+          <app-zone [etat]="'erreur'"
+                    erreur="Le kilométrage estimé n'a pas pu être lu"
+                    [erreurDetail]="motif" (reessayer)="recharger()" />
+        } @else {
+          <div class="vmt-odo">
+            <div class="vmt-odo-icon"><lucide-icon [img]="GaugeIcon" [size]="18"></lucide-icon></div>
+            <div class="vmt-odo-body">
+              <span class="vmt-odo-label">Kilométrage estimé</span>
+              @if (odometer()?.estimatedKm != null) {
+                <span class="vmt-odo-value">{{ odometer()!.estimatedKm | number:'1.0-0' }} <span class="vmt-odo-unit">km</span></span>
+                <span class="vmt-odo-hint">
+                  estimation GPS
+                  @if (odometer()?.lastOdometerKm != null) {
+                    · relevé {{ odometer()!.lastOdometerKm | number:'1.0-0' }} km + {{ odometer()!.gpsDistanceSinceKm | number:'1.0-0' }} km GPS
+                  }
+                </span>
+              } @else {
+                <span class="vmt-odo-value vmt-odo-value--empty">—</span>
+                <span class="vmt-odo-hint">Aucun relevé ni distance GPS disponible.</span>
+              }
+            </div>
           </div>
-        </div>
+        }
 
         <!-- Plans d'entretien -->
         <section class="flex flex-col gap-2">
@@ -82,13 +95,18 @@ import {
               <lucide-icon [img]="CalendarClockIcon" [size]="15"></lucide-icon>
               Plans d'entretien
             </h3>
-            @if (canManage()) {
+            <!-- Pas d'ajout sur une liste qu'on n'a pas pu lire : on créerait un doublon sans le voir. -->
+            @if (canManage() && !plansError()) {
               <button type="button" (click)="openPlanEditor(null)" class="vmt-add-btn">
                 <lucide-icon [img]="PlusIcon" [size]="13"></lucide-icon> Plan
               </button>
             }
           </div>
-          @if (plans().length === 0) {
+          @if (plansError(); as motif) {
+            <app-zone [etat]="'erreur'"
+                      erreur="Les plans d'entretien n'ont pas pu être lus"
+                      [erreurDetail]="motif" (reessayer)="recharger()" />
+          } @else if (plans().length === 0) {
             <p class="vmt-empty">Aucun plan d'entretien pour ce véhicule.</p>
           } @else {
             <div class="flex flex-col gap-2">
@@ -134,63 +152,77 @@ import {
           }
         </section>
 
-        <!-- Événements à venir -->
-        <section class="flex flex-col gap-2">
-          <h3 class="vmt-section-title">
-            <lucide-icon [img]="WrenchIcon" [size]="15"></lucide-icon>
-            À venir
-          </h3>
-          @if (upcomingEvents().length === 0) {
-            <p class="vmt-empty">Aucun entretien ou incident à venir.</p>
-          } @else {
-            <div class="flex flex-col gap-2">
-              @for (ev of upcomingEvents(); track ev.id) {
-                <article class="vmt-event" [style.--pill]="eventColor(ev)">
-                  <div class="vmt-event-row">
-                    <span class="vmt-event-title">{{ ev.title }}</span>
-                    <span class="vmt-event-date" [style.--u]="urgencyColor(eventUrgency(ev))">{{ ev.startAt | date:'dd MMM' }}</span>
-                  </div>
-                  <p class="vmt-event-meta">
-                    {{ eventTypeLabel(ev.type) }} · {{ eventStatusLabel(ev.status) }}
-                    @if (ev.type === 'INCIDENT' && ev.severity) { · {{ severityLabel(ev.severity) }} }
-                    @if (ev.odometerKm != null) { · {{ ev.odometerKm | number:'1.0-0' }} km }
-                  </p>
-                  @if (canManage() && ev.status !== 'DONE' && ev.status !== 'CANCELLED') {
-                    <button type="button" (click)="markEventDone(ev)" [disabled]="busyId() === ev.id" class="vmt-event-done">
-                      <lucide-icon [img]="CheckIcon" [size]="12"></lucide-icon> Marquer terminé
-                    </button>
-                  }
-                </article>
-              }
-            </div>
-          }
-        </section>
+        @if (eventsError(); as motif) {
+          <!-- 07/10/2026 : la lecture des entretiens répondait 400, et l'onglet affichait « Aucun
+               entretien » sur tous les véhicules. Une liste qu'on n'a pas pu lire n'est pas vide. -->
+          <section class="flex flex-col gap-2">
+            <h3 class="vmt-section-title">
+              <lucide-icon [img]="WrenchIcon" [size]="15"></lucide-icon>
+              Entretiens
+            </h3>
+            <app-zone [etat]="'erreur'"
+                      erreur="Les entretiens de ce véhicule n'ont pas pu être lus"
+                      [erreurDetail]="motif" (reessayer)="recharger()" />
+          </section>
+        } @else {
+          <!-- Événements à venir -->
+          <section class="flex flex-col gap-2">
+            <h3 class="vmt-section-title">
+              <lucide-icon [img]="WrenchIcon" [size]="15"></lucide-icon>
+              À venir
+            </h3>
+            @if (upcomingEvents().length === 0) {
+              <p class="vmt-empty">Aucun entretien ou incident à venir.</p>
+            } @else {
+              <div class="flex flex-col gap-2">
+                @for (ev of upcomingEvents(); track ev.id) {
+                  <article class="vmt-event" [style.--pill]="eventColor(ev)">
+                    <div class="vmt-event-row">
+                      <span class="vmt-event-title">{{ ev.title }}</span>
+                      <span class="vmt-event-date" [style.--u]="urgencyColor(eventUrgency(ev))">{{ ev.startAt | date:'dd MMM' }}</span>
+                    </div>
+                    <p class="vmt-event-meta">
+                      {{ eventTypeLabel(ev.type) }} · {{ eventStatusLabel(ev.status) }}
+                      @if (ev.type === 'INCIDENT' && ev.severity) { · {{ severityLabel(ev.severity) }} }
+                      @if (ev.odometerKm != null) { · {{ ev.odometerKm | number:'1.0-0' }} km }
+                    </p>
+                    @if (canManage() && ev.status !== 'DONE' && ev.status !== 'CANCELLED') {
+                      <button type="button" (click)="markEventDone(ev)" [disabled]="busyId() === ev.id" class="vmt-event-done">
+                        <lucide-icon [img]="CheckIcon" [size]="12"></lucide-icon> Marquer terminé
+                      </button>
+                    }
+                  </article>
+                }
+              </div>
+            }
+          </section>
 
-        <!-- Historique -->
-        <section class="flex flex-col gap-2">
-          <h3 class="vmt-section-title">
-            <lucide-icon [img]="CircleDotIcon" [size]="15"></lucide-icon>
-            Historique
-          </h3>
-          @if (pastEvents().length === 0) {
-            <p class="vmt-empty">Aucun entretien passé enregistré.</p>
-          } @else {
-            <div class="flex flex-col gap-2">
-              @for (ev of pastEvents(); track ev.id) {
-                <article class="vmt-event vmt-event--past" [style.--pill]="eventColor(ev)">
-                  <div class="vmt-event-row">
-                    <span class="vmt-event-title">{{ ev.title }}</span>
-                    <span class="vmt-event-date vmt-event-date--past">{{ ev.startAt | date:'dd/MM/yy' }}</span>
-                  </div>
-                  <p class="vmt-event-meta">
-                    {{ eventTypeLabel(ev.type) }} · {{ eventStatusLabel(ev.status) }}
-                    @if (ev.odometerKm != null) { · {{ ev.odometerKm | number:'1.0-0' }} km }
-                  </p>
-                </article>
-              }
-            </div>
-          }
-        </section>
+          <!-- Historique -->
+          <section class="flex flex-col gap-2">
+            <h3 class="vmt-section-title">
+              <lucide-icon [img]="CircleDotIcon" [size]="15"></lucide-icon>
+              Historique
+            </h3>
+            @if (pastEvents().length === 0) {
+              <p class="vmt-empty">Aucun entretien passé enregistré.</p>
+            } @else {
+              <div class="flex flex-col gap-2">
+                @for (ev of pastEvents(); track ev.id) {
+                  <article class="vmt-event vmt-event--past" [style.--pill]="eventColor(ev)">
+                    <div class="vmt-event-row">
+                      <span class="vmt-event-title">{{ ev.title }}</span>
+                      <span class="vmt-event-date vmt-event-date--past">{{ ev.startAt | date:'dd/MM/yy' }}</span>
+                    </div>
+                    <p class="vmt-event-meta">
+                      {{ eventTypeLabel(ev.type) }} · {{ eventStatusLabel(ev.status) }}
+                      @if (ev.odometerKm != null) { · {{ ev.odometerKm | number:'1.0-0' }} km }
+                    </p>
+                  </article>
+                }
+              </div>
+            }
+          </section>
+        }
       </div>
     }
 
@@ -488,6 +520,15 @@ export class VehicleMaintenanceTabComponent implements OnInit {
   protected readonly events = signal<VehicleEventDto[]>([]);
   protected readonly busyId = signal<string | null>(null);
 
+  /**
+   * Lecture en échec, par zone (07/10/2026). Un `.catch(() => [])` faisait passer une lecture REFUSÉE
+   * pour « aucun entretien » : du 28/06 au 07/10, l'onglet a montré une liste vide sur tous les
+   * véhicules, sans un mot. Chaque zone dit désormais ce qu'elle n'a pas pu lire, et propose de relire.
+   */
+  protected readonly odometerError = signal<string | null>(null);
+  protected readonly plansError = signal<string | null>(null);
+  protected readonly eventsError = signal<string | null>(null);
+
   protected readonly canManage = computed(() => this.perms.can('agenda_manage', this.vehicleId()));
 
   /** À venir : non clôturés, triés par échéance croissante. */
@@ -537,14 +578,41 @@ export class VehicleMaintenanceTabComponent implements OnInit {
     this.loading.set(true);
     const id = this.vehicleId();
     const [odo, plans, events] = await Promise.all([
-      firstValueFrom(this.api.odometer(id)).catch(() => null),
-      firstValueFrom(this.api.listPlans(id)).catch(() => [] as MaintenancePlanDto[]),
-      firstValueFrom(this.api.listEvents({ vehicleId: id, type: 'MAINTENANCE' })).catch(() => [] as VehicleEventDto[]),
+      this.lire('vehicle-maintenance-tab:odometer', this.api.odometer(id)),
+      this.lire('vehicle-maintenance-tab:plans', this.api.listPlans(id)),
+      // TOUS les entretiens du véhicule, sans fenêtre : l'historique et les échéances, quelle que soit
+      // leur date. `listEvents` exige `from`/`to` — sans eux, l'API répondait 400 à cet onglet.
+      this.lire('vehicle-maintenance-tab:events', this.api.listVehicleEvents(id, 'MAINTENANCE')),
     ]);
-    this.odometer.set(odo);
-    this.plans.set(plans);
-    this.events.set(events);
+    this.poser(odo, this.odometer, this.odometerError);
+    this.poser(plans, this.plans, this.plansError);
+    this.poser(events, this.events, this.eventsError);
     this.loading.set(false);
+  }
+
+  /** Recours des zones en erreur : relit tout l'onglet. */
+  protected recharger(): void {
+    void this.loadAll();
+  }
+
+  /** Une lecture rend sa valeur, ou le motif de son échec — jamais une valeur par défaut qui ment. */
+  private async lire<T>(source: string, requete: Observable<T>): Promise<Lecture<T>> {
+    try {
+      return { ok: true, valeur: await firstValueFrom(requete) };
+    } catch (err) {
+      swallow(source, err);
+      return { ok: false, motif: apiErrorMessage(err, "Rien n'a été modifié : réessayez dans un instant.") };
+    }
+  }
+
+  /** Pose une lecture : sa valeur (et plus d'erreur), ou son motif — la zone dira ce qui manque. */
+  private poser<T>(lecture: Lecture<T>, valeur: WritableSignal<T>, erreur: WritableSignal<string | null>): void {
+    if (lecture.ok) {
+      valeur.set(lecture.valeur);
+      erreur.set(null);
+    } else {
+      erreur.set(lecture.motif);
+    }
   }
 
   // ─── Événements ──────────────────────────────────────────────────────────────
@@ -682,11 +750,13 @@ export class VehicleMaintenanceTabComponent implements OnInit {
   private async refreshEventsAndOdometer(): Promise<void> {
     const id = this.vehicleId();
     const [odo, events] = await Promise.all([
-      firstValueFrom(this.api.odometer(id)).catch(() => this.odometer()),
-      firstValueFrom(this.api.listEvents({ vehicleId: id, type: 'MAINTENANCE' })).catch(() => this.events()),
+      this.lire('vehicle-maintenance-tab:refreshOdometer', this.api.odometer(id)),
+      this.lire('vehicle-maintenance-tab:refreshEvents', this.api.listVehicleEvents(id, 'MAINTENANCE')),
     ]);
-    this.odometer.set(odo);
-    this.events.set(events);
+    // Une relecture en échec le dit aussi : l'ancienne liste ne contient pas l'entretien qu'on vient
+    // d'enregistrer — la laisser affichée la ferait passer pour à jour.
+    this.poser(odo, this.odometer, this.odometerError);
+    this.poser(events, this.events, this.eventsError);
   }
 
   private todayIso(): string {

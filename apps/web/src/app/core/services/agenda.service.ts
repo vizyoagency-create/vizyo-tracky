@@ -34,10 +34,15 @@ import { EtatsVehiculesBus } from './etats-vehicules.bus';
  * L'intercepteur d'auth pose les headers/credentials — rien à faire ici.
  */
 
-/** Filtres optionnels de la liste d'événements. `from`/`to` en ISO. */
+/**
+ * Filtres de la liste d'événements. `from`/`to` en ISO, OBLIGATOIRES : l'API répond 400 sans eux.
+ * Ils étaient typés facultatifs — l'onglet Maintenance les a omis du 28/06 au 07/10/2026, sans
+ * qu'aucun compilateur ne le voie. Tous les évènements d'UN véhicule, sans fenêtre :
+ * `listVehicleEvents`.
+ */
 export interface AgendaEventQuery {
-  from?: string;
-  to?: string;
+  from: string;
+  to: string;
   vehicleId?: string;
   groupId?: string;
   type?: VehicleEventType;
@@ -54,15 +59,21 @@ export class AgendaApiService {
 
   /** GET /api/agenda/events — événements de la flotte sur une fenêtre temporelle. */
   listEvents(query: AgendaEventQuery): Observable<VehicleEventDto[]> {
-    const params: Record<string, string> = {};
-    if (query.from) params['from'] = query.from;
-    if (query.to) params['to'] = query.to;
+    const params: Record<string, string> = { from: query.from, to: query.to };
     if (query.vehicleId) params['vehicleId'] = query.vehicleId;
     if (query.groupId) params['groupId'] = query.groupId;
     if (query.type) params['type'] = query.type;
     if (query.status) params['status'] = query.status;
     if (query.fleetId) params['fleetId'] = query.fleetId;
     return this.http.get<VehicleEventDto[]>('/api/agenda/events', { params });
+  }
+
+  /**
+   * GET /api/agenda/vehicles/:id/events — TOUS les évènements d'un véhicule, sans fenêtre (07/10/2026) :
+   * l'historique et les échéances de l'onglet Maintenance, quelle que soit leur date.
+   */
+  listVehicleEvents(vehicleId: string, type?: VehicleEventType): Observable<VehicleEventDto[]> {
+    return this.http.get<VehicleEventDto[]>(`/api/agenda/vehicles/${vehicleId}/events`, { params: type ? { type } : {} });
   }
 
   /**

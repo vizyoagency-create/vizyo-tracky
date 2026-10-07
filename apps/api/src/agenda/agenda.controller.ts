@@ -5,6 +5,7 @@ import {
   Delete,
   Get,
   Param,
+  ParseEnumPipe,
   ParseUUIDPipe,
   Patch,
   Post,
@@ -102,6 +103,22 @@ export class AgendaController {
   @RequirePermissions('agenda_view')
   odometer(@Req() req: AuthenticatedRequest, @Param('vehicleId', ParseUUIDPipe) vehicleId: string) {
     return this.events.estimateOdometer(req.user, vehicleId);
+  }
+
+  /**
+   * Tous les évènements d'UN véhicule, sans fenêtre : l'historique et les échéances de l'onglet
+   * Maintenance (07/10/2026). La borne est le véhicule du chemin, jamais la flotte — `events`
+   * ci-dessus garde sa fenêtre obligatoire (voir `VehicleEventsService.listForVehicle`).
+   */
+  @Get('vehicles/:vehicleId/events')
+  @Roles(...ALL_ROLES)
+  @RequirePermissions('agenda_view')
+  listVehicleEvents(
+    @Req() req: AuthenticatedRequest,
+    @Param('vehicleId', ParseUUIDPipe) vehicleId: string,
+    @Query('type', new ParseEnumPipe(VehicleEventType, { optional: true })) type?: VehicleEventType,
+  ) {
+    return this.events.listForVehicle(req.user, vehicleId, { type });
   }
 
   /** Signaler un incident — accessible à `agenda_view` (accordé explicitement par un admin). */

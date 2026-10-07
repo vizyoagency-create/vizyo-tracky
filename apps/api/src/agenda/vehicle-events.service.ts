@@ -305,6 +305,47 @@ export class VehicleEventsService {
   }
 
   /**
+   * TOUS les évènements d'UN véhicule, sans fenêtre — l'onglet « Maintenance » de la fiche (07/10/2026).
+   *
+   * L'onglet lisait `GET /agenda/events?vehicleId=…&type=MAINTENANCE`, sans `from` ni `to`, que cette
+   * route exige depuis sa création (Sprint 7) : 400 « from (ISO) requis », avalé par un `.catch` — la
+   * fiche annonçait « Aucun entretien » sur tous les véhicules depuis le 28/06.
+   *
+   * Pas de fenêtre, parce que la fiche montre l'historique ET les échéances : un entretien fait il y
+   * a trois ans, une échéance PLANNED oubliée depuis un an (la plus importante à voir), un contrôle
+   * technique matérialisé à `lastDoneAt + intervalMonths`, des années devant. Toute fenêtre en ferait
+   * disparaître une partie, en silence — le défaut même qu'on corrige.
+   *
+   * La borne est le VÉHICULE du chemin (UUID validé par la route), contrôlé par `assertVehicleAccess`
+   * (404 inconnu, 403 autre société ou hors périmètre) : aucun paramètre ne l'élargit à une flotte.
+   * `list()` garde sa fenêtre obligatoire — la rendre facultative « quand vehicleId est là » aurait
+   * rouvert la lecture de toute la flotte pour `vehicleId=%20` : `resolveReportVehicleScope` écarte un
+   * identifiant vide, et un périmètre `'ALL'` (FLEET_ADMIN, SUPER_ADMIN) n'aurait plus eu de borne véhicule.
+   *
+   * Du plus tardif au plus ancien : si le plafond mordait, c'est le plus ancien qui manquerait — et le
+   * journal le dirait (P2-3).
+   */
+  async listForVehicle(
+    user: AuthUser,
+    vehicleId: string,
+    q: { type?: VehicleEventType } = {},
+  ): Promise<VehicleEventDto[]> {
+    const fleetId = await this.assertVehicleAccess(user, vehicleId);
+    const rows = await this.prisma.vehicleEvent.findMany({
+      where: { fleetId, vehicleId, ...(q.type ? { type: q.type } : {}) },
+      include: { vehicle: { select: { plate: true } } },
+      orderBy: { startAt: 'desc' },
+      take: MAX_EVENEMENTS_PAR_FENETRE,
+    });
+    if (rows.length === MAX_EVENEMENTS_PAR_FENETRE) {
+      this.logger.warn(
+        `Évènements du véhicule ${vehicleId} tronqués à ${MAX_EVENEMENTS_PAR_FENETRE} lignes : les plus anciens manquent.`,
+      );
+    }
+    return rows.map((r) => this.toDto(r));
+  }
+
+  /**
    * Les trois compteurs de l'en-tête.
    *
    * ── Périmètre (P2-4, audit du 22/09) ────────────────────────────────────────────────────
