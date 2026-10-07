@@ -6798,6 +6798,7 @@ confondre les deux ferait accuser le mauvais coupable.
 ## VPS-050 — Une écoute de test tourne en root sur l'hôte, hors de toute unité, sur un port ouvert à Internet, et son journal n'a pas de rotation
 
 - **Domaine** : sécurité / périmètre · **Gravité** : 3 · **Statut** : `A_TRAITER` — tâche **V41**
+- **Mesure du 2026-10-07 — INCHANGÉ, J+9** : pid 4030432, root, **230 h**, 5027 ouvert v4+v6, 0 connexion ; journal 12 Mo **figé au 27/09 12:19 (10 jours)**. V41 sans réponse.
 - **Vu** : 2026-09-28 (1ᵉʳ passage ; le processus date du **27/09 12:05:12 UTC**) · **Mesure** (lecture seule : `ps`, `/proc`, `ss`,
   `ls`, `ufw.log`, `auth.log`) :
 
@@ -6883,6 +6884,7 @@ confondre les deux ferait accuser le mauvais coupable.
 ## VPS-052 — La garde du matin de `deploy.sh` a été franchie par `--force` trois fois en deux jours, et cinq `--force` en un jour ont tué trois passages
 
 - **Domaine** : déploiement · **Gravité** : 3 · **Statut** : `A_TRAITER` — tâche **V44**
+- **Mesure du 2026-10-07 — RÉGRESSION** : le 06/10, **5 déploiements, 5 `force=true`, 0 `--attendre`** (05:19, 08:04, 10:00, 15:43, 17:39 UTC). Le **05:19 UTC = 07:19 Paris est DANS 05:30–09:00** : le compteur de la garde du matin retombe de 5/7 à **0/7** (la prédiction « APPLIQUE possible le 08/10 » du rapport du 06/10 est fausse). **Deux passages de plus `interrupted`** (06/10 07:45 et 09:45 UTC, croisés par VPS-M137) : **4 sur 48 h**, toujours dans l heure d un `--force`. Le 07:19 est tombé 19 min après les reprises de 05:00 (34 / 34 acquittées, centre d alerte) : chance, pas garde. Contraste : le 05/10, 8 `--attendre`, 0 mort. V44 non codée.
 - **Vu** : 2026-09-30. Le seuil était **écrit d'avance** dans le rapport du 29/09 (§ 4) : *« un deuxième `force=true` entre 05 h 30 et
   09 h 00 … ouvre un constat »*. Il est franchi deux fois. **Mesure** (journal T33 `/opt/tracky-deploiements/journal.jsonl`, lu par le
   collecteur ; heure de Paris calculée par `TZ=Europe/Paris date -d`, bloc VPS-M130) :
@@ -6979,6 +6981,7 @@ confondre les deux ferait accuser le mauvais coupable.
 ## VPS-054 — Maestroo est en production sur ce VPS : sa base est sauvegardée, mais sur le même disque, jamais relue, et invisible du collecteur
 
 - **Domaine** : sauvegardes · **Gravité** : 3 · **Statut** : `A_TRAITER` — décision hors audit (**V45**)
+- **Mesure du 2026-10-07** : 4 conteneurs (`maestroo-prod-lp` recréé le 06/10 07:20 UTC, `maestroo.app` + `www.maestroo.app` routés) ; sauvegarde `maestroo-prod` à jour (0 h, 10 copies), M136 ✅ vérifié (`maestroo-dev` aussi ✅) ; toujours même disque, non relue, sans copie hors-site. Le cron `*/10 maestroo-lp-autostart` **s est effacé** de la crontab (prévu). Limites : 35 / 42 sans limite.
 - **Vu** : 2026-10-06 (conteneurs créés le **05/10 23:56:38** pour `maestroo-prod-postgres`, **06/10 00:31:45 / 00:31:53** pour `-api` / `-web`). **Mesure** (lecture seule) :
 
   | Grandeur | Valeur | Source |
@@ -7002,6 +7005,13 @@ confondre les deux ferait accuser le mauvais coupable.
 
 
 ## Constats de méthode (sur l'audit lui-même)
+
+### VPS-M138 — La table « âge de la dernière sauvegarde » criait « ⚠️ PÉRIMÉE » sur trois dossiers dont le jumeau est frais
+
+- **Domaine** : méthode · **Gravité** : 4 · **Statut** : `APPLIQUE` (2026-10-07 — bloc *Âge de la dernière sauvegarde, par dossier*, banc sur le VPS)
+- **Vu** : 2026-10-07 (angle mort n° 5 du 06/10 ; M135 n avait corrigé que la table de **couverture**). `capcom6` et `vizyo-texto` : *« ⚠️ PÉRIMÉE (789 h) »* ; `vizyo-manager` : *« ⚠️ PÉRIMÉE (34 h) »* — pendant que `sms`, `vizyo_texto` et `vizyo_manager` (les dossiers VIVANTS, nommés d après la base) ont 21–22 h. Trois rouges permanents : le jour où un vrai rouge arrive, il est noyé.
+- **Correctif** : pour un dossier périmé, recherche du **jumeau** (même nom avec `-` ↔ `_`, ou alias `capcom6` ↔ `sms`) ; s il a ≤ 30 h, le verdict devient *« copie unique ancienne — JUMEAU « X » frais (N h) »*. Si le jumeau passe lui aussi 30 h, le ⚠️ PÉRIMÉE revient. **Banc VPS** (la vraie boucle rejouée seule, lecture seule) : `capcom6 → sms (21 h)`, `vizyo-texto → vizyo_texto (21 h)`, `vizyo-manager → vizyo_manager (22 h)` ; `vizyo-tracky`, `vizyo-auth`, `sms` inchangés « a jour ». `bash -n` OK. Coût : un `find` sur un dossier déjà parcouru, uniquement pour un dossier périmé.
+- **`aNePasFaire`** : ❌ ne pas retirer les dossiers morts `capcom6` / `vizyo-texto` (copies uniques du 04/09, déjà relues) ; ❌ ne pas élargir la règle à un dossier sans jumeau : il reste PÉRIMÉ.
 
 ### VPS-M137 — Le collecteur demandait « un passage a-t-il été tué ? » sous chaque `--force` et n'y répondait jamais
 
@@ -10085,6 +10095,7 @@ traiter la machine.* ⚠️ **Et ne pas en conclure que VPS-M56 est annulé** : 
 ### VPS-M56 — Le budget de 90 s est dépassé 8 fois sur 9 ~~sans aucune cause extérieure~~
 
 - **Domaine** : méthode · **Gravité** : 2 · **Statut** : `A_TRAITER` — **arbitrage humain requis, il n'est pas technique**
+- **Mesure du 2026-10-07** : **207 s (2,3×)**, 42ᵉ dépassement ; charge **0,15 → 2,23** (limite franchie par la collecte, idle 34,7 % : file d attente) ; audit 20,1 % ; section 3 = 65 s, section 4 = 43 s ; `/opt` 46 s, partiel **17 / 23** (16ᵉ matin ; maalem, vizyo-auth, vizyo-leads > 12 s). 2 sessions SSH étrangères. V5 sans arbitrage depuis 22 jours : la réponse efficace est de sortir les 3 dépôts lourds du parcours.
 - 📏 **Vu : 2026-09-27 — 173 s (1,9×), 35ᵉ DÉPASSEMENT.** Charge 0,47 → 1,79 (sous 2) ; audit = **22,4 %** de la machine (77,5 s de CPU) ; `/opt` 44 s, partiel **6ᵉ matin** (`maalem` > 12 s) ; 6 sessions étrangères (V40). 21 jours sans arbitrage.
 - 📏 **Vu : 2026-09-22 — 157 s (1,7×), 30ᵉ DÉPASSEMENT, ET LA LIMITE DE CHARGE FRANCHIE DE 0,07 PARCE QUE LA MACHINE ÉTAIT
   DÉJÀ À 1,09 AU DÉPART.** Steal au départ 2 % (mode complet), charge **1,09 → 2,07** (*« CHARGE PARTAGÉE : la machine était

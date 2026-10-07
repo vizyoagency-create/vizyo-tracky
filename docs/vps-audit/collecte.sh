@@ -4715,6 +4715,32 @@ for d in /var/backups/*/; do
     *-[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]) verdict="instantane ponctuel (garde volontairement)" ;;
     *) if [ "$age_h" -gt 30 ]; then verdict="⚠️ PERIMEE (> 30 h)"; else verdict="a jour"; fi ;;
   esac
+  # ⚠️⚠️ VPS-M138 — AJOUTE LE 2026-10-07 (angle mort n° 5 du 06/10, M135 n avait corrige que la table
+  # de COUVERTURE). Trois dossiers MORTS ont un JUMEAU VIVANT sous un autre nom (tiret / souligne,
+  # ou alias de base) : `capcom6` ↔ `sms`, `vizyo-texto` ↔ `vizyo_texto`, `vizyo-manager` ↔
+  # `vizyo_manager`. Le 06/10 la table affichait « ⚠️ PERIMEE (789 h) » sur les deux premiers et
+  # « 34 h » sur le troisieme, pendant que leurs jumeaux avaient 21 h : un rouge permanent finit
+  # par faire ignorer le rouge VRAI. Ici on cherche le jumeau (meme nom, `-` ↔ `_`, ou alias
+  # capcom6↔sms) ; s il a moins de 30 h on le DIT au lieu de crier. COUT : un `find` sur un
+  # dossier deja parcouru, seulement pour un dossier perime.
+  if [ "$age_h" -gt 30 ] && [ "${verdict#⚠️ PERIMEE}" != "$verdict" ]; then
+    _jum=""
+    case "$app" in
+      capcom6) _jum="sms" ;;
+      sms)     _jum="capcom6" ;;
+      *-*)     _jum="${app//-/_}" ;;
+      *_*)     _jum="${app//_/-}" ;;
+    esac
+    if [ -n "$_jum" ] && [ -d "/var/backups/$_jum" ]; then
+      _jts=$(find "/var/backups/$_jum" -maxdepth 1 -type f \( -name '*.gz' -o -name '*.gpg' -o -name '*.age' \) -printf '%T@\n' 2>/dev/null | sort -rn | head -1)
+      if [ -n "$_jts" ]; then
+        _jage=$(( (MAINTENANT - ${_jts%.*}) / 3600 ))
+        if [ "$_jage" -le 30 ]; then
+          verdict="copie unique ancienne — JUMEAU « $_jum » frais (${_jage} h)"
+        fi
+      fi
+    fi
+  fi
   # ⚠️ AJOUTE LE 2026-09-16 (angle mort n° 4 du 15/09) : la FRAICHEUR d'un fichier ne dit pas
   # qu'il contient quelque chose. Le 09-14, un depot entrant (dispocar-distant) a recu des dumps
   # `pg_dump | gzip | age` de 1 172 octets, prd = dev a l'octet, trois nuits de suite — la
